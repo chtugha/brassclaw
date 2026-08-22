@@ -83,17 +83,82 @@ impl From<EngineError> for RetrievalSourceError {
     }
 }
 
+/// Tier-0 / Tier-1 routing signals harvested from the matched Recipe row by
+/// `PostgresSource::fetch_for_turn` (v3 Phase E / plan §0.8).
+///
+/// Carried on [`FetchForTurnResult::SplitResult`] so the Phase-H Tier-0/Tier-1
+/// consumer (the agent-loop `RecipeStage` via the composition
+/// `PgRetrievalLookup` bridge) can dispatch without re-querying the DB. This is
+/// a greenfield v3 type (FIND-08) — it does not extend any existing type.
+#[derive(Debug, Clone)]
+pub struct TurnRoutingSignals {
+    /// From the matched Recipe row's own `override_prompt_column` column
+    /// (Q4→A): when true the assembled prior knowledge replaces the normal
+    /// prompt-assembly path (§3.13 Solution Override).
+    pub override_prompt_creation: bool,
+    /// Orchestrator-channel UUIDs (the `orchestrator_items` ids) serialized as
+    /// strings — the `_set_active_skills` identity set for the turn.
+    pub matched_component_ids: Vec<String>,
+    /// Human-readable label for the matched variant — the matched
+    /// `RecipeVariant.variant_key` (no `label` field exists in the data model;
+    /// Q1→A resolved this is the label source).
+    pub variant_label: String,
+    /// The `step_link` of the matched recipe variant (the IBS entry point).
+    pub step_link: String,
+    /// `!tier0_eligible` (Q3→A — always complements): when true the turn needs
+    /// an LLM call (Tier-1); when false Tier-0 deterministic execution suffices.
+    pub llm_call_required: bool,
+    /// Wilson lower-bound from the matched Recipe row (for metrics / logging).
+    pub wilson_lower: f64,
+    /// Pre-computed Tier-0 eligibility. TRUE only when ALL of: tier ∈ {mature,
+    /// candidate}, `wilson_lower ≥ 0.70`, `validation_status = 'validated'`,
+    /// AND a validation hook is wired (`has_validation`). Computed by
+    /// `fetch_for_turn` from the row via `Recipe::is_tier0_eligible()` (the
+    /// FULL check in `types/recipe.rs`), NOT the stripped `PgRecipe::
+    /// is_tier0_eligible()` which omits the `wilson_lower ≥ 0.70` guard
+    /// (FIND-P9-09 / §0.8 discrepancy note). Under §0.23 `validated ⇒ has_
+    /// validation`, so the `has_validation` guard is subsumed by the
+    /// `validation_status = 'validated'` requirement (Q2→A).
+    pub tier0_eligible: bool,
+}
+
 /// Result of an intent-driven `fetch_for_turn` call.
 ///
-/// Either a list of assembled components (the common case) or a disambiguation
+/// The common cases are a list of assembled components or a disambiguation
 /// request (when multiple near-equal candidates exist in `reborn_intent_inputs`).
+/// Phase E (§0.8) adds two Tier-0 routing variants: `ActionShortCircuit` (an
+/// Action intent match executes directly, no LLM) and `SplitResult` (a Recipe
+/// intent match with a `step_link` whose IBS-compiled steps are pre-fetched
+/// into Rust / orchestrator channels with routing signals).
 #[derive(Debug)]
 pub enum FetchForTurnResult {
-    /// One or more components retrieved and ready to assemble.
+    /// No-match UNION ALL path or non-recipe intent match (existing behaviour
+    /// unchanged): one or more components retrieved and ready to assemble.
     Components(Vec<ComponentItem>),
     /// Multiple near-equal intent candidates — the orchestrator should surface
     /// a disambiguation message to the user (spec §3.12 Q11).
     Disambiguation(Vec<crate::memory::intent_system::IntentCandidate>),
+    /// Intent matched an Action (class 16) — execute directly, no LLM. The
+    /// `name` comes from `IntentResolution::Match.component_name` (populated by
+    /// `resolve_intent`'s `reborn_actions` LEFT JOIN, FIND-P5-06) so no second
+    /// DB fetch is needed. Returned BEFORE any `fetch_component_by_id` call.
+    ActionShortCircuit {
+        component_id: uuid::Uuid,
+        name: String,
+    },
+    /// Intent matched a Recipe (class 21) with a `step_link`. The IBS compiled
+    /// the recipe's `step_descriptions` + the matched variant's
+    /// `variable_patterns` into Rust-only (`rust_steps`) and orchestrator
+    /// (`orchestrator_steps`) channels; the component items for each channel
+    /// are pre-fetched here, and `routing` carries the Tier-0/Tier-1 dispatch
+    /// signals for the Phase-H consumer.
+    SplitResult {
+        /// ToolSkill bodies — Rust-only channel (Tier-0 deterministic dispatch).
+        rust_items: Vec<ComponentItem>,
+        /// Skill + PythonCode bodies — orchestrator channel (LLM prior knowledge).
+        orchestrator_items: Vec<ComponentItem>,
+        routing: TurnRoutingSignals,
+    },
 }
 
 /// Trait for prior-knowledge component retrieval.
@@ -583,28 +648,32 @@ fn estimate_tokens(byte_len: usize) -> usize {
     ((byte_len as f64 * TOKENS_PER_BYTE) as usize).max(1)
 }
 
-/// Fetch a single component from its class-specific table by ID (Step 6.7).
+/// Map a component `class_code` to its `(table_name, content_expr)` pair.
 ///
-/// Enforces the SEC-01 validation gate:
-///   `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`
+/// Shared by `fetch_component_by_id` and `fetch_components_by_ids` so the
+/// literal class→table/column mapping lives in exactly one place (PERF-02 /
+/// plan §0.8: "Extract the helper ... so both functions share the same mapping
+/// — no duplication").
 ///
-/// Returns an empty vec if the component is not found or fails the gate (e.g.
-/// it was demoted to pending/rejected between the intent lookup and this fetch).
+/// Tables with a `body` column (`reborn_skills`) use
+/// `COALESCE(NULLIF(prior_knowledge_content,''), body)`; tables with a
+/// `content` column use `COALESCE(NULLIF(prior_knowledge_content,''), content)`;
+/// description-only tables (extensions, actions) use
+/// `COALESCE(prior_knowledge_content, description)`; `reborn_extension_
+/// catalogues` uses its `overview_doc` column. `reborn_tools` (class 0) has no
+/// prompt text and returns `None`.
+///
+/// SECURITY: `table_name` and `content_expr` are ALWAYS `&'static str` literals
+/// selected by this `match` — never user input. The callers interpolate them
+/// into SQL via `format!()`, which is safe ONLY under this invariant. NEVER
+/// extend this function (or its callers) to accept user-supplied table names or
+/// column expressions. The `class_code` itself is an `i32` from the DB
+/// (`reborn_components.class_code`), not from user input, so the dispatch is
+/// safe. Document this constraint in any new caller.
 #[cfg(feature = "skills-db")]
-pub async fn fetch_component_by_id(
-    pool: &brassclaw_pg::PgPool,
-    scope: &ComponentScope,
-    component_id: uuid::Uuid,
-    component_class_code: i32,
-) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
-    use tokio_postgres::types::ToSql;
-
-    // Map class_code → (table_name, content_expr).
-    // Tables with a `body` column (reborn_skills) use COALESCE(prior_knowledge_content, body).
-    // Tables with a `content` column use COALESCE(NULLIF(prior_knowledge_content,''), content).
-    // Tables with only description (extensions, actions) use COALESCE(prior_knowledge_content, description).
-    // reborn_tools (class 0) has no prompt text and is excluded.
-    let table_and_content: Option<(&'static str, &'static str)> = match component_class_code {
+fn class_code_to_table(code: i32) -> Option<(&'static str, &'static str)> {
+    match code {
+        0 => None, // Tool — no prompt text in the component table.
         1..=3 => Some((
             "reborn_skills",
             "COALESCE(NULLIF(prior_knowledge_content,''), body)",
@@ -613,6 +682,9 @@ pub async fn fetch_component_by_id(
             "reborn_extensions_unified",
             "COALESCE(prior_knowledge_content, description)",
         )),
+        // ⚠️ FIND-NEW-AUDIT-06: classes 10 (Orchestrator) and 50 (Scaffold) map
+        // to reborn_skills — confirmed from the live fetch_component_by_id.
+        // MUST be present or Phase E silently loses retrieval for these classes.
         10 | 50 => Some((
             "reborn_skills",
             "COALESCE(NULLIF(prior_knowledge_content,''), body)",
@@ -665,10 +737,34 @@ pub async fn fetch_component_by_id(
             "reborn_extension_catalogues",
             "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)",
         )),
+        // ⚠️ WHEN ADDING A NEW CLASS CODE: ADD A MATCH ARM HERE.
+        // A missing arm silently returns None → fetch_for_turn produces an empty
+        // SplitResult item list → the recipe executes without the component.
+        // There is NO compile-time enforcement. Always add the arm AND a test.
         _ => None,
-    };
+    }
+}
 
-    let Some((table, content_expr)) = table_and_content else {
+/// Fetch a single component from its class-specific table by ID (Step 6.7).
+///
+/// Enforces the SEC-01 validation gate:
+///   `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`
+///
+/// Returns an empty vec if the component is not found or fails the gate (e.g.
+/// it was demoted to pending/rejected between the intent lookup and this fetch).
+#[cfg(feature = "skills-db")]
+pub async fn fetch_component_by_id(
+    pool: &brassclaw_pg::PgPool,
+    scope: &ComponentScope,
+    component_id: uuid::Uuid,
+    component_class_code: i32,
+) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
+    use tokio_postgres::types::ToSql;
+
+    // Map class_code → (table_name, content_expr) via the shared helper so the
+    // literal class→table/column mapping lives in exactly one place
+    // (see `class_code_to_table`; PERF-02 / plan §0.8).
+    let Some((table, content_expr)) = class_code_to_table(component_class_code) else {
         // Class 0 (tools) or unknown — no prompt text to retrieve.
         return Ok(vec![]);
     };
@@ -929,5 +1025,101 @@ mod tests {
         assert_eq!(doc_type_to_class_code(DocType::Issue).0, 19);
         assert_eq!(doc_type_to_class_code(DocType::Note).0, 20);
         assert_eq!(doc_type_to_class_code(DocType::Recipe).0, 21);
+    }
+
+    // ⚠️ WHEN ADDING A NEW CLASS CODE: ADD A MATCH ARM in `class_code_to_table`
+    // AND extend this test with the new arm's expected (table, content_expr).
+    // A missing arm silently returns None → fetch_for_turn drops the component.
+    #[cfg(feature = "skills-db")]
+    #[test]
+    fn class_code_to_table_covers_every_class_and_includes_10_50() {
+        // Class 0 (Tool) has no prompt text in the component table → None.
+        assert_eq!(class_code_to_table(0), None);
+
+        // Skills (classes 1-3) + Orchestrator/Scaffold (10, 50) share
+        // reborn_skills with the body-fallback content expression.
+        // ⚠️ FIND-NEW-AUDIT-06: 10 | 50 MUST be present or Phase E silently
+        // loses retrieval for these classes (regression guard).
+        let skills_table = (
+            "reborn_skills",
+            "COALESCE(NULLIF(prior_knowledge_content,''), body)",
+        );
+        for code in [1, 2, 3, 10, 50] {
+            assert_eq!(
+                class_code_to_table(code),
+                Some(skills_table),
+                "class {code} must map to reborn_skills (FIND-NEW-AUDIT-06)"
+            );
+        }
+
+        // Extensions (classes 4-9) → reborn_extensions_unified, description fallback.
+        let exts_table = (
+            "reborn_extensions_unified",
+            "COALESCE(prior_knowledge_content, description)",
+        );
+        for code in 4..=9 {
+            assert_eq!(
+                class_code_to_table(code),
+                Some(exts_table),
+                "class {code} must map to reborn_extensions_unified"
+            );
+        }
+
+        // Description-only / content-column tables.
+        assert_eq!(
+            class_code_to_table(16),
+            Some((
+                "reborn_actions",
+                "COALESCE(prior_knowledge_content, description)"
+            ))
+        );
+
+        // Content-column tables (specs/tool_skills/plans/summaries/docus/
+        // lessons/issues/notes + Phases B/C additions python_code/catalogues).
+        let content_pairs = [
+            (12, "reborn_specs", "content"),
+            (13, "reborn_tool_skills", "content"),
+            (14, "reborn_plans", "content"),
+            (15, "reborn_summaries", "content"),
+            (17, "reborn_docus", "content"),
+            (18, "reborn_lessons", "content"),
+            (19, "reborn_issues", "content"),
+            (20, "reborn_notes", "content"),
+            (22, "reborn_python_code", "content"),
+        ];
+        for (code, table, col) in content_pairs {
+            let expected_expr = format!("COALESCE(NULLIF(prior_knowledge_content,''), {col})");
+            assert_eq!(
+                class_code_to_table(code),
+                Some((table, expected_expr.as_str())),
+                "class {code} must map to {table}"
+            );
+        }
+
+        // Recipes (class 21) — empty-string fallback (no body/content column).
+        assert_eq!(
+            class_code_to_table(21),
+            Some((
+                "reborn_recipes",
+                "COALESCE(NULLIF(prior_knowledge_content,''), '')"
+            ))
+        );
+
+        // Extension catalogues (class 23, Phase C) — overview_doc column.
+        assert_eq!(
+            class_code_to_table(23),
+            Some((
+                "reborn_extension_catalogues",
+                "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)"
+            ))
+        );
+
+        // Unknown / unallocated class codes → None (no silent fall-through).
+        assert_eq!(class_code_to_table(11), None);
+        assert_eq!(class_code_to_table(24), None);
+        assert_eq!(class_code_to_table(49), None);
+        assert_eq!(class_code_to_table(51), None);
+        assert_eq!(class_code_to_table(-1), None);
+        assert_eq!(class_code_to_table(999), None);
     }
 }

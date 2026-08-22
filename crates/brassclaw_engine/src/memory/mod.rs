@@ -33,7 +33,7 @@ pub use retrieval::RetrievalEngine;
 pub use retrieval_source::PostgresSource;
 pub use retrieval_source::{
     ComponentItem, ComponentScope, FetchForTurnResult, RamSource, RetrievalSource,
-    RetrievalSourceError,
+    RetrievalSourceError, TurnRoutingSignals,
 };
 pub use similarity_checker::{SimilarityChecker, SimilarityMatch};
 pub use skill_tracker::SkillTracker;

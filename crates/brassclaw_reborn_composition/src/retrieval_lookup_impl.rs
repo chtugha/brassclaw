@@ -79,6 +79,18 @@ impl RetrievalLookup for PgRetrievalLookup {
             FetchForTurnResult::Disambiguation(candidates) => {
                 Some(retrieval_turn_result_for_disambiguation(candidates)?)
             }
+            FetchForTurnResult::ActionShortCircuit { component_id, name } => Some(
+                retrieval_turn_result_for_action_short_circuit(component_id, name),
+            ),
+            FetchForTurnResult::SplitResult {
+                rust_items,
+                orchestrator_items,
+                routing,
+            } => Some(retrieval_turn_result_for_split(
+                rust_items,
+                orchestrator_items,
+                routing,
+            )?),
         })
     }
 }
@@ -156,6 +168,73 @@ fn retrieval_turn_result_for_disambiguation(
         rust_items: orchestrator_items.clone(),
         orchestrator_items,
         routing_meta: serde_json::json!({ "variant": "disambiguation", "count": count }),
+    })
+}
+
+/// Serialize an `ActionShortCircuit` (class-16 intent match) into a
+/// `RetrievalTurnResult` with REAL Tier-0 routing booleans (Q5→A): the action
+/// executes directly with no LLM, so `tier0_eligible = true` and
+/// `llm_call_required = false`. The action identity is carried in
+/// `orchestrator_items` (a single `action_short_circuit` descriptor) and
+/// `routing_meta.variant == "action_short_circuit"` so the Phase-H consumer can
+/// discriminate it (consistent with how `Disambiguation` is encoded). Always
+/// `Some` — an Action match is a real short-circuit, never an empty fall-through.
+#[cfg(feature = "skills-db")]
+fn retrieval_turn_result_for_action_short_circuit(
+    component_id: uuid::Uuid,
+    name: String,
+) -> RetrievalTurnResult {
+    let id_str = component_id.to_string();
+    RetrievalTurnResult {
+        tier0_eligible: true,
+        llm_call_required: false,
+        rust_items: serde_json::json!([]),
+        orchestrator_items: serde_json::json!([
+            { "type": "action_short_circuit", "component_id": id_str, "name": name.clone() }
+        ]),
+        routing_meta: serde_json::json!({
+            "variant": "action_short_circuit",
+            "component_id": id_str,
+            "name": name,
+        }),
+    }
+}
+
+/// Serialize a `SplitResult` (class-21 recipe intent match with a `step_link`)
+/// into a `RetrievalTurnResult` with REAL routing booleans from
+/// `TurnRoutingSignals` (replacing E.0's conservative `tier0_eligible = false` /
+/// `llm_call_required = true`) and the IBS-split `rust_items` / `orchestrator_
+/// items` channels. `routing_meta.variant == "split"` carries the full routing
+/// context (variant_label, step_link, wilson_lower, tier0_eligible,
+/// llm_call_required, override_prompt_creation, matched_component_ids) so the
+/// Phase-H `LoopOrchestratorPort` consumer can dispatch Tier-0/Tier-1. Always
+/// `Some` — a recipe match with a `step_link` is a real routing decision even
+/// when both channels are empty (the routing booleans still govern the turn).
+#[cfg(feature = "skills-db")]
+fn retrieval_turn_result_for_split(
+    rust_items: Vec<brassclaw_engine::memory::ComponentItem>,
+    orchestrator_items: Vec<brassclaw_engine::memory::ComponentItem>,
+    routing: brassclaw_engine::memory::TurnRoutingSignals,
+) -> Result<RetrievalTurnResult, RetrievalLookupError> {
+    let rust_json = serde_json::to_value(&rust_items)
+        .map_err(|error| RetrievalLookupError::Decode(error.to_string()))?;
+    let orchestrator_json = serde_json::to_value(&orchestrator_items)
+        .map_err(|error| RetrievalLookupError::Decode(error.to_string()))?;
+    Ok(RetrievalTurnResult {
+        tier0_eligible: routing.tier0_eligible,
+        llm_call_required: routing.llm_call_required,
+        rust_items: rust_json,
+        orchestrator_items: orchestrator_json,
+        routing_meta: serde_json::json!({
+            "variant": "split",
+            "variant_label": routing.variant_label,
+            "step_link": routing.step_link,
+            "wilson_lower": routing.wilson_lower,
+            "tier0_eligible": routing.tier0_eligible,
+            "llm_call_required": routing.llm_call_required,
+            "override_prompt_creation": routing.override_prompt_creation,
+            "matched_component_ids": routing.matched_component_ids,
+        }),
     })
 }
 
@@ -246,15 +325,16 @@ mod tests {
     // skills-db-only imports: PgRetrievalLookup + engine intent + mapping helpers.
     #[cfg(feature = "skills-db")]
     use super::{
-        PgRetrievalLookup, retrieval_turn_result_for_components,
-        retrieval_turn_result_for_disambiguation,
+        PgRetrievalLookup, retrieval_turn_result_for_action_short_circuit,
+        retrieval_turn_result_for_components, retrieval_turn_result_for_disambiguation,
+        retrieval_turn_result_for_split,
     };
     #[cfg(feature = "skills-db")]
     use brassclaw_engine::memory::intent_system::{
         InputClass, IntentCandidate, IntentScope, IntentSource, seed_intent_input,
     };
     #[cfg(feature = "skills-db")]
-    use brassclaw_engine::memory::{ComponentItem, PostgresSource};
+    use brassclaw_engine::memory::{ComponentItem, PostgresSource, TurnRoutingSignals};
     #[cfg(feature = "skills-db")]
     use brassclaw_turns::run_profile::RetrievalLookup;
     #[cfg(feature = "skills-db")]
@@ -466,6 +546,154 @@ mod tests {
         assert_eq!(
             result.routing_meta.get("count").and_then(|c| c.as_i64()),
             Some(2)
+        );
+    }
+
+    #[cfg(feature = "skills-db")]
+    #[test]
+    fn action_short_circuit_mapping_emits_real_tier0_booleans() {
+        // Q5→A: an Action (class-16) short-circuit runs Tier-0 with no LLM.
+        let id = Uuid::new_v4();
+        let result = retrieval_turn_result_for_action_short_circuit(id, "daily-sync".to_string());
+        assert!(result.tier0_eligible, "action short-circuit is Tier-0");
+        assert!(
+            !result.llm_call_required,
+            "action short-circuit needs no LLM"
+        );
+        assert!(
+            result
+                .rust_items
+                .as_array()
+                .map(Vec::is_empty)
+                .unwrap_or(false),
+            "rust channel is empty for an action short-circuit"
+        );
+        // The action descriptor rides in orchestrator_items.
+        let orch = result
+            .orchestrator_items
+            .as_array()
+            .expect("orchestrator_items is an array");
+        assert_eq!(orch.len(), 1);
+        assert_eq!(
+            orch[0].get("type").and_then(|v| v.as_str()),
+            Some("action_short_circuit")
+        );
+        assert_eq!(
+            orch[0].get("component_id").and_then(|v| v.as_str()),
+            Some(id.to_string()).as_deref()
+        );
+        assert_eq!(
+            orch[0].get("name").and_then(|v| v.as_str()),
+            Some("daily-sync")
+        );
+        // routing_meta discriminates the variant + carries the identity.
+        assert_eq!(
+            result.routing_meta.get("variant").and_then(|v| v.as_str()),
+            Some("action_short_circuit")
+        );
+        assert_eq!(
+            result
+                .routing_meta
+                .get("component_id")
+                .and_then(|v| v.as_str()),
+            Some(id.to_string()).as_deref()
+        );
+        assert_eq!(
+            result.routing_meta.get("name").and_then(|v| v.as_str()),
+            Some("daily-sync")
+        );
+    }
+
+    #[cfg(feature = "skills-db")]
+    #[test]
+    fn split_mapping_propagates_routing_booleans_and_split_channels() {
+        // SplitResult surfaces REAL routing booleans (replacing E.0's conservative
+        // false/true) + the IBS-split channels + a `split` routing_meta.
+        let rust_items = vec![ComponentItem {
+            id: Uuid::new_v4(),
+            class_code: 13, // tool_skill — Rust channel
+            prompt_uid: 1,
+            name: "shell-run".to_string(),
+            description: String::new(),
+            effective_content: "rust body".to_string(),
+            override_prompt_creation: false,
+        }];
+        let orch_items = vec![
+            ComponentItem {
+                id: Uuid::new_v4(),
+                class_code: 2, // skill — orchestrator channel
+                prompt_uid: 2,
+                name: "planner".to_string(),
+                description: String::new(),
+                effective_content: "orch body a".to_string(),
+                override_prompt_creation: false,
+            },
+            ComponentItem {
+                id: Uuid::new_v4(),
+                class_code: 22, // python_code — orchestrator channel
+                prompt_uid: 3,
+                name: "formatter".to_string(),
+                description: String::new(),
+                effective_content: "orch body b".to_string(),
+                override_prompt_creation: false,
+            },
+        ];
+        let matched_ids: Vec<String> = orch_items.iter().map(|i| i.id.to_string()).collect();
+        let routing = TurnRoutingSignals {
+            override_prompt_creation: true,
+            matched_component_ids: matched_ids.clone(),
+            variant_label: "v1".to_string(),
+            step_link: "recipe.daily-sync#v1".to_string(),
+            llm_call_required: false,
+            wilson_lower: 0.82,
+            tier0_eligible: true,
+        };
+        let result =
+            retrieval_turn_result_for_split(rust_items, orch_items, routing).expect("map split");
+
+        // Real booleans propagated from routing.
+        assert!(result.tier0_eligible);
+        assert!(!result.llm_call_required);
+        // Channels are split (not duplicated as in E.0).
+        assert_eq!(result.rust_items.as_array().map(Vec::len), Some(1));
+        assert_eq!(result.orchestrator_items.as_array().map(Vec::len), Some(2));
+        assert_ne!(result.rust_items, result.orchestrator_items);
+        // routing_meta carries the full routing context.
+        assert_eq!(
+            result.routing_meta.get("variant").and_then(|v| v.as_str()),
+            Some("split")
+        );
+        assert_eq!(
+            result
+                .routing_meta
+                .get("variant_label")
+                .and_then(|v| v.as_str()),
+            Some("v1")
+        );
+        assert_eq!(
+            result
+                .routing_meta
+                .get("step_link")
+                .and_then(|v| v.as_str()),
+            Some("recipe.daily-sync#v1")
+        );
+        assert_eq!(
+            result
+                .routing_meta
+                .get("wilson_lower")
+                .and_then(|v| v.as_f64()),
+            Some(0.82)
+        );
+        assert_eq!(
+            result
+                .routing_meta
+                .get("override_prompt_creation")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            result.routing_meta.get("matched_component_ids"),
+            Some(&serde_json::to_value(&matched_ids).expect("serialize ids"))
         );
     }
 

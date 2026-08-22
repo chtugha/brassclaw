@@ -2621,6 +2621,41 @@ async fn handle_assemble_prior_knowledge(
                     "candidates": candidates_json,
                 })));
             }
+            Ok(FetchForTurnResult::ActionShortCircuit { component_id, name }) => {
+                // An Action (class 16) intent match short-circuits — there is no
+                // prior knowledge to assemble for an LLM call because the action
+                // executes directly (no LLM). Surface the short-circuit to the
+                // Python orchestrator so the dormant engine path can route it;
+                // the LIVE Tier-0 dispatch is the Phase-H agent-loop `RecipeStage`
+                // (via the composition `PgRetrievalLookup` bridge). `name` comes
+                // from `IntentResolution::Match.component_name` (FIND-P5-06), so
+                // no second DB fetch happened to get here.
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    "content": "",
+                    "formatted_content": "",
+                    "override_prompt_creation": false,
+                    "matched_component_ids": [component_id.to_string()],
+                    "action_short_circuit": true,
+                    "action_component_id": component_id.to_string(),
+                    "action_name": name,
+                })));
+            }
+            Ok(FetchForTurnResult::SplitResult {
+                orchestrator_items, ..
+            }) => {
+                // A Recipe (class 21) intent match with a `step_link`: the IBS
+                // split the steps into a Rust-only channel (`rust_items`, for
+                // Tier-0 deterministic dispatch) and an orchestrator channel
+                // (`orchestrator_items`, the LLM-facing prior knowledge). This
+                // dormant engine assembler consumes ONLY the orchestrator
+                // channel — that is the LLM prior knowledge. The Rust channel
+                // and the `TurnRoutingSignals` are dispatched by the Phase-H
+                // agent-loop Tier-0/Tier-1 consumer, not this pre-Tier-0 Python
+                // path (see the E0-A re-target). They are therefore ignored
+                // here by design, not silenced: this path does not dispatch
+                // Tier-0/Tier-1.
+                return assemble_from_component_items(&orchestrator_items);
+            }
             Err(e) => {
                 debug!("assemble_prior_knowledge: RetrievalSource failed: {e}");
                 // Fall through to legacy path.
