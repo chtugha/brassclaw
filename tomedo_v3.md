@@ -45,23 +45,30 @@
 >
 > ## Core Design Principle: Orchestrator-First, LLM-Minimal
 >
-> Every tomedo operation that is deterministic (known URL, known field names,
-> known response shape) MUST be Tier 0. The orchestrator calls Rust tools via
-> `__execute_action__()` in a PythonCode step. The LLM is only involved when
-> the task requires content composition, disambiguation, or irreversible action
-> that needs confirmation.
+> **The orchestrator IS the execution engine.** Rust makes tools available.
+> The LLM is consulted ONLY when a task requires creative reasoning, composition,
+> or an irreversible decision the user must confirm. Everything else is Tier 0.
 >
-> **Mandatory two-channel pattern:**
+> **The two-channel execution model (MANDATORY for every tomedo recipe):**
 > ```
-> channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute)
-> channel: "orchestrator"   → PythonCode calls __execute_action__() to run the tool
+> channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute — availability only)
+> channel: "orchestrator"   → PythonCode calls __execute_action__() to ACTUALLY run the tool
 > ```
+> A Tier-0 recipe MUST have BOTH channels. A `rust`-only step with no matching
+> `orchestrator` PythonCode executor is a Q1 hard error (§tier0-orchestrator-channel Rule 2).
+>
+> **Granularity rules (strictly enforced):**
+> - One ToolSkill = one URL pattern + one HTTP method (not one "feature")
+> - One PythonCode executor = exactly one `__execute_action__` call
+> - Pure-logic PythonCode helpers = zero I/O, zero `__execute_action__` calls
+> - Three narrowly-scoped skills that share the same Rust tool beat one monolithic skill
 >
 > **Tier rules:**
-> - All GET reads with a known patient_id → **Tier 0** (deterministic, no LLM)
-> - All POST/PUT writes → **Tier 1** (LLM confirms content before dispatch)
-> - Cert-fetch (SSH) → **Tier 1** (user confirms SSH credentials)
-> - Name search → **Tier 1** (LLM composes query from user intent)
+> - All GET reads with a known ID/date (deterministic inputs) → **Tier 0**
+> - All POST/PUT writes → **Tier 1** (LLM confirms irreversible content before dispatch)
+> - Cert-fetch (SSH with user credentials) → **Tier 1**
+> - Name search (user-supplied string) → **Tier 1** (LLM URL-encodes the query)
+> - Automated nightly audit, date arithmetic, JSON parsing → **Tier 0** (no LLM)
 >
 > **⚠️ SAFETY — never use open-ended collection endpoints:**
 > `GET /leistung?patient=X`, `/patient/{id}/leistungen`, `/schein?patient=X`,
@@ -1600,27 +1607,44 @@ validation_status: "validated"
 ```
 name:        "skill-tomedo"
 class_code:  2
-description: "Domain skill: tomedo EMR REST API integration — patient reads and karteieintrag writes."
+description: "Domain skill: tomedo EMR REST API integration — patient reads, karteieintrag writes, and automated evening documentation audit."
 body: |
   tomedo is a medical practice management system (EMR). This domain skill routes
   to the correct leaf skill for each REST API operation.
 
+  ══════════════════════════════════════════════════════════════
+  ORCHESTRATOR-FIRST DESIGN RULE (mandatory for all tomedo ops):
+  ══════════════════════════════════════════════════════════════
+  • Rust makes tools available (channel: "rust" pre-loads the ToolSkill binding).
+  • The ORCHESTRATOR executes every tool call via __execute_action__() in a
+    PythonCode step (channel: "orchestrator"). Rust NEVER executes on its own.
+  • The LLM is involved ONLY for: content composition, user-supplied strings,
+    irreversible action confirmation, or ambiguous disambiguation.
+  • Every deterministic read (known patient_id, known date, known ident) is Tier 0.
+  • One ToolSkill = one URL pattern + one HTTP method. One PythonCode executor =
+    one __execute_action__ call. Pure-logic helpers = zero I/O.
+  ══════════════════════════════════════════════════════════════
+
   FIRST-RUN SETUP:
-    Run tomedo-cert-fetch before any other recipe (fetches mTLS certs via SSH).
-    Required config: tomedo_cert_pem, tomedo_base_url (set automatically by cert-fetch).
+    1. Run tomedo-cert-fetch (Tier 1 — SSH credentials required).
+    2. Run tomedo-karteieintragtyp-list (Tier 0) to discover the ANA ident.
+       Set config key tomedo_ana_typ_ident to the result before running the audit.
+    Required config after setup: tomedo_cert_pem, tomedo_base_url,
+    tomedo_ana_typ_ident (for audit completeness checks).
 
   OPERATION ROUTING:
 
-  Server health:
-    → skill-tomedo-serverstatus (Tier 0)
+  Server health (Tier 0):
+    → skill-tomedo-serverstatus                     → tomedo-serverstatus
 
-  Patient lookup by name (Tier 1 — LLM composes query):
-    → skill-tomedo-patient-search-by-name
-    Recipe: tomedo-patient-search-by-name
+  KarteiEintragTyp lookup — resolve ANA ident (Tier 0, run once):
+    → skill-tomedo-karteieintragtyp-list            → tomedo-karteieintragtyp-list
 
-  Full patient summary — automated (Tier 0, all reads in sequence):
+  Patient lookup by name (Tier 1 — LLM URL-encodes query):
+    → skill-tomedo-patient-search-by-name           → tomedo-patient-search-by-name
+
+  Full patient summary — automated (Tier 0, orchestrator runs 4 reads):
     → use recipe: tomedo-patient-summary
-    (fetches name/DOB/phones + diagnoses + medications + next appointment)
 
   Individual patient data (known patient_id — all Tier 0):
     • Name + DOB + phones:  skill-tomedo-patient-detail           → tomedo-patient-detail
@@ -1642,6 +1666,15 @@ body: |
   Appointment writes (Tier 1 — LLM confirms before dispatch):
     • Create appointment:        skill-tomedo-termin-create          → tomedo-termin-create
     • Cancel/reschedule:         skill-tomedo-termin-update          → tomedo-termin-update
+
+  Abenddokumentation-Audit (ALL Tier 0 — no LLM):
+    • Today's patient list:      skill-tomedo-tagesliste-get         → tomedo-tagesliste-get
+    • Per-patient data fetch:    skill-tomedo-abend-audit-fetch-patient → tomedo-abend-audit-fetch-patient
+    • Privat completeness check: skill-tomedo-abend-audit-check-privat
+    • GKV completeness check:    skill-tomedo-abend-audit-check-gkv
+    • HZV completeness check:    skill-tomedo-abend-audit-check-hzv
+    • Full nightly audit:                                             → tomedo-abend-audit
+      (fetches tagesliste → classifies insurance → checks all patients → reports missing)
 
   AUTH: All API calls require tomedo_cert_pem config key set (mTLS).
   Run tomedo-cert-fetch recipe once for first-time setup.
@@ -2262,7 +2295,14 @@ step_descriptions: [
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-ebmkatalogeintrag-get>"],
-    "label":   "Pre-load ts-tomedo-ebmkatalogeintrag-get binding (for catalog ident → Ziffer lookup)"
+    "label":   "Pre-load ts-tomedo-ebmkatalogeintrag-get binding"
+  },
+  {
+    "step_id": "step-6",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-ebmkatalogeintrag-get>"],
+    "label":   "Execute: GET /ebmkatalogeintrag/{ident} → EBM Ziffer string (orchestrator calls rust via __execute_action__)"
   }
 ]
 intent_examples: [
@@ -2782,6 +2822,10 @@ overview_doc: |
   4. Patient search:   tomedo-patient-search-by-name (Tier 1)
   5. Writes (Tier 1):  tomedo-karteieintrag-create, tomedo-karteieintrag-update,
                        tomedo-termin-create
+  6. Abenddokumentation-Audit (all Tier 0):
+       tomedo-karteieintragtyp-list (setup), tomedo-tagesliste-get,
+       tomedo-abend-audit-fetch-patient, tomedo-abend-audit-check-patient,
+       tomedo-abend-audit
 
   KEY DATA SHAPES:
   • geburtsDatum: epoch ms, may be negative (before 1970)
@@ -2838,6 +2882,21 @@ task_groups: [
     "recipe_ids": [
       "tomedo-termin-create",
       "tomedo-termin-update"
+    ]
+  },
+  {
+    "group_name": "abend-audit-setup",
+    "summary": "One-time setup for the Abenddokumentation-Audit: resolve ANA KarteiEintragTyp ident (Tier 0)",
+    "recipe_ids": ["tomedo-karteieintragtyp-list"]
+  },
+  {
+    "group_name": "abend-audit",
+    "summary": "Automated evening documentation completeness audit for all patients seen today — Tier 0, no LLM",
+    "recipe_ids": [
+      "tomedo-tagesliste-get",
+      "tomedo-abend-audit-fetch-patient",
+      "tomedo-abend-audit-check-patient",
+      "tomedo-abend-audit"
     ]
   }
 ]
@@ -3130,13 +3189,13 @@ validation_status: "validated"
 | Class | Count | Names |
 |-------|-------|-------|
 | 0 — Tool | 2 | `tomedo-api`, `tomedo-cert-fetch-tool` |
-| 1 — Leaf Skill | 14 | `skill-tomedo-serverstatus` … `skill-tomedo-termin-update` |
+| 1 — Leaf Skill | 21 | `skill-tomedo-serverstatus` … `skill-tomedo-abend-audit-check-hzv` |
 | 2 — Domain Skill | 1 | `skill-tomedo` |
-| 13 — ToolSkill | 16 | `ts-tomedo-serverstatus` … `ts-tomedo-cert-fetch` |
-| 21 — Recipe | 15 | `tomedo-serverstatus` … `tomedo-cert-fetch` |
-| 22 — PythonCode | 22 | `pc-tomedo-serverstatus` … `pc-tomedo-cert-fetch` |
+| 13 — ToolSkill | 19 | `ts-tomedo-serverstatus` … `ts-tomedo-karteieintragtyp-list` |
+| 21 — Recipe | 20 | `tomedo-serverstatus` … `tomedo-abend-audit` |
+| 22 — PythonCode | 38 | `pc-tomedo-serverstatus` … `pc-tomedo-format-audit-bericht` |
 | 23 — ExtensionCatalogue | 2 | `ext-tomedo`, `ext-tomedo-cert-fetch` |
-| **Total** | **72** | |
+| **Total** | **103** | |
 
 ---
 
@@ -3144,7 +3203,7 @@ validation_status: "validated"
 
 | Tier | Recipes | Reason |
 |------|---------|--------|
-| **Tier 0** | 8 | Direct REST reads (known patient_id) + Leistungen two-step + patient-summary multi-step |
+| **Tier 0** | 13 | Direct REST reads + Leistungen two-step + patient-summary + all audit recipes (tagesliste, per-patient fetch/check, full audit, karteieintragtyp-list) |
 | **Tier 1** | 7 | 1 name-search + 5 writes (karteieintrag create/anmerkung/update, termin create/update) + 1 cert-fetch |
 
 ---
@@ -3173,70 +3232,102 @@ Group 2 — ToolSkills (class 13):
   16. ts-tomedo-kvschein-get
   17. ts-tomedo-ebmkatalogeintrag-get
   18. ts-tomedo-cert-fetch
+  19. ts-tomedo-tagesliste-get                      ← Abenddokumentation-Audit (pending)
+  20. ts-tomedo-besuch-tagesliste-get               ← fallback day-list (pending)
+  21. ts-tomedo-karteieintragtyp-list               ← ANA ident discovery (pending)
 
 Group 3 — PythonCode executors (class 22, with __execute_action__):
-  19. pc-tomedo-serverstatus
-  20. pc-tomedo-patient-detail
-  21. pc-tomedo-patient-relations
-  22. pc-tomedo-patient-medications
-  23. pc-tomedo-patient-appointments
-  24. pc-tomedo-patient-visits
-  25. pc-tomedo-patient-search
-  26. pc-tomedo-karteieintrag-create
-  27. pc-tomedo-karteieintrag-link
-  28. pc-tomedo-patientendetailsrelationen-link
-  29. pc-tomedo-karteieintrag-update
-  30. pc-tomedo-termin-create
-  31. pc-tomedo-termin-update
-  32. pc-tomedo-kvschein-get
-  33. pc-tomedo-ebmkatalogeintrag-get
-  34. pc-tomedo-cert-fetch
+  22. pc-tomedo-serverstatus
+  23. pc-tomedo-patient-detail
+  24. pc-tomedo-patient-relations
+  25. pc-tomedo-patient-medications
+  26. pc-tomedo-patient-appointments
+  27. pc-tomedo-patient-visits
+  28. pc-tomedo-patient-search
+  29. pc-tomedo-karteieintrag-create
+  30. pc-tomedo-karteieintrag-link
+  31. pc-tomedo-patientendetailsrelationen-link
+  32. pc-tomedo-karteieintrag-update
+  33. pc-tomedo-termin-create
+  34. pc-tomedo-termin-update
+  35. pc-tomedo-kvschein-get
+  36. pc-tomedo-ebmkatalogeintrag-get
+  37. pc-tomedo-cert-fetch
+  38. pc-tomedo-tagesliste-get                      ← Abenddokumentation-Audit (pending)
+  39. pc-tomedo-besuch-tagesliste-get               ← fallback (pending)
+  40. pc-tomedo-karteieintragtyp-list               ← ANA discovery (pending)
+  41. pc-tomedo-patient-relations-audit             ← per-patient audit fetch
+  42. pc-tomedo-kvschein-audit                      ← per-patient schein fetch
 
 Group 4 — PythonCode pure-logic helpers (class 22, no __execute_action__):
-  35. pc-tomedo-parse-diagnosen
-  36. pc-tomedo-parse-medications
-  37. pc-tomedo-parse-next-appointment
-  38. pc-tomedo-epoch-to-date
-  39. pc-tomedo-extract-phone-fields
+  43. pc-tomedo-parse-diagnosen
+  44. pc-tomedo-parse-medications
+  45. pc-tomedo-parse-next-appointment
+  46. pc-tomedo-epoch-to-date
+  47. pc-tomedo-extract-phone-fields
+  48. pc-tomedo-build-today-date                    ← Abenddokumentation-Audit
+  49. pc-tomedo-parse-tagesliste                    ← extract unique patient IDs
+  50. pc-tomedo-classify-insurance                  ← Privat | GKV | HZV
+  51. pc-tomedo-extract-diagnosen-from-relations    ← extract diagnosen[]
+  52. pc-tomedo-extract-karteieintraege-from-relations ← extract karteiEintraege[]
+  53. pc-tomedo-extract-kvscheine-from-relations    ← extract kvScheine[] + first_ident
+  54. pc-tomedo-extract-scheinart                   ← extract scheinart string
+  55. pc-tomedo-extract-leistungen-from-schein      ← extract ebm/goae leistungen[]
+  56. pc-tomedo-check-kartei-vollstaendigkeit        ← ANA/BEF/BES presence check
+  57. pc-tomedo-check-privat-vollstaendigkeit        ← Privat completeness
+  58. pc-tomedo-check-gkv-vollstaendigkeit           ← GKV completeness
+  59. pc-tomedo-check-hzv-vollstaendigkeit           ← HZV completeness
+  60. pc-tomedo-format-audit-bericht                ← format final report
 
 Group 5 — Leaf Skills (class 1):
-  40. skill-tomedo-serverstatus
-  41. skill-tomedo-patient-detail
-  42. skill-tomedo-patient-diagnoses
-  43. skill-tomedo-patient-medications
-  44. skill-tomedo-patient-appointments
-  45. skill-tomedo-patient-visits
-  46. skill-tomedo-patient-search-by-name
-  47. skill-tomedo-karteieintrag-create
-  48. skill-tomedo-karteieintrag-update
-  49. skill-tomedo-termin-create
-  50. skill-tomedo-termin-update
-  51. skill-tomedo-leistungen-read
-  52. skill-tomedo-cert-fetch
+  61. skill-tomedo-serverstatus
+  62. skill-tomedo-patient-detail
+  63. skill-tomedo-patient-diagnoses
+  64. skill-tomedo-patient-medications
+  65. skill-tomedo-patient-appointments
+  66. skill-tomedo-patient-visits
+  67. skill-tomedo-patient-search-by-name
+  68. skill-tomedo-karteieintrag-create
+  69. skill-tomedo-karteieintrag-update
+  70. skill-tomedo-termin-create
+  71. skill-tomedo-termin-update
+  72. skill-tomedo-leistungen-read
+  73. skill-tomedo-cert-fetch
+  74. skill-tomedo-karteieintragtyp-list            ← Abenddokumentation-Audit setup
+  75. skill-tomedo-tagesliste-get                   ← day schedule fetch
+  76. skill-tomedo-abend-audit-fetch-patient        ← per-patient data fetch
+  77. skill-tomedo-abend-audit-check-privat         ← Privat completeness leaf
+  78. skill-tomedo-abend-audit-check-gkv            ← GKV completeness leaf
+  79. skill-tomedo-abend-audit-check-hzv            ← HZV completeness leaf
 
 Group 6 — Domain Skills (class 2):
-  53. skill-tomedo
+  80. skill-tomedo
 
 Group 7 — Recipes (class 21):
-  54. tomedo-serverstatus                            (Tier 0)
-  55. tomedo-patient-detail                          (Tier 0)
-  56. tomedo-patient-diagnoses                       (Tier 0)
-  57. tomedo-patient-medications                     (Tier 0)
-  58. tomedo-patient-next-appointment                (Tier 0)
-  59. tomedo-patient-visits                          (Tier 0)
-  60. tomedo-leistungen-read                         (Tier 0 — kvschein two-step)
-  61. tomedo-patient-summary                         (Tier 0 — automated multi-step context fetch)
-  62. tomedo-patient-search-by-name                  (Tier 1 — LLM URL-encodes name)
-  63. tomedo-karteieintrag-create                    (Tier 1 — LLM confirms, orchestrator POSTs 3-step)
-  64. tomedo-karteieintrag-anmerkung                 (Tier 1 — ANM optimised, LLM provides text only)
-  65. tomedo-karteieintrag-update                    (Tier 1 — LLM confirms, orchestrator PUTs)
-  66. tomedo-termin-create                           (Tier 1 — LLM confirms date/time, orchestrator POSTs)
-  67. tomedo-termin-update                           (Tier 1 — LLM confirms cancel/reschedule, orchestrator PUTs)
-  68. tomedo-cert-fetch                              (Tier 1 — one-time setup, LLM confirms SSH)
+  81. tomedo-serverstatus                            (Tier 0)
+  82. tomedo-patient-detail                          (Tier 0)
+  83. tomedo-patient-diagnoses                       (Tier 0)
+  84. tomedo-patient-medications                     (Tier 0)
+  85. tomedo-patient-next-appointment                (Tier 0)
+  86. tomedo-patient-visits                          (Tier 0)
+  87. tomedo-leistungen-read                         (Tier 0 — kvschein two-step, now with ebmkatalogeintrag executor)
+  88. tomedo-patient-summary                         (Tier 0 — automated multi-step context fetch)
+  89. tomedo-patient-search-by-name                  (Tier 1 — LLM URL-encodes name)
+  90. tomedo-karteieintrag-create                    (Tier 1 — LLM confirms, orchestrator POSTs 3-step)
+  91. tomedo-karteieintrag-anmerkung                 (Tier 1 — ANM optimised, LLM provides text only)
+  92. tomedo-karteieintrag-update                    (Tier 1 — LLM confirms, orchestrator PUTs)
+  93. tomedo-termin-create                           (Tier 1 — LLM confirms date/time, orchestrator POSTs)
+  94. tomedo-termin-update                           (Tier 1 — LLM confirms cancel/reschedule, orchestrator PUTs)
+  95. tomedo-cert-fetch                              (Tier 1 — one-time setup, LLM confirms SSH)
+  96. tomedo-karteieintragtyp-list                   (Tier 0 — setup: resolve ANA ident, pending)
+  97. tomedo-tagesliste-get                          (Tier 0 — day schedule, pending)
+  98. tomedo-abend-audit-fetch-patient               (Tier 0 — per-patient data fetch)
+  99. tomedo-abend-audit-check-patient               (Tier 0 — per-patient completeness check)
+  100. tomedo-abend-audit                             (Tier 0 — full nightly audit, pending tagesliste)
 
 Group 8 — ExtensionCatalogues (class 23):
-  69. ext-tomedo
-  70. ext-tomedo-cert-fetch
+  101. ext-tomedo
+  102. ext-tomedo-cert-fetch
 ```
 
 > **Note:** Seeding happens after all lower-dependency classes are seeded.
@@ -3260,21 +3351,1366 @@ computed on first insert and checked on subsequent runs.
 | Decision | Rationale |
 |----------|-----------|
 | Two tool surfaces via `builtin.http` + `builtin.shell` | http handles all mTLS GET/POST/PUT calls; shell handles SSH cert-fetch setup |
-| 16 ToolSkills | One per distinct URL/method/operation — reads, writes, Leistungen, termin-update, cert-fetch |
-| 16 PythonCode executors + 6 pure-logic helpers | Executors call `__execute_action__`; helpers transform data without I/O |
-| 14 leaf skills | One per distinct approach — REST reads + writes + Leistungen + cert-fetch |
-| 9 Tier-0 recipes | All known-ID read ops + Leistungen two-step + patient-summary automated multi-step |
+| 21 ToolSkills | One per distinct URL/method/operation — reads, writes, Leistungen, termin-update, cert-fetch, + 3 audit ToolSkills |
+| 21 PythonCode executors + 17 pure-logic helpers | Executors call `__execute_action__` exactly once; helpers transform data without I/O; strict 1:1 ratio per tool binding |
+| 21 leaf skills | One per distinct approach — each skill covers one sub-task, not one "feature"; audit has 6 dedicated leaf skills |
+| 13 Tier-0 recipes | All known-ID/date reads + Leistungen two-step + patient-summary + full audit suite (orchestrator-only) |
 | 7 Tier-1 recipes | 1 name-search + 5 write variants + 1 cert-fetch |
-| `tomedo-patient-summary` Tier-0 | Automated context-gathering sequence — orchestrator runs 4 reads with no LLM |
+| Orchestrator-first mandatory | Every rust step MUST be paired with an orchestrator PythonCode executor — rust alone is a Q1 error |
+| One-tool-call-per-skill | Three similar skills > one monolithic skill; each PythonCode calls `__execute_action__` exactly once |
+| `tomedo-leistungen-read` fix | Added missing `pc-tomedo-ebmkatalogeintrag-get` orchestrator step — was a Q1 Rule 2 violation |
+| `tomedo-patient-summary` Tier-0 | Automated context-gathering — orchestrator runs 4 reads with no LLM |
 | `tomedo-karteieintrag-anmerkung` | Optimised for scripted notes — LLM provides text only, structural params (ANM/Text) pre-fixed |
 | `tomedo-termin-update` added | Cancel/reschedule was missing — `removed:true` to cancel, `beginn`/`ende` to reschedule |
 | All recipes use `step_descriptions` | Consistent format; old `rust_steps`/`orchestrator_steps` fields removed |
 | German + English intent examples (12+ each) | Praxis staff speak German; orchestrator must handle both |
 | Direct mTLS REST API supports GET + POST + PUT | Confirmed live 2026-08-22 — no partner agreement needed for writes |
 | Leistungen via kvschein two-step only | `GET /leistung?patient=X` crashes server — must go patientenDetailsRelationen → kvschein |
-| EBM/GOÄ mode via Schein presence | `patInfoPanelMode` is transient/computed — detect EBM vs GOÄ by checking kvScheine vs goaeScheine in relations |
+| EBM/GOÄ mode via Schein presence | Detect EBM vs GOÄ by checking kvScheine vs goaeScheine in relations |
 | Cert-fetch extension | One-time SSH setup fetches mTLS PEM bundle from server; required before any tomedo REST call |
 | 3-step karteieintrag write (JSON2CoreData crash rule) | POST creates entry → PUT /patient links DB join row → PUT /patientendetailsrelationen syncs Mac client; without step 3 the Mac client crashes with `JSON2CoreData.m:349 ident != NULL` |
 | `letzterNutzer` required in POST body, forbidden in PUT | Missing from POST → crash; present in PUT → corrupts sync record → crash |
-| visits recipe single-step | /besuch/{patient_id}/besucheForPatient takes patient ident directly — confirmed live 2026-08-22; no prior besuch_ident lookup needed |
+| visits recipe single-step | /besuch/{patient_id}/besucheForPatient takes patient ident directly — confirmed live 2026-08-22 |
+| Abenddokumentation-Audit fully Tier-0 | Date computation (pc-tomedo-build-today-date), insurance classification, and completeness checks are all deterministic — no LLM needed |
+| Audit has 3 separate completeness-check leaf skills | `check-privat`, `check-gkv`, `check-hzv` are distinct skills (not one monolithic skill) — each covers one insurance type's rules |
+| Tagesliste pending validation | Two endpoint candidates (`termin?datum` + `besuch/tagesliste`) need live probing; recipe pre-loads both with fallback logic |
+| ANA ident requires one-time setup | `GET /karteieintragtyp` once to discover ANA ident; fallback is kürzel-string matching in check logic |
+| Insurance type from besuch flags | `privatFall=true` → Privat; `kvFall=true` + `scheinart` containing "hzv" → HZV; `kvFall=true` otherwise → GKV |
+
+
+
+---
+
+## Step 8 — Abenddokumentation-Audit
+
+> **Purpose:** Every evening, automatically fetch all patients seen that day,
+> sort them by insurance type (Privat / GKV / HZV), and check each patient for
+> documentation completeness. Patients with missing documentation are reported
+> to the chat with their ID, name, and the specific missing item(s).
+>
+> **Tier:** Tier 0 throughout — the entire audit runs without LLM involvement.
+> The orchestrator fetches data, classifies insurance, checks completeness rules,
+> and formats the report. The LLM is never called.
+>
+> **Completeness rules per insurance type:**
+>
+> | Type | Required |
+> |------|---------|
+> | Privat | Diagnose · KarteiEintrag (ANA + BEF + Besuch) · Rechnung (GOÄ-Leistungen vorhanden) |
+> | GKV | Diagnose · KarteiEintrag (ANA + BEF + Besuch) · Schein (KV-Schein) · EBM-Ziffern auf dem Schein |
+> | HZV | Diagnose · KarteiEintrag (ANA + BEF + Besuch) · Schein (HZV-Schein) · HZV-Ziffern auf dem Schein |
+>
+> **One-tool-call-per-skill principle (mandatory):**
+> Every ToolSkill binds exactly one URL pattern with one HTTP method.
+> Every PythonCode executor calls `__execute_action__` exactly once.
+> Pure-logic PythonCode helpers do zero I/O — they transform already-fetched data.
+> This gives maximum orchestrator visibility and makes every step individually retryable.
+>
+> **Insurance classification:**
+> - `besuch.privatFall == true` → Privat
+> - `besuch.kvFall == true` AND Schein has HZV-Ziffern (see §hzv-ziffern) → HZV
+> - `besuch.kvFall == true` AND no HZV-Ziffern → GKV
+>
+> **§hzv-ziffern:** HZV-Ziffern are practice-specific contracted codes. Detection:
+> the schein field `scheinart` contains `"HZV"` or `"hzv"` (case-insensitive),
+> OR ebmLeistungen contain at least one Ziffer in the known HZV code range
+> (practice-specific; fallback: any Ziffer starting with `"0"` that is NOT
+> a standard EBM Ziffer is HZV). The definitive reference is the practice's HZV
+> contract (https://www.haevbw.de/HZV-Gegenueberstellung.pdf).
+>
+> **KarteiEintragTyp idents needed for audit:**
+> | ident | kürzel | Beschreibung |
+> |-------|--------|-------------|
+> | ⚠️ TBD | ANA | Anamnese — ident not yet confirmed on this server; probe with GET /karteieintragtyp |
+> | 2 | BEF | Befund |
+> | 18 | BES | Besuch (auto-created on patient check-in) |
+>
+> **Note on ANA ident:** The Anamnese KarteiEintragTyp ident is not yet confirmed
+> on this server. The audit logic uses kürzel-string matching as fallback when ident
+> is unknown. Probe once with `GET /{db}/karteieintragtyp` and record the ident.
+>
+> **Tagesliste endpoint (pending validation):**
+> `GET /{db}/termin?datum={YYYY-MM-DD}&flach=true` — expected to return today's
+> Termine with patient.ident, beginn, ende fields. Marked `validation_status: "pending"`.
+> If this endpoint is not available, use `GET /{db}/besuch/tagesliste?datum={date}`
+> as fallback (also pending).
+
+---
+
+### Step 8.1 — ToolSkills (class 13) for Abenddokumentation-Audit
+
+---
+
+#### ToolSkill: `ts-tomedo-tagesliste-get` (class 13)
+
+```
+name:          "ts-tomedo-tagesliste-get"
+tool_name:     "tomedo-api"
+description:   "GET /{db}/termin?datum={YYYY-MM-DD}&flach=true — fetch the day schedule
+                as a flat array of Termin objects for a specific date.
+                Each entry includes patient.ident, beginn (epoch ms), ende (epoch ms), info.
+                Use datum in YYYY-MM-DD format (e.g. '2026-08-22').
+                This is the entry point for the Abenddokumentation-Audit.
+                ⚠️ validation_status: pending — endpoint shape not yet confirmed live.
+                Fallback: GET /{db}/besuch/tagesliste?datum={YYYY-MM-DD} if termin?datum fails.
+                Use timeout_ms: 20000."
+param_schema:  [
+  {name: "url",        param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/termin?datum={YYYY-MM-DD}&flach=true"},
+  {name: "method",     param_type: "string", required: true, description: "GET"},
+  {name: "timeout_ms", param_type: "number", required: false,
+   description: "Timeout in ms, default 20000"}
+]
+param_template: {
+  "url":        "{{vars.tomedo_base_url}}/termin?datum={{vars.datum_ymd}}&flach=true",
+  "method":     "GET",
+  "timeout_ms": 20000
+}
+preconditions:  "datum_ymd must be YYYY-MM-DD format. tomedo_cert_pem must be set."
+error_handling: "HTTP 404 or empty array → no termine for this date. HTTP 460 → endpoint may not exist — try fallback besuch/tagesliste."
+category:       "tomedo"
+source:         "system"
+validation_status: "pending"
+```
+
+---
+
+#### ToolSkill: `ts-tomedo-besuch-tagesliste-get` (class 13)
+
+```
+name:          "ts-tomedo-besuch-tagesliste-get"
+tool_name:     "tomedo-api"
+description:   "GET /{db}/besuch/tagesliste?datum={YYYY-MM-DD} — fallback day-schedule
+                endpoint using the besuch (visit) table instead of the termin table.
+                Returns all Besuch records for a given day including:
+                  patient.ident, ankunft (epoch ms, arrival), abgang (epoch ms, departure),
+                  kvFall (bool), privatFall (bool).
+                Use when ts-tomedo-tagesliste-get (termin?datum) returns 404 or is unavailable.
+                ⚠️ validation_status: pending — endpoint shape not yet confirmed live.
+                Use timeout_ms: 20000."
+param_schema:  [
+  {name: "url",        param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/besuch/tagesliste?datum={YYYY-MM-DD}"},
+  {name: "method",     param_type: "string", required: true, description: "GET"},
+  {name: "timeout_ms", param_type: "number", required: false}
+]
+param_template: {
+  "url":        "{{vars.tomedo_base_url}}/besuch/tagesliste?datum={{vars.datum_ymd}}",
+  "method":     "GET",
+  "timeout_ms": 20000
+}
+preconditions:  "datum_ymd must be YYYY-MM-DD format. tomedo_cert_pem must be set."
+error_handling: "HTTP 404 → endpoint does not exist on this server. Empty array → no visits for date."
+category:       "tomedo"
+source:         "system"
+validation_status: "pending"
+```
+
+---
+
+#### ToolSkill: `ts-tomedo-karteieintragtyp-list` (class 13)
+
+```
+name:          "ts-tomedo-karteieintragtyp-list"
+tool_name:     "tomedo-api"
+description:   "GET /{db}/karteieintragtyp — fetch the complete list of KarteiEintragTyp
+                objects on this server. Used once to resolve unknown idents such as ANA
+                (Anamnese). Each entry: ident (int), kuerzel (e.g. 'ANA'), bezeichnung.
+                Run this once and record the ANA ident before deploying the audit.
+                Use timeout_ms: 10000."
+param_schema:  [
+  {name: "url",        param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/karteieintragtyp"},
+  {name: "method",     param_type: "string", required: true, description: "GET"},
+  {name: "timeout_ms", param_type: "number", required: false}
+]
+param_template: {
+  "url":        "{{vars.tomedo_base_url}}/karteieintragtyp",
+  "method":     "GET",
+  "timeout_ms": 10000
+}
+preconditions:  "tomedo_cert_pem must be set. Run once to discover ANA ident."
+error_handling: "HTTP 404 → endpoint not available on this server version."
+category:       "tomedo"
+source:         "system"
+validation_status: "pending"
+```
+
+---
+
+### Step 8.2 — PythonCode Executors (class 22) for Abenddokumentation-Audit
+
+One `__execute_action__` call per executor. No imports beyond stdlib.
+Each executor does exactly one thing: fetches one resource.
+
+---
+
+#### PythonCode: `pc-tomedo-tagesliste-get` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 0
+# Fetches today's Termin list by date (YYYY-MM-DD) via ts-tomedo-tagesliste-get.
+# IBS bakes in {{vars.tomedo_base_url}} and {{vars.datum_ymd}} before execution.
+# datum_ymd format: YYYY-MM-DD (e.g. "2026-08-22").
+# Returns flat array of Termin objects; each has patient.ident, beginn, ende.
+# validation_status: pending — endpoint shape not yet confirmed on this server.
+result = __execute_action__("tomedo-api", {
+    "url": "{{vars.tomedo_base_url}}/termin?datum={{vars.datum_ymd}}&flach=true",
+    "method": "GET",
+    "timeout_ms": 20000
+})
+```
+
+---
+
+#### PythonCode: `pc-tomedo-besuch-tagesliste-get` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 0
+# Fallback: fetches today's Besuch (visit) list by date via ts-tomedo-besuch-tagesliste-get.
+# Use when pc-tomedo-tagesliste-get returns 404 or empty.
+# Returns array of Besuch objects; each has patient.ident, ankunft, abgang,
+# kvFall (bool), privatFall (bool).
+# validation_status: pending — endpoint shape not yet confirmed on this server.
+result = __execute_action__("tomedo-api", {
+    "url": "{{vars.tomedo_base_url}}/besuch/tagesliste?datum={{vars.datum_ymd}}",
+    "method": "GET",
+    "timeout_ms": 20000
+})
+```
+
+---
+
+#### PythonCode: `pc-tomedo-karteieintragtyp-list` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 0
+# Fetches the complete KarteiEintragTyp list to resolve unknown idents (e.g. ANA).
+# Run once during setup; record the ANA ident for use in the audit logic.
+# validation_status: pending — endpoint shape not yet confirmed on this server.
+result = __execute_action__("tomedo-api", {
+    "url": "{{vars.tomedo_base_url}}/karteieintragtyp",
+    "method": "GET",
+    "timeout_ms": 10000
+})
+```
+
+---
+
+#### PythonCode: `pc-tomedo-patient-relations-audit` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 0
+# Fetches patientenDetailsRelationen for one patient_id for audit purposes.
+# Uses limitScheine=true to include kvScheine[].ident, diagnosen[], and
+# karteiEintraege[] — all fields needed by the completeness checks.
+# One call per patient. IBS bakes in vars before execution.
+# NOTE: strips embedded control characters from response body (confirmed live 2026-08-22).
+import re as _re
+_raw = __execute_action__("tomedo-api", {
+    "url": "{{vars.tomedo_base_url}}/patient/{{vars.patient_id}}/patientenDetailsRelationen?limitScheine=true&limitKartei=100&limitVerordnungen=0&limitZeiterfassungen=false&limitBehandlungsfaelle=false",
+    "method": "GET",
+    "timeout_ms": 15000
+})
+if isinstance(_raw, dict) and "body" in _raw:
+    _raw["body"] = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', _raw["body"])
+result = _raw
+```
+
+---
+
+#### PythonCode: `pc-tomedo-kvschein-audit` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 0
+# Fetches one KV-Schein by ident for the audit.
+# Returns ebmLeistungen[], goaeLeistungen[], and scheinart (for HZV detection).
+# schein_ident must come from patientenDetailsRelationen kvScheine[].ident.
+# One call per schein. IBS bakes in vars before execution.
+result = __execute_action__("tomedo-api", {
+    "url": "{{vars.tomedo_base_url}}/kvschein/{{vars.schein_ident}}",
+    "method": "GET",
+    "timeout_ms": 15000
+})
+```
+
+---
+
+### Step 8.3 — Pure-Logic PythonCode Helpers (class 22) for Abenddokumentation-Audit
+
+No `__execute_action__` calls. All inputs come from baked-in `{{vars.*}}` slots
+holding previously-fetched JSON strings. Each helper does exactly one transform.
+
+---
+
+#### PythonCode: `pc-tomedo-parse-tagesliste` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Extracts the unique patient IDs seen today from a Tagesliste response body.
+# Accepts either a termin-array (each entry has patient.ident, beginn, ende)
+# or a besuch-array (each entry has patient.ident, ankunft, abgang, kvFall, privatFall).
+# Returns a list of dicts: [{patient_id, ankunft_ms, abgang_ms, kv_fall, privat_fall}]
+# deduped by patient_id (keeps the entry with the latest ankunft).
+import json as _j
+try:
+    data = _j.loads("{{vars.body}}")
+    if not isinstance(data, list):
+        data = list(data.values()) if isinstance(data, dict) else []
+    seen = {}
+    for entry in data:
+        pid = None
+        pat = entry.get("patient") or {}
+        pid = pat.get("ident") if isinstance(pat, dict) else None
+        if pid is None:
+            continue
+        ankunft = entry.get("ankunft") or entry.get("beginn") or 0
+        abgang  = entry.get("abgang")  or entry.get("ende")   or 0
+        kv      = bool(entry.get("kvFall",      False))
+        privat  = bool(entry.get("privatFall",  False))
+        if pid not in seen or ankunft > seen[pid]["ankunft_ms"]:
+            seen[pid] = {
+                "patient_id":  pid,
+                "ankunft_ms":  ankunft,
+                "abgang_ms":   abgang,
+                "kv_fall":     kv,
+                "privat_fall": privat
+            }
+    result = list(seen.values())
+except Exception as e:
+    result = {"error": str(e)}
+```
+
+---
+
+#### PythonCode: `pc-tomedo-classify-insurance` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Classifies a single patient's insurance type from:
+#   {{vars.privat_fall}}  — "true"/"false" string from tagesliste entry
+#   {{vars.kv_fall}}      — "true"/"false" string from tagesliste entry
+#   {{vars.scheinart}}    — scheinart string from kvschein (may be empty)
+# Returns: "Privat" | "HZV" | "GKV" | "Unbekannt"
+# HZV detection: scheinart contains "hzv" (case-insensitive).
+_privat  = "{{vars.privat_fall}}".lower() == "true"
+_kv      = "{{vars.kv_fall}}".lower()     == "true"
+_sa      = "{{vars.scheinart}}".lower()
+
+if _privat:
+    result = "Privat"
+elif _kv and "hzv" in _sa:
+    result = "HZV"
+elif _kv:
+    result = "GKV"
+else:
+    result = "Unbekannt"
+```
+
+---
+
+#### PythonCode: `pc-tomedo-check-kartei-vollstaendigkeit` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Checks karteiEintraege[] for the presence of required entry types:
+#   ANA (Anamnese), BEF (Befund, ident=2), BES (Besuch, ident=18).
+# {{vars.kartei_eintraege_json}} — JSON array of karteiEintrag objects from
+#   patientenDetailsRelationen. Each has karteiEintragTyp.ident and/or
+#   karteiEintragTyp.kuerzel.
+# {{vars.ana_typ_ident}} — confirmed ANA ident (set to "0" if unknown → uses kuerzel fallback).
+# Returns a dict: {"ANA": bool, "BEF": bool, "BES": bool}
+import json as _j
+try:
+    eintraege = _j.loads("{{vars.kartei_eintraege_json}}")
+    if not isinstance(eintraege, list):
+        eintraege = []
+    ana_ident = int("{{vars.ana_typ_ident}}") if "{{vars.ana_typ_ident}}".isdigit() else 0
+    has_ana = has_bef = has_bes = False
+    for e in eintraege:
+        typ = e.get("karteiEintragTyp") or {}
+        ident  = typ.get("ident",  0)
+        kuerzel = (typ.get("kuerzel") or typ.get("kürzel") or "").upper()
+        if ident == 2  or kuerzel == "BEF": has_bef = True
+        if ident == 18 or kuerzel == "BES": has_bes = True
+        if (ana_ident and ident == ana_ident) or kuerzel == "ANA": has_ana = True
+    result = {"ANA": has_ana, "BEF": has_bef, "BES": has_bes}
+except Exception as e:
+    result = {"error": str(e), "ANA": False, "BEF": False, "BES": False}
+```
+
+---
+
+#### PythonCode: `pc-tomedo-check-privat-vollstaendigkeit` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Checks completeness for a Privatpatient.
+# Required: Diagnose · ANA + BEF + BES in Kartei · GOÄ-Leistungen (Rechnung) vorhanden.
+# Inputs (all JSON strings baked in by IBS):
+#   {{vars.diagnosen_json}}        — diagnosen[] array from patientenDetailsRelationen
+#   {{vars.kartei_check_json}}     — output of pc-tomedo-check-kartei-vollstaendigkeit
+#   {{vars.goae_leistungen_json}}  — goaeLeistungen[] array from kvschein
+# Returns list of missing item strings (empty list = vollständig).
+import json as _j
+try:
+    missing = []
+    diagnosen = _j.loads("{{vars.diagnosen_json}}")
+    if not isinstance(diagnosen, list) or len(diagnosen) == 0:
+        missing.append("Diagnose fehlt")
+    kartei = _j.loads("{{vars.kartei_check_json}}")
+    if not kartei.get("ANA"): missing.append("Karteieintrag ANA (Anamnese) fehlt")
+    if not kartei.get("BEF"): missing.append("Karteieintrag BEF (Befund) fehlt")
+    if not kartei.get("BES"): missing.append("Karteieintrag BES (Besuch) fehlt")
+    goae = _j.loads("{{vars.goae_leistungen_json}}")
+    if not isinstance(goae, list) or len(goae) == 0:
+        missing.append("Rechnung fehlt (keine GOÄ-Leistungen auf dem Schein)")
+    result = missing
+except Exception as e:
+    result = ["Fehler bei der Prüfung: " + str(e)]
+```
+
+---
+
+#### PythonCode: `pc-tomedo-check-gkv-vollstaendigkeit` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Checks completeness for a GKV-Patient.
+# Required: Diagnose · ANA + BEF + BES in Kartei · KV-Schein vorhanden · EBM-Ziffern auf Schein.
+# Inputs (all JSON strings baked in by IBS):
+#   {{vars.diagnosen_json}}       — diagnosen[] array from patientenDetailsRelationen
+#   {{vars.kartei_check_json}}    — output of pc-tomedo-check-kartei-vollstaendigkeit
+#   {{vars.kv_scheine_json}}      — kvScheine[] array from patientenDetailsRelationen
+#   {{vars.ebm_leistungen_json}}  — ebmLeistungen[] array from kvschein
+# Returns list of missing item strings (empty list = vollständig).
+import json as _j
+try:
+    missing = []
+    diagnosen = _j.loads("{{vars.diagnosen_json}}")
+    if not isinstance(diagnosen, list) or len(diagnosen) == 0:
+        missing.append("Diagnose fehlt")
+    kartei = _j.loads("{{vars.kartei_check_json}}")
+    if not kartei.get("ANA"): missing.append("Karteieintrag ANA (Anamnese) fehlt")
+    if not kartei.get("BEF"): missing.append("Karteieintrag BEF (Befund) fehlt")
+    if not kartei.get("BES"): missing.append("Karteieintrag BES (Besuch) fehlt")
+    scheine = _j.loads("{{vars.kv_scheine_json}}")
+    if not isinstance(scheine, list) or len(scheine) == 0:
+        missing.append("Schein fehlt (kein KV-Schein vorhanden)")
+    ebm = _j.loads("{{vars.ebm_leistungen_json}}")
+    if not isinstance(ebm, list) or len(ebm) == 0:
+        missing.append("EBM-Ziffern fehlen (keine Leistungen auf dem Schein)")
+    result = missing
+except Exception as e:
+    result = ["Fehler bei der Prüfung: " + str(e)]
+```
+
+---
+
+#### PythonCode: `pc-tomedo-check-hzv-vollstaendigkeit` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Checks completeness for an HZV-Patient.
+# Required: Diagnose · ANA + BEF + BES in Kartei · HZV-Schein vorhanden · HZV-Ziffern auf Schein.
+# HZV-Ziffern detection: scheinart contains "hzv" OR ebmLeistungen non-empty on an HZV-Schein.
+# Inputs (all JSON strings baked in by IBS):
+#   {{vars.diagnosen_json}}       — diagnosen[] array from patientenDetailsRelationen
+#   {{vars.kartei_check_json}}    — output of pc-tomedo-check-kartei-vollstaendigkeit
+#   {{vars.kv_scheine_json}}      — kvScheine[] array from patientenDetailsRelationen
+#   {{vars.ebm_leistungen_json}}  — ebmLeistungen[] array from kvschein
+#   {{vars.scheinart}}            — scheinart string from kvschein (for HZV confirmation)
+# Returns list of missing item strings (empty list = vollständig).
+import json as _j
+try:
+    missing = []
+    diagnosen = _j.loads("{{vars.diagnosen_json}}")
+    if not isinstance(diagnosen, list) or len(diagnosen) == 0:
+        missing.append("Diagnose fehlt")
+    kartei = _j.loads("{{vars.kartei_check_json}}")
+    if not kartei.get("ANA"): missing.append("Karteieintrag ANA (Anamnese) fehlt")
+    if not kartei.get("BEF"): missing.append("Karteieintrag BEF (Befund) fehlt")
+    if not kartei.get("BES"): missing.append("Karteieintrag BES (Besuch) fehlt")
+    scheine = _j.loads("{{vars.kv_scheine_json}}")
+    scheinart = "{{vars.scheinart}}".lower()
+    if not isinstance(scheine, list) or len(scheine) == 0:
+        missing.append("HZV-Schein fehlt (kein Schein vorhanden)")
+    elif "hzv" not in scheinart:
+        missing.append("HZV-Schein fehlt (vorhandener Schein ist kein HZV-Schein)")
+    ebm = _j.loads("{{vars.ebm_leistungen_json}}")
+    if not isinstance(ebm, list) or len(ebm) == 0:
+        missing.append("HZV-Ziffern fehlen (keine Leistungen auf dem HZV-Schein)")
+    result = missing
+except Exception as e:
+    result = ["Fehler bei der Prüfung: " + str(e)]
+```
+
+---
+
+#### PythonCode: `pc-tomedo-extract-scheinart` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Extracts the scheinart string from a kvschein response body.
+# {{vars.body}} — raw JSON string from GET /kvschein/{ident}.
+# Returns the scheinart string in lowercase, or "" if not present.
+import json as _j
+try:
+    data = _j.loads("{{vars.body}}")
+    scheinart = (data.get("scheinart") or data.get("scheinArt") or "")
+    result = scheinart.lower() if isinstance(scheinart, str) else str(scheinart).lower()
+except Exception as e:
+    result = ""
+```
+
+---
+
+#### PythonCode: `pc-tomedo-extract-leistungen-from-schein` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Extracts ebmLeistungen[] and goaeLeistungen[] arrays from a kvschein body.
+# {{vars.body}}        — raw JSON string from GET /kvschein/{ident}
+# {{vars.leistung_typ}} — "ebm" or "goae" (which array to return)
+# Returns the requested array (list of Leistung objects), or [] if absent.
+import json as _j
+try:
+    data = _j.loads("{{vars.body}}")
+    typ = "{{vars.leistung_typ}}".lower()
+    if typ == "goae":
+        arr = data.get("goaeLeistungen") or data.get("goaeleistungen") or []
+    else:
+        arr = data.get("ebmLeistungen")  or data.get("ebmleistungen")  or []
+    result = arr if isinstance(arr, list) else []
+except Exception as e:
+    result = []
+```
+
+---
+
+#### PythonCode: `pc-tomedo-extract-diagnosen-from-relations` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Extracts diagnosen[] array from a patientenDetailsRelationen response body.
+# {{vars.body}} — raw JSON string from GET /patient/{id}/patientenDetailsRelationen
+# Returns the diagnosen[] array (list), or [] if absent.
+import json as _j
+try:
+    data = _j.loads("{{vars.body}}")
+    diagnosen = data.get("diagnosen") or []
+    result = diagnosen if isinstance(diagnosen, list) else []
+except Exception as e:
+    result = []
+```
+
+---
+
+#### PythonCode: `pc-tomedo-extract-karteieintraege-from-relations` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Extracts karteiEintraege[] array from a patientenDetailsRelationen response body.
+# {{vars.body}} — raw JSON string from GET /patient/{id}/patientenDetailsRelationen
+# Returns the karteiEintraege[] array (list), or [] if absent.
+import json as _j
+try:
+    data = _j.loads("{{vars.body}}")
+    eintraege = data.get("karteiEintraege") or data.get("karteieintraege") or []
+    result = eintraege if isinstance(eintraege, list) else []
+except Exception as e:
+    result = []
+```
+
+---
+
+#### PythonCode: `pc-tomedo-extract-kvscheine-from-relations` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Extracts kvScheine[] array (and the first schein ident) from a
+# patientenDetailsRelationen response body.
+# {{vars.body}} — raw JSON string from GET /patient/{id}/patientenDetailsRelationen
+# Returns a dict: {"scheine": [...], "first_ident": N_or_null}
+import json as _j
+try:
+    data   = _j.loads("{{vars.body}}")
+    scheine = data.get("kvScheine") or data.get("kvscheine") or []
+    if not isinstance(scheine, list):
+        scheine = []
+    first = scheine[0].get("ident") if scheine else None
+    result = {"scheine": scheine, "first_ident": first}
+except Exception as e:
+    result = {"scheine": [], "first_ident": None, "error": str(e)}
+```
+
+---
+
+#### PythonCode: `pc-tomedo-format-audit-bericht` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Compiles the per-patient audit results into a single formatted chat report.
+# {{vars.audit_results_json}} — JSON array of per-patient result dicts:
+#   [{patient_id, name, dob, insurance_type, ankunft, abgang, missing: [strings]}]
+# Patients with empty missing[] are omitted (vollständig).
+# Returns a formatted German-language report string ready to send to chat,
+# or "✅ Alle Patienten vollständig dokumentiert." if no issues found.
+import json as _j
+try:
+    patients = _j.loads("{{vars.audit_results_json}}")
+    if not isinstance(patients, list):
+        result = "Fehler: audit_results_json ist keine Liste"
+    else:
+        lines = []
+        for p in patients:
+            missing = p.get("missing") or []
+            if not missing:
+                continue
+            pid   = p.get("patient_id", "?")
+            name  = p.get("name", "Unbekannt")
+            dob   = p.get("dob", "")
+            ins   = p.get("insurance_type", "?")
+            ankunft = p.get("ankunft", "")
+            abgang  = p.get("abgang", "")
+            header = f"⚠️ [{ins}] {name} (ID {pid}, *{dob})"
+            if ankunft:
+                header += f"  Ankunft: {ankunft}"
+            if abgang:
+                header += f"  Abgang: {abgang}"
+            for m in missing:
+                lines.append(f"  • {m}")
+            lines.insert(-len(missing), header)
+        if not lines:
+            result = "✅ Alle Patienten vollständig dokumentiert."
+        else:
+            result = "📋 Abenddokumentation-Audit\n\n" + "\n".join(lines)
+except Exception as e:
+    result = "Fehler beim Formatieren des Berichts: " + str(e)
+```
+
+---
+
+#### PythonCode: `pc-tomedo-build-today-date` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Returns today's date as a YYYY-MM-DD string (local time on the BrassClaw host).
+# Used by the audit recipe to compute datum_ymd without LLM involvement.
+# No inputs needed — uses the system clock at execution time.
+import datetime as _dt
+result = _dt.date.today().strftime("%Y-%m-%d")
+```
+
+---
+
+### Step 8.4 — Leaf Skills (class 1) for Abenddokumentation-Audit
+
+One leaf skill per distinct approach. Each references exactly the components needed
+for its specific sub-task. No LLM involvement in any of these skills.
+
+---
+
+#### Leaf Skill: `skill-tomedo-tagesliste-get` (class 1)
+
+```
+name:        "skill-tomedo-tagesliste-get"
+class_code:  1
+description: "Leaf skill: fetch the day's Termin/Besuch list for a given date — Tier 0."
+body: |
+  Fetch today's patient list (Tagesliste) for the given date (YYYY-MM-DD).
+
+  PRIMARY: Use pc-tomedo-tagesliste-get:
+    GET {{vars.tomedo_base_url}}/termin?datum={{vars.datum_ymd}}&flach=true
+    Returns flat array of Termin objects with patient.ident, beginn, ende.
+
+  FALLBACK (if primary returns 404 or empty): Use pc-tomedo-besuch-tagesliste-get:
+    GET {{vars.tomedo_base_url}}/besuch/tagesliste?datum={{vars.datum_ymd}}
+    Returns Besuch objects with patient.ident, ankunft, abgang, kvFall, privatFall.
+
+  After fetching: use pc-tomedo-parse-tagesliste to extract unique patient IDs
+  with their arrival/departure times and insurance flags.
+
+  datum_ymd is computed by pc-tomedo-build-today-date — no LLM needed.
+  ⚠️ Both endpoints are pending live validation on this server.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "pending"
+```
+
+---
+
+#### Leaf Skill: `skill-tomedo-karteieintragtyp-list` (class 1)
+
+```
+name:        "skill-tomedo-karteieintragtyp-list"
+class_code:  1
+description: "Leaf skill: fetch all KarteiEintragTyp records to resolve unknown idents (e.g. ANA) — Tier 0, run once during setup."
+body: |
+  Fetch the complete KarteiEintragTyp list from GET {{vars.tomedo_base_url}}/karteieintragtyp.
+  Use pc-tomedo-karteieintragtyp-list.
+  Each entry contains ident (int) and kuerzel (e.g. "ANA", "BEF", "BES").
+  Record the ANA ident and set it as config key `tomedo_ana_typ_ident` before
+  running the Abenddokumentation-Audit.
+  ⚠️ Endpoint pending validation on this server.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "pending"
+```
+
+---
+
+#### Leaf Skill: `skill-tomedo-abend-audit-fetch-patient` (class 1)
+
+```
+name:        "skill-tomedo-abend-audit-fetch-patient"
+class_code:  1
+description: "Leaf skill: fetch all audit-relevant data for one patient — Tier 0. One patientenDetailsRelationen call + one kvschein call."
+body: |
+  For patient {{vars.patient_id}}, fetch all data needed for the completeness audit:
+
+  STEP 1 — patientenDetailsRelationen (pc-tomedo-patient-relations-audit):
+    GET /patient/{{vars.patient_id}}/patientenDetailsRelationen
+      ?limitScheine=true&limitKartei=100&limitVerordnungen=0
+      &limitZeiterfassungen=false&limitBehandlungsfaelle=false
+    Strips control characters from response body.
+    Provides: diagnosen[], karteiEintraege[], kvScheine[].
+
+  STEP 2 — Extract arrays using pure-logic helpers:
+    pc-tomedo-extract-diagnosen-from-relations     → diagnosen[]
+    pc-tomedo-extract-karteieintraege-from-relations → karteiEintraege[]
+    pc-tomedo-extract-kvscheine-from-relations     → kvScheine[] + first_ident
+
+  STEP 3 — KV-Schein fetch (pc-tomedo-kvschein-audit), only if first_ident is non-null:
+    GET /kvschein/{{vars.schein_ident}}
+    Provides: ebmLeistungen[], goaeLeistungen[], scheinart.
+
+  STEP 4 — Extract from schein (pure-logic helpers):
+    pc-tomedo-extract-scheinart                    → scheinart string
+    pc-tomedo-extract-leistungen-from-schein (ebm) → ebmLeistungen[]
+    pc-tomedo-extract-leistungen-from-schein (goae)→ goaeLeistungen[]
+
+  ⚠️ Do NOT call /leistung?patient=X or /patient/{id}/leistungen — server crash.
+  The kvschein path is the ONLY safe Leistungen read path.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+#### Leaf Skill: `skill-tomedo-abend-audit-check-privat` (class 1)
+
+```
+name:        "skill-tomedo-abend-audit-check-privat"
+class_code:  1
+description: "Leaf skill: check documentation completeness for one Privatpatient — Tier 0."
+body: |
+  Check completeness for a Privatpatient using pc-tomedo-check-privat-vollstaendigkeit.
+
+  Required for Privatpatienten:
+    ✓ Diagnose (diagnosen[] non-empty)
+    ✓ Karteieintrag ANA (Anamnese)
+    ✓ Karteieintrag BEF (Befund, ident=2)
+    ✓ Karteieintrag BES (Besuch, ident=18)
+    ✓ Rechnung vorhanden (goaeLeistungen[] non-empty on the Schein)
+
+  Inputs needed (from skill-tomedo-abend-audit-fetch-patient output):
+    diagnosen_json       — JSON array string of diagnosen[]
+    kartei_check_json    — JSON dict from pc-tomedo-check-kartei-vollstaendigkeit
+    goae_leistungen_json — JSON array string of goaeLeistungen[]
+
+  Kartei check must be run first via pc-tomedo-check-kartei-vollstaendigkeit
+  (pass ana_typ_ident from config key `tomedo_ana_typ_ident`, or "0" to use kuerzel fallback).
+
+  Returns list of missing item strings. Empty list = vollständig.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+#### Leaf Skill: `skill-tomedo-abend-audit-check-gkv` (class 1)
+
+```
+name:        "skill-tomedo-abend-audit-check-gkv"
+class_code:  1
+description: "Leaf skill: check documentation completeness for one GKV-Patient — Tier 0."
+body: |
+  Check completeness for a GKV-Patient using pc-tomedo-check-gkv-vollstaendigkeit.
+
+  Required for GKV-Patienten:
+    ✓ Diagnose (diagnosen[] non-empty)
+    ✓ Karteieintrag ANA (Anamnese)
+    ✓ Karteieintrag BEF (Befund, ident=2)
+    ✓ Karteieintrag BES (Besuch, ident=18)
+    ✓ Schein vorhanden (kvScheine[] non-empty)
+    ✓ EBM-Ziffern auf dem Schein (ebmLeistungen[] non-empty)
+
+  Inputs needed (from skill-tomedo-abend-audit-fetch-patient output):
+    diagnosen_json      — JSON array string of diagnosen[]
+    kartei_check_json   — JSON dict from pc-tomedo-check-kartei-vollstaendigkeit
+    kv_scheine_json     — JSON array string of kvScheine[]
+    ebm_leistungen_json — JSON array string of ebmLeistungen[]
+
+  Returns list of missing item strings. Empty list = vollständig.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+#### Leaf Skill: `skill-tomedo-abend-audit-check-hzv` (class 1)
+
+```
+name:        "skill-tomedo-abend-audit-check-hzv"
+class_code:  1
+description: "Leaf skill: check documentation completeness for one HZV-Patient — Tier 0."
+body: |
+  Check completeness for an HZV-Patient using pc-tomedo-check-hzv-vollstaendigkeit.
+
+  Required for HZV-Patienten:
+    ✓ Diagnose (diagnosen[] non-empty)
+    ✓ Karteieintrag ANA (Anamnese)
+    ✓ Karteieintrag BEF (Befund, ident=2)
+    ✓ Karteieintrag BES (Besuch, ident=18)
+    ✓ HZV-Schein vorhanden (kvScheine[] non-empty AND scheinart contains "hzv")
+    ✓ HZV-Ziffern auf dem Schein (ebmLeistungen[] non-empty on the HZV-Schein)
+
+  HZV detection: scheinart field from kvschein contains "hzv" (case-insensitive).
+  Reference: https://www.haevbw.de/HZV-Gegenueberstellung.pdf
+
+  Inputs needed (from skill-tomedo-abend-audit-fetch-patient output):
+    diagnosen_json      — JSON array string of diagnosen[]
+    kartei_check_json   — JSON dict from pc-tomedo-check-kartei-vollstaendigkeit
+    kv_scheine_json     — JSON array string of kvScheine[]
+    ebm_leistungen_json — JSON array string of ebmLeistungen[]
+    scheinart           — scheinart string from kvschein
+
+  Returns list of missing item strings. Empty list = vollständig.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 8.5 — Recipes (class 21) for Abenddokumentation-Audit
+
+All Tier 0. The orchestrator runs the full audit without LLM involvement.
+Intent examples cover both manual trigger ("check documentation now") and
+the automated nightly invocation ("run evening audit").
+
+---
+
+#### Recipe: `tomedo-karteieintragtyp-list` (class 21) — Tier 0
+
+> Run this once during initial setup to resolve the ANA KarteiEintragTyp ident.
+
+```
+name:              "tomedo-karteieintragtyp-list"
+description:       "One-time setup: fetch all KarteiEintragTyp records to resolve the ANA ident. Record the result in config key tomedo_ana_typ_ident before running the Abenddokumentation-Audit."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-karteieintragtyp-list>", "<uuid:skill-tomedo>"],
+    "label":   "Load karteieintragtyp-list leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-karteieintragtyp-list>"],
+    "label":   "Pre-load ts-tomedo-karteieintragtyp-list binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-karteieintragtyp-list>"],
+    "label":   "Execute: GET /karteieintragtyp → full list of entry types with idents and kürzel"
+  }
+]
+intent_examples: [
+  {"input": "welche karteieintrag typen gibt es",              "class": 2},
+  {"input": "karteieintragtyp liste abrufen",                  "class": 2},
+  {"input": "ANA ident herausfinden",                          "class": 3},
+  {"input": "list all kartei entry types",                     "class": 2},
+  {"input": "fetch karteieintragtyp catalog",                  "class": 2},
+  {"input": "welchen ident hat ANA anamnese",                  "class": 3},
+  {"input": "karteieintrag typ idents nachschlagen",           "class": 2},
+  {"input": "all entry type idents tomedo",                    "class": 2},
+  {"input": "karteitypen auflisten",                           "class": 2},
+  {"input": "setup audit karteieintragtyp",                    "class": 3}
+]
+source: "system"
+validation_status: "pending"
+```
+
+---
+
+#### Recipe: `tomedo-tagesliste-get` (class 21) — Tier 0
+
+```
+name:              "tomedo-tagesliste-get"
+description:       "Fetch the Tagesliste (day schedule) for a given date — returns unique patient IDs, names, arrival/departure times, and insurance flags. Uses termin?datum endpoint with besuch/tagesliste as fallback. date is computed automatically from today if not supplied."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-tagesliste-get>", "<uuid:skill-tomedo>"],
+    "label":   "Load tagesliste leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-build-today-date>"],
+    "label":   "Compute today's date as YYYY-MM-DD string — no LLM needed"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-tagesliste-get>"],
+    "label":   "Pre-load ts-tomedo-tagesliste-get binding (primary: termin?datum)"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-tagesliste-get>"],
+    "label":   "Execute: GET /termin?datum={today}&flach=true → day Termin list"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-besuch-tagesliste-get>"],
+    "label":   "Pre-load ts-tomedo-besuch-tagesliste-get binding (fallback: besuch/tagesliste)"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-besuch-tagesliste-get>"],
+    "label":   "Fallback execute: GET /besuch/tagesliste?datum={today} if primary returned 404/empty"
+  },
+  {
+    "step_id": "step-6",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-parse-tagesliste>"],
+    "label":   "Parse: deduplicate patients, extract IDs, arrival/departure, kvFall/privatFall flags"
+  }
+]
+intent_examples: [
+  {"input": "tagesliste heute",                                "class": 2},
+  {"input": "welche patienten waren heute da",                 "class": 3},
+  {"input": "heutige patientenliste",                          "class": 2},
+  {"input": "day schedule today",                              "class": 2},
+  {"input": "patienten von heute abrufen",                     "class": 2},
+  {"input": "liste der heutigen patienten",                    "class": 2},
+  {"input": "today's patient list tomedo",                     "class": 2},
+  {"input": "alle patienten die heute behandelt wurden",       "class": 3},
+  {"input": "wer war heute in der praxis",                     "class": 3},
+  {"input": "tagesliste abrufen",                              "class": 2},
+  {"input": "fetch today's schedule",                          "class": 2},
+  {"input": "heutige termine patienten",                       "class": 2}
+]
+source: "system"
+validation_status: "pending"
+```
+
+---
+
+#### Recipe: `tomedo-abend-audit-fetch-patient` (class 21) — Tier 0
+
+> Per-patient data fetch sub-recipe. Called once per patient during the audit.
+> Fetches patientenDetailsRelationen + first kvSchein.
+
+```
+name:              "tomedo-abend-audit-fetch-patient"
+description:       "Fetch all audit-relevant data for one patient: patientenDetailsRelationen (diagnosen, karteiEintraege, kvScheine) and the first kvSchein (ebmLeistungen, goaeLeistungen, scheinart). One patientenDetailsRelationen call + one kvSchein call. No LLM."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-abend-audit-fetch-patient>", "<uuid:skill-tomedo>"],
+    "label":   "Load audit-fetch-patient leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-relations>"],
+    "label":   "Pre-load ts-tomedo-patient-relations binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-relations-audit>"],
+    "label":   "Execute: GET /patient/{id}/patientenDetailsRelationen → diagnosen, karteiEintraege, kvScheine"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-diagnosen-from-relations>"],
+    "label":   "Extract diagnosen[] array from relations body"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-karteieintraege-from-relations>"],
+    "label":   "Extract karteiEintraege[] array from relations body"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-kvscheine-from-relations>"],
+    "label":   "Extract kvScheine[] array and first schein ident from relations body"
+  },
+  {
+    "step_id": "step-6",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-kvschein-get>"],
+    "label":   "Pre-load ts-tomedo-kvschein-get binding"
+  },
+  {
+    "step_id": "step-7",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-kvschein-audit>"],
+    "label":   "Execute: GET /kvschein/{first_ident} → ebmLeistungen, goaeLeistungen, scheinart (skipped if no schein)"
+  },
+  {
+    "step_id": "step-8",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-scheinart>"],
+    "label":   "Extract scheinart string from kvschein body"
+  },
+  {
+    "step_id": "step-9",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-leistungen-from-schein>"],
+    "label":   "Extract ebmLeistungen[] from kvschein body (leistung_typ=ebm)"
+  },
+  {
+    "step_id": "step-10",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-leistungen-from-schein>"],
+    "label":   "Extract goaeLeistungen[] from kvschein body (leistung_typ=goae)"
+  }
+]
+intent_examples: [
+  {"input": "audit daten für patient laden",                   "class": 3},
+  {"input": "fetch patient audit data",                        "class": 2},
+  {"input": "patientendaten für dokumentationsprüfung",        "class": 3},
+  {"input": "load all data for patient completeness check",    "class": 2},
+  {"input": "patient daten für abenddokumentation",            "class": 3},
+  {"input": "diagnosen kartei schein für patient abrufen",     "class": 3},
+  {"input": "fetch relations and schein for patient",          "class": 2},
+  {"input": "patient audit datenabruf",                        "class": 2},
+  {"input": "vollständige patientendaten für prüfung",         "class": 3},
+  {"input": "audit fetch single patient",                      "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+#### Recipe: `tomedo-abend-audit-check-patient` (class 21) — Tier 0
+
+> Per-patient completeness check. One recipe per insurance type is intentionally
+> avoided — instead this single recipe classifies and then dispatches to the
+> correct check helper, keeping the call surface minimal.
+
+```
+name:              "tomedo-abend-audit-check-patient"
+description:       "Run the documentation completeness check for one patient. Classifies insurance type (Privat/GKV/HZV) from the already-fetched besuch flags and scheinart, checks kartei entry types, then applies the insurance-specific completeness rule. Returns a list of missing items. No LLM."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": [
+      "<uuid:skill-tomedo-abend-audit-check-privat>",
+      "<uuid:skill-tomedo-abend-audit-check-gkv>",
+      "<uuid:skill-tomedo-abend-audit-check-hzv>",
+      "<uuid:skill-tomedo>"
+    ],
+    "label":   "Load all three completeness-check leaf skills + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-kartei-vollstaendigkeit>"],
+    "label":   "Check karteiEintraege for ANA, BEF, BES presence (pure logic)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-classify-insurance>"],
+    "label":   "Classify insurance type: Privat | GKV | HZV from privat_fall, kv_fall, scheinart"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-privat-vollstaendigkeit>"],
+    "label":   "Check Privat completeness (diagnose + kartei ANA/BEF/BES + GOÄ-Leistungen)"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-gkv-vollstaendigkeit>"],
+    "label":   "Check GKV completeness (diagnose + kartei ANA/BEF/BES + schein + EBM-Ziffern)"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-hzv-vollstaendigkeit>"],
+    "label":   "Check HZV completeness (diagnose + kartei ANA/BEF/BES + HZV-Schein + HZV-Ziffern)"
+  }
+]
+intent_examples: [
+  {"input": "dokumentation prüfen für patient",               "class": 3},
+  {"input": "check patient documentation completeness",       "class": 2},
+  {"input": "vollständigkeitsprüfung patient",                "class": 3},
+  {"input": "is patient documentation complete",              "class": 2},
+  {"input": "fehlende dokumentation patient prüfen",          "class": 3},
+  {"input": "run completeness check for patient",             "class": 2},
+  {"input": "kartei schein diagnose vorhanden prüfen",        "class": 3},
+  {"input": "patient dokumentation audit einzeln",            "class": 3},
+  {"input": "check single patient for missing docs",          "class": 2},
+  {"input": "einzelpatient dokumentationsprüfung",            "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+#### Recipe: `tomedo-abend-audit` (class 21) — Tier 0
+
+> Top-level evening audit. Runs fully automated — no LLM, no user interaction.
+> Designed for a scheduled nightly trigger (e.g. cron at 20:00).
+> Reports only patients with missing documentation.
+
+```
+name:              "tomedo-abend-audit"
+description:       "Automated evening documentation audit: fetch today's patient list, classify by insurance type (Privat/GKV/HZV), check each patient for documentation completeness (diagnose, karteiEintraege ANA/BEF/BES, schein, leistungen), and send a report to chat listing only patients with missing items. Fully orchestrator-driven — no LLM."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": [
+      "<uuid:skill-tomedo-tagesliste-get>",
+      "<uuid:skill-tomedo-abend-audit-fetch-patient>",
+      "<uuid:skill-tomedo-abend-audit-check-privat>",
+      "<uuid:skill-tomedo-abend-audit-check-gkv>",
+      "<uuid:skill-tomedo-abend-audit-check-hzv>",
+      "<uuid:skill-tomedo>"
+    ],
+    "label":   "Load all audit leaf skills + domain skill into orchestrator context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-build-today-date>"],
+    "label":   "Compute today's date as YYYY-MM-DD (no LLM — pure Python datetime)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-tagesliste-get>"],
+    "label":   "Pre-load ts-tomedo-tagesliste-get binding (primary day-list endpoint)"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-tagesliste-get>"],
+    "label":   "Execute: GET /termin?datum={today}&flach=true → day Termin list"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-besuch-tagesliste-get>"],
+    "label":   "Pre-load ts-tomedo-besuch-tagesliste-get binding (fallback day-list endpoint)"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-besuch-tagesliste-get>"],
+    "label":   "Fallback execute: GET /besuch/tagesliste?datum={today} if primary returned 404/empty"
+  },
+  {
+    "step_id": "step-6",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-parse-tagesliste>"],
+    "label":   "Parse day list → unique patient IDs with arrival/departure and insurance flags"
+  },
+  {
+    "step_id": "step-7",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-relations>"],
+    "label":   "Pre-load ts-tomedo-patient-relations binding (used per-patient in loop)"
+  },
+  {
+    "step_id": "step-8",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-relations-audit>"],
+    "label":   "Per-patient loop: fetch /patientenDetailsRelationen → diagnosen, karteiEintraege, kvScheine"
+  },
+  {
+    "step_id": "step-9",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-diagnosen-from-relations>"],
+    "label":   "Per-patient: extract diagnosen[] array"
+  },
+  {
+    "step_id": "step-10",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-karteieintraege-from-relations>"],
+    "label":   "Per-patient: extract karteiEintraege[] array"
+  },
+  {
+    "step_id": "step-11",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-kvscheine-from-relations>"],
+    "label":   "Per-patient: extract kvScheine[] and first schein ident"
+  },
+  {
+    "step_id": "step-12",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-kvschein-get>"],
+    "label":   "Pre-load ts-tomedo-kvschein-get binding (used per-patient in loop)"
+  },
+  {
+    "step_id": "step-13",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-kvschein-audit>"],
+    "label":   "Per-patient: fetch /kvschein/{ident} → ebmLeistungen, goaeLeistungen, scheinart"
+  },
+  {
+    "step_id": "step-14",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-scheinart>"],
+    "label":   "Per-patient: extract scheinart string"
+  },
+  {
+    "step_id": "step-15",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-leistungen-from-schein>"],
+    "label":   "Per-patient: extract ebmLeistungen[] (leistung_typ=ebm)"
+  },
+  {
+    "step_id": "step-16",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-extract-leistungen-from-schein>"],
+    "label":   "Per-patient: extract goaeLeistungen[] (leistung_typ=goae)"
+  },
+  {
+    "step_id": "step-17",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-kartei-vollstaendigkeit>"],
+    "label":   "Per-patient: check karteiEintraege for ANA/BEF/BES presence"
+  },
+  {
+    "step_id": "step-18",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-classify-insurance>"],
+    "label":   "Per-patient: classify insurance type → Privat | GKV | HZV"
+  },
+  {
+    "step_id": "step-19",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-privat-vollstaendigkeit>"],
+    "label":   "Per-patient (Privat only): check diagnose + kartei + GOÄ-Leistungen"
+  },
+  {
+    "step_id": "step-20",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-gkv-vollstaendigkeit>"],
+    "label":   "Per-patient (GKV only): check diagnose + kartei + schein + EBM-Ziffern"
+  },
+  {
+    "step_id": "step-21",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-hzv-vollstaendigkeit>"],
+    "label":   "Per-patient (HZV only): check diagnose + kartei + HZV-Schein + HZV-Ziffern"
+  },
+  {
+    "step_id": "step-22",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-format-audit-bericht>"],
+    "label":   "Format audit report: list only patients with missing items → send to chat"
+  }
+]
+intent_examples: [
+  {"input": "abenddokumentation prüfen",                       "class": 2},
+  {"input": "abend audit starten",                             "class": 2},
+  {"input": "run evening documentation audit",                 "class": 2},
+  {"input": "dokumentation heute prüfen",                      "class": 2},
+  {"input": "check today's documentation completeness",        "class": 2},
+  {"input": "wer hat heute fehlende dokumentation",            "class": 3},
+  {"input": "which patients have incomplete documentation",    "class": 2},
+  {"input": "vollständigkeitsprüfung alle patienten heute",    "class": 3},
+  {"input": "nightly documentation check",                     "class": 2},
+  {"input": "evening audit tomedo",                            "class": 2},
+  {"input": "fehlende scheine diagnosen karteieinträge",       "class": 3},
+  {"input": "abendprüfung dokumentation alle patienten",       "class": 3},
+  {"input": "automated audit tonight",                         "class": 2},
+  {"input": "privat gkv hzv dokumentation kontrolle",         "class": 3}
+]
+source: "system"
+validation_status: "pending"
+```
 

@@ -364,7 +364,15 @@ composition tests):**
   + all four `FetchForTurnResult` arms emit `active_skills` +
   `phase_g1_active_skills_emitted_in_every_arm` test. fmt/clippy/test green
   both configs (677/688 lib tests). Committed+pushed `e7c2ce31`.
-- G.2 — pending.
+- G.2 — Done. `fetch_component_by_name` in `retrieval_source.rs`
+  (name=$1 + scope + SEC-01 gate + LIMIT 1) +
+  `handle_resolve_component_by_name` handler (dict-or-Null) +
+  `__resolve_component_by_name__` dispatch arm (cfg-gated pg_pool) +
+  `phase_g2_resolve_by_name_returns_null_on_unresolvable_paths` unit test
+  (both configs) + composition `fetch_component_by_name_resolves_action_item`
+  / `fetch_component_by_name_is_tenant_scoped` (DB-integration, skip-if-no-
+  docker). fmt/clippy/test green both configs (678/689 lib). Committed+pushed
+  `da1bee7b`.
 - G.3 — pending.
 - G.4 — pending.
 - G.5 — pending.
