@@ -71,7 +71,7 @@
 > | GET | `/{db}/patient/{id}/patientenDetailsRelationen?limitScheine=true&limitKartei=50&limitVerordnungen=50&limitZeiterfassungen=true&limitBehandlungsfaelle=true` | ✅ safe | Diagnoses, Kartei, Behandlungsfälle — **always use limit params** |
 > | GET | `/{db}/patient/{id}/patientenDetailsRelationen/medikamentenPlan` | ✅ safe | Medication plan |
 > | GET | `/{db}/patient/{id}/termine?flach=true` | ✅ safe | Appointments flat array |
-> | GET | `/{db}/besuch/{besuch_id}/besucheForPatient` | ✅ safe | Visit records — **besuch ident**, not patient ident |
+> | GET | `/{db}/besuch/{patient_id}/besucheForPatient` | ✅ safe | Visit records — **patient ident** (confirmed live) |
 > | GET | `/{db}/kvschein/{schein_ident}` | ✅ safe | KV-Schein + ebmLeistungen[] (safe Leistung path) |
 > | GET | `/{db}/ebmkatalogeintrag/{ident}` | ✅ safe | Resolve EBM catalog ident → Ziffer string |
 > | GET | `/{db}/patient/searchByAttributes?query={name}` | ❌ BROKEN | Returns `{}` — name search only, Tier 1 |
@@ -84,7 +84,7 @@
 > ```
 > 1. GET /{db}/patient/{id}/patientenDetailsRelationen?limitScheine=true → kvScheine[].ident
 > 2. GET /{db}/kvschein/{schein_ident} → ebmLeistungen[], goaeLeistungen[]
-> 3. GET /{db}/ebmkatalogeintrag/{catalog_ident} → {nummer: "03220", ...}
+> 3. GET /{db}/ebmkatalogeintrag/{catalog_ident} → {code: "03220", ...}
 > ```
 >
 > **EBMLeistung fields:** `ident`, `datum` (epoch ms), `visible`, `anzahl`,
@@ -443,7 +443,8 @@ name:          "ts-tomedo-serverstatus"
 tool_name:     "tomedo-api"
 description:   "GET /{db}/serverstatus. Checks if the tomedo server is reachable and
                 returns its software version and revision.
-                Response: {status:'OK', softwareVersion:'...', revision:N}
+                Response: {status:'OK', softwareVersion:null, revision:N}
+                softwareVersion is always null on this server (confirmed live).
                 Use timeout_ms: 10000."
 param_schema:  [
   {name: "url",          param_type: "string", required: true,
@@ -596,24 +597,23 @@ validation_status: "validated"
 ```
 name:          "ts-tomedo-patient-visits"
 tool_name:     "tomedo-api"
-description:   "GET /{db}/besuch/{besuch_id}/besucheForPatient.
+description:   "GET /{db}/besuch/{patient_id}/besucheForPatient.
                 Returns visit/consultation records for a patient.
-                ⚠️ The URL segment is a BESUCH ident, not a patient ident.
-                Obtain the besuch_ident from a prior patient-detail or
-                patientenDetailsRelationen response (besuch[].ident).
+                ✅ The URL segment IS the patient ident (confirmed live: /besuch/13550/besucheForPatient
+                returned 7 records). No prior besuch_ident lookup needed.
                 Use timeout_ms: 15000."
 param_schema:  [
   {name: "url",        param_type: "string", required: true,
-   description: "https://{host}:{port}/{db}/besuch/{besuch_ident}/besucheForPatient"},
+   description: "https://{host}:{port}/{db}/besuch/{patient_id}/besucheForPatient"},
   {name: "timeout_ms", param_type: "number", required: false}
 ]
 param_template: {
-  "url": "{{vars.tomedo_base_url}}/besuch/{{vars.besuch_ident}}/besucheForPatient",
+  "url": "{{vars.tomedo_base_url}}/besuch/{{vars.patient_id}}/besucheForPatient",
   "method": "GET",
   "timeout_ms": 15000
 }
-preconditions:  "besuch_ident must be a valid Besuch ident (NOT patient ident). Obtain from patientenDetailsRelationen response."
-error_handling: "HTTP 404 → besuch_ident not found. Empty array → no visit records."
+preconditions:  "patient_id must be a valid patient ident. No besuch_ident lookup required."
+error_handling: "HTTP 404 → patient_id not found. Empty array → no visit records."
 category:       "tomedo"
 source:         "system"
 validation_status: "validated"
@@ -891,10 +891,11 @@ validation_status: "validated"
 name:          "ts-tomedo-ebmkatalogeintrag-get"
 tool_name:     "tomedo-api"
 description:   "GET /{db}/ebmkatalogeintrag/{ident} — resolve an internal EBM catalog
-                ident to its human-readable EBM Ziffer string (e.g. 270 → '03220').
+                ident to its human-readable EBM Ziffer string (e.g. 298 → '03230').
                 Use after fetching ebmLeistungen from /kvschein to map internal ints
                 to billing code strings.
-                Response: {ident:N, nummer:'03220', bezeichnung:'Versichertenpauschale', ...}"
+                Response: {ident:N, code:'03230', kurztext:'...', ...}
+                ⚠️ The field is 'code', NOT 'nummer' (confirmed live: ident 298 → code '03230')."
 param_schema:  [
   {name: "url",        param_type: "string", required: true,
    description: "https://{host}:{port}/{db}/ebmkatalogeintrag/{ebm_catalog_ident}"},
@@ -994,11 +995,18 @@ result = __execute_action__("tomedo-api", {
 # Channel: orchestrator | Class: 22
 # Dispatches ts-tomedo-patient-relations with standard limit params.
 # Returns diagnoses (up to 50 Kartei, 50 Verordnungen).
-result = __execute_action__("tomedo-api", {
+# ⚠️ Response body may contain embedded control characters (\x00-\x08 etc.) —
+# strip them before json.loads() or parsing will fail (confirmed live 2026-08-22).
+import re as _re
+_raw = __execute_action__("tomedo-api", {
     "url": "{{vars.tomedo_base_url}}/patient/{{vars.patient_id}}/patientenDetailsRelationen?limitScheine=true&limitKartei=50&limitVerordnungen=50&limitZeiterfassungen=true&limitBehandlungsfaelle=true",
     "method": "GET",
     "timeout_ms": 15000
 })
+# Strip control characters from body if present (preserves \t \n \r)
+if isinstance(_raw, dict) and "body" in _raw:
+    _raw["body"] = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', _raw["body"])
+result = _raw
 ```
 
 ---
@@ -1035,10 +1043,11 @@ result = __execute_action__("tomedo-api", {
 
 ```python
 # Channel: orchestrator | Class: 22
-# Dispatches ts-tomedo-patient-visits.
-# ⚠️ Uses besuch_ident (NOT patient_id) — obtain from patientenDetailsRelationen.
+# Dispatches ts-tomedo-patient-visits using patient_id directly.
+# ✅ /besuch/{patient_id}/besucheForPatient takes patient ident — NO prior besuch lookup needed.
+# Confirmed live: /besuch/13550/besucheForPatient → 7 visit records (2026-08-22).
 result = __execute_action__("tomedo-api", {
-    "url": "{{vars.tomedo_base_url}}/besuch/{{vars.besuch_ident}}/besucheForPatient",
+    "url": "{{vars.tomedo_base_url}}/besuch/{{vars.patient_id}}/besucheForPatient",
     "method": "GET",
     "timeout_ms": 15000
 })
@@ -1423,7 +1432,8 @@ description: "Leaf skill: check whether the tomedo EMR server is reachable."
 body: |
   Use ts-tomedo-serverstatus to check if the tomedo server is reachable.
   The URL is {{vars.tomedo_base_url}}/serverstatus.
-  A successful response returns {status:'OK', softwareVersion, revision}.
+  A successful response returns {status:'OK', softwareVersion:null, revision:N}.
+  Note: softwareVersion is always null on this server.
   A non-200 or connection error means the server is offline or the cert is invalid.
   This is a Tier-0 health check — no LLM required.
 consumer_tags: ["02:orchestrator", "05:validator"]
@@ -1528,13 +1538,12 @@ class_code:  1
 description: "Leaf skill: fetch visit/consultation records for a patient."
 body: |
   Use ts-tomedo-patient-visits to fetch Besuch (visit) records.
-  ⚠️ The URL uses a BESUCH ident, NOT a patient ident.
-  First call pc-tomedo-patient-relations to obtain a besuch ident from the response:
-    besuch[].ident or besucheForPatient[].ident
-  Then call pc-tomedo-patient-visits:
-    URL: {{vars.tomedo_base_url}}/besuch/{{vars.besuch_ident}}/besucheForPatient
+  ✅ The URL uses the PATIENT ident directly — no prior besuch_ident lookup needed.
+  Confirmed live: GET /besuch/13550/besucheForPatient returns 7 visit records (2026-08-22).
+  Call pc-tomedo-patient-visits:
+    URL: {{vars.tomedo_base_url}}/besuch/{{vars.patient_id}}/besucheForPatient
   Returns visit records for the patient's consultation history.
-  Each record: datum (epoch ms), diagnosen[], behandlungen[], arzt.
+  Each record: ankunft (epoch ms), ident, kvFall, privatFall.
   Empty array means no recorded visits.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
@@ -1595,7 +1604,7 @@ body: |
     • Medications:          skill-tomedo-patient-medications      → tomedo-patient-medications
     • Next appointment:     skill-tomedo-patient-appointments     → tomedo-patient-next-appointment
     • Visit history:        skill-tomedo-patient-visits           → tomedo-patient-visits
-      ⚠️ visits needs besuch_ident from patientenDetailsRelationen first
+      ✅ visits uses patient_id directly — no besuch_ident lookup needed
 
   EBM/GOÄ Leistungen (Tier 0, safe two-step path):
     → skill-tomedo-leistungen-read                                → tomedo-leistungen-read
@@ -2083,7 +2092,7 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-patient-visits"
-description:       "Fetch visit/consultation records for a patient. First resolves a besuch_ident from patientenDetailsRelationen, then fetches visit records."
+description:       "Fetch visit/consultation records for a patient using patient_id directly. Single-step — no prior besuch_ident lookup needed (confirmed live 2026-08-22)."
 llm_call_required: false
 step_descriptions: [
   {
@@ -2097,29 +2106,15 @@ step_descriptions: [
     "step_id": "step-1",
     "type":    "component",
     "channel": "rust",
-    "include": ["<uuid:ts-tomedo-patient-relations>"],
-    "label":   "Pre-load ts-tomedo-patient-relations binding (to obtain besuch ident)"
+    "include": ["<uuid:ts-tomedo-patient-visits>"],
+    "label":   "Pre-load ts-tomedo-patient-visits binding"
   },
   {
     "step_id": "step-2",
     "type":    "component",
     "channel": "orchestrator",
-    "include": ["<uuid:pc-tomedo-patient-relations>"],
-    "label":   "Execute: GET /patient/{id}/patientenDetailsRelationen → extract besuch[0].ident as besuch_ident"
-  },
-  {
-    "step_id": "step-3",
-    "type":    "component",
-    "channel": "rust",
-    "include": ["<uuid:ts-tomedo-patient-visits>"],
-    "label":   "Pre-load ts-tomedo-patient-visits binding"
-  },
-  {
-    "step_id": "step-4",
-    "type":    "component",
-    "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-patient-visits>"],
-    "label":   "Execute: GET /besuch/{besuch_ident}/besucheForPatient"
+    "label":   "Execute: GET /besuch/{patient_id}/besucheForPatient → visit records"
   }
 ]
 intent_examples: [
@@ -2732,7 +2727,7 @@ overview_doc: |
   │ GET  /patient/{id}/patientenDetails.. → diagnoses, Kartei, Behandlung   │
   │ GET  /patient/{id}/.../medikamentenPlan→ medication plan + dosing       │
   │ GET  /patient/{id}/termine?flach=true → appointments                    │
-  │ GET  /besuch/{id}/besucheForPatient   → visit records                   │
+  │ GET  /besuch/{patient_id}/besucheForPatient → visit records (patient ident!)│
   │ GET  /kvschein/{ident}                → KV-Schein + ebmLeistungen[]     │
   │ GET  /ebmkatalogeintrag/{ident}       → EBM catalog ident → Ziffer str  │
   │ POST /karteieintrag                   → step 1: create entry            │
@@ -3257,5 +3252,5 @@ computed on first insert and checked on subsequent runs.
 | Cert-fetch extension | One-time SSH setup fetches mTLS PEM bundle from server; required before any tomedo REST call |
 | 3-step karteieintrag write (JSON2CoreData crash rule) | POST creates entry → PUT /patient links DB join row → PUT /patientendetailsrelationen syncs Mac client; without step 3 the Mac client crashes with `JSON2CoreData.m:349 ident != NULL` |
 | `letzterNutzer` required in POST body, forbidden in PUT | Missing from POST → crash; present in PUT → corrupts sync record → crash |
-| visits recipe two-phase | besuch_ident must come from patientenDetailsRelationen before calling /besuch/{id}/besucheForPatient |
+| visits recipe single-step | /besuch/{patient_id}/besucheForPatient takes patient ident directly — confirmed live 2026-08-22; no prior besuch_ident lookup needed |
 
