@@ -60,12 +60,76 @@ pub const ORCHESTRATOR_TITLE: &str = "orchestrator:main";
 /// Well-known tag for orchestrator code docs.
 pub const ORCHESTRATOR_TAG: &str = "orchestrator_code";
 
+/// Outcome of a Tier-0 (no-LLM) recipe execution, surfaced from
+/// `default.py` step-0 through [`OrchestratorResult`] (v3 Phase H4.6,
+/// Q-H7 Architecture A). `Some` only when the turn went through the
+/// Tier-0 recipe branch: success is read from the `complete_result(
+/// extra={"tier_zero_outcome": {"recipe_id","success":true}})` stamp
+/// (Q-H6); failure is read by scanning `thread.events` for
+/// [`EventKind::RecipeTierZeroFailed`]. The composition event listener
+/// (H4.7) ALSO independently fires `record_recipe_outcome(recipe_id,
+/// success)` off the terminal `RecipeTierZeroSucceeded` /
+/// `RecipeTierZeroFailed` event — this field is for engine-internal
+/// consumers + unit tests (the listener is the durable recording path).
+#[derive(Debug, Clone)]
+pub struct TierZeroOutcome {
+    /// The matched Recipe component UUID (class 21) as a string.
+    pub recipe_id: String,
+    /// `true` when the Tier-0 channel ran all steps to success;
+    /// `false` when it failed (and the turn degraded to Tier-2 LLM).
+    pub success: bool,
+}
+
 /// Result of running the orchestrator.
 pub struct OrchestratorResult {
     /// The thread outcome parsed from the orchestrator's return value.
     pub outcome: ThreadOutcome,
     /// Total tokens used by LLM calls within the orchestrator.
     pub tokens_used: TokenUsage,
+    /// Tier-0 recipe execution outcome, `Some` only when the turn went
+    /// through the Tier-0 recipe branch (v3 Phase H4.6). Built by
+    /// [`build_tier_zero_outcome`] in the `RunProgress::Complete` arm.
+    pub tier_zero_outcome: Option<TierZeroOutcome>,
+}
+
+/// Build the [`TierZeroOutcome`] for a completed orchestrator turn (v3
+/// Phase H4.6). Pure + unit-testable without driving the whole VM:
+/// - SUCCESS: read from the `complete_result(extra={"tier_zero_outcome":
+///   {"recipe_id","success":true}})` stamp (Q-H6) — the stamp is ONLY
+///   ever written on the Tier-0 success path, so its presence with a
+///   `recipe_id` IS the success signal → `success == true`.
+/// - FAILURE: scan `events` for [`EventKind::RecipeTierZeroFailed`]
+///   carrying a non-empty `recipe_id` → `success == false` (the failure
+///   signal rides the event, NOT a result-dict stamp, per Q-H6 — a
+///   failure degrades to Tier-2 and the result dict has no stamp).
+/// - otherwise `None` (a plain Tier-2 LLM turn, no Tier-0 attempt).
+pub fn build_tier_zero_outcome(
+    result: &serde_json::Value,
+    events: &[ThreadEvent],
+) -> Option<TierZeroOutcome> {
+    // (1) success via the `extra` stamp (only present on the success path).
+    if let Some(stamp) = result.get("tier_zero_outcome").and_then(|v| v.as_object())
+        && let Some(recipe_id) = stamp.get("recipe_id").and_then(|v| v.as_str())
+        && !recipe_id.is_empty()
+    {
+        return Some(TierZeroOutcome {
+            recipe_id: recipe_id.to_string(),
+            success: true,
+        });
+    }
+    // (2) failure via the RecipeTierZeroFailed event.
+    for event in events {
+        if let EventKind::RecipeTierZeroFailed { recipe_id, .. } = &event.kind
+            && !recipe_id.is_empty()
+        {
+            return Some(TierZeroOutcome {
+                recipe_id: recipe_id.clone(),
+                success: false,
+            });
+        }
+    }
+    // (3) plain Tier-2 turn — no Tier-0 attempt.
+    None
 }
 
 fn apply_snapshot_inventory(
@@ -538,9 +602,11 @@ pub async fn execute_orchestrator(
                 let outcome = parse_outcome(&result);
                 sync_visible_outcome(thread, &outcome);
                 normalize_pause_outcome(thread, &outcome)?;
+                let tier_zero_outcome = build_tier_zero_outcome(&result, &thread.events);
                 return Ok(OrchestratorResult {
                     outcome,
                     tokens_used: total_tokens,
+                    tier_zero_outcome,
                 });
             }
 
@@ -8052,6 +8118,101 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             )
         });
         assert!(failed, "expected RecipeTierZeroFailed event on thread");
+    }
+
+    #[test]
+    fn build_tier_zero_outcome_success_via_extra_stamp() {
+        // v3 Phase H4.6 branch (1): the success `extra` stamp present in
+        // the result dict → Some(success == true). Mirrors the H4.5
+        // `complete_result(state, "completed", response=...,
+        // extra={"tier_zero_outcome": {"recipe_id": ..., "success":
+        // True}})` success path. A `RecipeTierZeroStarted` event alone
+        // must NOT be misread as the terminal outcome (it is non-terminal).
+        let thread = Thread::new(
+            "goal",
+            crate::types::thread::ThreadType::Foreground,
+            crate::types::project::ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        let result = serde_json::json!({
+            "outcome": "completed",
+            "response": "hello",
+            "tier_zero_outcome": {
+                "recipe_id": "11111111-1111-1111-1111-111111111111",
+                "success": true
+            }
+        });
+        let events = vec![ThreadEvent::new(
+            thread.id,
+            EventKind::RecipeTierZeroStarted {
+                recipe_id: "11111111-1111-1111-1111-111111111111".to_string(),
+                recipe_name: "greet-recipe".to_string(),
+            },
+        )];
+        let outcome = build_tier_zero_outcome(&result, &events).expect("success stamp present");
+        assert_eq!(outcome.recipe_id, "11111111-1111-1111-1111-111111111111");
+        assert!(
+            outcome.success,
+            "the extra stamp presence is the success signal"
+        );
+    }
+
+    #[test]
+    fn build_tier_zero_outcome_failure_via_event() {
+        // v3 Phase H4.6 branch (2): no success stamp (a Tier-0 failure
+        // degrades to Tier-2; the result dict has NO `tier_zero_outcome`
+        // stamp per Q-H6), but a `RecipeTierZeroFailed` event carrying a
+        // recipe_id is on thread.events → Some(success == false).
+        let thread = Thread::new(
+            "goal",
+            crate::types::thread::ThreadType::Foreground,
+            crate::types::project::ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        let result = serde_json::json!({
+            "outcome": "completed",
+            "response": "done"
+        });
+        let events = vec![
+            ThreadEvent::new(
+                thread.id,
+                EventKind::RecipeTierZeroStarted {
+                    recipe_id: "22222222-2222-2222-2222-222222222222".to_string(),
+                    recipe_name: "bad-recipe".to_string(),
+                },
+            ),
+            ThreadEvent::new(
+                thread.id,
+                EventKind::RecipeTierZeroFailed {
+                    recipe_id: "22222222-2222-2222-2222-222222222222".to_string(),
+                    recipe_name: "bad-recipe".to_string(),
+                    message: "step raised: boom".to_string(),
+                },
+            ),
+        ];
+        let outcome = build_tier_zero_outcome(&result, &events).expect("failed event present");
+        assert_eq!(outcome.recipe_id, "22222222-2222-2222-2222-222222222222");
+        assert!(
+            !outcome.success,
+            "a RecipeTierZeroFailed event is the failure signal"
+        );
+    }
+
+    #[test]
+    fn build_tier_zero_outcome_none_for_plain_tier2_turn() {
+        // v3 Phase H4.6 branch (3): a plain Tier-2 LLM turn has no
+        // Tier-0 stamp AND no Tier-0 events → None (no Tier-0 attempt).
+        let result = serde_json::json!({
+            "outcome": "completed",
+            "response": "an llm reply"
+        });
+        let events: Vec<ThreadEvent> = Vec::new();
+        assert!(
+            build_tier_zero_outcome(&result, &events).is_none(),
+            "a plain Tier-2 turn has no tier_zero_outcome"
+        );
     }
 
     // ── Reduction-rules cache test serialization ───────────────────────────
