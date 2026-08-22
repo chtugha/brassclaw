@@ -51,6 +51,14 @@ use crate::run_profile::LoopRunContext;
 ///   (E0-A) / `state.recipe_hint` (Phase H) for the Python step-0 handler.
 /// - `routing_meta`: routing metadata (variant label, matched component UUID
 ///   count, etc.) for telemetry and stash/unstash disambiguation.
+/// - `instruction`: the serialized compiled `BuildInstruction` (Phase E.4
+///   upgrade / subplan §7.5) carrying the per-step channel structure +
+///   `{{vars.name}}`-substituted `tool_bindings`. `null` for non-split arms
+///   (`Components`/`Disambiguation`/`ActionShortCircuit`) and for the
+///   `build_instruction` soft-fail. Opaque JSON here — the composition bridge
+///   serializes the engine `Option<BuildInstruction>` at the crate boundary so
+///   this crate never depends on `brassclaw_engine`'s IBS types (same
+///   decoupling as `rust_items`/`orchestrator_items`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RetrievalTurnResult {
     pub tier0_eligible: bool,
@@ -58,6 +66,7 @@ pub struct RetrievalTurnResult {
     pub rust_items: serde_json::Value,
     pub orchestrator_items: serde_json::Value,
     pub routing_meta: serde_json::Value,
+    pub instruction: serde_json::Value,
 }
 
 /// Async errors raised by retrieval lookups. Callers should treat every
@@ -126,6 +135,7 @@ mod tests {
             rust_items: serde_json::json!([{ "id": "02-001" }]),
             orchestrator_items: serde_json::json!([{ "id": "04-001" }]),
             routing_meta: serde_json::json!({ "variant": "orchestrator", "count": 2 }),
+            instruction: serde_json::json!({ "rust_steps": [], "orchestrator_steps": [] }),
         };
         let encoded = serde_json::to_string(&result).expect("serialize");
         let decoded: RetrievalTurnResult = serde_json::from_str(&encoded).expect("deserialize");
@@ -134,6 +144,7 @@ mod tests {
         assert_eq!(decoded.rust_items, result.rust_items);
         assert_eq!(decoded.orchestrator_items, result.orchestrator_items);
         assert_eq!(decoded.routing_meta, result.routing_meta);
+        assert_eq!(decoded.instruction, result.instruction);
     }
 
     #[test]
@@ -175,6 +186,7 @@ mod tests {
                 rust_items: serde_json::json!([]),
                 orchestrator_items: serde_json::json!([]),
                 routing_meta: serde_json::json!({ "stub": true }),
+                instruction: serde_json::json!(null),
             }))
         }
     }

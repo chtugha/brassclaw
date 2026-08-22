@@ -2812,6 +2812,7 @@ async fn recipe_stage_fires_fetch_for_turn_and_stashes_result() {
         rust_items: serde_json::json!([{ "id": "02-001" }]),
         orchestrator_items: serde_json::json!([{ "id": "04-001" }]),
         routing_meta: serde_json::json!({ "variant": "components", "count": 1 }),
+        instruction: serde_json::json!(null),
     };
     let stub = StubRetrievalLookup::returning(expected.clone());
     let calls = stub.calls();

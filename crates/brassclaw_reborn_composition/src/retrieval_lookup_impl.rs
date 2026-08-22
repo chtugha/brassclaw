@@ -86,10 +86,12 @@ impl RetrievalLookup for PgRetrievalLookup {
                 rust_items,
                 orchestrator_items,
                 routing,
+                instruction,
             } => Some(retrieval_turn_result_for_split(
                 rust_items,
                 orchestrator_items,
                 routing,
+                instruction,
             )?),
         })
     }
@@ -149,6 +151,7 @@ fn retrieval_turn_result_for_components(
         orchestrator_items: rust_items.clone(),
         rust_items,
         routing_meta: serde_json::json!({ "variant": "components", "count": count }),
+        instruction: serde_json::json!(null),
     })
 }
 
@@ -168,6 +171,7 @@ fn retrieval_turn_result_for_disambiguation(
         rust_items: orchestrator_items.clone(),
         orchestrator_items,
         routing_meta: serde_json::json!({ "variant": "disambiguation", "count": count }),
+        instruction: serde_json::json!(null),
     })
 }
 
@@ -197,6 +201,7 @@ fn retrieval_turn_result_for_action_short_circuit(
             "component_id": id_str,
             "name": name,
         }),
+        instruction: serde_json::json!(null),
     }
 }
 
@@ -210,15 +215,24 @@ fn retrieval_turn_result_for_action_short_circuit(
 /// Phase-H `LoopOrchestratorPort` consumer can dispatch Tier-0/Tier-1. Always
 /// `Some` — a recipe match with a `step_link` is a real routing decision even
 /// when both channels are empty (the routing booleans still govern the turn).
+///
+/// The compiled `BuildInstruction` (subplan §7.5 upgrade) is serialized into
+/// `instruction` — `null` on the `build_instruction` soft-fail (§7.4), the
+/// full per-step structure (with `{{vars.name}}`-substituted `tool_bindings`)
+/// on a successful compile. Serialized here at the composition boundary so
+/// `brassclaw_turns` stays decoupled from the engine IBS types.
 #[cfg(feature = "skills-db")]
 fn retrieval_turn_result_for_split(
     rust_items: Vec<brassclaw_engine::memory::ComponentItem>,
     orchestrator_items: Vec<brassclaw_engine::memory::ComponentItem>,
     routing: brassclaw_engine::memory::TurnRoutingSignals,
+    instruction: Option<brassclaw_engine::memory::instruction_builder::BuildInstruction>,
 ) -> Result<RetrievalTurnResult, RetrievalLookupError> {
     let rust_json = serde_json::to_value(&rust_items)
         .map_err(|error| RetrievalLookupError::Decode(error.to_string()))?;
     let orchestrator_json = serde_json::to_value(&orchestrator_items)
+        .map_err(|error| RetrievalLookupError::Decode(error.to_string()))?;
+    let instruction_json = serde_json::to_value(&instruction)
         .map_err(|error| RetrievalLookupError::Decode(error.to_string()))?;
     Ok(RetrievalTurnResult {
         tier0_eligible: routing.tier0_eligible,
@@ -235,6 +249,7 @@ fn retrieval_turn_result_for_split(
             "override_prompt_creation": routing.override_prompt_creation,
             "matched_component_ids": routing.matched_component_ids,
         }),
+        instruction: instruction_json,
     })
 }
 
@@ -648,8 +663,17 @@ mod tests {
             wilson_lower: 0.82,
             tier0_eligible: true,
         };
-        let result =
-            retrieval_turn_result_for_split(rust_items, orch_items, routing).expect("map split");
+        let instruction = Some(
+            brassclaw_engine::memory::instruction_builder::BuildInstruction {
+                llm_call_required: false,
+                variable_patterns: Vec::new(),
+                basic_prompt_section_refs: Vec::new(),
+                rust_steps: Vec::new(),
+                orchestrator_steps: Vec::new(),
+            },
+        );
+        let result = retrieval_turn_result_for_split(rust_items, orch_items, routing, instruction)
+            .expect("map split");
 
         // Real booleans propagated from routing.
         assert!(result.tier0_eligible);
@@ -658,6 +682,9 @@ mod tests {
         assert_eq!(result.rust_items.as_array().map(Vec::len), Some(1));
         assert_eq!(result.orchestrator_items.as_array().map(Vec::len), Some(2));
         assert_ne!(result.rust_items, result.orchestrator_items);
+        // The compiled BuildInstruction is serialized through (§7.5 upgrade).
+        assert!(result.instruction.is_object());
+        assert!(result.instruction.get("rust_steps").is_some());
         // routing_meta carries the full routing context.
         assert_eq!(
             result.routing_meta.get("variant").and_then(|v| v.as_str()),

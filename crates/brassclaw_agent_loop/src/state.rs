@@ -483,6 +483,7 @@ mod tests {
             rust_items: json!([{ "id": "02-001", "kind": "tool_skill" }]),
             orchestrator_items: json!([{ "id": "04-001", "kind": "python_code" }]),
             routing_meta: json!({ "variant": "components", "count": 2 }),
+            instruction: json!(null),
         });
 
         let value = serde_json::to_value(&state).unwrap();

@@ -364,3 +364,178 @@ source yet. E.4 must decide how `fetch_for_turn` obtains the matched template
 `reborn_intent_inputs`, or re-match `RecipeVariant.intent_examples`). That is
 an E.4 design decision to raise with the user before E.4 implementation.
 
+---
+
+## 7. E.4 design decisions (user-resolved 2026-08-22)
+
+Five design questions were raised with the user before E.4 implementation
+(task rule: "ask all design questions before implementing; do not decide
+design decisions unilaterally"). The resolutions below are canonical for
+E.4 and supersede any conflicting wording in §4's E.4 substep bullet.
+
+### 7.1 Template source for `capture_variables` — pass `query`
+
+Phase E uses **exact-match** intent (`ii.input_text = $5`), so the matched
+intent `input_text == query`. `capture_variables(template, user_text,
+variable_patterns)` is therefore called with `template = query` AND
+`user_text = query`. Because a Phase-E intent `input_text` is a literal
+(no `%`), `extract_template_slots(query, query)` returns `[]` → `vars = []`
+→ `substitute_vars` / `substitute_vars_in_value` are no-ops. The wiring is
+REAL (the helpers are invoked), just inert until Phase M switches
+`resolve_intent` to 3-path template matching, at which point Phase M
+changes THIS call site to pass the matched `%`-containing template instead
+of `query`. No `IntentResolution::Match` enum change, no extra DB query
+(this E.4). Chosen over "extend `Match` with `matched_input_text`"
+(forward-compatible but more churn now) and "re-query
+`reborn_intent_inputs`" (extra round-trip).
+
+### 7.2 Recipe-row query — scope filter only, NO SEC-01 hard gate
+
+The class-21+`step_link` recipe-row query filters on the scope 4-tuple
+ONLY (`tenant_id`/`user_id`/`agent_id`/`project_id`). It does NOT
+hard-gate on `validation_status = 'validated'` / `'05:validator' !=
+ALL(consumer_tags)`. Instead it SELECTs `validation_status`, `tier`, and
+`wilson_lower` to compute `tier0_eligible` (§7.4). A recipe demoted
+between the intent match and this fetch therefore STILL runs — via Tier-1
+(`llm_call_required = true`, `tier0_eligible = false`). The per-UUID
+sub-component fetches (`fetch_components_by_ids`) still enforce the full
+SEC-01 gate on every sub-component, so a demoted sub-component is dropped
+but the turn degrades, not fails. If the recipe row is entirely absent
+(deleted in the TOCTOU window; unreachable in practice) → fall back to
+the NoMatch broad-scan (`fetch_for_consumer` → `Components`).
+
+### 7.3 `variant_label` fallback — recipe row's `name`
+
+If `step_link.is_some()` but no `RecipeVariant` in `variants` matches it
+(or `variants` is empty/NULL), `variable_patterns = vec![]` (pinned) and
+`TurnRoutingSignals.variant_label = recipe.name` (the row's `name`
+column). When a variant DOES match, `variant_label = variant.variant_key`
+(as documented on `TurnRoutingSignals`).
+
+### 7.4 `build_instruction` error — soft-fail to empty `SplitResult`
+
+If `build_instruction` errors (bad `step_link` parse, step-order
+violation, or S7 guard), `fetch_for_turn` returns a `SplitResult` with
+**empty channels** (`rust_items = []`, `orchestrator_items = []`),
+`routing.llm_call_required = true`, `routing.tier0_eligible = false`,
+`routing.variant_label = recipe.name` (§7.3 fallback),
+`routing.matched_component_ids = []`, `routing.override_prompt_creation`
++ `routing.wilson_lower` + `routing.step_link` from the row/match, and
+`instruction = None` (§7.5). The turn degrades to Tier-1 rather than
+hard-failing. Chosen over "hard fail `RetrievalSourceError`" (a bad
+recipe should not break the whole turn) and "degrade to legacy
+`Components` path" (loses the intent-match routing signal).
+
+### 7.5 Upgrade — `SplitResult` + `RetrievalTurnResult` carry the compiled `BuildInstruction`
+
+**Task rule: "do not blindly remove upgrades; document, repair, complete
+or leave them".** Plan §0.8 defines `FetchForTurnResult::SplitResult {
+rust_items, orchestrator_items, routing }` (no `BuildInstruction`), and
+FIND-P9-03 defines `RetrievalTurnResult { tier0_eligible,
+llm_call_required, rust_items, orchestrator_items, routing_meta }` (no
+instruction field). The §0.8 step `iii` says "Apply `{{vars.name}}`
+substitution" and §0.20.3 says substitution is into `orchestrator_content`
+(the Skill/PythonCode BODIES = the fetched `ComponentItem`.
+effective_content`). But `ToolBinding.params` (carrying `{{vars.name}}`
+placeholders per §0.4.1) live on the compiled `BuildInstruction`'s
+rust-channel `IbsRecipeStep`s — which the §0.8 `SplitResult` DROPS. So a
+Phase-E-only `SplitResult` would compute the substituted `tool_bindings`
+and throw them away (wasted; Phase H would have to re-compile +
+re-substitute).
+
+**User decision (Q-E4-5 → option B):** extend BOTH types to carry the
+compiled `BuildInstruction` (with substituted `tool_bindings` + per-step
+structure) so Phase H's `RecipeStage` / `TierZeroExecutionStage` consumer
+receives everything without re-compiling. This is an upgrade to document:
+
+- **Engine `FetchForTurnResult::SplitResult`** gains
+  `instruction: Option<BuildInstruction>` — `Some` on a successful
+  compile (with `substitute_vars_in_value` already applied to every
+  rust-channel `tool_bindings[].params`), `None` on the §7.4 soft-fail.
+  Typed (engine-internal). `Option` honestly represents "no instruction
+  compiled" on soft-fail.
+- **Turns `RetrievalTurnResult`** gains
+  `instruction: serde_json::Value` — the composition bridge serializes
+  the engine `Option<BuildInstruction>` into it (`serde_json::to_value`
+  → `null` or the object). This PRESERVES the turns↔engine decoupling
+  (turns sees opaque JSON, never the `BuildInstruction` type; the
+  composition crate — the sole one depending on both — does the typed→
+  JSON serialization at the boundary, exactly as it already does for
+  `rust_items`/`orchestrator_items` via `serde_json::to_value(&items)`).
+  Non-split arms (`Components`/`Disambiguation`/`ActionShortCircuit`)
+  set `instruction: serde_json::json!(null)`.
+
+**Substitution application scope in E.4** (the complete, non-stub
+implementation): `vars = capture_variables(query, query,
+&variable_patterns)` (§7.1) is applied to (a) every fetched
+`ComponentItem.effective_content` in BOTH channels via
+`substitute_vars` (the bodies — §0.20.3), and (b) every
+`BuildInstruction.rust_steps[].tool_bindings[].params` via
+`substitute_vars_in_value` (§0.4.1), mutating the `BuildInstruction` in
+place before it is placed in `SplitResult.instruction`. At Phase E
+`vars = []` so both are no-ops; the wiring is real and Phase M activates
+it. This gives E.3's `substitute_vars_in_value` its E.4 caller (closing
+the E.3 "front-loaded but unused" gap).
+
+**`FetchForTurnResult::SplitResult` updated shape (deviates from §0.8
+verbatim block, lines 1085–1091):**
+```rust
+SplitResult {
+    rust_items:         Vec<ComponentItem>,
+    orchestrator_items: Vec<ComponentItem>,
+    routing:            TurnRoutingSignals,
+    instruction:        Option<BuildInstruction>,   // §7.5 upgrade
+}
+```
+A cross-reference to this section is added to `saved_plan_to_v3.md` §0.8.
+
+**`RetrievalTurnResult` updated shape (deviates from FIND-P9-03 /
+§0.8 lines 5324+):** adds `pub instruction: serde_json::Value`. All 8
+construction sites updated (2 in `brassclaw_turns` test + stub, 4 in
+composition bridge arms, 2 in `brassclaw_agent_loop` tests).
+
+### 7.6 Channel fetch — two batched fetches (one per channel), faithful to §0.8 PERF-02
+
+The §0.8 step `iv` + PERF-02 note (saved_plan lines 1182–1189) specify:
+"two batched fetches (one per channel) replace N per-UUID queries". The
+E.4 implementation honours this literally, NOT as one combined fetch +
+Rust-side partition:
+
+1. Gather `rust_steps[].include` UUIDs into a deduped `HashSet<Uuid>`,
+   same for `orchestrator_steps[].include` (dedup within a channel).
+2. Resolve each UUID's class via `lookup_component_class` (one indexed
+   SELECT per UUID → `rust_pairs` / `orch_pairs` `Vec<(Uuid, i32)>`).
+3. Call `fetch_components_by_ids` **once per channel**
+   (`fetch_components_by_ids(&pool, scope, &rust_pairs)` then
+   `&orch_pairs`) → `rust_items` / `orchestrator_items` directly. No
+   `HashMap` partition on the result; the channel split is NATURAL
+   because each channel fetches only its own UUIDs.
+4. A UUID included by BOTH channels is fetched per-channel and so
+   appears in BOTH result lists — this matches §0.8 ("fetches
+   per-channel"). `fetch_components_by_ids` is O(tables) per call, so
+   two calls = O(2·tables) ≈ O(tables) total (the table set per channel
+   is usually disjoint: rust channel ≈ tool_skills, orch channel ≈
+   skills + python_code).
+
+An earlier draft used ONE combined `fetch_components_by_ids` call
+(rust+orch UUIDs together) + a Rust-side `HashMap<Uuid, ComponentItem>`
+lookup to partition — that was an unasked design deviation (it would
+dedup cross-channel and lose the "appears in both lists" semantics).
+Refactored to the two-per-channel form above during E.4 self-review.
+Both forms verified clippy-clean; the two-per-channel form is canonical.
+
+### 7.7 Transient test observation (not a defect)
+
+During E.4 re-verification, `executor::orchestrator::tests::
+load_reduction_rules_db_error_returns_empty_and_caches` (orchestrator.rs,
+a file E.4 does NOT touch) failed once in a full
+`cargo test --lib -p brassclaw_engine --features skills-db` run, then
+passed in the immediately-following 4-crate combined run AND in
+isolation. Reproduction attempts (isolation x3 + full engine lib suite
+x2) all passed (677/677 every time). Root cause: a transient — the test
+is correctly isolated (fresh `ProjectId::new()` per run giving a unique
+`REDUCTION_RULE_CACHE` key + `invalidate_reduction_rules_cache()` at
+test start), so cross-test cache pollution is impossible. No code change
+made (modifying `orchestrator.rs` for a non-reproducible transient would
+be unsolicited churn outside E.4 scope). Recorded here for traceability.
+

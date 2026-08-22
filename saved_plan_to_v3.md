@@ -1088,6 +1088,16 @@ pub enum FetchForTurnResult {
         rust_items:         Vec<ComponentItem>,   // ToolSkill bodies — Rust only
         orchestrator_items: Vec<ComponentItem>,   // Skill + PythonCode bodies
         routing:            TurnRoutingSignals,
+        // ⚠️ UPGRADE (Phase E.4, Q-E4-5 → option B): carries the compiled
+        // BuildInstruction (with `{{vars.name}}`-substituted tool_bindings +
+        // per-step structure) so Phase H's RecipeStage/TierZeroExecutionStage
+        // consumer gets everything without re-compiling. Deviates from the
+        // original §0.8 shape above (which had no `instruction` field) and
+        // from FIND-P9-03's RetrievalTurnResult. `Some` on a successful
+        // compile, `None` on the build_instruction soft-fail. Full rationale
+        // + the matched RetrievalTurnResult.instruction (serde_json::Value,
+        // decoupled) in docs/agents-v3/subplan_problem_stepE_of_saved_plan_to_v3.md §7.5.
+        instruction:        Option<BuildInstruction>,
     },
 }
 

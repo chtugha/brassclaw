@@ -158,6 +158,14 @@ pub enum FetchForTurnResult {
         /// Skill + PythonCode bodies — orchestrator channel (LLM prior knowledge).
         orchestrator_items: Vec<ComponentItem>,
         routing: TurnRoutingSignals,
+        /// The compiled `BuildInstruction` carrying the per-step structure
+        /// (channel split, `include` UUIDs, `tool_bindings` with
+        /// `{{vars.name}}` already substituted into `params`) so the Phase-H
+        /// `RecipeStage` / `TierZeroExecutionStage` consumer can dispatch
+        /// Tier-0 tool invocations without re-compiling. `None` when
+        /// `build_instruction` soft-failed (§7.4: empty channels +
+        /// `llm_call_required = true`). Upgrade per subplan §7.5.
+        instruction: Option<crate::memory::instruction_builder::BuildInstruction>,
     },
 }
 
@@ -582,12 +590,23 @@ impl RetrievalSource for PostgresSource {
         Ok(items)
     }
 
-    /// Override: use the intent system (`resolve_intent`) before falling back
-    /// to the full UNION ALL scan (Step 6.7).
+    /// Intent-driven retrieval (v3 Phase E / plan §0.8 + subplan §7).
     ///
-    /// `resolve_intent` already atomically increments the matched row's score
-    /// (PERF-03, SEC-05) before returning `Match` — no separate increment call
-    /// is needed here.
+    /// Runs `resolve_intent` first. On a single `Match` it dispatches by
+    /// class code BEFORE any component fetch (FIND-P5-06):
+    ///   - class 16 (Action) → `ActionShortCircuit { component_id, name }`
+    ///     (execute directly, no LLM). `name` comes from the intent match's
+    ///     `component_name` (populated by `resolve_intent`'s `reborn_actions`
+    ///     LEFT JOIN) — no second DB fetch.
+    ///   - class 21 (Recipe) with a `step_link` → `SplitResult` via
+    ///     [`PostgresSource::fetch_recipe_split_result`] (IBS compile +
+    ///     batched channel fetch + `{{vars.name}}` substitution).
+    ///   - anything else (legacy / non-variant recipe / other class) → the
+    ///     existing per-UUID `fetch_component_by_id` → `Components` path.
+    /// `Disambiguation` is surfaced as-is; `NoMatch` / DB error fall back to
+    /// the full UNION ALL scan (`fetch_for_consumer`). `resolve_intent`
+    /// already atomically increments the matched row's score (PERF-03,
+    /// SEC-05) — no separate increment is needed.
     async fn fetch_for_turn(
         &self,
         scope: &ComponentScope,
@@ -608,16 +627,33 @@ impl RetrievalSource for PostgresSource {
             Ok(IntentResolution::Match {
                 component_id,
                 component_class_code,
-                // Phase D adds the bindings (FIND-23); Phase E dispatches on
-                // `step_link` for the SplitResult / ActionShortCircuit paths.
-                // Bound as `_` here so Phase D stays warning-free until that
-                // dispatch lands. `component_name` is consumed by Phase E's
-                // ActionShortCircuit; unused here.
-                step_link: _,
-                component_name: _,
+                step_link,
+                component_name,
             }) => {
                 // Score already incremented inside resolve_intent (PERF-03).
-                // Fetch the specific component from its class table (SEC-01 gate).
+                if component_class_code == 16 {
+                    // Action intent — execute directly, no LLM, no fetch.
+                    return Ok(FetchForTurnResult::ActionShortCircuit {
+                        component_id,
+                        name: component_name,
+                    });
+                }
+                if component_class_code == 21
+                    && let Some(step_link) = step_link
+                {
+                    return self
+                        .fetch_recipe_split_result(
+                            scope,
+                            component_id,
+                            step_link,
+                            query,
+                            token_budget,
+                            sender_class_code,
+                        )
+                        .await;
+                }
+                // Legacy / non-variant recipe / other class: fetch the
+                // specific component from its class table (SEC-01 gate).
                 let items =
                     fetch_component_by_id(&self.pool, scope, component_id, component_class_code)
                         .await?;
@@ -636,6 +672,237 @@ impl RetrievalSource for PostgresSource {
                 Ok(FetchForTurnResult::Components(items))
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PostgresSource inherent helpers — Phase E SplitResult assembly
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "skills-db")]
+impl PostgresSource {
+    /// Phase E (§0.8 + subplan §7): build the `SplitResult` for a class-21
+    /// recipe intent match with a `step_link`.
+    ///
+    /// 1. Fetch the recipe row — scope filter ONLY (§7.2: NO SEC-01 hard
+    ///    gate; SELECT `validation_status`/`tier`/`wilson_lower` to compute
+    ///    `tier0_eligible`). The per-UUID sub-component fetches still enforce
+    ///    the full SEC-01 gate. If the row is absent (TOCTOU — deleted
+    ///    between the intent match and this fetch; unreachable in practice)
+    ///    → fall back to the broad-scan `Components` path (§7.2).
+    /// 2. Compute `tier0_eligible` (tier ∈ {mature, candidate} AND
+    ///    `validation_status = 'validated'` AND `wilson_lower ≥ 0.70`; the
+    ///    `has_validation` guard is subsumed by `validated ⇒ has_validation`
+    ///    per §0.23 / Q2→A). `llm_call_required = !tier0_eligible` (Q3→A).
+    /// 3. Deserialise `variants` → find the variant whose `step_link` matches
+    ///    (§7.3). Fall back to `variable_patterns = vec![]` and
+    ///    `variant_label = recipe.name`.
+    /// 4. Deserialise `step_descriptions` → `Vec<StepDescriptionEntry>`.
+    /// 5. IBS `build_instruction` — soft-fail on error (§7.4) → empty
+    ///    `SplitResult`, `llm_call_required = true`, `tier0_eligible = false`,
+    ///    `instruction = None`.
+    /// 6. `capture_variables(query, query, &variable_patterns)` (§7.1: exact-
+    ///    match intent ⇒ `input_text == query`, so `template = user_text =
+    ///    query`; inert until Phase M switches to `%`-template matching).
+    /// 7. Gather channel `include` UUIDs; resolve each via
+    ///    `lookup_component_class` (PERF-02: one indexed SELECT per UUID).
+    /// 8. Batched `fetch_components_by_ids` (FIND-P9-04) — O(tables).
+    /// 9. Partition into channels + substitute `{{vars.name}}` into every
+    ///    fetched `ComponentItem.effective_content` (§0.20.3).
+    /// 10. Substitute `{{vars.name}}` into every `tool_bindings[].params`
+    ///     (§0.4.1) on BOTH channels (no-op on empty orchestrator bindings),
+    ///     mutating the `BuildInstruction` in place.
+    /// 11. Assemble `TurnRoutingSignals` + `SplitResult { instruction: Some }`.
+    async fn fetch_recipe_split_result(
+        &self,
+        scope: &ComponentScope,
+        recipe_id: uuid::Uuid,
+        step_link: String,
+        query: &str,
+        token_budget: usize,
+        sender_class_code: &str,
+    ) -> Result<FetchForTurnResult, RetrievalSourceError> {
+        use crate::memory::instruction_builder::{
+            StepDescriptionEntry, build_instruction, capture_variables, substitute_vars,
+            substitute_vars_in_value,
+        };
+        use crate::types::recipe::RecipeVariant;
+        use tokio_postgres::types::ToSql;
+
+        // 1. Recipe row — scope filter only (§7.2). JSONB read as text +
+        //    serde_json::from_str (engine idiom; avoids relying on
+        //    tokio_postgres serde_json feature availability in this crate).
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+        let row = client
+            .query_opt(
+                "SELECT name, tier, wilson_lower, validation_status,
+                        override_prompt_creation,
+                        COALESCE(step_descriptions::text, 'null') AS step_descriptions_text,
+                        COALESCE(variants::text, 'null') AS variants_text
+                 FROM reborn_recipes
+                 WHERE id = $1
+                   AND tenant_id  = $2
+                   AND user_id    = $3
+                   AND agent_id   = $4
+                   AND project_id = $5",
+                &[
+                    &recipe_id as &(dyn ToSql + Sync),
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                ],
+            )
+            .await
+            .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
+        let Some(row) = row else {
+            // TOCTOU absent row → broad-scan Components (§7.2).
+            let items = self
+                .fetch_for_consumer(scope, query, token_budget, sender_class_code)
+                .await?;
+            return Ok(FetchForTurnResult::Components(items));
+        };
+
+        let recipe_name: String = row.get(0);
+        let tier: String = row.get(1);
+        let wilson_lower: f64 = row.get(2);
+        let validation_status: String = row.get(3);
+        let override_prompt_creation: bool = row.get(4);
+        let step_descriptions_text: String = row.get(5);
+        let variants_text: String = row.get(6);
+
+        // 2. Tier-0 eligibility (has_validation subsumed by validated, §0.23).
+        let tier0_eligible = matches!(tier.as_str(), "mature" | "candidate")
+            && validation_status == "validated"
+            && wilson_lower >= 0.70;
+        let llm_call_required = !tier0_eligible;
+
+        // 3. Matched variant (§7.3).
+        let variants: Vec<RecipeVariant> = serde_json::from_str(&variants_text).unwrap_or_default();
+        let matched_variant = variants
+            .iter()
+            .find(|v| v.step_link.as_deref() == Some(step_link.as_str()));
+        let (variable_patterns, variant_label) = match matched_variant {
+            Some(v) => (v.variable_patterns.clone(), v.variant_key.clone()),
+            None => (Vec::new(), recipe_name.clone()),
+        };
+
+        // 4. StepDescriptions.
+        let step_descs: Vec<StepDescriptionEntry> =
+            serde_json::from_str(&step_descriptions_text).unwrap_or_default();
+
+        // 5. IBS compile (soft-fail §7.4).
+        let Ok(mut instruction) = build_instruction(
+            &step_link,
+            &step_descs,
+            &variable_patterns,
+            llm_call_required,
+        ) else {
+            return Ok(FetchForTurnResult::SplitResult {
+                rust_items: Vec::new(),
+                orchestrator_items: Vec::new(),
+                routing: TurnRoutingSignals {
+                    override_prompt_creation,
+                    matched_component_ids: Vec::new(),
+                    variant_label: recipe_name.clone(),
+                    step_link: step_link.clone(),
+                    llm_call_required: true,
+                    wilson_lower,
+                    tier0_eligible: false,
+                },
+                instruction: None,
+            });
+        };
+
+        // 6. Capture {{vars.name}} (§7.1: template = user_text = query).
+        let vars = capture_variables(query, query, &variable_patterns);
+
+        // 7. Per-channel include UUIDs (deduped within a channel) → registry
+        //    class resolution (PERF-02: one indexed SELECT per UUID).
+        let mut rust_uuids: std::collections::HashSet<uuid::Uuid> =
+            std::collections::HashSet::new();
+        for step in &instruction.rust_steps {
+            for id in &step.include {
+                rust_uuids.insert(*id);
+            }
+        }
+        let mut orch_uuids: std::collections::HashSet<uuid::Uuid> =
+            std::collections::HashSet::new();
+        for step in &instruction.orchestrator_steps {
+            for id in &step.include {
+                orch_uuids.insert(*id);
+            }
+        }
+        let mut rust_pairs: Vec<(uuid::Uuid, i32)> = Vec::with_capacity(rust_uuids.len());
+        for id in &rust_uuids {
+            if let Some(class_code) = lookup_component_class(&self.pool, scope, *id).await? {
+                rust_pairs.push((*id, class_code));
+            }
+        }
+        let mut orch_pairs: Vec<(uuid::Uuid, i32)> = Vec::with_capacity(orch_uuids.len());
+        for id in &orch_uuids {
+            if let Some(class_code) = lookup_component_class(&self.pool, scope, *id).await? {
+                orch_pairs.push((*id, class_code));
+            }
+        }
+
+        // 8. Two batched fetches — one per channel (PERF-02 / §0.8: "two
+        //    batched fetches (one per channel) replace N per-UUID queries").
+        //    A UUID included by both channels is fetched per-channel and so
+        //    appears in both result lists (§0.8 fetches per-channel).
+        let mut rust_items: Vec<ComponentItem> =
+            fetch_components_by_ids(&self.pool, scope, &rust_pairs).await?;
+        let mut orchestrator_items: Vec<ComponentItem> =
+            fetch_components_by_ids(&self.pool, scope, &orch_pairs).await?;
+
+        // 9. Substitute {{vars.name}} into every fetched body (§0.20.3).
+        for item in rust_items.iter_mut() {
+            item.effective_content = substitute_vars(&item.effective_content, &vars);
+        }
+        for item in orchestrator_items.iter_mut() {
+            item.effective_content = substitute_vars(&item.effective_content, &vars);
+        }
+
+        // 10. Substitute vars into tool_bindings[].params (§0.4.1), both
+        //     channels (no-op on empty orchestrator bindings).
+        for step in instruction.rust_steps.iter_mut() {
+            for tb in step.tool_bindings.iter_mut() {
+                tb.params = substitute_vars_in_value(&tb.params, &vars);
+            }
+        }
+        for step in instruction.orchestrator_steps.iter_mut() {
+            for tb in step.tool_bindings.iter_mut() {
+                tb.params = substitute_vars_in_value(&tb.params, &vars);
+            }
+        }
+
+        // 11. Routing signals + SplitResult. matched_component_ids are the
+        //     orchestrator-channel UUIDs (the `_set_active_skills` identity
+        //     set for the turn).
+        let matched_component_ids: Vec<String> = orchestrator_items
+            .iter()
+            .map(|i| i.id.to_string())
+            .collect();
+
+        Ok(FetchForTurnResult::SplitResult {
+            rust_items,
+            orchestrator_items,
+            routing: TurnRoutingSignals {
+                override_prompt_creation,
+                matched_component_ids,
+                variant_label,
+                step_link,
+                llm_call_required,
+                wilson_lower,
+                tier0_eligible,
+            },
+            instruction: Some(instruction),
+        })
     }
 }
 
@@ -822,6 +1089,103 @@ pub async fn fetch_component_by_id(
         .collect();
 
     Ok(items)
+}
+
+/// Batch-fetch multiple components in O(tables) round-trips instead of O(N)
+/// (PERF-02 / FIND-P9-04 — a Phase E requirement, not a future optimisation).
+///
+/// Groups `ids_by_class` by `(table, content_expr)` using the same
+/// [`class_code_to_table`] match arm as [`fetch_component_by_id`], then emits
+/// one `WHERE id = ANY($1) AND scope… AND validation_status = 'validated'`
+/// query per group. Unknown class codes are silently skipped (same behaviour
+/// as `fetch_component_by_id` returning `None` — the caller handles missing
+/// items via the returned `Vec` length).
+///
+/// SECURITY: `table_name` and `content_expr` are ALWAYS `&'static str`
+/// literals from the `class_code_to_table` match arm — never user input. This
+/// is the same invariant as `fetch_component_by_id`. NEVER extend this
+/// function to accept user-supplied table names or column expressions. The
+/// `class_code` is an `i32` from the DB (`reborn_components.class_code`), not
+/// from user input. Uses `tokio_postgres` directly (`pool.get()` +
+/// `client.query()`) — this codebase does NOT use sqlx.
+#[cfg(feature = "skills-db")]
+pub async fn fetch_components_by_ids(
+    pool: &brassclaw_pg::PgPool,
+    scope: &ComponentScope,
+    ids_by_class: &[(uuid::Uuid, i32)],
+) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
+    use tokio_postgres::types::ToSql;
+
+    // 1. Group by (table, content_expr) using the shared match arm. Unknown
+    //    class codes are skipped (class 0 tools / unallocated codes have no
+    //    prompt text).
+    let mut groups: std::collections::HashMap<(&'static str, &'static str), Vec<uuid::Uuid>> =
+        std::collections::HashMap::new();
+    for (id, class_code) in ids_by_class {
+        if let Some((table, content_expr)) = class_code_to_table(*class_code) {
+            groups.entry((table, content_expr)).or_default().push(*id);
+        }
+    }
+
+    if groups.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
+    let mut results = Vec::new();
+    for ((table, content_expr), ids) in &groups {
+        // Empty id vec would produce an empty ANY array; skip (no rows anyway).
+        if ids.is_empty() {
+            continue;
+        }
+        // SECURITY: `table` + `content_expr` are &'static str literals from
+        // class_code_to_table (never user input) — safe to interpolate.
+        let sql = format!(
+            "SELECT id::text, class_code::int, prompt_uid::bigint,
+                    name, COALESCE(description,'') AS description,
+                    {content_expr} AS effective_content,
+                    override_prompt_creation
+             FROM {table}
+             WHERE id = ANY($1)
+               AND tenant_id  = $2
+               AND user_id    = $3
+               AND agent_id   = $4
+               AND project_id = $5
+               AND validation_status = 'validated'
+               AND '05:validator' != ALL(consumer_tags)"
+        );
+        let params: &[&(dyn ToSql + Sync)] = &[
+            ids,
+            &scope.tenant_id,
+            &scope.user_id,
+            &scope.agent_id,
+            &scope.project_id,
+        ];
+        let rows = client
+            .query(&sql, params)
+            .await
+            .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+        for row in rows {
+            let id_str: &str = row.get(0);
+            let id = id_str
+                .parse::<uuid::Uuid>()
+                .unwrap_or_else(|_| uuid::Uuid::nil());
+            results.push(ComponentItem {
+                id,
+                class_code: row.get(1),
+                prompt_uid: row.get(2),
+                name: row.get::<_, &str>(3).to_string(),
+                description: row.get::<_, &str>(4).to_string(),
+                effective_content: row.get::<_, &str>(5).to_string(),
+                override_prompt_creation: row.get(6),
+            });
+        }
+    }
+    Ok(results)
 }
 
 /// Resolve a component UUID to its `class_code` via the `reborn_components`
