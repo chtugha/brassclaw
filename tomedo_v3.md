@@ -4,11 +4,14 @@
 > tomedo EMR REST API into BrassClaw Reborn as a first-class extension.
 > It follows the same orchestrator-first, LLM-minimal design as `builtin_stuff_v3.md`.
 >
-> **Source of truth for the tomedo API:** `tomedo-crawl.cpp` and `docs/tomedo-crawl.md`
-> from `https://github.com/chtugha/coding.agent` (probed live 2026-04-11).
+> **Source of truth for the tomedo API:** live probe of server 192.168.10.9
+> (2026-08-22) + api-connector.jar decompilation + tomedo Handbuch (support.tomedo.de).
 >
 > **Extension name:** `tomedo`
 > **Extension slug:** `ext-tomedo` (class 23 ExtensionCatalogue)
+>
+> **Test patient:** ident `13550` — `Test, Toni`, DOB 1989-12-31. Use for all write tests.
+> **DB name:** `tomedo_live`  **Server:** `192.168.10.9:8443` (mTLS)
 >
 > ---
 >
@@ -134,10 +137,35 @@
 > **`searchByAttributes` is confirmed broken** — returns `{}` for all queries.
 > Use the crawl sidecar RAG endpoint for name/phonetic/phone search instead.
 >
-> **Leistungen (billing codes) are only accessible via patientenDetailsRelationen**
-> with limit params — there is no safe dedicated Leistung list endpoint. The
-> `verordnungen` array within patientenDetailsRelationen contains prescriptions;
-> EBM/GOÄ Leistungen are inside `behandlungsfaelle[].leistungen[]` when limits permit.
+> **Leistungen are inside `kvSchein.ebmLeistungen[]` / `kvSchein.goaeLeistungen[]`**
+> — not in patientenDetailsRelationen. Fetch path (confirmed live 2026-08-22):
+> ```
+> 1. GET /{db}/patient/{id}/patientenDetailsRelationen?limitScheine=true  → kvScheine[].ident
+> 2. GET /{db}/kvschein/{schein_ident}  → ebmLeistungen[], goaeLeistungen[]
+> ```
+>
+> **EBMLeistung field schema** (confirmed from test patient ident 13550, schein 192567376632348672):
+> ```
+> subentityType:     "EBMLeistung"
+> ident:             (large int — the Leistung ID)
+> datum:             epoch ms
+> visible:           bool
+> anzahl:            int (count, default 1)
+> ebmKatalogEintrag: {ident: N}  ← catalog entry ident, NOT the EBM Ziffer string directly
+> leistungserbringer:{ident: N}  ← Arzt ident
+> betriebsstaette:   {ident: N}
+> dokumentierenderNutzer: {ident: N}
+> abrechnenderArzt:  {ident: N}
+> ```
+>
+> **Key insight:** `ebmKatalogEintrag.ident` is an internal catalog ident (e.g. 270, 298),
+> NOT the human-readable EBM Ziffer string (e.g. "03220"). To map catalog ident → EBM Ziffer,
+> either look up `GET /{db}/ebmkatalogeintrag/{ident}` or read the Ziffer from the
+> `l` Briefkommando which operates client-side on the open Schein.
+>
+> **The `$[l %nr 0d ,]$` Briefkommando** reads Leistungen from the currently-open
+> Schein in the Mac client — it is client-side context only, not a REST path.
+> The equivalent REST read is: GET /kvschein/{ident} → ebmLeistungen[].ebmKatalogEintrag.ident
 >
 > ### tomedo REST API (port 8443, mTLS) — WRITE endpoints (confirmed live 2026-08-22)
 >
@@ -283,20 +311,42 @@
 >
 > ## §write-paths — Write Paths to tomedo (Status as of 2026-08-22)
 >
-> **Probed:** 2026-08-22 via SSH to 192.168.10.9 (Linux tomedo server)
+> **Probed:** 2026-08-22 via SSH + direct mTLS connection to 192.168.10.9:8443.
 >
-> **Only one write path is in scope for v3:** the official tomedo.API gateway.
-> Aktionskette Mac-client triggers, AppleScript, and direct PostgreSQL are all
-> removed — Mac-only, bypass business logic unsafely, or inaccessible server-side.
+> ### Primary Write Path — Direct mTLS REST API (port 8443)
+>
+> **Status: ACTIVE — no partner agreement needed. Confirmed live 2026-08-22.**
+>
+> BrassClaw calls the tomedo REST API directly via HTTPS mTLS using the client
+> certificate from `/opt/data/apiConnector/ssl/`. All write operations use the
+> same `tomedo-api` tool with POST/PUT methods.
+>
+> **Confirmed working write endpoints:**
+> - `POST /{db}/karteieintrag` — create KarteiEintrag → returns `{new_ident}`
+> - `POST /{db}/termin` — create appointment → returns `{new_ident}`
+> - `POST /{db}/patient` — create patient → returns `{new_ident}`
+> - `PUT  /{db}/karteieintrag/{id}` — update; `visible:false` hides entry
+> - `PUT  /{db}/termin/{id}` — update; `removed:true` cancels appointment
+> - `PUT  /{db}/patient/{id}` — update; `gesperrt:1` (integer!) blocks patient
+>
+> **Type facts (from live probe):**
+> - `gesperrt` is **Integer** — send `1` not `true`
+> - `removed` on Termin is **Boolean** — send `true`
+> - `visible` on KarteiEintrag is **Boolean** — send `false` to hide
+> - Error responses: HTTP 460 with Java stack trace as body
+> - DELETE is not supported (HTTP 405) — use PUT soft-delete instead
+>
+> **Write recipes are Tier 1:** LLM confirms content/intent, orchestrator POSTs/PUTs.
 >
 > ---
 >
-> ### Write Path — Official tomedo.API Gateway (requires partner agreement)
+> ### Secondary Write Path — Official tomedo.API Gateway (optional, requires partner agreement)
 >
 > **Status:** API connector software **fully installed and running** on this server.
-> Gateway is live at `https://api.tomedo.de`. Only the Keycloak credentials are missing.
+> Gateway is live at `https://api.tomedo.de`. Only Keycloak credentials are missing.
+> **This is NOT required for v3** — use the direct mTLS path above instead.
 >
-> **Architecture (confirmed by decompiling `/opt/data/apiConnector/bin/api-connector.jar`):**
+> **Architecture (from decompiling `/opt/data/apiConnector/bin/api-connector.jar`):**
 > ```
 > BrassClaw (HTTPS, Keycloak JWT, E2E EC P-521)
 >     ↕
@@ -307,144 +357,213 @@
 > tomedo server (port 8443)
 > ```
 >
-> **What is already in place on this server:**
-> - `api-connector.jar` running as a Spring Boot service on port 8502
-> - EC P-521 key pair already generated for end-to-end encryption
-> - mTLS client cert already configured for port 8443
-> - Currently logs `"No Keycloak credentials are configured!"` every 5 minutes
+> What is already in place: `api-connector.jar` running on port 8502, EC P-521 key
+> pair generated, mTLS cert configured. Currently logs
+> `"No Keycloak credentials are configured!"` every 5 minutes.
 >
-> **What is missing (one-time setup):**
-> 1. Sign the tomedo.API partner agreement with zollsoft GmbH
->    (contact: Toni Ringling / Madita Poslovsky, Jena)
-> 2. Receive: gateway URL (`app.ws.gateway.url`) + Keycloak realm + client ID
-> 3. Add to `/opt/data/apiConnector/config/properties.yaml`
-> 4. `sudo systemctl restart tomedo-api-connector`
->
-> **What BrassClaw can do once live:**
-> The gateway proxies **any HTTP method** (GET/POST/PUT/PATCH/DELETE) to port 8443.
-> This unlocks:
-> - `POST /{db}/patient` — create patient
-> - `POST /{db}/karteieintrag` — create Karteieintrag
-> - `POST /{db}/termin` — create appointment
-> - `PUT  /{db}/patient/{id}` — update patient data
-> - `DELETE /{db}/termin/{id}` — cancel appointment
-> All write recipes are **Tier 1**: LLM confirms content, orchestrator executes via
-> a `tomedo-api-write` ToolSkill (POST/PUT/DELETE variant of `tomedo-api`).
->
-> **BrassClaw does NOT call the connector directly.** It registers as a partner
-> with `api.tomedo.de`, then sends requests through the cloud gateway.
->
-> **Write endpoints available (see §rest-write-probe for live probe results).**
+> To activate: sign the tomedo.API partner agreement with zollsoft GmbH and add
+> Keycloak credentials to `/opt/data/apiConnector/config/properties.yaml`.
 >
 > ---
 >
 > ## §briefkommandos — Briefkommandos: Template Syntax and REST API Field Mapping
 >
-> **Source:** https://support.tomedo.de/handbuch/tomedo/kommunikation-mit-aerzten-patienten/briefschreibung/kommandos/ (scraped live Aug 2026)
+> **Source:** https://support.tomedo.de/handbuch/tomedo/kommunikation-mit-aerzten-patienten/briefschreibung/kommandos/uebersicht-nuetzlicher-briefkommandos/ (scraped live Aug 2026)
 >
-> Briefkommandos are **tomedo server-side template placeholders** of the form `$[kommando]$`
-> used inside Briefvorlagen (letter templates) and Aktionsketten conditions.
-> They are **not REST endpoints** — tomedo evaluates them internally when rendering
-> a letter for a specific patient context.
+> **Primary purpose for BrassClaw:** Briefkommandos are the **data model documentation**
+> for the REST API. Every `$[&p.some.path]$` keypath is directly readable via
+> `GET /{db}/patient/{id}`. Every shorthand like `$[pn]$` or `$[l %nr 0d ,]$` reveals
+> what field or computed value tomedo exposes — and what REST path to use server-side.
+> Briefkommandos improve API endpoint design by showing exactly which fields exist,
+> how they nest, and what computed/transient properties exist only client-side.
 >
-> **Critical insight: Briefkommandos and the REST API share the same underlying
-> CoreData object graph.** The keypath Briefkommando `$[&p.someKeyPath]$` traverses
-> the same object tree exposed by `GET /patient/{id}`. This means:
-> - Every REST response field can also be expressed as a Briefkommando keypath
-> - The REST API is BrassClaw's *read interface*; Briefkommandos are tomedo's *render interface*
-> - When composing Briefvorlagen, BrassClaw should map the user's field request to
->   the correct Briefkommando shorthand OR keypath — the scraped table below is the mapping
+> **The derivation rule:** `$[&p.x.y.z]$` = REST JSON path `x.y.z` in `GET /{db}/patient/{id}`.
 >
-> ### Briefkommando Syntax Reference
+> **Computed/transient properties** (Briefkommando only, no REST equivalent):
+> - `$[&p.currentAbrechnungsControllerObject.class.patInfoPanelMode]$` — EBM(1) vs GOÄ(2) mode
+>   → server-side: check `currentKVSchein` vs `goaeScheine` presence in patientenDetailsRelationen
+> - `$[l %nr ...]$` — reads from the **currently-open Schein on the Mac client**
+>   → server-side: `GET /kvschein/{ident}` → `ebmLeistungen[]` (two-step safe path)
 >
-> **Simple placeholders** (no parameters): `$[kommandoname]$`
-> **Keypath** (CoreData object traversal): `$[&p.someKey.nestedKey]$`
->   — objects: `p` (Patient), `pr` (Rechnung/invoice), `termin` (Appointment)
-> **Parameterized**: `$[kommando param1 param2 ...]$`
-> **Conditional**: `$[if condition operator value trueResult falseResult]$`
-> **Date**: `$[d S dd.MM.yyyy]$` (S=System, B=last visit, E=Karteieintrag, L=last Leistung)
+> ### Briefkommando Syntax Reference (all families, scraped Aug 2026)
 >
-> ### Field → Briefkommando → REST JSON Path Mapping (confirmed live, Aug 2026)
+> **Simple:** `$[kommandoname]$` — inserts a value directly
+> **Keypath:** `$[&p.path.to.field]$` — CoreData traversal; `p`=patient, `pr`=Rechnung, `besuch`=visit
+> **Parameterized:** `$[kommando param1 param2]$` — underscores become spaces in output
+> **Conditional (2-branch):** `$[if expr op val trueText falseText]$`
+> **Conditional (1-branch):** `$[if_then expr op val result]$` — empty string if false
+> **Conditional (gender):** `$[if_frau femaleText maleText]$`
+> **Multi-value if:** `$[if expr op val1 result1 val2 result2 ...]$` — matches first
+> **Date:** `$[d source format]$` — S=system, B=last visit, E=last KarteiEintrag of type, L=last Leistung date
+> **Date arithmetic:** `$[d S-2y yyyyMMdd]$` — subtract 2 years; `$[d S-152 yyyyMMdd]$` — subtract 152 days
+> **Substring:** `$[bisZeichen N field]$` — first N chars of field
+> **Count:** `$[c TYPE aq]$` — count KarteiEintrag of type in current quarter (aq-1=last, aq-2=prior)
+> **x-Kommando:** `$[x TYPE count _ days flags]$` — flexible KarteiEintrag filter/retrieval
+> **Leistung (client-side only):** `$[l format days separator]$` — reads from open Schein
+> **Lab:** `$[laborwert TYPE KÜRZEL format position]$`
+> **Form:** `$[formularEintrag KÜRZEL feldname N]$` / `$[customFormularEintrag KÜRZEL feld N]$`
+> **Family:** `$[familie Beziehung placeholder]$` / `$[kommandorahmen ...]$`
+> **Score:** `0$[v1]$+0$[v2]$` — CKE numeric fields; prepend 0 to avoid null errors
+> **QR:** `$[qrCode -breite N -text URL]$`
+> **Document:** `$[dokument Name -breite N]$` / `$[dokument Name -text]$`
+> **Operators:** `zs_equals`, `zs_not_equal`, `zs_less_then`, `zs_contains`
+> **Empty check:** use literal `<leer>` as the value to test for empty/null
 >
-> | Field | Briefkommando shorthand | Keypath form | REST JSON path |
-> |-------|------------------------|-------------|----------------|
-> | Patient ID | `$[pid]$` | `$[&p.ident]$` | `ident` |
-> | Family name | `$[pn]$` | `$[&p.nachname]$` | `nachname` |
-> | Given name | `$[pv]$` | `$[&p.vorname]$` | `vorname` |
-> | Title | `$[pt]$` | `$[&p.titel]$` | `titel` |
-> | Full name | `$[pvoll]$` | — | — |
-> | Date of birth | `$[pg]$` / `$[bes_gebDatum]$` | — | `geburtsDatum` (epoch ms) |
-> | Street | `$[ps]$` / `$[patient_strasse]$` | — | `patientenDetails.kontaktdaten.adresse.strasse` |
-> | Postcode | `$[pp]$` / `$[patient_plz]$` | — | `patientenDetails.kontaktdaten.adresse.plz` |
-> | City/town | `$[po]$` / `$[patient_ort]$` | — | `ort` / `patientenDetails.kontaktdaten.adresse.ort` |
-> | Country | `$[pLand]$` | `$[&p.patientenDetails.kontaktdaten.adresse.land]$` | `patientenDetails.kontaktdaten.adresse.land` |
-> | Mobile phone | `$[phandy]$` | — | `patientenDetails.kontaktdaten.handyNummer` |
-> | Main phone | `$[ptel]$` | — | `patientenDetails.kontaktdaten.telefon` |
-> | E-Mail | `$[pemail]$` | — | `patientenDetails.kontaktdaten.email` |
-> | Gender | `$[pmw]$` / `$[pMW]$` | — | — |
-> | Occupation | `$[pb]$` | — | `patientenDetails.beruf` |
-> | Insurance type | `$[patient_versichertenstatus]$` | — | — |
-> | Insurance number | `$[pversnr]$` | — | — |
-> | Insurance name | `$[pk]$` | — | — |
-> | Insurance IK | `$[kasse_ik]$` | — | — |
-> | Address block (recipient) | `$[adressfeld_empfaenger]$` | — | — |
-> | Salutation | `$[anrede]$` | — | — |
-> | Practice city | `$[ort]$` | — | — |
-> | Today's date | `$[datum]$` / `$[d S]$` | — | — |
-> | Last visit date | `$[d B]$` | — | — |
-> | Birthday | `$[bes_gebDatum]$` | — | `geburtsDatum` |
-> | First treating physician | — | `$[&p.patientenDetails.arzt]$` | `patientenDetails.arzt` |
-> | Body height (last BMI) | `$[koerpergroesseAusLetztemBMI]$` | — | — |
-> | Body weight (last BMI) | `$[gewichtAusLetztemBMI]$` | — | — |
-> | Systolic BP | `$[letzterBlutdruckSystolisch]$` | — | — |
-> | Diastolic BP | `$[etzterBlutdruckDiastolisch]$` | — | — |
-> | First registration date | `$[erstaufnahme]$` | — | — |
-> | Appointment list | `$[selektierteTermineListe %A:_%d]$` | — | `termine[]` |
-> | Invoice paid | — | `$[&pr.bezahlt]$` | — |
-> | Lab value | `$[laborwert LAB QUICK %w_%e L]$` | `$[&p.patientenDetails.patientenDetailsRelationen.karteiEintraege.laborauftrag.befunde.lbTest.lbGNR.gebuehrennummer]$` | `patientenDetailsRelationen.karteiEintraege[]` |
-> | Current KV-Schein quarter | — | `$[&p.patientenDetails.patientenDetailsRelationen.currentKVSchein.quartalAsString]$` | — |
-> | Referring physician | — | `$[&p.selektierterSchein.ueberweisenderArztName]$` | — |
-> | Custom Kartei entry value | `$[karteiEintragValue_withArgs KÜRZEL customKarteiEintragEntries.V2 _N]$` | — | `patientenDetailsRelationen.karteiEintraege[]` |
+> ### §briefkommandos-leistung — Leistung Kommandos → REST API equivalents
 >
-> ### Key Briefkommando Families for Composition
+> This is the most important family for billing logic. The `l` kommando reads
+> Leistungen from the **currently-open Schein on the Mac client** (client-side only).
+> BrassClaw must replicate these checks server-side via the two-step kvschein path.
 >
-> **Conditional (`if`):** `$[if condition operator value trueText falseText]$`
-> - `zs_equals`, `zs_not_equal`, `zs_less_then`, `zs_contains` are the comparison operators
-> - Example: `$[if_frau unsere_gemeinsame_Patientin unseren_gemeinsamen_Patient]$` — gender branch
-> - Example: `$[if ptel zs_equals <leer> nicht_ausgefüllt ptel]$` — empty check
+> | Briefkommando | What it does (client-side) | Server-side REST equivalent |
+> |---|---|---|
+> | `$[l %nr 0d ,]$` | All EBM Ziffern from today's open Schein | Step 1: `patientenDetailsRelationen?limitScheine=true` → `kvScheine[0].ident`; Step 2: `GET /kvschein/{ident}` → `ebmLeistungen[].ebmKatalogEintrag.ident`; Step 3: `GET /ebmkatalogeintrag/{ident}` → `.nummer` |
+> | `$[l %nr 90d ,]$` | EBM Ziffern from Schein in last 90 days | Same path, filter `datum > now-90d` across all kvScheine |
+> | `$[l EBM:_%nr]$` | EBM Ziffern with "EBM:" prefix | Same, format output |
+> | `$[l %ops J ,_]$` | All OPS codes from selected Leistungen | `goaeLeistungen[].opsCode` (if present) |
+> | `$[d L dd.MM.yyyy 30791]$` | Date last Ziffer 30791 was billed | Filter `ebmLeistungen` where resolved `.nummer='30791'`, sort desc, take `.datum` |
 >
-> **Date (`d`):** `$[d S dd.MM.yyyy]$`
-> - `S` = system date, `B` = last visit, `E <TYPE>` = last Karteieintrag of type, `L <ZIFFER>` = last billing code date
-> - Format chars: `dd.MM.yyyy` = 31.03.2025, `d.MMMM.yyyy` = 31. März 2025, `HH:mm` = time
+> **The EBM/GOÄ mode + Leistung pattern** (confirmed from live docs Aug 2026):
+> ```
+> $[if &p.currentAbrechnungsControllerObject.class.patInfoPanelMode zs_equals 1 EBM: 2 GOÄ:]$ $[l %nr 0d ,]$
+> ```
+> Outputs e.g. `EBM: 03220, 03221` from the open Schein.
+> **`patInfoPanelMode` is a computed/transient property — not in the REST JSON.**
+> BrassClaw server-side equivalent:
+> 1. `patientenDetailsRelationen?limitScheine=true` → check `kvScheine` (non-empty = EBM) vs `goaeScheine` (non-empty = GOÄ)
+> 2. Fetch `GET /kvschein/{ident}` for the most recent Schein → `ebmLeistungen[]`
+> 3. Resolve each `ebmKatalogEintrag.ident` → `GET /ebmkatalogeintrag/{ident}` → `.nummer`
+> 4. Prefix output "EBM:" or "GOÄ:" based on which Schein type was found
 >
-> **Keypath (`&`):** `$[&p.patientenDetails.kontaktdaten.telefon]$`
-> - Any field accessible in the Admin → Kommandos → Keypath browser can be used
-> - `p` = patient, `pr` = Rechnung, `termin` = appointment
-> - The keypath paths are **identical to the JSON field paths in GET /patient/{id}**
+> ---
 >
-> **Salutation (`a`):** `$[a Sehr_geehrte_Frau_%pn Sehr_geehrter_Herr_%pn ...]$`
-> - Gender-aware auto-salutation. Underscores = spaces in output.
+> ### §briefkommandos-karteieintrag — KarteiEintrag Kommandos → REST paths
 >
-> **Custom Kartei entry:** `$[karteiEintragValue_withArgs KÜRZEL customKarteiEintragEntries.FIELD _ N]$`
-> - Reads a specific field from a CustomKarteiEintrag by its abbreviation (Kürzel)
+> | Briefkommando | Purpose | Server-side REST path |
+> |---|---|---|
+> | `$[d E yyyyMMdd BMI]$` | Date of last BMI entry | `patientenDetailsRelationen.karteiEintraege[]` filter `karteiEintragTyp.kuerzel=BMI`, sort desc `.datum`, take first |
+> | `$[d E yyyyMMdd LAB]$` | Date of last LAB entry | Same, filter `kuerzel=LAB` |
+> | `$[c BES aq]$` | Count of BES entries this quarter | Count `karteiEintraege[]` where `kuerzel=BES` and `.datum` in current quarter |
+> | `$[c BES aq-1]$` | Count last quarter | Same, previous quarter date range |
+> | `$[c CAV]$` | Count of CAV entries | Count `karteiEintraege[]` where `kuerzel=CAV` |
+> | `$[x BMI inf _ 152 ...]$` | Last BMI not older than 152d | `karteiEintraege[]` filter `kuerzel=BMI`, `datum > now-152d` |
+> | `$[x NOT 1 _ 0-0 ...]$` | Text of first NOTiz entry | `karteiEintraege[kuerzel=NOT][0].text` |
+> | `$[x (DDI;DIA) 1 _ inf ...]$` | Oldest active diagnosis | `diagnosen[]` sort asc, filter active |
+> | `$[istMarkerGesetzt DMP/KHK]$` | Is marker set | `karteiEintraege[]` filter `kuerzel=DMP/KHK` and type=marker |
+> | `$[karteiEintragValue_withArgs KÜRZEL customKarteiEintragEntries.V2 _N]$` | CKE field V2 | `karteiEintraege[kuerzel=KÜRZEL].customKarteiEintragEntries` field V2 |
+> | `$[&p.inv_besuch.boolCol1]$` | Visit-dependent bool | `karteiEintraege[type=besuch].boolCol1` |
+> | `$[&p.patientenDetails.boolCol1]$` | Patient-level bool | `patientenDetails.boolCol1` |
+> | `$[laborwert LAB QUICK %w_%e L]$` | Lab value + unit | `karteiEintraege[kuerzel=LAB].laborauftrag.befunde[]` filter `lbTest.kuerzel=QUICK`; value=`lbTest.wert`, unit=`lbTest.einheit` |
+> | `$[&p.patientenDetails.patientenDetailsRelationen.karteiEintraege.laborauftrag.befunde.lbTest.lbGNR.gebuehrennummer]$` | All lab GNR | Same path, collect all `.gebuehrennummer` values |
 >
-> **Lab value:** `$[laborwert LAB QUICK %w_%e L]$`
-> - `LAB` = Karteieintrag type, `QUICK` = lab value abbreviation
-> - `%w` = value, `%e` = unit
+> ---
 >
-> **Score variable:** `0$[v1]$+0$[v2]$`
-> - CKE score fields; prepend 0 to prevent null-multiplication errors
+> ### §briefkommandos-field-table — Complete Field → Shorthand → REST path (scraped Aug 2026)
 >
-> ### Implication for BrassClaw Composition
+> **Patient:**
 >
-> When the user asks to compose a Briefvorlage or needs a Briefkommando for a
-> specific field, the orchestrator should:
-> 1. Check the mapping table above — if the field has a known shorthand, use it
-> 2. If no shorthand exists, use `$[&p.keypath]$` where `keypath` mirrors the REST JSON path
-> 3. Only invoke the LLM (`skill-tomedo-lookup-briefkommando`) when the field is
->    not in the table and requires traversal of unfamiliar nested objects
-> 4. For date fields, always use the `d` kommando family with appropriate source (S/B/E/L)
-> 5. For gender-conditional text, always use `if_frau` or the full `a` kommando
+> | Field | Shorthand(s) | REST JSON path |
+> |---|---|---|
+> | Patient ID | `$[pid]$` | `ident` |
+> | Family name | `$[pn]$` | `nachname` |
+> | Given name | `$[pv]$` | `vorname` |
+> | Title | `$[pt]$` | `titel` |
+> | Full name | `$[pvoll]$` | — (computed) |
+> | DOB | `$[pg]$` / `$[bes_gebDatum]$` / `$[pg0]$` / `$[pg2]$` | `geburtsDatum` (epoch ms) |
+> | First initial + name | `$[bisZeichen 1 pv]$. $[pn]$` | — |
+> | Street | `$[ps]$` / `$[patient_strasse]$` | `patientenDetails.kontaktdaten.adresse.strasse` |
+> | Postcode | `$[pp]$` / `$[patient_plz]$` | `patientenDetails.kontaktdaten.adresse.plz` |
+> | City | `$[po]$` / `$[patient_ort]$` | `patientenDetails.kontaktdaten.adresse.ort` |
+> | Country | `$[pLand]$` | `patientenDetails.kontaktdaten.adresse.land` |
+> | Country (2 chars) | `$[bisZeichen 2 pLand]$` | same |
+> | Mobile | `$[phandy]$` | `patientenDetails.kontaktdaten.handyNummer` |
+> | Phone | `$[ptel]$` | `patientenDetails.kontaktdaten.telefon` |
+> | Fax | `$[patient_fax]$` | `patientenDetails.kontaktdaten.fax` |
+> | E-mail | `$[pemail]$` | `patientenDetails.kontaktdaten.email` |
+> | Gender | `$[pmw]$` / `$[pMW]$` / `$[pderdie]$` | — (computed) |
+> | Occupation | `$[pb]$` | `patientenDetails.beruf` |
+> | Employer | `$[agn]$` | `patientenDetails.arbeitgeberName` |
+> | Insurance type | `$[patient_versichertenstatus]$` | — (GKV/PKV computed) |
+> | Insurance number | `$[pversnr]$` | — |
+> | Insurance name | `$[pk]$` | — |
+> | Insurance IK | `$[kasse_ik]$` | — |
+> | First registration | `$[erstaufnahme]$` | — |
+> | Body height (BMI) | `$[koerpergroesseAusLetztemBMI]$` | `karteiEintraege[type=BMI].groesse` |
+> | Body weight (BMI) | `$[gewichtAusLetztemBMI]$` | `karteiEintraege[type=BMI].gewicht` |
+> | Systolic BP | `$[letzterBlutdruckSystolisch]$` | `karteiEintraege[type=BMI].blutdruckSystolisch` |
+> | Diastolic BP | `$[etzterBlutdruckDiastolisch]$` | `karteiEintraege[type=BMI].blutdruckDiastolisch` |
+> | First physician | `$[&p.patientenDetails.arzt]$` | `patientenDetails.arzt` |
+> | PDF key | `$[&p.patientenDetails.PDFSchluessel]$` | `patientenDetails.PDFSchluessel` |
+> | Has duplicate | `$[&self.besuch.patient.patientenDetails.hasDuplicates]$` | `patientenDetails.hasDuplicates` |
+> | Maternity protection | `$[pmutterschutz]$` | — |
+> | Delivery date | `$[d_geburt]$` | — |
+> | Last menstruation | `$[letzteRegel]$` | — |
+>
+> **KV-Schein (via `patientenDetailsRelationen.currentKVSchein`):**
+>
+> | Field | Keypath Briefkommando | REST path |
+> |---|---|---|
+> | Current quarter | `$[&p.patientenDetails.patientenDetailsRelationen.currentKVSchein.quartalAsString]$` | `patientenDetailsRelationen.currentKVSchein.quartalAsString` |
+> | Schein type code | `$[&p.patientenDetails.patientenDetailsRelationen.currentKVSchein.scheingruppe.code]$` | `patientenDetailsRelationen.currentKVSchein.scheingruppe.code` |
+> | Kurativ/Präventiv | `$[&p.patientenDetails.patientenDetailsRelationen.currentKVSchein.kurativPraeventiv4221]$` | `patientenDetailsRelationen.currentKVSchein.kurativPraeventiv4221` |
+> | Überweisungsauftrag | `$[&p.patientenDetails.patientenDetailsRelationen.currentKVSchein.auftragstext4205]$` | `patientenDetailsRelationen.currentKVSchein.auftragstext4205` |
+> | Expected delivery (MTE) | `$[&p.patientenDetails.patientenDetailsRelationen.currentKVSchein.mutmasslicherTagDerEntbindung4206]$` | `patientenDetailsRelationen.currentKVSchein.mutmasslicherTagDerEntbindung4206` |
+> | Referring physician | `$[&p.selektierterSchein.ueberweisenderArztName]$` | `selektierterSchein.ueberweisenderArztName` |
+> | Karte nicht gesteckt | `besuch.karteNichtGesteckt` | — (computed, client-side) |
+>
+> **Invoice (pr = Rechnung):**
+>
+> | Field | Shorthand/Keypath | Notes |
+> |---|---|---|
+> | Paid | `$[&pr.bezahlt]$` | `1`=paid, `0`=unpaid |
+> | Date paid | `$[&pr.bezahltDatum]$` | — |
+> | Due date | `$[pr_faelligBis]$` | — |
+> | Net sum | `$[pr_rechnungsSumme]$` | without VAT, without deductions |
+> | Gross sum | `$[pr_rechnungsSummeReal]$` | with Mahngebühr, deductions, VAT |
+> | VAT portion | `$[pr_rechnungsSummeMwst]$` | — |
+> | Sum excl. VAT | `$[pr_rechnungsSummeRealOhneMwst]$` | — |
+>
+> **Letter/visit context:**
+>
+> | Field | Shorthand | Notes |
+> |---|---|---|
+> | Practice city | `$[ort]$` | Betriebsstätte |
+> | Recipient address | `$[adressfeld_empfaenger]$` | — |
+> | Recipient fax | `$[fax_empfaenger]$` | — |
+> | Footer ("nachrichtlich an…") | `$[fusszeile]$` | — |
+> | Images | `$[bilder]$` | Sono etc. |
+> | Visit arrival time | `$[besuchAnkunftZeit]$` | — |
+> | Today's date | `$[datum]$` / `$[d S dd.MM.yyyy]$` | — |
+> | Last visit date | `$[d B]$` | — |
+> | Weekday long | `$[d S EEEE]$` | "Donnerstag" |
+> | Weekday short | `$[d S eee]$` | "Do" |
+> | Current quarter | `$[d S q/yy]$` | "3/26" |
+> | Upcoming appointments | `$[selektierteTermineListe %A:_%d]$` | — |
+> | Past appointment (cert) | `$[selektierteTermineListe %x,den%doz_von_%v_Uhr_bis_%b_Uhr]$` | — |
+>
+> ---
+>
+> ### §briefkommandos-implications — What this means for BrassClaw API endpoint design
+>
+> When a user asks BrassClaw to check, display, or act on a piece of patient data,
+> find the matching Briefkommando family, then use its REST equivalent:
+>
+> | User intent | Matching Briefkommando | BrassClaw REST action |
+> |---|---|---|
+> | "Which EBM codes billed today?" | `$[l %nr 0d ,]$` | `patientenDetailsRelationen?limitScheine=true` → `kvScheine[0].ident` → `GET /kvschein/{ident}` → resolve `ebmLeistungen` |
+> | "Was Ziffer 03220 billed in 90d?" | `$[l %nr 90d ,]$` | Same, filter `datum > now-90d`, scan for Ziffer |
+> | "When was 30791 last billed?" | `$[d L dd.MM.yyyy 30791]$` | Same, filter Ziffer=30791, max `.datum` |
+> | "Is patient EBM or GOÄ?" | `$[if ...patInfoPanelMode...]$` | Check `kvScheine` vs `goaeScheine` presence in relations |
+> | "Last BMI date?" | `$[d E yyyyMMdd BMI]$` | `karteiEintraege[]` filter `kuerzel=BMI`, max `.datum` |
+> | "How many visits this quarter?" | `$[c BES aq]$` | Count `karteiEintraege[kuerzel=BES]` with date in current quarter |
+> | "Lab QUICK value?" | `$[laborwert LAB QUICK %w_%e L]$` | `karteiEintraege[kuerzel=LAB].laborauftrag.befunde[]` filter `lbTest.kuerzel=QUICK` |
+> | "CKE field value?" | `$[karteiEintragValue_withArgs KÜRZEL ...]$` | `karteiEintraege[kuerzel=KÜRZEL].customKarteiEintragEntries` |
+> | "Marker DMP/KHK set?" | `$[istMarkerGesetzt DMP/KHK]$` | `karteiEintraege[]` filter type=marker, kuerzel matches |
+> | "Patient on selective contract?" | `$[aktiveSelektivvertragsTeilnahmen]$` | `patientenDetails.teilnahmeauschlussSV` |
+>
+> When composing a Briefvorlage: check this table first → use shorthand if known →
+> fall back to `$[&p.keypath]$` (= REST JSON path) → only call LLM for truly novel
+> compound expressions.
 >
 > ---
 >
@@ -512,30 +631,34 @@ orchestrator what is available and under what conditions.
 
 ```
 name:            "tomedo-api"
-description:     "Make an authenticated HTTPS GET request to the tomedo EMR REST API.
+description:     "Make an authenticated HTTPS request to the tomedo EMR REST API.
                   Requires mTLS client certificate (PEM file path in tomedo_cert_pem
                   config). Base URL: https://{tomedo_host}:{tomedo_port}/{tomedo_db}/
-                  Returns JSON. All tomedo REST endpoints are read-only GET calls.
+                  Supports GET (reads) and POST/PUT (writes — confirmed live 2026-08-22).
                   Auth: Mutual TLS — no Authorization header needed.
-                  Timeout: 15 000 ms per call (60 000 ms for the flat patient list)."
+                  Timeout: 15 000 ms per call (60 000 ms for the flat patient list).
+                  For write calls always set Content-Type: application/json header."
 capability_id:   "builtin.http"
-effect_type:     "read"
+effect_type:     "mixed"
 param_schema: {
   "type": "object",
   "properties": {
     "url":           {"type": "string", "description": "Full tomedo HTTPS URL"},
-    "method":        {"type": "string", "enum": ["GET"], "description": "Always GET"},
-    "headers":       {"type": "object", "description": "Optional extra headers"},
+    "method":        {"type": "string", "enum": ["GET","POST","PUT"], "description": "HTTP method"},
+    "headers":       {"type": "object", "description": "Include Content-Type: application/json for POST/PUT"},
+    "body":          {"type": "string", "description": "JSON body string for POST/PUT requests"},
     "timeout_ms":    {"type": "number", "description": "Timeout in ms (default 15000, use 60000 for patient list)"},
     "cert_pem_path": {"type": "string", "description": "Path to mTLS client PEM file"}
   },
-  "required": ["url"]
+  "required": ["url", "method"]
 }
 param_template:  {"url": "", "method": "GET"}
 preconditions:   "tomedo_cert_pem config key must be set.
                   tomedo_host and tomedo_port must be reachable.
-                  Network: LAN-only — tomedo server is on the practice LAN (e.g. 192.168.10.9:8443)."
+                  Network: LAN-only — tomedo server is on the practice LAN (e.g. 192.168.10.9:8443).
+                  For write ops (POST/PUT): Content-Type header must be application/json."
 error_handling:  "HTTP non-200: surface status code + body to orchestrator.
+                  HTTP 460: Java stack trace from tomedo — parse first line for error type.
                   TLS error: surface as connection failure.
                   Timeout: 15 000 ms (60 000 ms for patient list endpoint)."
 consumer_tags:   ["00:rusty", "02:orchestrator", "05:validator"]
@@ -1086,6 +1209,189 @@ param_template: {
 }
 preconditions:  "tomedo_user_ident and tomedo_llm_endpoint config keys must be set."
 error_handling: "Non-200 → check for budget-exhaustion message in body. Timeout → try gemini-2.5-flash."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
+
+---
+
+### Step 2.16 — ToolSkill: `ts-tomedo-karteieintrag-create` (class 13)
+
+```
+name:          "ts-tomedo-karteieintrag-create"
+tool_name:     "tomedo-api"
+description:   "POST /{db}/karteieintrag — create a new KarteiEintrag for a patient.
+                Request body (JSON): {
+                  patient:   {ident: N},
+                  text:      'string',
+                  datum:     epoch_ms,
+                  visible:   true,
+                  karteiEintragTyp: {kuerzel: 'BRIEF'|'AKTE'|...}
+                }
+                Returns: {ident: N} — the new KarteiEintrag ident.
+                To soft-delete: PUT /{db}/karteieintrag/{ident} {visible: false}.
+                Confirmed HTTP 200 on live tomedo 2026-08-22."
+param_schema:  [
+  {name: "url",     param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/karteieintrag"},
+  {name: "method",  param_type: "string", required: true, description: "POST"},
+  {name: "body",    param_type: "string", required: true,
+   description: "JSON: {patient:{ident:N}, text:'...', datum:epoch_ms, visible:true, karteiEintragTyp:{kuerzel:'...'}}"},
+  {name: "headers", param_type: "object", required: true,
+   description: "Must include Content-Type: application/json"}
+]
+param_template: {
+  "url":    "{{vars.tomedo_base_url}}/karteieintrag",
+  "method": "POST",
+  "headers": {"Content-Type": "application/json"},
+  "body":   "{\"patient\":{\"ident\":{{vars.patient_id}}},\"text\":\"{{vars.text}}\",\"datum\":{{vars.datum}},\"visible\":true,\"karteiEintragTyp\":{\"kuerzel\":\"{{vars.kuerzel}}\"}}"
+}
+preconditions:  "patient_id must be a known valid patient ident. datum is epoch ms. kuerzel is a valid Kartei type."
+error_handling: "HTTP 460: tomedo rejected the body — parse first line of stack trace. HTTP 401: cert invalid."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 2.17 — ToolSkill: `ts-tomedo-karteieintrag-update` (class 13)
+
+```
+name:          "ts-tomedo-karteieintrag-update"
+tool_name:     "tomedo-api"
+description:   "PUT /{db}/karteieintrag/{ident} — partial update of an existing KarteiEintrag.
+                Most common use: soft-delete with {visible: false}.
+                Can also update: text, datum, karteiEintragTyp, additionalText.
+                Returns: HTTP 204 No Content on success.
+                Confirmed HTTP 204 on live tomedo 2026-08-22."
+param_schema:  [
+  {name: "url",     param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/karteieintrag/{karteieintrag_ident}"},
+  {name: "method",  param_type: "string", required: true, description: "PUT"},
+  {name: "body",    param_type: "string", required: true,
+   description: "JSON partial update, e.g. {visible: false} or {text: '...'}"},
+  {name: "headers", param_type: "object", required: true,
+   description: "Must include Content-Type: application/json"}
+]
+param_template: {
+  "url":    "{{vars.tomedo_base_url}}/karteieintrag/{{vars.karteieintrag_ident}}",
+  "method": "PUT",
+  "headers": {"Content-Type": "application/json"},
+  "body":   "{{vars.body_json}}"
+}
+preconditions:  "karteieintrag_ident must be an existing KarteiEintrag ident."
+error_handling: "HTTP 460: field type mismatch (e.g. wrong type for boolean fields). HTTP 405: tried DELETE — not supported."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 2.18 — ToolSkill: `ts-tomedo-termin-create` (class 13)
+
+```
+name:          "ts-tomedo-termin-create"
+tool_name:     "tomedo-api"
+description:   "POST /{db}/termin — create a new appointment.
+                Request body (JSON): {
+                  patient:  {ident: N},
+                  beginn:   epoch_ms,
+                  ende:     epoch_ms,
+                  info:     'reason string',
+                  removed:  false,
+                  warDa:    false
+                }
+                Returns: {ident: N} — the new Termin ident.
+                To cancel: PUT /{db}/termin/{ident} {removed: true}.
+                Confirmed HTTP 200 on live tomedo 2026-08-22."
+param_schema:  [
+  {name: "url",     param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/termin"},
+  {name: "method",  param_type: "string", required: true, description: "POST"},
+  {name: "body",    param_type: "string", required: true,
+   description: "JSON: {patient:{ident:N}, beginn:epoch_ms, ende:epoch_ms, info:'...', removed:false, warDa:false}"},
+  {name: "headers", param_type: "object", required: true,
+   description: "Must include Content-Type: application/json"}
+]
+param_template: {
+  "url":    "{{vars.tomedo_base_url}}/termin",
+  "method": "POST",
+  "headers": {"Content-Type": "application/json"},
+  "body":   "{\"patient\":{\"ident\":{{vars.patient_id}}},\"beginn\":{{vars.beginn}},\"ende\":{{vars.ende}},\"info\":\"{{vars.info}}\",\"removed\":false,\"warDa\":false}"
+}
+preconditions:  "patient_id must be valid. beginn/ende are epoch ms. LLM must confirm content before dispatch."
+error_handling: "HTTP 460: field error. HTTP 200 with empty-shell object: body was malformed — verify JSON structure."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 2.19 — ToolSkill: `ts-tomedo-kvschein-get` (class 13)
+
+```
+name:          "ts-tomedo-kvschein-get"
+tool_name:     "tomedo-api"
+description:   "GET /{db}/kvschein/{schein_ident} — fetch a KV-Schein (billing quarter case)
+                including its EBM and GOÄ Leistungen (billing codes).
+                This is the ONLY safe way to read Leistungen — do NOT use
+                /leistung?patient=X or /patient/{id}/leistungen (both crash the server).
+                Safe Leistung read pattern:
+                  1. GET patientenDetailsRelationen?limitScheine=true → kvScheine[].ident
+                  2. GET /kvschein/{ident} → ebmLeistungen[], goaeLeistungen[]
+                EBMLeistung fields: ident, datum(epoch ms), anzahl, ebmKatalogEintrag{ident},
+                  leistungserbringer{ident}, visible.
+                ebmKatalogEintrag.ident is an internal int (e.g. 270), NOT the EBM Ziffer string
+                (e.g. '03220'). Map via GET /ebmkatalogeintrag/{ident} if needed.
+                Confirmed HTTP 200 on live tomedo 2026-08-22."
+param_schema:  [
+  {name: "url",        param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/kvschein/{schein_ident}"},
+  {name: "method",     param_type: "string", required: true, description: "GET"},
+  {name: "timeout_ms", param_type: "number", required: false}
+]
+param_template: {
+  "url":        "{{vars.tomedo_base_url}}/kvschein/{{vars.schein_ident}}",
+  "method":     "GET",
+  "timeout_ms": 15000
+}
+preconditions:  "schein_ident must come from kvScheine[].ident in patientenDetailsRelationen response."
+error_handling: "HTTP 404: schein_ident not found. Do NOT try /leistung?patient=X — that crashes the server."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 2.20 — ToolSkill: `ts-tomedo-ebmkatalogeintrag-get` (class 13)
+
+```
+name:          "ts-tomedo-ebmkatalogeintrag-get"
+tool_name:     "tomedo-api"
+description:   "GET /{db}/ebmkatalogeintrag/{ident} — resolve an internal EBM catalog
+                ident to its human-readable EBM Ziffer string (e.g. 270 → '03220').
+                Use after fetching ebmLeistungen from /kvschein to map internal ints
+                to billing code strings.
+                Response: {ident:N, nummer:'03220', bezeichnung:'Versichertenpauschale', ...}"
+param_schema:  [
+  {name: "url",        param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/ebmkatalogeintrag/{ebm_catalog_ident}"},
+  {name: "method",     param_type: "string", required: true, description: "GET"},
+  {name: "timeout_ms", param_type: "number", required: false}
+]
+param_template: {
+  "url":        "{{vars.tomedo_base_url}}/ebmkatalogeintrag/{{vars.ebm_catalog_ident}}",
+  "method":     "GET",
+  "timeout_ms": 10000
+}
+preconditions:  "ebm_catalog_ident must be from ebmLeistungen[].ebmKatalogEintrag.ident."
+error_handling: "HTTP 404: ident not in catalog. Surface raw ident to user if lookup fails."
 category:       "tomedo"
 source:         "system"
 validation_status: "validated"
@@ -1740,6 +2046,118 @@ except Exception as e:
 ```
 
 
+---
+
+### Step 3.31 — PythonCode: `pc-tomedo-karteieintrag-create` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1 (LLM confirms content before call)
+# Creates a KarteiEintrag for patient_id with given text, datum, and kuerzel.
+# IBS bakes in vars before execution.
+import json as _j
+_base = "{{vars.tomedo_base_url}}"
+if not _base:
+    result = {"error": "tomedo_base_url not configured"}
+else:
+    _body = _j.dumps({
+        "patient": {"ident": int("{{vars.patient_id}}")},
+        "text": "{{vars.text}}",
+        "datum": int("{{vars.datum}}"),
+        "visible": True,
+        "karteiEintragTyp": {"kuerzel": "{{vars.kuerzel}}"}
+    })
+    result = __execute_action__("tomedo-api", {
+        "url": f"{_base}/karteieintrag",
+        "method": "POST",
+        "headers": {"Content-Type": "application/json"},
+        "body": _body,
+        "timeout_ms": 15000
+    })
+```
+
+---
+
+### Step 3.32 — PythonCode: `pc-tomedo-karteieintrag-update` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1 (LLM or orchestrator confirms before update)
+# Partial-updates an existing KarteiEintrag. Most common: visible:false to soft-delete.
+# vars.body_json must be a valid JSON partial-update string, e.g. '{"visible":false}'.
+import json as _j
+_base = "{{vars.tomedo_base_url}}"
+_ident = "{{vars.karteieintrag_ident}}"
+if not _base or not _ident:
+    result = {"error": "tomedo_base_url or karteieintrag_ident not configured"}
+else:
+    result = __execute_action__("tomedo-api", {
+        "url": f"{_base}/karteieintrag/{_ident}",
+        "method": "PUT",
+        "headers": {"Content-Type": "application/json"},
+        "body": "{{vars.body_json}}",
+        "timeout_ms": 15000
+    })
+```
+
+---
+
+### Step 3.33 — PythonCode: `pc-tomedo-termin-create` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1 (LLM confirms content before call)
+# Creates a Termin for patient_id. beginn/ende are epoch ms.
+import json as _j
+_base = "{{vars.tomedo_base_url}}"
+if not _base:
+    result = {"error": "tomedo_base_url not configured"}
+else:
+    _body = _j.dumps({
+        "patient": {"ident": int("{{vars.patient_id}}")},
+        "beginn": int("{{vars.beginn}}"),
+        "ende": int("{{vars.ende}}"),
+        "info": "{{vars.info}}",
+        "removed": False,
+        "warDa": False
+    })
+    result = __execute_action__("tomedo-api", {
+        "url": f"{_base}/termin",
+        "method": "POST",
+        "headers": {"Content-Type": "application/json"},
+        "body": _body,
+        "timeout_ms": 15000
+    })
+```
+
+---
+
+### Step 3.34 — PythonCode: `pc-tomedo-kvschein-get` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 0
+# Fetches a KV-Schein by ident including ebmLeistungen[] and goaeLeistungen[].
+# schein_ident must come from patientenDetailsRelationen kvScheine[].ident.
+result = __execute_action__("tomedo-api", {
+    "url": "{{vars.tomedo_base_url}}/kvschein/{{vars.schein_ident}}",
+    "method": "GET",
+    "timeout_ms": 15000
+})
+```
+
+---
+
+### Step 3.35 — PythonCode: `pc-tomedo-ebmkatalogeintrag-get` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 0
+# Resolves an EBM catalog ident to its human-readable Ziffer string.
+# ebm_catalog_ident comes from ebmLeistungen[].ebmKatalogEintrag.ident.
+result = __execute_action__("tomedo-api", {
+    "url": "{{vars.tomedo_base_url}}/ebmkatalogeintrag/{{vars.ebm_catalog_ident}}",
+    "method": "GET",
+    "timeout_ms": 10000
+})
+```
+
+
 ## Step 4 — Leaf Skills (class 1) and Domain Skills (class 2)
 
 One leaf skill per distinct approach. Domain skills reference leaves by name
@@ -2191,6 +2609,135 @@ consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
 ```
+
+
+---
+
+## Step 4a — Leaf Skills for Write Operations and Leistungen (class 1)
+
+One leaf skill per distinct write/Leistung operation.
+Write skills are Tier 1 — the LLM confirms content before the orchestrator dispatches.
+
+---
+
+### Step 4a.1 — Leaf Skill: `skill-tomedo-karteieintrag-create` (class 1)
+
+```
+name:        "skill-tomedo-karteieintrag-create"
+class_code:  1
+description: "Leaf skill: create a new KarteiEintrag (medical record entry) for a patient via POST — Tier 1."
+body: |
+  Create a KarteiEintrag for patient {{vars.patient_id}} using ts-tomedo-karteieintrag-create.
+  URL: POST {{vars.tomedo_base_url}}/karteieintrag
+  Required fields: patient.ident, text, datum (epoch ms), visible:true, karteiEintragTyp.kuerzel.
+
+  Common kuerzel values:
+    BRIEF   — Arztbrief / patient letter
+    AKTE    — general Karteieintrag
+    TEL     — telephone note
+    LAB     — lab result note
+
+  Before dispatching: show the user the text and kuerzel and ask for confirmation.
+  After creation: the response contains {ident: N} — surface the new ident to the user.
+  To undo: call skill-tomedo-karteieintrag-update with {visible: false}.
+
+  PythonCode: use pc-tomedo-karteieintrag-create.
+  datum: use current Unix epoch ms if not specified.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4a.2 — Leaf Skill: `skill-tomedo-karteieintrag-update` (class 1)
+
+```
+name:        "skill-tomedo-karteieintrag-update"
+class_code:  1
+description: "Leaf skill: update (or soft-delete) an existing KarteiEintrag via PUT — Tier 1."
+body: |
+  Update an existing KarteiEintrag by ident using ts-tomedo-karteieintrag-update.
+  URL: PUT {{vars.tomedo_base_url}}/karteieintrag/{karteieintrag_ident}
+
+  Common operations:
+    Soft-delete:   {visible: false}
+    Update text:   {text: "new text"}
+    Change type:   {karteiEintragTyp: {kuerzel: "BRIEF"}}
+
+  Before dispatching: confirm the change with the user.
+  A successful update returns HTTP 204 (no body).
+  DELETE is NOT supported — always use PUT {visible:false} to hide entries.
+
+  PythonCode: use pc-tomedo-karteieintrag-update.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4a.3 — Leaf Skill: `skill-tomedo-termin-create` (class 1)
+
+```
+name:        "skill-tomedo-termin-create"
+class_code:  1
+description: "Leaf skill: create a new appointment (Termin) for a patient via POST — Tier 1."
+body: |
+  Create a Termin for patient {{vars.patient_id}} using ts-tomedo-termin-create.
+  URL: POST {{vars.tomedo_base_url}}/termin
+  Required fields: patient.ident, beginn (epoch ms), ende (epoch ms), info (string).
+
+  Before dispatching: show the user the date/time and reason and ask for confirmation.
+  After creation: the response contains {ident: N} — surface the new ident.
+  To cancel: call ts-tomedo-karteieintrag-update pattern with PUT /termin/{ident} {removed: true}.
+
+  Date/time: convert human-readable time to epoch ms before passing.
+  PythonCode: use pc-tomedo-termin-create.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4a.4 — Leaf Skill: `skill-tomedo-leistungen-read` (class 1)
+
+```
+name:        "skill-tomedo-leistungen-read"
+class_code:  1
+description: "Leaf skill: read Leistungen (billing codes) for a patient via safe two-step path — Tier 0."
+body: |
+  Read Leistungen (EBM/GOÄ billing codes) for patient {{vars.patient_id}}.
+
+  ⚠️ NEVER call /leistung?patient=X, /patient/{id}/leistungen, or /schein?patient=X —
+  all of these crash the tomedo server (unbounded queries, confirmed 2026-08-22).
+
+  SAFE READ PATH (two steps):
+  1. Use pc-tomedo-patient-relations with limitScheine=true to get kvScheine[].ident
+  2. For each schein ident of interest: use pc-tomedo-kvschein-get to get
+     ebmLeistungen[] and goaeLeistungen[]
+
+  EBMLeistung fields:
+    ident           — internal Leistung ID
+    datum           — epoch ms
+    anzahl          — count (default 1)
+    ebmKatalogEintrag.ident — internal catalog int (NOT the EBM Ziffer string)
+    leistungserbringer.ident — Arzt ident
+    visible         — false if soft-deleted
+
+  To resolve catalog ident → EBM Ziffer string (e.g. 270 → '03220'):
+    Use pc-tomedo-ebmkatalogeintrag-get.
+
+  The Briefkommando $[l %nr 0d ,]$ reads Leistungen from the currently-open
+  Schein in the Mac client — it is NOT a REST path. Use this REST path instead
+  when BrassClaw needs Leistung data server-side.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
 
 
 ## Step 4b — Leaf Skills for LLM Object Composition (class 1)
@@ -4190,9 +4737,138 @@ validation_status: "validated"
 ```
 
 
+---
+
+### Recipe: `tomedo-leistungen-read` (class 21) — Tier 0
+
+```
+name:              "tomedo-leistungen-read"
+class_code:        21
+description:       "Read Leistungen (billing codes) for a patient via the safe two-step KV-Schein path."
+llm_call_required: false
+rust_steps: [
+  {uuid: "...", component_name: "ts-tomedo-patient-relations"},
+  {uuid: "...", component_name: "ts-tomedo-kvschein-get"},
+  {uuid: "...", component_name: "ts-tomedo-ebmkatalogeintrag-get"}
+]
+orchestrator_steps: [
+  {uuid: "...", component_name: "pc-tomedo-patient-relations"},
+  {uuid: "...", component_name: "pc-tomedo-kvschein-get"}
+]
+intent_examples: [
+  {"input": "welche leistungen hat der patient",              "class": 3},
+  {"input": "EBM-Ziffern für patient 13550",                  "class": 3},
+  {"input": "zeige abgerechnete leistungen",                  "class": 3},
+  {"input": "which billing codes for the patient",            "class": 2},
+  {"input": "leistungen aus dem aktuellen schein",            "class": 3},
+  {"input": "GOÄ leistungen für patient",                     "class": 3},
+  {"input": "EBM ziffer 03220 vorhanden",                     "class": 2},
+  {"input": "was wurde heute abgerechnet",                    "class": 2},
+  {"input": "abrechnungsziffern anzeigen",                    "class": 3},
+  {"input": "fetch billing codes patient",                    "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-karteieintrag-create` (class 21) — Tier 1
+
+```
+name:              "tomedo-karteieintrag-create"
+class_code:        21
+description:       "Create a new KarteiEintrag for a patient — LLM confirms content, orchestrator POSTs."
+llm_call_required: true
+rust_steps: [
+  {uuid: "...", component_name: "ts-tomedo-karteieintrag-create"}
+]
+orchestrator_steps: [
+  {uuid: "...", component_name: "pc-tomedo-karteieintrag-create"}
+]
+intent_examples: [
+  {"input": "neuen karteieintrag erstellen",                  "class": 3},
+  {"input": "karteinotiz für patient hinzufügen",             "class": 3},
+  {"input": "create karteieintrag for patient",               "class": 2},
+  {"input": "telefonnotiz in kartei eintragen",               "class": 3},
+  {"input": "arztbrief in kartei speichern",                  "class": 3},
+  {"input": "write medical note for patient",                 "class": 2},
+  {"input": "neuen akte eintrag anlegen",                     "class": 3},
+  {"input": "lab result note kartei",                         "class": 2},
+  {"input": "karteieintrag mit text BRIEF anlegen",           "class": 3},
+  {"input": "save consultation note to tomedo",               "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-karteieintrag-update` (class 21) — Tier 1
+
+```
+name:              "tomedo-karteieintrag-update"
+class_code:        21
+description:       "Update or soft-delete an existing KarteiEintrag — LLM confirms change, orchestrator PUTs."
+llm_call_required: true
+rust_steps: [
+  {uuid: "...", component_name: "ts-tomedo-karteieintrag-update"}
+]
+orchestrator_steps: [
+  {uuid: "...", component_name: "pc-tomedo-karteieintrag-update"}
+]
+intent_examples: [
+  {"input": "karteieintrag ausblenden",                       "class": 3},
+  {"input": "karteinotiz löschen",                            "class": 3},
+  {"input": "hide karteieintrag",                             "class": 2},
+  {"input": "karteieintrag text ändern",                      "class": 3},
+  {"input": "eintrag in kartei korrigieren",                  "class": 3},
+  {"input": "update medical record entry",                    "class": 2},
+  {"input": "karteieintrag sichtbarkeit ändern",              "class": 3},
+  {"input": "soft delete kartei note",                        "class": 2},
+  {"input": "visible false karteieintrag",                    "class": 3},
+  {"input": "edit existing record entry tomedo",              "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-termin-create` (class 21) — Tier 1
+
+```
+name:              "tomedo-termin-create"
+class_code:        21
+description:       "Create a new appointment (Termin) for a patient — LLM confirms datetime and info, orchestrator POSTs."
+llm_call_required: true
+rust_steps: [
+  {uuid: "...", component_name: "ts-tomedo-termin-create"}
+]
+orchestrator_steps: [
+  {uuid: "...", component_name: "pc-tomedo-termin-create"}
+]
+intent_examples: [
+  {"input": "termin anlegen für patient",                     "class": 3},
+  {"input": "neuen termin erstellen",                         "class": 3},
+  {"input": "create appointment for patient",                 "class": 2},
+  {"input": "terminbuchung patient 13550",                    "class": 3},
+  {"input": "schedule appointment tomedo",                    "class": 2},
+  {"input": "wiedervorstellung termin buchen",                "class": 3},
+  {"input": "nächsten termin anlegen",                        "class": 3},
+  {"input": "book follow-up appointment",                     "class": 2},
+  {"input": "termin für kontrolluntersuchung",                "class": 3},
+  {"input": "new termin datum uhrzeit",                       "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+
 ## Step 6 — ExtensionCatalogues (class 23)
 
-Three catalogues: tomedo REST API, tomedo-crawl sidecar, and tomedo LLM service.
+Three catalogues: tomedo REST API, tomedo-crawl sidecar, tomedo LLM service,
+and one additional catalogue for the cert-fetch setup extension.
 
 ---
 
@@ -4207,50 +4883,62 @@ overview_doc: |
   practice management system (EMR) REST API via mutual TLS.
 
   BASE URL: https://{tomedo_host}:{tomedo_port}/{tomedo_db}/
-  AUTH:     Mutual TLS (mTLS) client certificate — PEM file with cert + key.
-            No Authorization header needed.
-  PROTOCOL: All tomedo REST calls are read-only GET requests.
+  AUTH:     Mutual TLS (mTLS) client certificate — PEM files from /opt/data/apiConnector/ssl/.
+            No Authorization header needed. Use tomedo-cert-fetch recipe for first-time setup.
+  PROTOCOL: HTTPS. GET=reads, POST/PUT=writes (confirmed live 2026-08-22).
 
-  CONFIRMED API SURFACE (probed live 2026-04-11):
+  CONFIRMED API SURFACE (probed live 2026-08-22):
   ┌─────────────────────────────────────────────────────────────────────────┐
-  │ GET /serverstatus                      → server version + revision       │
-  │ GET /patient?flach=true                → flat list (~15k, no phones)     │
-  │ GET /patient/{id}                      → full record + phone numbers     │
-  │ GET /patient/{id}/patientenDetails...  → diagnoses, Kartei, Behandlung   │
-  │ GET /patient/{id}/.../medikamentenPlan → medication plan + dosing        │
-  │ GET /patient/{id}/termine?flach=true   → appointments                   │
-  │ GET /besuch/{id}/besucheForPatient     → visit records                  │
-  │ GET /patient/searchByAttributes?query= → name search ONLY               │
+  │ GET  /serverstatus                     → server version + revision       │
+  │ GET  /patient?flach=true              → flat list (~15k) — BULK/CRASH   │
+  │ GET  /patient/{id}                    → full record + phone numbers      │
+  │ GET  /patient/{id}/patientenDetails.. → diagnoses, Kartei, Behandlung   │
+  │ GET  /patient/{id}/.../medikamentenPlan→ medication plan + dosing       │
+  │ GET  /patient/{id}/termine?flach=true → appointments                    │
+  │ GET  /besuch/{id}/besucheForPatient   → visit records                   │
+  │ GET  /kvschein/{ident}                → KV-Schein + ebmLeistungen[]     │
+  │ GET  /ebmkatalogeintrag/{ident}       → EBM catalog ident → Ziffer str  │
+  │ POST /karteieintrag                   → create; returns {ident}         │
+  │ POST /termin                          → create appointment; returns {ident}│
+  │ PUT  /karteieintrag/{id}              → update; visible:false=soft-del  │
+  │ PUT  /termin/{id}                     → update; removed:true=cancel     │
+  │ PUT  /patient/{id}                    → update; gesperrt:1(int)=block   │
   └─────────────────────────────────────────────────────────────────────────┘
-  NOT AVAILABLE: phone-number search (confirmed returns empty dict).
+  BROKEN:  GET /patient/searchByAttributes → returns {} for all queries.
+  CRASH:   GET /leistung?patient=X, /patient/{id}/leistungen — unbounded queries.
+  Leistungen safe path: patientenDetailsRelationen?limitScheine=true → GET /kvschein/{ident}.
+  Briefkommandos ($[l %nr 0d ,]$) reveal the data model — see §briefkommandos.
 
-  WRITE OPERATIONS (future):
-  The official tomedo.API (partner program, NDA-gated) supports appointments
-  and Karteieintrag writes. This is NOT in scope for v3 — see §future-api.
+  WRITE TYPE FACTS: gesperrt=Integer(1), removed=Boolean, visible=Boolean.
+  Error responses use HTTP 460 with Java stack trace.
 
   LLM OBJECT COMPOSITION (§llm-objects):
-  The composition recipes generate tomedo objects (Python markers, SQL stats,
+  Composition recipes generate tomedo objects (Python markers, SQL stats,
   letter templates, CKEs, patient forms) using zollsoft context files + LLM.
-  Output is copy-pasteable — no direct write to tomedo required.
+  Output is copy-pasteable.
 
   TASK GROUPS:
   1. Health checks:    tomedo-serverstatus
   2. Patient reads:    tomedo-patient-detail, tomedo-patient-diagnoses,
                        tomedo-patient-medications, tomedo-patient-next-appointment,
                        tomedo-patient-visits
-  3. Patient search:   tomedo-patient-search-by-name (Tier 1)
-  4. Full context:     tomedo-patient-full-context (composed)
-  5. Object composition (Tier 1, LLM):
+  3. Leistungen read:  tomedo-leistungen-read (Tier 0, two-step safe path)
+  4. Patient search:   tomedo-patient-search-by-name (Tier 1)
+  5. Full context:     tomedo-patient-full-context (composed)
+  6. Writes (Tier 1):  tomedo-karteieintrag-create, tomedo-karteieintrag-update,
+                       tomedo-termin-create
+  7. Object composition (Tier 1, LLM):
      tomedo-compose-python-marker, tomedo-compose-statistic,
      tomedo-compose-briefvorlage, tomedo-compose-cke,
      tomedo-compose-patientenformular
 
   KEY DATA SHAPES:
   • geburtsDatum: epoch ms, may be negative (before 1970)
-  • Phone fields: patientenDetails.kontaktdaten.{telefon,telefon2,handyNummer,telefon3}
-  • Diagnoses: diagnosen[].freitext (primary) + typ ('G'=confirmed, 'V'=suspected)
+  • Phone fields: patientenDetails.kontaktdaten.{telefon,telefon2,handyNummer,fax}
+  • Diagnoses: diagnosen[].freitext + typ ('G'=confirmed, 'V'=suspected)
   • Medications: nameBeiVerordnung + dosierungFrueh/Mittag/Abend/Nacht
   • Appointments: beginn/ende as epoch ms
+  • EBMLeistung: ebmKatalogEintrag.ident is internal int, NOT the Ziffer string
 
 task_groups: [
   {
@@ -4271,9 +4959,23 @@ task_groups: [
     ]
   },
   {
+    "group_name": "leistungen-read",
+    "summary": "Read EBM/GOÄ billing codes via safe two-step kvschein path (Tier 0)",
+    "recipe_ids": ["tomedo-leistungen-read"]
+  },
+  {
     "group_name": "patient-search",
     "summary": "Search patients by name (Tier 1, LLM required)",
     "recipe_ids": ["tomedo-patient-search-by-name"]
+  },
+  {
+    "group_name": "writes",
+    "summary": "Create/update KarteiEinträge and Termine via direct mTLS REST (Tier 1)",
+    "recipe_ids": [
+      "tomedo-karteieintrag-create",
+      "tomedo-karteieintrag-update",
+      "tomedo-termin-create"
+    ]
   },
   {
     "group_name": "llm-object-composition",
@@ -4450,20 +5152,263 @@ validation_status: "validated"
 
 ---
 
+### ExtensionCatalogue: `ext-tomedo-cert-fetch` (class 23)
+
+```
+name:        "ext-tomedo-cert-fetch"
+description: "tomedo mTLS certificate setup — fetch client cert, private key, and CA cert from the tomedo server via SSH and store them locally so BrassClaw can make mTLS API calls."
+version:     "1.0"
+overview_doc: |
+  This catalogue covers the one-time (and re-runnable) setup operation that
+  retrieves the mTLS certificate bundle from the tomedo server's
+  /opt/data/apiConnector/ssl/ directory and writes the three PEM files to
+  a local path on the BrassClaw host.
+
+  WITHOUT THESE CERTS: BrassClaw cannot call the tomedo REST API at all.
+  Run this setup recipe first before any other tomedo recipe.
+
+  CERT FILES ON TOMEDO SERVER (confirmed path 2026-08-22):
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │ /opt/data/apiConnector/ssl/client_certificate.pem   — client cert      │
+  │ /opt/data/apiConnector/ssl/client_private_key.pem   — EC P-521 key     │
+  │ /opt/data/apiConnector/ssl/root_certificate.pem     — CA cert          │
+  └────────────────────────────────────────────────────────────────────────┘
+
+  WHAT THE RECIPE DOES:
+  1. SSH to the tomedo server (using tomedo_ssh_host, tomedo_ssh_user,
+     tomedo_ssh_key_path config keys)
+  2. cat each of the three PEM files
+  3. Write them to tomedo_cert_dir (default: ~/.brassclaw/tomedo-certs/)
+  4. Set tomedo_cert_pem config key to the local path of the combined cert+key
+  5. Verify by calling GET /serverstatus with the new certs
+
+  REQUIRED CONFIG KEYS (set before running):
+  • tomedo_ssh_host     — e.g. 192.168.10.9
+  • tomedo_ssh_user     — e.g. technik
+  • tomedo_ssh_key_path — path to SSH private key (or use tomedo_ssh_password)
+  • tomedo_cert_dir     — local dir to write PEM files (default: ~/.brassclaw/tomedo-certs/)
+
+  WRITTEN CONFIG KEYS (after successful run):
+  • tomedo_cert_pem     — path to client cert PEM (combined cert + key)
+  • tomedo_base_url     — https://{tomedo_ssh_host}:8443/tomedo_live (auto-set)
+
+  TOOL USED: builtin.shell (SSH + cat + file write)
+  TIER: 1 — user must confirm SSH credentials before execution.
+
+  SECURITY: The private key is an EC P-521 key. It is written to disk with
+  mode 0600. BrassClaw must never log the key content. The SSH password
+  must come from a BrassClaw secret (not a plaintext config key).
+
+  TASK GROUPS:
+  1. Setup: tomedo-cert-fetch
+
+task_groups: [
+  {
+    "group_name": "cert-setup",
+    "summary": "Fetch mTLS certs from tomedo server via SSH and configure BrassClaw for HTTPS API access",
+    "recipe_ids": ["tomedo-cert-fetch"]
+  }
+]
+consumer_tags:   ["02:orchestrator", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+---
+
+### Tool: `tomedo-cert-fetch-tool` (class 0)
+
+```
+name:            "tomedo-cert-fetch-tool"
+description:     "Fetch the three mTLS PEM files from the tomedo server's
+                  /opt/data/apiConnector/ssl/ directory via SSH and write them
+                  to a local directory on the BrassClaw host.
+
+                  Uses builtin.shell to run:
+                    ssh {user}@{host} 'cat /opt/data/apiConnector/ssl/{file}.pem'
+                  and then writes the output to local paths.
+
+                  REQUIRED inputs:
+                    ssh_host     — tomedo server hostname/IP
+                    ssh_user     — SSH username (e.g. technik)
+                    ssh_key_path — path to local SSH private key, OR
+                    ssh_password — SSH password (from BrassClaw secret)
+                    cert_dir     — local directory to write PEM files to
+
+                  Files written:
+                    {cert_dir}/client_certificate.pem
+                    {cert_dir}/client_private_key.pem   (chmod 0600)
+                    {cert_dir}/root_certificate.pem
+
+                  ⚠️ Never log the private key content. Write with 0600 permissions."
+capability_id:   "builtin.shell"
+effect_type:     "write"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "command":     {"type": "string", "description": "Shell command to execute (constructed by LLM from template)"}
+  },
+  "required": ["command"]
+}
+preconditions:   "SSH access to tomedo server must be available.
+                  cert_dir must be writable.
+                  tomedo_ssh_host, tomedo_ssh_user, and SSH credentials must be configured."
+error_handling:  "SSH auth failure: surface error, ask user to verify credentials.
+                  File write failure: surface error + suggest mkdir.
+                  Connection refused: server not reachable — check VPN/LAN."
+consumer_tags:   ["00:rusty", "02:orchestrator", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+---
+
+### ToolSkill: `ts-tomedo-cert-fetch` (class 13)
+
+```
+name:          "ts-tomedo-cert-fetch"
+tool_name:     "tomedo-cert-fetch-tool"
+description:   "SSH to the tomedo server and fetch the three mTLS PEM files:
+                client_certificate.pem, client_private_key.pem, root_certificate.pem
+                from /opt/data/apiConnector/ssl/.
+                Writes them to {{vars.tomedo_cert_dir}}.
+                Also sets tomedo_cert_pem and tomedo_base_url config keys on success.
+                Tier 1 — LLM constructs the SSH command from user-provided host/user/key."
+param_schema:  [
+  {name: "command", param_type: "string", required: true,
+   description: "Shell commands to SSH-fetch the three PEM files and write locally"}
+]
+param_template: {
+  "command": "ssh -i {{vars.tomedo_ssh_key_path}} -o StrictHostKeyChecking=no {{vars.tomedo_ssh_user}}@{{vars.tomedo_ssh_host}} 'cat /opt/data/apiConnector/ssl/client_certificate.pem' > {{vars.tomedo_cert_dir}}/client_certificate.pem && ssh -i {{vars.tomedo_ssh_key_path}} -o StrictHostKeyChecking=no {{vars.tomedo_ssh_user}}@{{vars.tomedo_ssh_host}} 'cat /opt/data/apiConnector/ssl/client_private_key.pem' > {{vars.tomedo_cert_dir}}/client_private_key.pem && chmod 0600 {{vars.tomedo_cert_dir}}/client_private_key.pem && ssh -i {{vars.tomedo_ssh_key_path}} -o StrictHostKeyChecking=no {{vars.tomedo_ssh_user}}@{{vars.tomedo_ssh_host}} 'cat /opt/data/apiConnector/ssl/root_certificate.pem' > {{vars.tomedo_cert_dir}}/root_certificate.pem"
+}
+preconditions:  "tomedo_ssh_host, tomedo_ssh_user, and tomedo_ssh_key_path (or password) must be set.
+                 tomedo_cert_dir must exist (create with mkdir -p if needed).
+                 SSH access to the tomedo server must be available."
+error_handling: "Permission denied (SSH): invalid credentials. No route to host: server unreachable.
+                 Empty file written: cat failed — file path may have changed."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
+---
+
+### PythonCode: `pc-tomedo-cert-fetch` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# §shell-safe-fixed: the SSH command template is user-confirmed before dispatch.
+# Fetches the three tomedo mTLS PEM files from the server via SSH.
+# IBS bakes in all vars before execution.
+import os as _os
+_host  = "{{vars.tomedo_ssh_host}}"
+_user  = "{{vars.tomedo_ssh_user}}"
+_key   = "{{vars.tomedo_ssh_key_path}}"
+_dir   = "{{vars.tomedo_cert_dir}}"
+if not _host or not _user or not _dir:
+    result = {"error": "tomedo_ssh_host, tomedo_ssh_user, and tomedo_cert_dir must all be set"}
+else:
+    _key_flag = f"-i {_key}" if _key else ""
+    _cmd = (
+        f"mkdir -p {_dir} && "
+        f"ssh {_key_flag} -o StrictHostKeyChecking=no -o BatchMode=yes {_user}@{_host} "
+        f"'cat /opt/data/apiConnector/ssl/client_certificate.pem' "
+        f"> {_dir}/client_certificate.pem && "
+        f"ssh {_key_flag} -o StrictHostKeyChecking=no -o BatchMode=yes {_user}@{_host} "
+        f"'cat /opt/data/apiConnector/ssl/client_private_key.pem' "
+        f"> {_dir}/client_private_key.pem && "
+        f"chmod 0600 {_dir}/client_private_key.pem && "
+        f"ssh {_key_flag} -o StrictHostKeyChecking=no -o BatchMode=yes {_user}@{_host} "
+        f"'cat /opt/data/apiConnector/ssl/root_certificate.pem' "
+        f"> {_dir}/root_certificate.pem && "
+        f"echo OK"
+    )
+    result = __execute_action__("tomedo-cert-fetch-tool", {"command": _cmd})
+```
+
+---
+
+### Leaf Skill: `skill-tomedo-cert-fetch` (class 1)
+
+```
+name:        "skill-tomedo-cert-fetch"
+class_code:  1
+description: "Leaf skill: fetch the tomedo mTLS client certs from the server via SSH — one-time setup, Tier 1."
+body: |
+  Fetch the three mTLS PEM files from the tomedo server's /opt/data/apiConnector/ssl/
+  directory via SSH and write them to {{vars.tomedo_cert_dir}} on the local host.
+
+  This is a one-time setup operation. Run it once before any other tomedo recipe.
+
+  REQUIRED CONFIG KEYS:
+    tomedo_ssh_host     — tomedo server IP or hostname (e.g. 192.168.10.9)
+    tomedo_ssh_user     — SSH username on the tomedo server (e.g. technik)
+    tomedo_ssh_key_path — path to local SSH private key, OR use password auth
+    tomedo_cert_dir     — local dir for PEM files (default: ~/.brassclaw/tomedo-certs/)
+
+  AFTER SUCCESSFUL FETCH:
+    Set tomedo_cert_pem  = {tomedo_cert_dir}/client_certificate.pem
+    Set tomedo_base_url  = https://{tomedo_ssh_host}:8443/tomedo_live
+    Verify by calling skill-tomedo-serverstatus.
+
+  ⚠️ SECURITY: The private key is written with chmod 0600. Never log or display
+  the key content. SSH password must come from a BrassClaw secret (not plaintext config).
+
+  Before dispatching: show the user the SSH command and ask for confirmation.
+  PythonCode: use pc-tomedo-cert-fetch.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-cert-fetch` (class 21) — Tier 1
+
+```
+name:              "tomedo-cert-fetch"
+class_code:        21
+description:       "One-time setup: fetch mTLS certs from the tomedo server via SSH and configure BrassClaw for HTTPS API access."
+llm_call_required: true
+rust_steps: [
+  {uuid: "...", component_name: "ts-tomedo-cert-fetch"},
+  {uuid: "...", component_name: "ts-tomedo-serverstatus"}
+]
+orchestrator_steps: [
+  {uuid: "...", component_name: "pc-tomedo-cert-fetch"},
+  {uuid: "...", component_name: "pc-tomedo-serverstatus"}
+]
+intent_examples: [
+  {"input": "tomedo zertifikate einrichten",                  "class": 3},
+  {"input": "mTLS certs für tomedo holen",                    "class": 3},
+  {"input": "fetch tomedo API certificates",                  "class": 2},
+  {"input": "tomedo verbindung einrichten",                   "class": 3},
+  {"input": "setup tomedo connection",                        "class": 2},
+  {"input": "tomedo SSL setup",                               "class": 2},
+  {"input": "zertifikate vom tomedo server laden",            "class": 3},
+  {"input": "BrassClaw tomedo konfigurieren",                 "class": 3},
+  {"input": "configure tomedo API access",                    "class": 2},
+  {"input": "tomedo cert setup first time",                   "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+
 ## Step 7 — Component Summary & Seeding Order
 
 ### Complete Component Count (tomedo v3 stack)
 
 | Class | Count | Names |
 |-------|-------|-------|
-| 0 — Tool | 3 | `tomedo-api`, `tomedo-crawl-api`, `tomedo-llm-api` |
-| 1 — Leaf Skill | 28 | `skill-tomedo-serverstatus` … `skill-tomedo-llm-bga` |
+| 0 — Tool | 4 | `tomedo-api`, `tomedo-crawl-api`, `tomedo-llm-api`, `tomedo-cert-fetch-tool` |
+| 1 — Leaf Skill | 37 | `skill-tomedo-serverstatus` … `skill-tomedo-cert-fetch` |
 | 2 — Domain Skill | 2 | `skill-tomedo`, `skill-tomedo-crawl` |
-| 13 — ToolSkill | 15 | `ts-tomedo-serverstatus` … `ts-tomedo-llm-chat` |
-| 21 — Recipe | 26 | `tomedo-serverstatus` … `tomedo-llm-bga` |
-| 22 — PythonCode | 30 | `pc-tomedo-serverstatus` … `pc-tomedo-llm-extract-response` |
-| 23 — ExtensionCatalogue | 3 | `ext-tomedo`, `ext-tomedo-crawl`, `ext-tomedo-llm` |
-| **Total** | **107** | |
+| 13 — ToolSkill | 21 | `ts-tomedo-serverstatus` … `ts-tomedo-cert-fetch` |
+| 21 — Recipe | 32 | `tomedo-serverstatus` … `tomedo-cert-fetch` |
+| 22 — PythonCode | 36 | `pc-tomedo-serverstatus` … `pc-tomedo-cert-fetch` |
+| 23 — ExtensionCatalogue | 4 | `ext-tomedo`, `ext-tomedo-crawl`, `ext-tomedo-llm`, `ext-tomedo-cert-fetch` |
+| **Total** | **136** | |
 
 ---
 
@@ -4471,8 +5416,8 @@ validation_status: "validated"
 
 | Tier | Recipes | Reason |
 |------|---------|--------|
-| **Tier 0** | 12 | All read ops with known params — deterministic, no LLM needed |
-| **Tier 1** | 14 | 1 name search + 5 object composition + 8 LLM service recipes |
+| **Tier 0** | 15 | Read ops with known params + Leistungen two-step path — deterministic |
+| **Tier 1** | 17 | 1 search + 3 writes + 1 cert-fetch + 5 composition + 8 LLM service recipes |
 
 ---
 
@@ -4524,87 +5469,112 @@ Group 3 — PythonCode executors (class 22, with __execute_action__):
   38. pc-tomedo-llm-uebersetzung
   39. pc-tomedo-llm-bga
 
+Group 3b — PythonCode executors — new write + Leistungen reads:
+  40. pc-tomedo-karteieintrag-create
+  41. pc-tomedo-karteieintrag-update
+  42. pc-tomedo-termin-create
+  43. pc-tomedo-kvschein-get
+  44. pc-tomedo-ebmkatalogeintrag-get
+
+Group 3c — PythonCode executor — cert-fetch setup:
+  45. pc-tomedo-cert-fetch
+
 Group 4 — PythonCode pure-logic helpers (class 22, no __execute_action__):
-  40. pc-tomedo-parse-diagnosen
-  41. pc-tomedo-parse-medications
-  42. pc-tomedo-parse-next-appointment
-  43. pc-tomedo-epoch-to-date
-  44. pc-tomedo-format-patient-context
-  45. pc-tomedo-extract-phone-fields
-  46. pc-tomedo-filter-recent-patients
-  47. pc-tomedo-llm-extract-response
+  46. pc-tomedo-parse-diagnosen
+  47. pc-tomedo-parse-medications
+  48. pc-tomedo-parse-next-appointment
+  49. pc-tomedo-epoch-to-date
+  50. pc-tomedo-format-patient-context
+  51. pc-tomedo-extract-phone-fields
+  52. pc-tomedo-filter-recent-patients
+  53. pc-tomedo-llm-extract-response
 
 Group 5 — Leaf Skills (class 1) — REST API reads + crawl:
-  48. skill-tomedo-serverstatus
-  49. skill-tomedo-patient-list
-  50. skill-tomedo-patient-detail
-  51. skill-tomedo-patient-diagnoses
-  52. skill-tomedo-patient-medications
-  53. skill-tomedo-patient-appointments
-  54. skill-tomedo-patient-visits
-  55. skill-tomedo-patient-search-by-name
-  56. skill-tomedo-crawl-health
-  57. skill-tomedo-crawl-phone-lookup
-  58. skill-tomedo-crawl-rag-query
-  59. skill-tomedo-crawl-trigger
-  60. skill-tomedo-crawl-config-read
-  61. skill-tomedo-format-context
+  54. skill-tomedo-serverstatus
+  55. skill-tomedo-patient-list
+  56. skill-tomedo-patient-detail
+  57. skill-tomedo-patient-diagnoses
+  58. skill-tomedo-patient-medications
+  59. skill-tomedo-patient-appointments
+  60. skill-tomedo-patient-visits
+  61. skill-tomedo-patient-search-by-name
+  62. skill-tomedo-crawl-health
+  63. skill-tomedo-crawl-phone-lookup
+  64. skill-tomedo-crawl-rag-query
+  65. skill-tomedo-crawl-trigger
+  66. skill-tomedo-crawl-config-read
+  67. skill-tomedo-format-context
 
-Group 5b — Leaf Skills (class 1) — LLM object composition (context file → paste to tomedo):
-  62. skill-tomedo-compose-python-marker
-  63. skill-tomedo-compose-statistic
-  64. skill-tomedo-compose-briefvorlage
-  65. skill-tomedo-lookup-briefkommando
-  66. skill-tomedo-compose-cke
-  67. skill-tomedo-compose-patientenformular
+Group 5a — Leaf Skills (class 1) — writes + Leistungen:
+  68. skill-tomedo-karteieintrag-create
+  69. skill-tomedo-karteieintrag-update
+  70. skill-tomedo-termin-create
+  71. skill-tomedo-leistungen-read
 
-Group 5c — Leaf Skills (class 1) — LLM service (tomedo server inference):
-  68. skill-tomedo-llm-arztbericht
-  69. skill-tomedo-llm-ct-befund
-  70. skill-tomedo-llm-schlaflabor
-  71. skill-tomedo-llm-laborbefund
-  72. skill-tomedo-llm-gutachten
-  73. skill-tomedo-llm-patientenbrief
-  74. skill-tomedo-llm-uebersetzung
-  75. skill-tomedo-llm-bga
+Group 5b — Leaf Skills (class 1) — LLM object composition:
+  72. skill-tomedo-compose-python-marker
+  73. skill-tomedo-compose-statistic
+  74. skill-tomedo-compose-briefvorlage
+  75. skill-tomedo-lookup-briefkommando
+  76. skill-tomedo-compose-cke
+  77. skill-tomedo-compose-patientenformular
+
+Group 5c — Leaf Skills (class 1) — LLM service:
+  78. skill-tomedo-llm-arztbericht
+  79. skill-tomedo-llm-ct-befund
+  80. skill-tomedo-llm-schlaflabor
+  81. skill-tomedo-llm-laborbefund
+  82. skill-tomedo-llm-gutachten
+  83. skill-tomedo-llm-patientenbrief
+  84. skill-tomedo-llm-uebersetzung
+  85. skill-tomedo-llm-bga
+
+Group 5d — Leaf Skill (class 1) — cert-fetch setup:
+  86. skill-tomedo-cert-fetch
 
 Group 6 — Domain Skills (class 2):
-  76. skill-tomedo
-  77. skill-tomedo-crawl
+  87. skill-tomedo
+  88. skill-tomedo-crawl
 
-Group 7 — Recipes (class 21) — Tier 0 (read) + Tier 1 (search/compose/llm):
-  78. tomedo-serverstatus                           (Tier 0)
-  79. tomedo-patient-detail                         (Tier 0)
-  80. tomedo-patient-diagnoses                      (Tier 0)
-  81. tomedo-patient-medications                    (Tier 0)
-  82. tomedo-patient-next-appointment               (Tier 0)
-  83. tomedo-patient-visits                         (Tier 0)
-  84. tomedo-phone-lookup                           (Tier 0)
-  85. tomedo-rag-query                              (Tier 0)
-  86. tomedo-rag-query-for-patient                  (Tier 0)
-  87. tomedo-crawl-health                           (Tier 0)
-  88. tomedo-crawl-trigger                          (Tier 0)
-  89. tomedo-crawl-config-read                      (Tier 0)
-  90. tomedo-patient-full-context                   (Tier 0, multi-step)
-  91. tomedo-patient-search-by-name                 (Tier 1 — LLM query)
-  92. tomedo-compose-python-marker                  (Tier 1 — LLM compose, context file)
-  93. tomedo-compose-statistic                      (Tier 1 — LLM compose, context file)
-  94. tomedo-compose-briefvorlage                   (Tier 1 — LLM compose, context file)
-  95. tomedo-compose-cke                            (Tier 1 — LLM compose, context file)
-  96. tomedo-compose-patientenformular              (Tier 1 — LLM compose, context file)
-  97. tomedo-llm-arztbericht                        (Tier 1 — tomedo LLM service)
-  98. tomedo-llm-ct-befund                          (Tier 1 — tomedo LLM service)
-  99. tomedo-llm-schlaflabor                        (Tier 1 — tomedo LLM service)
-  100. tomedo-llm-laborbefund                       (Tier 1 — tomedo LLM service)
-  101. tomedo-llm-gutachten                         (Tier 1 — tomedo LLM service, + patient context fetch)
-  102. tomedo-llm-patientenbrief                    (Tier 1 — tomedo LLM service)
-  103. tomedo-llm-uebersetzung                      (Tier 1 — tomedo LLM service)
-  104. tomedo-llm-bga                               (Tier 1 — tomedo LLM service)
+Group 7 — Recipes (class 21):
+  89. tomedo-serverstatus                           (Tier 0)
+  90. tomedo-patient-detail                         (Tier 0)
+  91. tomedo-patient-diagnoses                      (Tier 0)
+  92. tomedo-patient-medications                    (Tier 0)
+  93. tomedo-patient-next-appointment               (Tier 0)
+  94. tomedo-patient-visits                         (Tier 0)
+  95. tomedo-phone-lookup                           (Tier 0)
+  96. tomedo-rag-query                              (Tier 0)
+  97. tomedo-rag-query-for-patient                  (Tier 0)
+  98. tomedo-crawl-health                           (Tier 0)
+  99. tomedo-crawl-trigger                          (Tier 0)
+  100. tomedo-crawl-config-read                     (Tier 0)
+  101. tomedo-patient-full-context                  (Tier 0, multi-step)
+  102. tomedo-leistungen-read                       (Tier 0 — kvschein two-step)
+  103. tomedo-patient-search-by-name                (Tier 1 — LLM query)
+  104. tomedo-karteieintrag-create                  (Tier 1 — LLM confirms, orchestrator POSTs)
+  105. tomedo-karteieintrag-update                  (Tier 1 — LLM confirms, orchestrator PUTs)
+  106. tomedo-termin-create                         (Tier 1 — LLM confirms, orchestrator POSTs)
+  107. tomedo-compose-python-marker                 (Tier 1 — LLM compose, context file)
+  108. tomedo-compose-statistic                     (Tier 1 — LLM compose, context file)
+  109. tomedo-compose-briefvorlage                  (Tier 1 — LLM compose, context file)
+  110. tomedo-compose-cke                           (Tier 1 — LLM compose, context file)
+  111. tomedo-compose-patientenformular             (Tier 1 — LLM compose, context file)
+  112. tomedo-llm-arztbericht                       (Tier 1 — tomedo LLM service)
+  113. tomedo-llm-ct-befund                         (Tier 1 — tomedo LLM service)
+  114. tomedo-llm-schlaflabor                       (Tier 1 — tomedo LLM service)
+  115. tomedo-llm-laborbefund                       (Tier 1 — tomedo LLM service)
+  116. tomedo-llm-gutachten                         (Tier 1 — tomedo LLM service)
+  117. tomedo-llm-patientenbrief                    (Tier 1 — tomedo LLM service)
+  118. tomedo-llm-uebersetzung                      (Tier 1 — tomedo LLM service)
+  119. tomedo-llm-bga                               (Tier 1 — tomedo LLM service)
+  120. tomedo-cert-fetch                            (Tier 1 — one-time setup, LLM confirms SSH)
 
 Group 8 — ExtensionCatalogues (class 23):
-  105. ext-tomedo
-  106. ext-tomedo-crawl
-  107. ext-tomedo-llm
+  121. ext-tomedo
+  122. ext-tomedo-crawl
+  123. ext-tomedo-llm
+  124. ext-tomedo-cert-fetch
 ```
 
 > **Note:** Seeding happens after all lower-dependency classes are seeded.
@@ -4627,18 +5597,22 @@ computed on first insert and checked on subsequent runs.
 
 | Decision | Rationale |
 |----------|-----------|
-| Three surfaces via `builtin.http` | No separate Rust capability needed — http handles mTLS, plain HTTP, and POST body |
-| 15 ToolSkills (not 3) | One per distinct URL/method pattern — maps to exact recipe steps |
-| 22 PythonCode executors + 8 pure-logic helpers | Executors call `__execute_action__`; helpers transform data without I/O |
-| 28 leaf skills (14 REST + 6 composition + 8 LLM service) | One per distinct approach — enforces the one-function-per-skill rule |
-| 13 Tier-0 recipes | All known-ID read ops are deterministic — no LLM needed |
-| 14 Tier-1 recipes | 1 name search + 5 context-file composition + 8 LLM service inference |
+| Four surfaces via `builtin.http` + `builtin.shell` | http handles mTLS GET/POST/PUT + plain HTTP + LLM POST; shell handles SSH cert-fetch setup |
+| 21 ToolSkills | One per distinct URL/method pattern — reads, writes, Leistungen, cert-fetch |
+| 28 PythonCode executors + 8 pure-logic helpers | Executors call `__execute_action__`; helpers transform data without I/O |
+| 37 leaf skills | One per distinct approach — REST reads + writes + Leistungen + composition + LLM + cert-fetch |
+| 15 Tier-0 recipes | All known-ID read ops + Leistungen two-step path — deterministic, no LLM |
+| 17 Tier-1 recipes | 1 search + 3 writes + 1 cert-fetch + 5 composition + 8 LLM service inference |
 | `tomedo-patient-full-context` | Multi-step composed recipe; always chains the same 4 calls |
 | Phone lookup via sidecar only | Confirmed: server-side phone search returns `{}` (non-functional) |
 | German + English intent examples | Praxis staff speak German; orchestrator must handle both |
-| Direct mTLS REST API is read-only | Confirmed live 2026-04-11; write ops require official tomedo.API partner program |
+| Direct mTLS REST API supports GET + POST + PUT | Confirmed live 2026-08-22 — no partner agreement needed for writes |
+| Leistungen via kvschein two-step only | `GET /leistung?patient=X` crashes server — must go patientenDetailsRelationen → kvschein |
+| Briefkommandos = REST data model docs | Every `$[&p.x.y.z]$` maps to REST JSON path; `$[l ...]$` reveals kvschein safe path |
+| `$[l %nr 0d ,]$` → kvschein path | Client-side Leistung kommando reveals the server-side safe read: patientenDetailsRelationen → GET /kvschein/{ident} → ebmLeistungen[] → ebmkatalogeintrag |
+| EBM/GOÄ mode via Schein presence | `patInfoPanelMode` is transient/computed — detect EBM vs GOÄ by checking kvScheine vs goaeScheine in relations |
+| Cert-fetch extension | One-time SSH setup fetches mTLS PEM bundle from server; required before any tomedo REST call |
 | LLM object composition uses embedded context files | zollsoft provides `pythonmarker_context.txt` etc; BrassClaw embeds in skill bodies |
 | tomedo LLM service = one ToolSkill, 8 PythonCode | Same endpoint for all LLM calls; prompt content is the differentiator |
 | tomedo LLM service budget tracking | Monthly per-user limit enforced by zollsoft; budget errors always surfaced to user |
-| No write to tomedo from any recipe | All outputs (codes, letters, Gutachten) are copy-pasteable — user inserts into tomedo |
 
