@@ -27,12 +27,11 @@
 > ```
 >
 > **Tomedo-specific Tier 0 eligibility:**
-> All read-only tomedo API calls (GET endpoints) with a known patient ID or no
-> parameters are Tier 0. The **direct mTLS REST API at port 8443 is read-only**
-> from the external integration perspective (all probed endpoints are GET only).
-> Write operations to tomedo (appointments, Karteieinträge, patient data) are
-> only available via the **official tomedo.API** — a separate, cloud-brokered
-> partner API that requires a signed agreement with zollsoft (see §future-api).
+> All tomedo API calls (GET/POST/PUT) with known parameters are Tier 0 for reads.
+> Write operations are **Tier 1** — LLM confirms content, orchestrator executes.
+> The **direct mTLS REST API at port 8443 accepts both reads AND writes** (confirmed
+> live 2026-08-22) — no partner agreement needed. The tomedo.API gateway is an
+> optional additional path but not required.
 > LLM-assisted composition of tomedo objects (Python markers, SQL statistics,
 > letter templates, CustomKarteiEinträge, patient forms) is Tier 1 — the LLM
 > generates code/XML/JSON that the user then pastes into the tomedo UI.
@@ -47,10 +46,30 @@
 > offline crawl pipeline. **No skill, recipe, or LLM prompt may invoke
 > `ts-tomedo-patient-list` without an immediate filter/reduce step.**
 >
+> **⚠️ SECOND SAFETY RULE — NEVER use open-ended collection endpoints:**
+> Any endpoint without a specific object ident (e.g. `GET /leistung?patient=X`,
+> `GET /schein?patient=X`, `GET /patient/X/leistungen`) triggers unbounded server-side
+> queries that can crash the tomedo process. Confirmed by live probe 2026-08-22.
+> **Always use the patientenDetailsRelationen endpoint with limit params** to fetch
+> related data — it is the only safe multi-object read endpoint.
+>
+> **Safe read pattern (confirmed working):**
+> ```
+> GET /{db}/patient/{id}                                          — single patient
+> GET /{db}/patient/{id}/patientenDetailsRelationen?limitScheine=true&limitKartei=50&limitVerordnungen=50&limitZeiterfassungen=true&limitBehandlungsfaelle=true
+> GET /{db}/patient/{id}/patientenDetailsRelationen/medikamentenPlan
+> GET /{db}/patient/{id}/termine?flach=true
+> GET /{db}/besuch/{id}/besucheForPatient                        — needs besuch ident, not patient ident
+> GET /{db}/serverstatus
+> ```
+> **Never call without a specific ident:** `/leistung?patient=X`, `/schein?patient=X`,
+> `/patient/X/leistungen`, `/patient/X/scheine`, `/patient/X/besuche` — these are
+> unbounded and crash the server.
+>
 > **For all patient-search use-cases, prefer in order:**
-> 1. `ts-tomedo-patient-search` — `searchByAttributes?query=` (server-side name search, returns only matches, safe)
-> 2. `ts-tomedo-crawl-rag-query` — semantic/phonetic search via sidecar index (phone, name, fuzzy, safe)
-> 3. `ts-tomedo-patient-list` + `pc-tomedo-filter-recent-patients` — **bulk pull, only for crawl delta sync, never for interactive queries**
+> 1. `ts-tomedo-crawl-rag-query` — semantic/phonetic/phone search via sidecar RAG index (safe)
+> 2. `ts-tomedo-patient-list` + `pc-tomedo-filter-recent-patients` — **bulk pull, only for crawl delta sync, never for interactive queries**
+> 3. ~~`searchByAttributes`~~ — **confirmed broken**, returns `{}` for all queries
 >
 > **Auth guard (§tomedo-auth):**
 > All tomedo tool calls require `tomedo_base_url` and `tomedo_cert_pem` config
@@ -83,23 +102,76 @@
 >
 > ---
 >
-> ## API Reference Summary (from live probe + source code)
+> ## API Reference Summary (confirmed by live probe 2026-08-22)
 >
-> ### tomedo REST API (port 8443, mTLS)
+> **Test patient:** `ident=13550`, `Test Toni`, DOB 1989-12-31 — use this for all
+> write/read probing. Never use real patients for API tests.
 >
-> | Method | Path | Tier | Description |
-> |--------|------|------|-------------|
-> | GET | `/{db}/serverstatus` | 0 | Server health check |
-> | GET | `/{db}/patient?flach=true` | 0 | Flat patient list (~15k records, no phone) |
-> | GET | `/{db}/patient/{id}` | 0 | Full patient record incl. phone numbers |
-> | GET | `/{db}/patient/{id}/patientenDetailsRelationen?...` | 0 | Diagnoses, Kartei, Behandlungsfälle |
-> | GET | `/{db}/patient/{id}/patientenDetailsRelationen/medikamentenPlan` | 0 | Medication plan |
-> | GET | `/{db}/patient/{id}/termine?flach=true` | 0 | Appointments (flat) |
-> | GET | `/{db}/besuch/{id}/besucheForPatient` | 0 | Visit records |
-> | GET | `/{db}/patient/searchByAttributes?query={name}` | 1 | Name search (LLM composes query) |
+> **DB name confirmed:** `tomedo_live`
 >
-> **Confirmed NOT available server-side:** phone number search
-> (`searchByAttributes?telefonNummern=true → {}`)
+> **Direct access from BrassClaw host:** cert files in `/tmp/tomedo-certs/` —
+> `client_certificate.pem`, `client_private_key.pem`, `root_certificate.pem`
+> (copied from server `/opt/data/apiConnector/ssl/`).
+>
+> ### tomedo REST API (port 8443, mTLS) — READ endpoints
+>
+> | Method | Path | Status | Description |
+> |--------|------|--------|-------------|
+> | GET | `/{db}/serverstatus` | ✅ confirmed | Server health, version, backup status |
+> | GET | `/{db}/patient/{id}` | ✅ confirmed | Full patient record incl. phone numbers |
+> | GET | `/{db}/patient/{id}/patientenDetailsRelationen?limitScheine=true&limitKartei=50&...` | ✅ safe | Diagnoses, Kartei, Behandlungsfälle — **always use limit params** |
+> | GET | `/{db}/patient/{id}/patientenDetailsRelationen/medikamentenPlan` | ✅ safe | Medication plan (array) |
+> | GET | `/{db}/patient/{id}/termine?flach=true` | ✅ safe | Appointments (flat array) |
+> | GET | `/{db}/besuch/{besuch_id}/besucheForPatient` | ✅ safe | Visit records — needs **besuch ident**, not patient ident |
+> | GET | `/{db}/patient?flach=true` | ⚠️ BULK/CRASH | ~15k records — crawl pipeline + filter only, never interactive |
+> | GET | `/{db}/patient/searchByAttributes?query={name}` | ❌ BROKEN | Returns `{}` for all queries (server-side bug, confirmed) |
+> | GET | `/{db}/leistung?patient={id}` | 💀 CRASH | Unbounded query — crashes server, confirmed 2026-08-22 |
+> | GET | `/{db}/schein?patient={id}` | 💀 CRASH | Unbounded query — crashes server |
+> | GET | `/{db}/patient/{id}/leistungen` | 💀 CRASH | Unbounded query — crashes server |
+> | GET | `/{db}/patient/{id}/scheine` | 💀 CRASH | Unbounded query — crashes server |
+> | GET | `/{db}/patient/{id}/besuche` | 💀 CRASH | Unbounded query — crashes server |
+>
+> **`searchByAttributes` is confirmed broken** — returns `{}` for all queries.
+> Use the crawl sidecar RAG endpoint for name/phonetic/phone search instead.
+>
+> **Leistungen (billing codes) are only accessible via patientenDetailsRelationen**
+> with limit params — there is no safe dedicated Leistung list endpoint. The
+> `verordnungen` array within patientenDetailsRelationen contains prescriptions;
+> EBM/GOÄ Leistungen are inside `behandlungsfaelle[].leistungen[]` when limits permit.
+>
+> ### tomedo REST API (port 8443, mTLS) — WRITE endpoints (confirmed live 2026-08-22)
+>
+> **Critical finding: the direct mTLS REST API accepts writes.** The "read-only"
+> assumption was wrong. All write endpoints return HTTP 200/204 with the same
+> client cert used for reads. No partner agreement needed for writes.
+>
+> | Method | Path | Status | Returns | Notes |
+> |--------|------|--------|---------|-------|
+> | POST | `/{db}/karteieintrag` | ✅ HTTP 200 | `{new_ident}` | Creates KarteiEintrag; empty body creates blank entry |
+> | POST | `/{db}/termin` | ✅ HTTP 200 | `{new_ident}` | Creates Termin; `removed:true` via PUT to cancel |
+> | POST | `/{db}/patient` | ✅ HTTP 200 | `{new_ident}` | Creates patient; `gesperrt:1` (integer!) via PUT to block |
+> | PUT  | `/{db}/karteieintrag/{id}` | ✅ HTTP 204 | — | Partial update; `visible:false` hides entry |
+> | PUT  | `/{db}/termin/{id}` | ✅ HTTP 204 | — | Partial update; `removed:true` cancels |
+> | PUT  | `/{db}/patient/{id}` | ✅ HTTP 204 | — | Partial update; `gesperrt:1` blocks patient |
+> | DELETE | `/{db}/karteieintrag/{id}` | ❌ HTTP 405 | — | Not supported — use PUT `visible:false` |
+> | DELETE | `/{db}/termin/{id}` | ❌ HTTP 405 | — | Not supported — use PUT `removed:true` |
+>
+> **Key type facts learned from live probe:**
+> - `gesperrt` is **Integer** (not boolean) — send `1` not `true`
+> - `removed` on Termin is **Boolean** — send `true`
+> - `visible` on KarteiEintrag is **Boolean** — send `false` to hide
+> - Error responses use HTTP 460 with full Java stack trace as body
+> - All write responses are JSON; empty body POST creates a blank object with new ident
+>
+> **Write endpoint field schemas** (from GET responses on newly created objects):
+> ```
+> KarteiEintrag fields: datum, text, visible, primaer, karteiEintragTyp{kuerzel},
+>   additionalText, status, betriebsstaette, diagnose, dokumentierenderNutzer, anhang[]
+> Termin fields: beginn(epoch ms), ende(epoch ms), info, patient{ident}, terminArt,
+>   behandler, removed, kalender[], warDa, telefon
+> Patient fields: nachname, vorname, titel, geburtsDatum(epoch ms), gesperrt(int),
+>   geburtsname, patientenDetails{kontaktdaten{...}, arzt, ...}
+> ```
 >
 > ### tomedo-crawl sidecar API (port 13181, loopback)
 >
@@ -209,126 +281,60 @@
 >
 > ---
 >
-> ## §write-paths — All Write Paths to tomedo (Confirmed by Live Server Probe)
+> ## §write-paths — Write Paths to tomedo (Status as of 2026-08-22)
 >
 > **Probed:** 2026-08-22 via SSH to 192.168.10.9 (Linux tomedo server)
 >
-> ### Write Path 1 — Official tomedo.API Connector (INSTALLED, needs Keycloak credentials)
->
-> **Status:** Software fully installed and running, cloud credentials not yet configured.
->
-> **Architecture (confirmed by decompiling `/opt/data/apiConnector/bin/api-connector.jar`):**
-> ```
-> Partner App (BrassClaw)
->     ↕ HTTPS (Keycloak JWT, E2E encrypted EC P-521)
-> zollsoft Gateway Cloud  ←→  BridgeConnector (CometD/Bayeux WebSocket)
->     ↕
-> api-connector.jar (port 8502 on tomedo server)
->     ↕ mTLS (client cert already configured)
-> tomedo server (port 8443)
-> ```
->
-> **The connector is already installed and running** on this server at
-> `/opt/data/apiConnector/` as a Java 21 Spring Boot service on port 8502.
-> It has end-to-end EC P-521 encryption keys already generated and mTLS
-> client certificates already configured for the tomedo server at port 8443.
->
-> **What is missing:** Only the zollsoft Keycloak credentials (gateway URL +
-> client ID + realm) needed to connect to the zollsoft cloud gateway.
-> Current log shows `"No Keycloak credentials are configured with this server!"`
-> every 5 minutes as it tries to reconnect.
->
-> **What it can do once credentials are added:**
-> - The connector proxies **any HTTP method** (GET/POST/PUT/PATCH/DELETE) from the
->   gateway to the tomedo server at port 8443
-> - Partner access credentials are obtained by signing the tomedo.API partner
->   agreement with zollsoft GmbH (contact: Toni Ringling / Madita Poslovsky)
-> - Once connected, the gateway sends `RequestMessage` objects that the connector
->   forwards to the tomedo server — the response is relayed back end-to-end encrypted
->
-> **To activate the connector (three steps):**
-> 1. Contact zollsoft to sign the partner agreement and receive:
->    - `app.ws.gateway.url` — the CometD WebSocket gateway URL
->    - Keycloak realm + client ID for the `/realms/auth/protocol/openid-connect/token` token endpoint
-> 2. Add these to `/opt/data/apiConnector/config/properties.yaml` under `app.ws.gateway.*`
-> 3. Restart the api-connector service: `sudo systemctl restart tomedo-api-connector` (or equivalent)
->
-> **BrassClaw integration once live:**
-> BrassClaw does NOT call the connector directly. The zollsoft gateway acts as the
-> intermediary. BrassClaw would be implemented as a **partner** — it registers with
-> the zollsoft gateway, then sends requests through the gateway → connector → tomedo.
-> All write recipes will be Tier 1: LLM confirms content, orchestrator executes.
->
-> ### Write Path 2 — Direct PostgreSQL Write (via SSH)
->
-> **Status:** Available NOW — BrassClaw can SSH to the server and write directly
-> to the PostgreSQL database at `localhost:5432` (database: `tomedo`).
->
-> **Why this works:**
-> - SSH access confirmed: `technik@192.168.10.9` (password: `k8DwSVpZmf`)
-> - PostgreSQL is running and accepting local connections
-> - Tomedo stores all data (patients, Karteieinträge, appointments, diagnoses) in
->   its PostgreSQL database
->
-> **Risk:** Direct DB writes bypass tomedo's business logic, validation, and
-> event system. This can corrupt data, miss side effects (e.g., auto-notifications),
-> and break BDR replication. Use ONLY for well-understood insert operations
-> where the schema is known and the operation is idempotent.
->
-> **Safe use cases for direct DB writes:**
-> - Writing a `Karteieintrag` (new text entry in the patient record) — known table/columns
-> - Writing a `CustomKarteiEintrag` field value (if the CKE is already defined)
-> - Inserting a result into a `datenTransferProxy` field
->
-> **Required config:** `tomedo_ssh_host`, `tomedo_ssh_user`, `tomedo_ssh_password`,
-> `tomedo_pg_db` (default: `tomedo`)
->
-> **BrassClaw tool approach:**
-> Use `builtin.shell` via SSH to execute `psql` commands on the server.
-> OR install the `tomedo-crawl` sidecar write path if it exposes one.
->
-> ### Write Path 3 — Aktionskette HTTP Trigger (Mac-side only, NOT server-side)
->
-> **CORRECTION from earlier analysis:** The Aktionskette URL scheme
-> `http://{ip}:8070/aktionskette?ak=...` listens on the **Mac tomedo client process**,
-> NOT the Linux server. Port 8070 is **not open on the Linux server** (confirmed by
-> `ss -tlnp`). This write path is only usable from another Mac on the LAN that
-> has a running tomedo client. It is NOT accessible from BrassClaw running on the
-> server or from an external IP.
->
-> ### Write Path 4 — AppleScript (Mac-only)
->
-> Confirmed viable from macOS: `osascript -e 'tell application "tomedo" to ...'`
-> can create Karteieinträge, trigger Aktionsketten, and navigate the UI.
-> This only works on the Mac running the tomedo client. Not applicable for
-> server-side BrassClaw deployments.
+> **Only one write path is in scope for v3:** the official tomedo.API gateway.
+> Aktionskette Mac-client triggers, AppleScript, and direct PostgreSQL are all
+> removed — Mac-only, bypass business logic unsafely, or inaccessible server-side.
 >
 > ---
 >
-> ## §future-api — Official tomedo.API (Partner Program, Write-Capable)
+> ### Write Path — Official tomedo.API Gateway (requires partner agreement)
 >
-> **Status:** Software fully installed on this server. Awaiting Keycloak credentials
-> from zollsoft (see §write-paths Write Path 1 above for full details).
+> **Status:** API connector software **fully installed and running** on this server.
+> Gateway is live at `https://api.tomedo.de`. Only the Keycloak credentials are missing.
 >
-> **What it covers (from forum evidence + connector decompilation):**
-> - Calendar/appointment read AND write (booking, cancellation)
-> - Patient lookup (name, insurance number)
-> - Any HTTP method proxied through to tomedo server port 8443
-> - End-to-end encrypted (EC P-521 key pair already provisioned on this server)
+> **Architecture (confirmed by decompiling `/opt/data/apiConnector/bin/api-connector.jar`):**
+> ```
+> BrassClaw (HTTPS, Keycloak JWT, E2E EC P-521)
+>     ↕
+> https://api.tomedo.de  (zollsoft Gateway Cloud)
+>     ↕  CometD/Bayeux WebSocket
+> api-connector.jar (port 8502, on tomedo server at 192.168.10.9)
+>     ↕  mTLS client cert (already configured)
+> tomedo server (port 8443)
+> ```
 >
-> **Integration path for BrassClaw:**
-> 1. Request tomedo.API partner access via zollsoft (contact: Toni Ringling/Madita
->    Poslovsky at zollsoft GmbH, Jena).
-> 2. Sign partner agreement. Receive gateway URL + Keycloak client credentials.
-> 3. Add credentials to `/opt/data/apiConnector/config/properties.yaml`.
-> 4. Restart api-connector service.
-> 5. Implement BrassClaw as a partner: register with the zollsoft gateway,
->    send requests through it to the connector → tomedo server.
-> 6. All write recipes (appointment creation, Karteieintrag write, patient update)
->    will be Tier 1: LLM confirms the content, orchestrator executes.
+> **What is already in place on this server:**
+> - `api-connector.jar` running as a Spring Boot service on port 8502
+> - EC P-521 key pair already generated for end-to-end encryption
+> - mTLS client cert already configured for port 8443
+> - Currently logs `"No Keycloak credentials are configured!"` every 5 minutes
 >
-> **The direct mTLS REST API (port 8443) remains read-only** from the external
-> perspective — all write operations go through the connector/gateway path.
+> **What is missing (one-time setup):**
+> 1. Sign the tomedo.API partner agreement with zollsoft GmbH
+>    (contact: Toni Ringling / Madita Poslovsky, Jena)
+> 2. Receive: gateway URL (`app.ws.gateway.url`) + Keycloak realm + client ID
+> 3. Add to `/opt/data/apiConnector/config/properties.yaml`
+> 4. `sudo systemctl restart tomedo-api-connector`
+>
+> **What BrassClaw can do once live:**
+> The gateway proxies **any HTTP method** (GET/POST/PUT/PATCH/DELETE) to port 8443.
+> This unlocks:
+> - `POST /{db}/patient` — create patient
+> - `POST /{db}/karteieintrag` — create Karteieintrag
+> - `POST /{db}/termin` — create appointment
+> - `PUT  /{db}/patient/{id}` — update patient data
+> - `DELETE /{db}/termin/{id}` — cancel appointment
+> All write recipes are **Tier 1**: LLM confirms content, orchestrator executes via
+> a `tomedo-api-write` ToolSkill (POST/PUT/DELETE variant of `tomedo-api`).
+>
+> **BrassClaw does NOT call the connector directly.** It registers as a partner
+> with `api.tomedo.de`, then sends requests through the cloud gateway.
+>
+> **Write endpoints available (see §rest-write-probe for live probe results).**
 >
 > ---
 >
