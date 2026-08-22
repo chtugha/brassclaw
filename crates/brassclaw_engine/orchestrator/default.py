@@ -1021,6 +1021,63 @@ def _set_active_skills_from_matched_ids(matched_component_ids, state, active_ski
     state["skill_snippet_names"] = []
 
 
+def _parse_orchestrator_channel_steps(orchestrator_content):
+    """Parse the orchestrator-channel prior-knowledge prose block format
+    (v3 Phase H.1) back into a list of step dicts for Tier-0 dispatch.
+
+    `format_orchestrator_content` (Rust, orchestrator.rs:3003) emits each
+    ComponentItem as a heading line `## [{Heading}: {name}]` optionally
+    followed by its `effective_content` body; consecutive blocks are
+    separated by a blank line. `Heading` is the `StepContextSpec` category
+    label (Skill / Spec / Recipe / PythonCode / Catalogue / Annotation /
+    Extension / Orchestrator / Plan / Summary / Action / Docu / Lesson /
+    Issue / Note / Scaffold / Tool / Component). Class 13 (ToolSkill) and
+    class 11 are skipped by the formatter, so they never appear here. A
+    heading-only block (empty `effective_content`) is just the heading line
+    with no body.
+
+    Returns a list of `{kind, name, body}` dicts where `kind` is the heading
+    label, `name` is the component name, and `body` is the effective content
+    (`""` for a heading-only block). Returns `[]` for a None/empty input.
+    Raises `ValueError` on a block whose first line is not a
+    `## [Label: name]` heading or is missing the `: ` separator;
+    `execute_recipe_orchestrator_channel` (H.2) catches this and converts it
+    to an `{outcome: "error"}` result.
+
+    Monty-safe: `str.split` (with maxsplit to split on the first separator
+    only), `startswith`, `endswith`, `len`, slicing, `+`/`str()`, for-loop +
+    `.append()`, newline-join. NO f-strings, NO `str.format()`
+    (Monty-unsupported per subplan_problem_stepG8_str_format), NO `re`.
+    """
+    if orchestrator_content is None:
+        return []
+    text = str(orchestrator_content)
+    if text == "":
+        return []
+    steps = []
+    blocks = text.split("\n\n")
+    for block in blocks:
+        if block == "":
+            continue
+        lines = block.split("\n")
+        first = lines[0]
+        if not first.startswith("## [") or not first.endswith("]"):
+            raise ValueError(
+                "orchestrator channel step missing '## [Label: name]' heading: "
+                + first
+            )
+        inner = first[4:len(first) - 1]
+        parts = inner.split(": ", 1)
+        if len(parts) < 2:
+            raise ValueError(
+                "orchestrator channel step heading missing ': ' separator: "
+                + first
+            )
+        body = "\n".join(lines[1:])
+        steps.append({"kind": parts[0], "name": parts[1], "body": body})
+    return steps
+
+
 # ── Main execution loop ─────────────────────────────────────
 
 

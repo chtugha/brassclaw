@@ -332,7 +332,23 @@ Mark this subplan Zenflow substep Completed.
 - H.0 — Done. This subplan doc written; Zenflow subplan substep created; parent
   Phase H step `9d94d6cb` marked InProgress; `saved_plan_to_v3.md` reference
   blockquote inserted. (Setup only — no production code.)
-- H.1 — Pending.
+- H.1 — Done. `_parse_orchestrator_channel_steps(orchestrator_content)` helper in
+  `default.py` (helpers region, after `_set_active_skills_from_matched_ids`).
+  Parses the `format_orchestrator_content` prose block format back into
+  `[{kind, name, body}]`: splits on `"\n\n"`, each block's first line must
+  `startswith("## [")` + `endswith("]")`, inner = `first[4:len(first)-1]`,
+  `inner.split(": ", 1)` → `kind`/`name` (maxsplit preserves names containing
+  `": "`), `body = "\n".join(lines[1:])` (`""` for heading-only). `None`/empty
+  → `[]`. Raises `ValueError` on a non-heading first line or missing `": "`
+  separator (H.2 catches → `{outcome:"error"}`). Monty-safe (`str.split` w/
+  maxsplit, `startswith`, `endswith`, `len`, slicing, `+`/`str()`, for-loop +
+  `.append()`, newline-join; NO f-strings/`.format()`/`re`). Monty unit test
+  `phase_h1_parse_orchestrator_channel_steps` via `eval_python_int` (single
+  block, multi-block, heading-only, empty, None, malformed-heading-raises,
+  missing-separator-raises, name-with-`": "`-preserved). Verified:
+  `python3 ast.parse` clean; fmt clean; clippy clean both configs; test passes
+  both configs (1 passed, 684 default / 695 skills-db filtered — 0 regressions).
+  Committed+pushed (this commit).
 - H.2 — Pending.
 - H.3 — Pending.
 - H.4 — Pending (may spawn nested subplan `subplan_problem_stepH4_of_saved_plan_to_v3.md`

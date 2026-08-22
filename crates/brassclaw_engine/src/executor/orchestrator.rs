@@ -6620,6 +6620,66 @@ else:
         );
     }
 
+    // ── Phase H.1 — _parse_orchestrator_channel_steps ────────────
+    //
+    // Parses the `format_orchestrator_content` prose block format
+    // (`## [Heading: name]\n{body}`, blocks joined by `\n\n`) back into
+    // `[{kind, name, body}]` for the Tier-0 channel executor (H.2). Runs the
+    // pure-Python helper through Monty via `eval_python_int`; returns 1 only
+    // if every assertion (single block, multi-block, heading-only, empty,
+    // None, malformed-heading-raises, missing-separator-raises) passes.
+
+    #[test]
+    fn phase_h1_parse_orchestrator_channel_steps() {
+        let result = eval_python_int(
+            r###"
+ok = True
+# single PythonCode block with a body
+r1 = _parse_orchestrator_channel_steps("## [PythonCode: greet]\nprint('hi')")
+ok = ok and (len(r1) == 1)
+ok = ok and (r1[0]["kind"] == "PythonCode")
+ok = ok and (r1[0]["name"] == "greet")
+ok = ok and (r1[0]["body"] == "print('hi')")
+# multi-block: Skill with a body + heading-only Recipe
+r2 = _parse_orchestrator_channel_steps("## [Skill: s1]\nbody line 1\n\n## [Recipe: r]")
+ok = ok and (len(r2) == 2)
+ok = ok and (r2[0]["kind"] == "Skill")
+ok = ok and (r2[0]["name"] == "s1")
+ok = ok and (r2[0]["body"] == "body line 1")
+ok = ok and (r2[1]["kind"] == "Recipe")
+ok = ok and (r2[1]["name"] == "r")
+ok = ok and (r2[1]["body"] == "")
+# empty + None inputs -> []
+ok = ok and (len(_parse_orchestrator_channel_steps("")) == 0)
+ok = ok and (len(_parse_orchestrator_channel_steps(None)) == 0)
+# a non-heading first line -> raises
+raised = False
+try:
+    _parse_orchestrator_channel_steps("not a heading")
+except Exception:
+    raised = True
+ok = ok and raised
+# a heading missing the ': ' separator -> raises
+raised2 = False
+try:
+    _parse_orchestrator_channel_steps("## [NoSeparatorHere]")
+except Exception:
+    raised2 = True
+ok = ok and raised2
+# a name containing ': ' is preserved (split on the first separator only)
+r3 = _parse_orchestrator_channel_steps("## [PythonCode: f]\nbody")
+ok = ok and (r3[0]["name"] == "f")
+ok = ok and (r3[0]["body"] == "body")
+FINAL(1 if ok else 0)
+"###,
+        );
+        assert_eq!(
+            result, 1,
+            "_parse_orchestrator_channel_steps must parse prose blocks, handle \
+             empty/None, preserve names with ': ', and raise on malformed input"
+        );
+    }
+
     #[test]
     fn action_errors_nudge_injected_at_threshold() {
         // When consecutive_action_errors reaches max_consecutive_errors,
