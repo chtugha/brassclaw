@@ -4712,6 +4712,41 @@ production retrieval path breaks." E.0 is that wiring sub-task, pulled forward.
 
 **Status:** [ ] Pending
 
+> **🔗 SUBSTEP — Component-class registry (FIND-IBS-02 gap):** the IBS emits
+> `IbsRecipeStep.include: Vec<Uuid>` per step with **no per-UUID `class_code`**
+> (FIND-IBS-02: "UUIDs are opaque to the IBS"), but `fetch_component_by_id`
+> needs `class_code` to pick the class table, and no per-UUID class source
+> exists in the data model (`reborn_intent_inputs` holds intent-matched
+> components, not recipe-step includes). Per user decision (Q1→C then Q-F1→B),
+> resolve each step UUID's class via a **real `reborn_components(id,
+> class_code, scope)` registry table** kept in sync by triggers on all 14 class
+> tables — new migration **V061** (a schema change beyond Phase E's original
+> "no migration"; explicitly accepted as an upgrade). Full approach, the 7 user
+> design decisions governing all of Phase E, the V061 migration design, and the
+> ordered E.1–E.6 substeps: **`docs/agents-v3/subplan_problem_stepE_of_saved_plan_to_v3.md`**.
+> Run that subplan's steps (E.1 registry first) before the remainder of this
+> Phase E section. Note: the E0-A re-target means Phase E MUST also grow the
+> composition `PgRetrievalLookup` bridge with `SplitResult` + `ActionShortCircuit`
+> arms (the engine enum grows → the bridge `match` would be non-exhaustive) —
+> replacing E.0's conservative booleans/unsplit items with real routing booleans
+> and split channels.
+>
+> **🔗 SUB-SUBSTEP — embedded-PG pgvector build fix (encountered during E.1
+> runtime verification):** the embedded-PG boot test failed on V000 `CREATE
+> EXTENSION vector` because `build.rs::try_build_pgvector` failed on macOS
+> arm64 (stale CI toolchain tokens baked in `Makefile.global` — `-isysroot
+> MacOSX14.5.sdk`, brew ICU `-I`, `-Werror=unguarded-availability-new` — plus
+> cargo's `PROFILE=debug` injected as a bare `debug` token via `ifdef PROFILE`)
+> and wrote an empty `EMBEDDED_PGVECTOR_ARCHIVE` placeholder, so V000 aborts
+> and V061 is never reached. This is a pre-existing infrastructure gap, not an
+> E.1 bug. User decision (ask_user): do BOTH — fix compile-from-source
+> (primary, `build.rs` sanitise `Makefile.global` + `.env_remove("PROFILE")`)
+> AND add a runtime prebuilt-fetch fallback in `install_pgvector`
+> (system/brew PG-16 → `BRASSCLAW_PGVECTOR_URL` → warn+Ok). Full approach +
+> ordered P1/P2/P3 steps: **`docs/agents-v3/subplan_problem_stepE1_pgvector_of_saved_plan_to_v3.md`**.
+> Run that subplan BEFORE completing E.1's runtime verification (V000–V061
+> must apply via the embedded-PG boot test).
+
 **Goal:** Wire the IBS into `PostgresSource::fetch_for_turn`. On a Recipe intent match
 with a `step_link`, call the IBS, fetch component items for each channel, and return a
 `SplitResult`. Handle Action match with `ActionShortCircuit`.

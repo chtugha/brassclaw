@@ -728,6 +728,49 @@ pub async fn fetch_component_by_id(
     Ok(items)
 }
 
+/// Resolve a component UUID to its `class_code` via the `reborn_components`
+/// registry (V061).
+///
+/// The registry is a flat UUID -> class_code + scope lookup kept in sync with
+/// all 14 class tables by `maintain_components_registry` triggers. This closes
+/// the FIND-IBS-02 gap: the IBS emits `IbsRecipeStep.include: Vec<Uuid>` with
+/// no per-UUID `class_code`, but `fetch_component_by_id` needs the class to
+/// pick the class-specific table. `fetch_for_turn` calls this once per step
+/// include UUID (PERF-02: one indexed `SELECT` per UUID) before calling
+/// `fetch_component_by_id`.
+///
+/// Scoped so a foreign-tenant UUID never resolves (SEC-01 tenant isolation):
+/// the `WHERE` clause simply returns no row. Returns `Ok(None)` when the UUID
+/// is absent from the registry (caller skips that step's item rather than
+/// failing the turn — a missing include is a soft authoring gap, not a hard
+/// error).
+#[cfg(feature = "skills-db")]
+pub async fn lookup_component_class(
+    pool: &brassclaw_pg::PgPool,
+    scope: &ComponentScope,
+    component_id: uuid::Uuid,
+) -> Result<Option<i32>, RetrievalSourceError> {
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+    let row = client
+        .query_opt(
+            "SELECT class_code::int FROM reborn_components \
+             WHERE id = $1 AND tenant_id = $2 AND user_id = $3 AND agent_id = $4 AND project_id = $5",
+            &[
+                &component_id,
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+            ],
+        )
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+    Ok(row.map(|r| r.get::<_, i32>(0)))
+}
+
 /// Map a `DocType` to its class code (mirrors `doc_type_class_code` in orchestrator.rs).
 ///
 /// This is the authoritative table for DocType → class_code mapping in the
