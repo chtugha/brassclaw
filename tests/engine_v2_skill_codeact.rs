@@ -702,10 +702,94 @@ FINAL(str(result))
     // ThreadManager. These tests exercise the CodeAct execution path only.
 }
 
+/// Per-test Postgres-16 testcontainer rig (v3 Phase H4.8).
+///
+/// `skill_codeact_persists_active_skill_provenance` exercises the Phase-G.1
+/// Rust active-skill-provenance path (`skill_provenance_for_items` →
+/// `reborn_skills`), which needs a real Postgres pool. One container per test
+/// is simplest (only this single test needs it). Mirrors
+/// `crates/brassclaw_reborn_composition/tests/common/mod.rs`. `start()`
+/// returns `Err` when docker/testcontainers is unavailable so the caller can
+/// skip cleanly.
+#[cfg(feature = "skills-db")]
+mod pg_rig {
+    use std::sync::Arc;
+
+    use brassclaw_pg::PgPool;
+    use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
+
+    type PostgresContainer = testcontainers_modules::testcontainers::ContainerAsync<
+        testcontainers_modules::postgres::Postgres,
+    >;
+
+    pub(super) struct Rig {
+        pub(super) pool: Arc<PgPool>,
+        _container: PostgresContainer,
+    }
+
+    impl Rig {
+        pub(super) async fn start() -> Result<Self, String> {
+            let image = testcontainers_modules::postgres::Postgres::default()
+                .with_db_name("brassclaw_test")
+                .with_user("postgres")
+                .with_password("postgres")
+                .with_tag("16-alpine");
+            let container = image
+                .start()
+                .await
+                .map_err(|e| format!("docker/testcontainers unavailable: {e}"))?;
+            let host = container
+                .get_host()
+                .await
+                .map_err(|e| format!("resolve container host: {e}"))?;
+            let port = container
+                .get_host_port_ipv4(5432)
+                .await
+                .map_err(|e| format!("resolve container port: {e}"))?;
+            let database_url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
+            let config: deadpool_postgres::tokio_postgres::Config = database_url
+                .parse()
+                .expect("testcontainer database URL must parse");
+            let manager =
+                deadpool_postgres::Manager::new(config, deadpool_postgres::tokio_postgres::NoTls);
+            let pool = deadpool_postgres::Pool::builder(manager)
+                .max_size(8)
+                .build()
+                .expect("Postgres pool must build");
+            let _ = pool
+                .get()
+                .await
+                .map_err(|e| format!("testcontainer refused a connection: {e}"))?;
+            let pool_arc = Arc::new(pool);
+            brassclaw_pg::migrations::run_migrations(&pool_arc)
+                .await
+                .expect("testcontainer schema migrations must succeed");
+            Ok(Self {
+                pool: pool_arc,
+                _container: container,
+            })
+        }
+    }
+}
+
 /// Verify selected skill provenance is persisted onto the thread for learning flows.
+#[cfg(feature = "skills-db")]
 #[tokio::test]
 async fn skill_codeact_persists_active_skill_provenance() {
+    // v3 Phase H4.8: Phase G.1 (commit e7c2ce31) moved active-skill-provenance
+    // population from a Python `__list_skills__()`+`select_skills()` round-trip
+    // into the Rust `skill_provenance_for_items(pg_pool, scope, items)` helper,
+    // which reads `reborn_skills` and returns `Vec::new()` when `pg_pool` is
+    // `None`. The github skill is surfaced as a class-3 `ComponentItem`
+    // (`id = skill_doc.id`) by `RamSource`; this test now provisions a
+    // testcontainer Postgres, seeds a validated `reborn_skills` row matching the
+    // skill's id + the thread scope, and plumbs the pool into `ThreadManager`
+    // via `with_pg_pool` so the provenance is non-empty and
+    // `__set_active_skills__` persists it. `snippet_names` is `vec![]` because
+    // `reborn_skills` has no `code_snippets` column by V027 design
+    // (`fetch_skill_provenance_by_ids` always returns `[]`).
     let project_id = ProjectId::new();
+    let project_id_str = project_id.to_string();
     let skill_doc = make_github_skill_doc(project_id);
     let skill_doc_id = skill_doc.id;
 
@@ -729,6 +813,41 @@ FINAL(str(result))
     let effects = HttpMockEffects::new(canned);
     let store = TestStore::new();
     store.save_memory_doc(&skill_doc).await.unwrap();
+
+    // Provision a testcontainer Postgres + run the full schema. Skip cleanly
+    // when docker/testcontainers is unavailable (e.g. CI without docker).
+    let rig = match pg_rig::Rig::start().await {
+        Ok(rig) => rig,
+        Err(reason) => {
+            eprintln!("skipping skill_codeact_persists_active_skill_provenance: {reason}");
+            return;
+        }
+    };
+    let pool = rig.pool.clone();
+
+    // Seed a validated `reborn_skills` row for the github skill, scoped to the
+    // thread's identity (`tenant_id=""`, `user_id="test-user"`, `agent_id=""`,
+    // `project_id=<pid>` — `Thread::new` defaults tenant/agent to ""). Raw SQL
+    // (not `DbSkillStore::insert`) so we can pin `id = skill_doc.id`, set
+    // `validation_status='validated'`, and keep `consumer_tags='{}'` (no
+    // `05:validator`, so the SEC-01 consumer gate admits the row). `version =
+    // "1.0.0"` → major 1.
+    {
+        let client = pool.get().await.expect("acquire pg client for seed");
+        client
+            .execute(
+                "INSERT INTO reborn_skills \
+                 (id, tenant_id, user_id, agent_id, project_id, name, description, \
+                  version, class_code, validation_status, consumer_tags, source, \
+                  prompt_uid) \
+                 VALUES ($1, '', 'test-user', '', $2, 'github', \
+                         'GitHub API integration via HTTP tool', '1.0.0', 3, \
+                         'validated', '{}', 'authored', 1)",
+                &[&skill_doc_id.0, &project_id_str],
+            )
+            .await
+            .expect("seed reborn_skills for github skill");
+    }
 
     let mut caps = CapabilityRegistry::new();
     caps.register(Capability {
@@ -754,7 +873,8 @@ FINAL(str(result))
         Arc::new(caps),
         Arc::new(LeaseManager::new()),
         Arc::new(PolicyEngine::new()),
-    );
+    )
+    .with_pg_pool(pool);
 
     let tid = mgr
         .spawn_thread(
@@ -782,7 +902,13 @@ FINAL(str(result))
         .unwrap_or_else(|| panic!("expected github skill provenance in {active_skills:?}"));
     assert_eq!(github_skill.name, "github");
     assert_eq!(github_skill.version, 1);
-    assert_eq!(github_skill.snippet_names, vec!["list_github_issues"]);
+    // reborn_skills has no code_snippets column (V027), so the Phase-G.1
+    // provenance helper always returns snippet_names = [].
+    assert_eq!(github_skill.snippet_names, Vec::<String>::new());
+
+    // Hold `rig` on the stack until the assertions so the testcontainer stays
+    // alive for the whole turn + verification.
+    drop(rig);
 }
 
 /// Verify that non-matching goals don't activate skills (negative case).
