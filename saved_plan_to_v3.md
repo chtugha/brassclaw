@@ -5507,6 +5507,37 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `basic_prompt_store` WIP — H4.8 does not touch/commit those files. Phase H.4
 > Zenflow step `fa9fb137` + H4.8 substep `d48d5809` marked Completed. Resume
 > Phase H at H.5.
+>
+> **H.5 spawned an obsolescence-reconciliation subplan.** Grounding H.5 (the Model A
+> composition integration test) overturned the Phase H subplan §1 claim that Model A
+> *"drives real turns today."* Verified against live source: **production turns run on the
+> agent loop** (`DefaultTurnCoordinator::submit_turn`, `coordinator.rs:256` → store →
+> `AgentLoopDriver`); the engine Python turn-execution runtime (`ExecutionLoop`/
+> `loop_engine.rs:471` `execute_orchestrator` → `default.py`/Monty) is **only reachable
+> via `ThreadManager::spawn_thread`**, whose only non-test caller is the **mission
+> system** (v1 routines reborn, `runtime/mission.rs` + `types/mission.rs`), itself only
+> test-constructed; all 8 `ThreadManager::new` sites are test helpers; **composition never
+> instantiates `ThreadManager`** (drives turns via `submit_turn`, `runtime.rs:1043`).
+> `product_live_adapters.rs:1-3` confirms no traffic cut-over to Reborn. So the obsolete
+> surface is the **entire engine Python turn-execution runtime + the mission system**, not
+> just Model A's `tier_zero` branch — a large fraction of Phases A–G landed in this
+> dormant path. **User decisions (5, via ask_user):** (1) Model A obsolete → skip H.5,
+> jump to H.6 (Model B/C); (2) missions/routines obsolete → delete; (3) remediation =
+> Hybrid — delete dead Model A + mission code but **KEEP + re-document as reused by B/C**
+> the H.4 pieces (`RecipeTierZero*` `EventKind` variants, `TurnRoutingSignals.recipe_id`/
+> `recipe_name`, `RecipeOutcomeListener`); (4) sequencing = Phased — up-front delete
+> missions + skip H.5 + delete Model A Python `tier_zero` (H.3), then build H.6–H.13 (H.8
+> extracts reusable assembly/channel logic into engine `pub` fns), then final cleanup
+> deletes the severed engine Python runtime wrapper (`execute_orchestrator` turn loop,
+> `loop_engine`/`ExecutionLoop`, `ThreadManager`, Monty, `default.py`) + Model A Python
+> fns; (5) phased interleave scope. **H.8 reuses the engine's *logic*** (refactors
+> `handle_assemble_prior_knowledge` → `pub fn assemble_prior_knowledge_with_hint` +
+> `execute_tier_zero_channel`, delegated to by the composition `LoopOrchestratorPort`
+> H.12), so the wrapper cannot be deleted wholesale until after H.8. Full audit + O1–O5
+> step sequence + verification in
+> `./docs/agents-v3/subplan_problem_stepH5_obsolescence_of_saved_plan_to_v3.md`
+> (Zenflow substep under the Phase H step `9d94d6cb`, after the H4.8 substep `d48d5809`).
+> Execute O1→O5 one-by-one before resuming Phase H at H.6.
 
 **Status:** [ ] Pending
 
