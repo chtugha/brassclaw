@@ -2748,7 +2748,10 @@ async fn handle_assemble_prior_knowledge(
                 // `rust_items` serialized (informational — the Python side
                 // never applies them directly; the live `RecipeStage` does,
                 // §0.9 note), `matched_component_ids` from `routing` (the
-                // orchestrator-channel identity set), and the routing context.
+                // orchestrator-channel identity set), and the routing context
+                // (incl. `recipe_id` — the matched Recipe UUID, surfaced in
+                // v3 Phase H4.4 so `default.py` step-0 can stamp it onto
+                // `recipe_tier_zero_*` events in H4.5).
                 // The LIVE Tier-0/Tier-1 dispatch is the Phase-H agent-loop
                 // consumer (via the composition `PgRetrievalLookup` bridge);
                 // this path is dormant but plan-faithful if re-activated.
@@ -2784,6 +2787,7 @@ async fn handle_assemble_prior_knowledge(
                     "rust_items": rust_items_json,
                     "variant_label": routing.variant_label,
                     "step_link": routing.step_link,
+                    "recipe_id": routing.recipe_id,
                     "wilson_lower": routing.wilson_lower,
                     "llm_call_required": routing.llm_call_required,
                     "tier0_eligible": routing.tier0_eligible,
