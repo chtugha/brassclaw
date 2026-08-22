@@ -779,7 +779,7 @@ param_schema:  [
   {name: "timeout_ms",   param_type: "number", required: false,
    description: "Timeout in ms, default 10000"}
 ]
-param_template: {"url": "{{tomedo_base_url}}/serverstatus", "method": "GET", "timeout_ms": 10000}
+param_template: {"url": "{{vars.tomedo_base_url}}/serverstatus", "method": "GET", "timeout_ms": 10000}
 preconditions:  "tomedo_cert_pem must be set. Server LAN-reachable."
 error_handling: "Non-200 or connection refused → tomedo server offline."
 category:       "tomedo"
@@ -813,7 +813,7 @@ param_schema:  [
   {name: "timeout_ms", param_type: "number", required: false,
    description: "Must be 60000 — full list response is large"}
 ]
-param_template: {"url": "{{tomedo_base_url}}/patient?flach=true", "method": "GET", "timeout_ms": 60000}
+param_template: {"url": "{{vars.tomedo_base_url}}/patient?flach=true", "method": "GET", "timeout_ms": 60000}
 preconditions:  "tomedo_cert_pem must be set. MUST be followed by pc-tomedo-filter-recent-patients
                  or equivalent reduce step. DO NOT pass raw output to LLM or recipe context."
 error_handling: "Non-200 → auth or server error. Empty array → no patients or wrong db name."
@@ -843,7 +843,7 @@ param_schema:  [
   {name: "timeout_ms", param_type: "number", required: false,
    description: "Timeout in ms, default 15000"}
 ]
-param_template: {"url": "{{tomedo_base_url}}/patient/{{vars.patient_id}}", "method": "GET", "timeout_ms": 15000}
+param_template: {"url": "{{vars.tomedo_base_url}}/patient/{{vars.patient_id}}", "method": "GET", "timeout_ms": 15000}
 preconditions:  "patient_id must be a valid integer ident from the patient list."
 error_handling: "HTTP 404 → patient_id not found. HTTP 401 → cert invalid."
 category:       "tomedo"
@@ -874,7 +874,7 @@ param_schema:  [
    description: "Timeout in ms, default 15000"}
 ]
 param_template: {
-  "url": "{{tomedo_base_url}}/patient/{{vars.patient_id}}/patientenDetailsRelationen?limitScheine=true&limitKartei=50&limitVerordnungen=50&limitZeiterfassungen=true&limitBehandlungsfaelle=true",
+  "url": "{{vars.tomedo_base_url}}/patient/{{vars.patient_id}}/patientenDetailsRelationen?limitScheine=true&limitKartei=50&limitVerordnungen=50&limitZeiterfassungen=true&limitBehandlungsfaelle=true",
   "method": "GET",
   "timeout_ms": 15000
 }
@@ -909,7 +909,7 @@ param_schema:  [
   {name: "timeout_ms", param_type: "number", required: false}
 ]
 param_template: {
-  "url": "{{tomedo_base_url}}/patient/{{vars.patient_id}}/patientenDetailsRelationen/medikamentenPlan",
+  "url": "{{vars.tomedo_base_url}}/patient/{{vars.patient_id}}/patientenDetailsRelationen/medikamentenPlan",
   "method": "GET",
   "timeout_ms": 15000
 }
@@ -941,7 +941,7 @@ param_schema:  [
   {name: "timeout_ms", param_type: "number", required: false}
 ]
 param_template: {
-  "url": "{{tomedo_base_url}}/patient/{{vars.patient_id}}/termine?flach=true",
+  "url": "{{vars.tomedo_base_url}}/patient/{{vars.patient_id}}/termine?flach=true",
   "method": "GET",
   "timeout_ms": 15000
 }
@@ -959,21 +959,24 @@ validation_status: "validated"
 ```
 name:          "ts-tomedo-patient-visits"
 tool_name:     "tomedo-api"
-description:   "GET /{db}/besuch/{id}/besucheForPatient.
+description:   "GET /{db}/besuch/{besuch_id}/besucheForPatient.
                 Returns visit/consultation records for a patient.
+                ⚠️ The URL segment is a BESUCH ident, not a patient ident.
+                Obtain the besuch_ident from a prior patient-detail or
+                patientenDetailsRelationen response (besuch[].ident).
                 Use timeout_ms: 15000."
 param_schema:  [
   {name: "url",        param_type: "string", required: true,
-   description: "https://{host}:{port}/{db}/besuch/{id}/besucheForPatient"},
+   description: "https://{host}:{port}/{db}/besuch/{besuch_ident}/besucheForPatient"},
   {name: "timeout_ms", param_type: "number", required: false}
 ]
 param_template: {
-  "url": "{{tomedo_base_url}}/besuch/{{vars.patient_id}}/besucheForPatient",
+  "url": "{{vars.tomedo_base_url}}/besuch/{{vars.besuch_ident}}/besucheForPatient",
   "method": "GET",
   "timeout_ms": 15000
 }
-preconditions:  "patient_id must be valid."
-error_handling: "HTTP 404 → patient not found. Empty array → no visit records."
+preconditions:  "besuch_ident must be a valid Besuch ident (NOT patient ident). Obtain from patientenDetailsRelationen response."
+error_handling: "HTTP 404 → besuch_ident not found. Empty array → no visit records."
 category:       "tomedo"
 source:         "system"
 validation_status: "validated"
@@ -997,7 +1000,7 @@ param_schema:  [
   {name: "timeout_ms", param_type: "number", required: false}
 ]
 param_template: {
-  "url": "{{tomedo_base_url}}/patient/searchByAttributes?query={{vars.query}}",
+  "url": "{{vars.tomedo_base_url}}/patient/searchByAttributes?query={{vars.query}}",
   "method": "GET",
   "timeout_ms": 15000
 }
@@ -1511,8 +1514,9 @@ result = __execute_action__("tomedo-api", {
 ```python
 # Channel: orchestrator | Class: 22
 # Dispatches ts-tomedo-patient-visits.
+# ⚠️ Uses besuch_ident (NOT patient_id) — obtain from patientenDetailsRelationen.
 result = __execute_action__("tomedo-api", {
-    "url": "{{vars.tomedo_base_url}}/besuch/{{vars.patient_id}}/besucheForPatient",
+    "url": "{{vars.tomedo_base_url}}/besuch/{{vars.besuch_ident}}/besucheForPatient",
     "method": "GET",
     "timeout_ms": 15000
 })
@@ -1540,7 +1544,7 @@ result = __execute_action__("tomedo-crawl-api", {
 # Registers an inbound call for phone-index lookup.
 # IBS bakes in {{vars.call_id}} and {{vars.phone_number}}.
 import json as _j
-body = _j.dumps({"call_id": {{vars.call_id}}, "phone_number": "{{vars.phone_number}}"})
+body = _j.dumps({"call_id": int("{{vars.call_id}}"), "phone_number": "{{vars.phone_number}}"})
 result = __execute_action__("tomedo-crawl-api", {
     "url": "http://127.0.0.1:13181/caller",
     "method": "POST",
@@ -2551,12 +2555,11 @@ body: |
 
   TIER-0 ELIGIBILITY:
   All read operations with a known patient_id are Tier 0.
-  The direct mTLS REST API (port 8443) is read-only — no write endpoints.
+  Direct mTLS REST API (port 8443) supports GET + POST + PUT (confirmed 2026-08-22).
+  Writes (POST/PUT) are Tier 1 — LLM confirms content before dispatch.
   Name search is Tier 1 (LLM composes the query from user intent).
   LLM object composition (Python markers, stats, letters, CKEs, forms) is Tier 1.
   LLM service calls (text analysis, translation, BGA) are Tier 1.
-  Official tomedo.API write operations (appointments, Karteieintrag) require the
-  partner program — see §future-api in the plan header for details.
 
   LLM OBJECT COMPOSITION (§llm-objects):
   Use skill-tomedo-compose-python-marker, skill-tomedo-compose-statistic,
@@ -2690,7 +2693,7 @@ body: |
 
   Before dispatching: show the user the date/time and reason and ask for confirmation.
   After creation: the response contains {ident: N} — surface the new ident.
-  To cancel: call ts-tomedo-karteieintrag-update pattern with PUT /termin/{ident} {removed: true}.
+  To cancel: use ts-tomedo-termin-create with method PUT /termin/{ident} body {removed: true}.
 
   Date/time: convert human-readable time to epoch ms before passing.
   PythonCode: use pc-tomedo-termin-create.
@@ -5297,10 +5300,9 @@ validation_status: "validated"
 
 ```python
 # Channel: orchestrator | Class: 22 | Tier 1
-# §shell-safe-fixed: the SSH command template is user-confirmed before dispatch.
+# §shell-guard: command string contains runtime vars — llm_call_required: true.
 # Fetches the three tomedo mTLS PEM files from the server via SSH.
 # IBS bakes in all vars before execution.
-import os as _os
 _host  = "{{vars.tomedo_ssh_host}}"
 _user  = "{{vars.tomedo_ssh_user}}"
 _key   = "{{vars.tomedo_ssh_key_path}}"
