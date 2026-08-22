@@ -164,11 +164,15 @@ tokio = { version = "1", features = ["macros", "rt"] }
 //! parse inbound Meta webhook payloads → ProductInboundEnvelope, and render
 //! outbound envelopes → Meta Cloud API HTTP requests. No business logic here.
 
-pub mod adapter;
-pub mod payload;
-pub mod render;
+#![forbid(unsafe_code)]
+
+mod adapter;
+mod payload;
+mod render;
 
 pub use adapter::{WhatsAppV2Adapter, WhatsAppV2AdapterConfig, whatsapp_default_capabilities};
+pub use payload::{WHATSAPP_API_HOST, WHATSAPP_USER_ACTOR_KIND, parse_whatsapp_webhook};
+pub use render::{WhatsAppRenderError, render_final_reply, render_progress_reaction};
 ```
 
 Add `brassclaw_whatsapp_v2_adapter` to the workspace `Cargo.toml` members list.
@@ -212,6 +216,10 @@ pub struct WhatsAppV2AdapterConfig {
     /// When true, the adapter advertises ExternalProgressPush and renders a
     /// "read" reaction on outbound Progress envelopes. Default: false.
     pub progress_push_enabled: bool,
+    /// Name of the secret holding the webhook verify token for GET challenge
+    /// verification. Per-installation so multi-installation setups can use
+    /// distinct secrets. Defaults to `"whatsapp_verify_token"`.
+    pub verify_token_secret_name: String,
 }
 
 pub struct WhatsAppV2Adapter {
@@ -236,6 +244,13 @@ impl WhatsAppV2Adapter {
 
     pub fn config(&self) -> &WhatsAppV2AdapterConfig {
         &self.config
+    }
+}
+
+impl WhatsAppV2AdapterConfig {
+    /// Name of the secret holding the webhook verify token (for the GET challenge handler).
+    pub fn verify_token_secret_name(&self) -> &str {
+        &self.verify_token_secret_name
     }
 }
 
@@ -304,6 +319,7 @@ impl ProductAdapter for WhatsAppV2Adapter {
             });
         }
 
+        // Extract all fields before the move-consuming match on envelope.payload.
         let attempt_id = envelope.delivery_attempt_id;
         let target_binding = envelope.target.reply_target_binding_ref.clone();
         let run_id: Option<TurnRunId> = match &envelope.payload {
@@ -311,11 +327,14 @@ impl ProductAdapter for WhatsAppV2Adapter {
             ProductOutboundPayload::Progress(v) => Some(v.turn_run_id),
             _ => None,
         };
+        // Clone the reply-target ref before envelope.payload is moved so the
+        // render helpers below can borrow it from the stack-owned clone.
+        let reply_target = target_binding.clone();
 
         let request = match envelope.payload {
             ProductOutboundPayload::FinalReply(view) => {
                 match render_final_reply(
-                    &envelope.target.reply_target_binding_ref,
+                    &reply_target,
                     &view,
                     self.config.egress_credential_handle.clone(),
                     &self.config.phone_number_id,
@@ -339,7 +358,7 @@ impl ProductAdapter for WhatsAppV2Adapter {
                     return Ok(ProductRenderOutcome::Deferred);
                 }
                 match render_progress_reaction(
-                    &envelope.target.reply_target_binding_ref,
+                    &reply_target,
                     &view,
                     self.config.egress_credential_handle.clone(),
                     &self.config.phone_number_id,
@@ -528,7 +547,8 @@ pub const WHATSAPP_USER_ACTOR_KIND: &str = "whatsapp_user";
 
 use brassclaw_product_adapters::{
     AdapterInstallationId, ExternalActorRef, ExternalConversationRef, ExternalEventId,
-    ParsedProductInbound, ProductInboundPayload, ProtocolAuthEvidence, UserMessagePayload,
+    ParsedProductInbound, ProductInboundPayload, ProductTriggerReason, ProtocolAuthEvidence,
+    UserMessagePayload,
 };
 use serde::Deserialize;
 use thiserror::Error;
@@ -679,12 +699,11 @@ pub fn parse_whatsapp_webhook(
                     .to_string();
 
                 let payload = ProductInboundPayload::UserMessage(
-                    UserMessagePayload::new(text, vec![]).map_err(|e| {
-                        PayloadParseError::InvalidExternalRef {
+                    UserMessagePayload::new(text, vec![], ProductTriggerReason::DirectChat)
+                        .map_err(|e| PayloadParseError::InvalidExternalRef {
                             kind: "user_message_payload",
                             reason: e.to_string(),
-                        }
-                    })?,
+                        })?,
                 );
 
                 return ParsedProductInbound::new(event_id, actor_ref, conversation_ref, payload)
@@ -733,9 +752,9 @@ Meta `"to"` field expects digits without `+` (e.g. `4915112345678`).
 ```rust
 //! Outbound rendering for WhatsApp Business Cloud API v2.
 
-pub use brassclaw_product_adapters::{
+use brassclaw_product_adapters::{
     DeclaredEgressHost, EgressCredentialHandle, EgressHeader, EgressMethod,
-    EgressPath, EgressRequest, FinalReplyView, ProgressKind, ProgressUpdateView,
+    EgressPath, EgressRequest, FinalReplyView, ProgressUpdateView, ProductAdapterError,
 };
 use brassclaw_turns::ReplyTargetBindingRef;
 use thiserror::Error;
@@ -793,10 +812,12 @@ pub fn render_final_reply(
         }
     });
     let body_bytes = serde_json::to_vec(&body)
-        // safety: body is a serde_json::Value built from owned scalars
-        .expect("reply body serializes to JSON");
+        .map_err(|e| WhatsAppRenderError::InvalidReplyTarget {
+            target: target.as_str().to_string(),
+            reason: format!("failed to serialize reply body: {e}"),
+        })?;
     let path = format!("/v19.0/{phone_number_id}/messages");
-    Ok(build_egress_request(path, body_bytes, credential_handle))
+    build_egress_request(path, body_bytes, credential_handle)
 }
 
 /// Render a `ProgressUpdateView` as a "typing" reaction.
@@ -816,30 +837,33 @@ fn build_egress_request(
     path: String,
     body: Vec<u8>,
     credential_handle: EgressCredentialHandle,
-) -> EgressRequest {
+) -> Result<EgressRequest, WhatsAppRenderError> {
     // safety: WHATSAPP_API_HOST is a compile-time const satisfying the host validator
     let host = DeclaredEgressHost::new(WHATSAPP_API_HOST).expect("static host valid");
     let method = EgressMethod::post();
-    // EgressPath::new requires a &'static str in the current API;
-    // use the dynamic path helper if available, otherwise the path must be built
-    // as a known-bounded string. The Meta API path /v19.0/<id>/messages is always
-    // well-formed because phone_number_id is validated at construction time.
-    let egress_path = EgressPath::new_dynamic(path).expect("path valid");
+    // EgressPath::new accepts any Into<String> — no static-str requirement.
+    // The path "/v19.0/{phone_number_id}/messages" always starts with '/' and
+    // contains no scheme, fragment, backslash, or control characters because
+    // phone_number_id is digits-only (validated at store time).
+    let egress_path = EgressPath::new(path).map_err(|e: ProductAdapterError| {
+        WhatsAppRenderError::InvalidReplyTarget {
+            target: "egress_path".into(),
+            reason: e.to_string(),
+        }
+    })?;
+    // safety: static name/value satisfies the header validator
     let content_type =
-        // safety: static name/value satisfies the header validator
         EgressHeader::new("content-type", "application/json").expect("static header valid");
-    EgressRequest::new(host, method, egress_path)
+    Ok(EgressRequest::new(host, method, egress_path)
         .with_header(content_type)
         .with_body(body)
-        .with_credential_handle(Some(credential_handle))
+        .with_credential_handle(Some(credential_handle)))
 }
 ```
 
-**Implementation note on `EgressPath::new_dynamic`:** If `EgressPath` only
-exposes `new(path: &'static str)`, add a `pub fn new_owned(path: String)` or
-`pub fn new_dynamic(path: String)` variant to `brassclaw_product_adapters::egress`
-that validates the path string exactly like the `&'static str` variant. This is a
-small non-breaking addition to that crate with a single-line body change.
+**Note on `EgressPath::new`:** The live `EgressPath::new` signature is
+`pub fn new(value: impl Into<String>) -> Result<Self, ProductAdapterError>` —
+it already accepts `String` directly. No new `new_dynamic` variant is needed.
 
 ### 1.5 Tests for Phase WA-A
 
@@ -876,10 +900,11 @@ integration tests. Cover the same matrix as Telegram adapter tests:
 - `parse_reply_target_without_plus_prefix`
 - `parse_reply_target_rejects_missing_prefix`
 - `parse_reply_target_rejects_non_digits`
-- `final_reply_renders_correct_json`
+- `final_reply_renders_correct_json` — unwrap `Result`, check JSON body shape
 - `final_reply_json_has_messaging_product_whatsapp`
 - `final_reply_json_to_is_digits_only`
-- `progress_reaction_returns_none`
+- `build_reply_target_binding_produces_wa_prefix`
+- `progress_reaction_always_returns_none`
 
 ### 1.6 Validation for Phase WA-A
 
@@ -969,7 +994,9 @@ A simple Postgres-backed store, scoped to `(tenant_id, user_id, agent_id)`.
 ```rust
 //! Postgres-backed store for reborn_whatsapp_installations.
 
-use deadpool_postgres::Pool;
+use std::sync::Arc;
+
+use brassclaw_pg::PgPool;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -994,21 +1021,21 @@ pub struct WhatsAppInstallation {
 pub enum WhatsAppInstallationStoreError {
     #[error("database error: {0}")]
     Db(#[from] tokio_postgres::Error),
-    #[error("pool error")]
-    Pool,
+    #[error("pool error: {0}")]
+    Pool(String),
     #[error("installation not found")]
     NotFound,
 }
 
 pub struct WhatsAppInstallationStore {
-    pool: Pool,
+    pool: Arc<PgPool>,
 }
 
 impl WhatsAppInstallationStore {
-    pub fn new(pool: Pool) -> Self { Self { pool } }
+    pub fn new(pool: Arc<PgPool>) -> Self { Self { pool } }
 
     async fn connect(&self) -> Result<deadpool_postgres::Object, WhatsAppInstallationStoreError> {
-        self.pool.get().await.map_err(|_| WhatsAppInstallationStoreError::Pool)
+        self.pool.get().await.map_err(|e| WhatsAppInstallationStoreError::Pool(e.to_string()))
     }
 
     /// Load all enabled installations for a (tenant, agent) pair.
@@ -1115,9 +1142,19 @@ fn row_to_installation(
 }
 ```
 
-Add `pub(crate) mod whatsapp_installation_store;` to
-`crates/brassclaw_reborn_composition/src/lib.rs` under the `#[cfg(feature = "postgres")]`
-gate.
+Add to `crates/brassclaw_reborn_composition/src/lib.rs`:
+
+```rust
+#[cfg(feature = "postgres")]
+pub(crate) mod whatsapp_installation_store;
+#[cfg(feature = "postgres")]
+pub(crate) use whatsapp_installation_store::{
+    WhatsAppInstallation, WhatsAppInstallationStore, WhatsAppInstallationStoreError,
+};
+```
+
+Place this alongside the other `#[cfg(feature = "postgres")]` DB store modules
+(e.g. near `pg_monty_vm_settings`, `pg_user_preference_store`).
 
 ### 2.3 Validation for Phase WA-B
 
@@ -1231,31 +1268,57 @@ pub async fn handle_whatsapp_challenge(
 ```rust
 /// Inbound WhatsApp message webhook.
 ///
-/// 1. Validate HMAC-SHA256 signature (host does this before calling this handler).
-/// 2. Parse via WhatsAppV2Adapter::parse_inbound.
-/// 3. Submit to ProductWorkflow.
-/// 4. Return 200 OK unconditionally (Meta retries on non-200).
+/// 1. The HMAC middleware (see §3.4) verifies X-Hub-Signature-256, then injects
+///    a `ProtocolAuthEvidence::Verified` value via `axum::Extension` before
+///    calling this handler.
+/// 2. Parse the verified body via `WhatsAppV2Adapter::parse_inbound`.
+/// 3. Wrap into a `ProductInboundEnvelope` via `TrustedInboundContext`.
+/// 4. Submit to `ProductWorkflow`. Always return 200 — Meta retries on non-200.
 pub async fn handle_whatsapp_inbound(
     State(state): State<WhatsAppWebhookState>,
-    headers: HeaderMap,
+    Extension(evidence): Extension<ProtocolAuthEvidence>,
     body: Bytes,
 ) -> impl IntoResponse {
-    // The HMAC check is done in the route middleware layer (see §3.4).
-    // By the time we reach this handler, we have a ProtocolAuthEvidence::Verified
-    // injected as an Extension by that middleware.
-    let evidence = /* extracted from Extension */;
+    use brassclaw_product_adapters::{ProductInboundEnvelope, TrustedInboundContext};
+    use chrono::Utc;
 
     let result = state.adapter.parse_inbound(&body, &evidence);
     match result {
         Ok(parsed) => {
-            let _ = state.workflow.submit_inbound(parsed).await;
+            // Stamp the trusted context (adapter id, installation id, auth claim)
+            // before handing the envelope to the workflow.
+            let context = match TrustedInboundContext::from_verified_evidence(
+                state.adapter.adapter_id().clone(),
+                state.adapter.installation_id().clone(),
+                Utc::now(),
+                &evidence,
+            ) {
+                Ok(ctx) => ctx,
+                Err(e) => {
+                    tracing::debug!(error = %e, "whatsapp inbound: failed to stamp trusted context");
+                    return StatusCode::OK;
+                }
+            };
+            let envelope = match ProductInboundEnvelope::from_trusted_parse(context, parsed) {
+                Ok(env) => env,
+                Err(e) => {
+                    tracing::debug!(error = %e, "whatsapp inbound: envelope construction failed");
+                    return StatusCode::OK;
+                }
+            };
+            if let Err(e) = state.workflow.submit_inbound(envelope).await {
+                // Debug only — info/warn corrupts the TUI.
+                tracing::debug!(error = %e, "whatsapp inbound: workflow submission failed");
+            }
         }
         Err(ProductAdapterError::Authentication(_)) => {
-            // Should never happen — middleware already verified. Log and drop.
+            // Should not reach here — HMAC middleware already verified.
+            // Log and fall through to 200 so Meta does not retry.
+            tracing::debug!("whatsapp inbound: authentication error after middleware — dropped");
         }
         Err(e) => {
-            // Malformed payload. Log at debug level (not info/warn — corrupts TUI).
-            // Still return 200: Meta would retry on non-200, which would be wrong.
+            // Malformed payload. Return 200 so Meta does not retry.
+            tracing::debug!(error = %e, "whatsapp inbound: malformed payload — dropped");
         }
     }
 
@@ -1348,6 +1411,36 @@ use brassclaw_whatsapp_v2_adapter::{WhatsAppV2Adapter, WhatsAppV2AdapterConfig};
 
 use crate::whatsapp_installation_store::{WhatsAppInstallation, WhatsAppInstallationStore};
 
+// ── WhatsAppWebhookState ─────────────────────────────────────────────────────
+//
+// Shared state injected into the axum webhook handlers (§3.2, §3.3).
+// Cheap to clone (all fields are Arc-wrapped).
+
+/// State passed to the GET challenge and POST inbound handlers.
+#[derive(Clone)]
+pub struct WhatsAppWebhookState {
+    /// Live adapter for the active installation. The host resolves secrets
+    /// at request time via the adapter's credential handles — no raw secrets here.
+    pub adapter: Arc<WhatsAppV2Adapter>,
+    /// Product workflow: accepts parsed inbound envelopes.
+    pub workflow: Arc<dyn brassclaw_product_adapters::ProductWorkflow>,
+    /// Secret store: used only to resolve `whatsapp_verify_token` in the GET handler.
+    pub secret_store: Arc<dyn brassclaw_secrets::SecretStore>,
+}
+
+impl WhatsAppWebhookState {
+    /// Resolve the configured `whatsapp_verify_token` from the secret store
+    /// at request time. Returns an error if the secret is absent.
+    pub async fn resolve_verify_token(&self) -> Result<String, String> {
+        let secret_name = self.adapter.config().verify_token_secret_name();
+        self.secret_store
+            .get(secret_name)
+            .await
+            .map(|s| s.expose_secret().to_string())
+            .map_err(|e| e.to_string())
+    }
+}
+
 /// Build a `WhatsAppV2Adapter` from a stored installation record.
 ///
 /// The adapter does not hold the secret values — only the handles (names).
@@ -1377,15 +1470,22 @@ pub fn build_adapter_from_installation(
         egress_credential_handle,
         auth_requirement,
         progress_push_enabled: inst.progress_push_enabled,
+        verify_token_secret_name: inst.verify_token_secret_name.clone(),
     }))
 }
 
 /// At startup, if REBORN_WHATSAPP_V2_ENABLED is set and v1 channel artifacts
-/// are also present, panic with a clear message.
-/// (mirrors validate_telegram_v1_v2_exclusivity pattern)
+/// are also present, abort with a clear message.
+///
+/// Mirrors `validate_telegram_v1_v2_exclusivity`. This is a startup-safety
+/// guard — intentional abort is acceptable here (same class as other
+/// "invalid operator configuration" guards in the composition crate).
 pub fn validate_whatsapp_v1_v2_exclusivity(v1_channel_artifacts_present: bool) {
     let v2_enabled = std::env::var("REBORN_WHATSAPP_V2_ENABLED").as_deref() == Ok("true");
     if v2_enabled && v1_channel_artifacts_present {
+        // safety: startup configuration invariant — v1 and v2 cannot coexist.
+        // This matches the abort-on-invalid-config pattern used by other
+        // composition-crate startup guards.
         panic!(
             "REBORN_WHATSAPP_V2_ENABLED=true is set but v1 WhatsApp channel artifacts \
              are also present. Remove the v1 channel configuration before enabling v2."
@@ -1404,7 +1504,7 @@ In the Reborn service builder, after DB is up:
 #[cfg(feature = "postgres")]
 if std::env::var("REBORN_WHATSAPP_V2_ENABLED").as_deref() == Ok("true") {
     validate_whatsapp_v1_v2_exclusivity(false); // pass v1 detection result
-    let store = WhatsAppInstallationStore::new(pg_pool.clone());
+    let store = WhatsAppInstallationStore::new(Arc::clone(&pg_pool));
     let installations = store.list_enabled(&tenant_id, &agent_id).await
         .map_err(|e| RebornBuildError::Config(e.to_string()))?;
     for inst in &installations {
@@ -1504,6 +1604,67 @@ pub enum TraceChannel {
 }
 ```
 
+Also update the exhaustive `channel_label()` match in the same file:
+
+```rust
+fn channel_label(channel: TraceChannel) -> &'static str {
+    match channel {
+        TraceChannel::Web => "web",
+        TraceChannel::Cli => "cli",
+        TraceChannel::Telegram => "telegram",
+        TraceChannel::Slack => "slack",
+        TraceChannel::WhatsApp => "whatsapp",  // ← ADD
+        TraceChannel::Routine => "routine",
+        TraceChannel::Other => "other",
+    }
+}
+```
+
+Also update the `TraceChannelArg` enum and its `From<TraceChannelArg>` impl in
+`crates/brassclaw_reborn_cli/src/commands/traces/mod.rs`:
+
+```rust
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceChannelArg {
+    Web,
+    Cli,
+    Telegram,
+    Slack,
+    WhatsApp,   // ← ADD
+    Routine,
+    Other,
+}
+
+impl std::fmt::Display for TraceChannelArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Web => "web",
+            Self::Cli => "cli",
+            Self::Telegram => "telegram",
+            Self::Slack => "slack",
+            Self::WhatsApp => "whatsapp",  // ← ADD
+            Self::Routine => "routine",
+            Self::Other => "other",
+        };
+        write!(f, "{value}")
+    }
+}
+
+impl From<TraceChannelArg> for TraceChannel {
+    fn from(value: TraceChannelArg) -> Self {
+        match value {
+            TraceChannelArg::Web => TraceChannel::Web,
+            TraceChannelArg::Cli => TraceChannel::Cli,
+            TraceChannelArg::Telegram => TraceChannel::Telegram,
+            TraceChannelArg::Slack => TraceChannel::Slack,
+            TraceChannelArg::WhatsApp => TraceChannel::WhatsApp,  // ← ADD
+            TraceChannelArg::Routine => TraceChannel::Routine,
+            TraceChannelArg::Other => TraceChannel::Other,
+        }
+    }
+}
+```
+
 **File to modify:** `crates/brassclaw_reborn_traces/src/client.rs`
 
 In `trace_channel_from_host_channel(channel: &str) -> TraceChannel`:
@@ -1568,7 +1729,7 @@ fn whatsapp_settings_get_descriptor() -> IngressRouteDescriptor {
         .auth(IngressAuthPolicy::Required(IngressAuthScheme::Bearer))
         .body_limit(BodyLimitPolicy::NoBody)
         .rate_limit(RateLimitPolicy::PerCaller {
-            requests_per_minute: NonZeroU32::new(60).expect("nonzero"),
+            requests_per_minute: NonZeroU32::new(60).expect("nonzero"), // safety: crate-local positive constant
             scope: RateLimitScope::User,
         })
         .cors(CorsPolicy::SameOriginOnly)
@@ -1584,7 +1745,7 @@ fn whatsapp_settings_upsert_descriptor() -> IngressRouteDescriptor {
         .auth(IngressAuthPolicy::Required(IngressAuthScheme::Bearer))
         .body_limit(BodyLimitPolicy::JsonBytes(4096))
         .rate_limit(RateLimitPolicy::PerCaller {
-            requests_per_minute: NonZeroU32::new(10).expect("nonzero"),
+            requests_per_minute: NonZeroU32::new(10).expect("nonzero"), // safety: crate-local positive constant
             scope: RateLimitScope::User,
         })
         .cors(CorsPolicy::SameOriginOnly)
@@ -1600,7 +1761,7 @@ fn whatsapp_settings_delete_descriptor() -> IngressRouteDescriptor {
         .auth(IngressAuthPolicy::Required(IngressAuthScheme::Bearer))
         .body_limit(BodyLimitPolicy::NoBody)
         .rate_limit(RateLimitPolicy::PerCaller {
-            requests_per_minute: NonZeroU32::new(10).expect("nonzero"),
+            requests_per_minute: NonZeroU32::new(10).expect("nonzero"), // safety: crate-local positive constant
             scope: RateLimitScope::User,
         })
         .cors(CorsPolicy::SameOriginOnly)
@@ -1919,6 +2080,7 @@ Every crate touched in phases WA-A through WA-G:
 | `brassclaw_reborn_composition` | New module `whatsapp.rs`, new `whatsapp_installation_store.rs`, `webui_serve.rs` route wiring, `factory.rs` startup wiring | WA-C, WA-D |
 | `brassclaw_product_workflow` | `StaticConnectableChannelsProductFacade` entry, new facade methods on `RebornServicesApi` | WA-D, WA-F |
 | `brassclaw_reborn_traces` | `TraceChannel::WhatsApp` + `trace_channel_from_host_channel` | WA-E |
+| `brassclaw_reborn_cli` | `TraceChannelArg::WhatsApp` + `From` impl + `Display` | WA-E |
 | `brassclaw_webui_v2` | New handler file, new descriptors, router wiring | WA-F |
 | `brassclaw_architecture` | Boundary test update | WA-G |
 | `Cargo.toml` (workspace) | Add `brassclaw_whatsapp_v2_adapter` member | WA-A |
