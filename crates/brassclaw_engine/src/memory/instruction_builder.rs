@@ -844,7 +844,7 @@ pub fn substitute_vars_in_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ibs::{ErrorPolicy, ToolBinding};
+    use crate::types::ibs::{ErrorPolicy, ToolBinding, VariablePattern};
 
     fn uuid(n: u8) -> uuid::Uuid {
         uuid::Uuid::from_bytes([n; 16])
@@ -1519,5 +1519,86 @@ mod tests {
         let keys: Vec<&String> = out.as_object().unwrap().keys().collect();
         assert_eq!(keys, vec![&"{{vars.dir}}".to_string()]);
         assert_eq!(out["{{vars.dir}}"], serde_json::json!("value"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase E.6 pure-unit tests (the DB-dependent half lives in the
+    // composition `tests/` tier — see fetch_for_turn.rs).
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_instruction_both_step_include_uuid_appears_in_both_channels() {
+        // Plan E.6 unit #2: a `knowledge: both` step's `include` UUID must
+        // appear in BOTH the rust channel and the orchestrator channel of the
+        // compiled BuildInstruction (§0.5/§0.7 partition — Both emits to both;
+        // rust copy drops `info`, orchestrator copy drops `tool_bindings`). The
+        // live DB path (fetch_for_turn) then fetches that UUID into both
+        // `rust_items` and `orchestrator_items` — see the integration test
+        // `full_intent_match_correct_channel_split_by_class_code`.
+        let id = uuid(9);
+        let sds = vec![sd(
+            0,
+            vec![entry(
+                1,
+                StepOwner::Both,
+                RecipeStepType::Component,
+                vec![id],
+                vec![],
+            )],
+        )];
+        let bi = build_instruction("0:0-0:E", &sds, &[], true).expect("both step compiles");
+        assert!(
+            bi.rust_steps.iter().any(|s| s.include.contains(&id)),
+            "both-step include UUID must be in rust_steps"
+        );
+        assert!(
+            bi.orchestrator_steps
+                .iter()
+                .any(|s| s.include.contains(&id)),
+            "both-step include UUID must be in orchestrator_steps"
+        );
+    }
+
+    #[test]
+    fn capture_variables_then_substitute_replaces_vars_dir_in_body_and_params() {
+        // Plan E.6 unit #5 (pure-mechanism half): prove the E.4-wired
+        // substitution CHAIN — `capture_variables` (auto-extract `%`-template
+        // slots + refine via the matched variant's `variable_patterns`) feeds
+        // `substitute_vars` / `substitute_vars_in_value`, which replace
+        // `{{vars.NAME}}` placeholders with the captured values. At Phase E
+        // `fetch_for_turn` uses exact-match intent (`ii.input_text = $5`, no
+        // `%` template) so `capture_variables(query, query, …)` yields `vars=[]`
+        // and substitution is a wired NO-OP through the live path — see the DB
+        // test `substitution_noop_at_phase_e_preserves_placeholder`. Phase M
+        // switches `resolve_intent` to `%`-template matching, feeding a
+        // non-empty `vars` through THIS chain; exercising it directly covers
+        // the mechanism today, not only at Phase M.
+        let vps = vec![VariablePattern {
+            name: "dir".into(),
+            pattern: None,
+            description: None,
+        }];
+        let vars = capture_variables("list files of %", "list files of /tmp", &vps);
+        assert_eq!(vars, vec![("dir".to_string(), "/tmp".to_string())]);
+
+        // §0.20.3 — body substitution (orchestrator_items[].effective_content).
+        assert_eq!(
+            substitute_vars("Run ls inside {{vars.dir}} now", &vars),
+            "Run ls inside /tmp now"
+        );
+        // §0.4.1 — ToolBinding params substitution (recursive JSON leaves).
+        let params = serde_json::json!({
+            "flags": "-la",
+            "dir": "{{vars.dir}}",
+            "nested": { "path": "{{vars.dir}}/sub" },
+            "list": ["{{vars.dir}}", "plain"],
+            "count": 3
+        });
+        let sub = substitute_vars_in_value(&params, &vars);
+        assert_eq!(sub["dir"], "/tmp");
+        assert_eq!(sub["nested"]["path"], "/tmp/sub");
+        assert_eq!(sub["list"][0], "/tmp");
+        assert_eq!(sub["list"][1], "plain");
+        assert_eq!(sub["count"], 3);
     }
 }

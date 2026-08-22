@@ -539,3 +539,102 @@ test start), so cross-test cache pollution is impossible. No code change
 made (modifying `orchestrator.rs` for a non-reproducible transient would
 be unsolicited churn outside E.4 scope). Recorded here for traceability.
 
+### 7.8 E.6 tests + verification (user-resolved 2026-08-22)
+
+E.6 splits the plan's test list into a **pure-mechanism half** (true unit
+tests, no DB, in `brassclaw_engine::memory::instruction_builder::tests`) and a
+**DB-integration half** (testcontainer Postgres-16, in
+`crates/brassclaw_reborn_composition/tests/fetch_for_turn.rs`). Three design
+questions were raised with the user before E.6 implementation:
+
+- **Q-E6-1 (where DB-dependent tests live):** DB-backed integration tests in
+  the composition `tests/` tier (testcontainers + skip-if-no-docker, mirroring
+  `components_registry.rs`); only #2 `knowledge:both` (pure `build_instruction`)
+  + #5 substitution (pure `substitute_vars`) stay in-crate as true unit tests.
+- **Q-E6-2 (test #5 at Phase E):** a pure unit test of `substitute_vars` +
+  `substitute_vars_in_value` + `capture_variables` with non-empty vars (proves
+  the E.4-wired mechanism) PLUS a DB test asserting the no-op
+  (`{{vars.dir}}` placeholder preserved unchanged) at Phase E, with a
+  doc-comment that Phase M activates real substitution.
+- **Q-E6-3 (test #7 vs the existing E.1 `components_registry.rs`):** add a NEW
+  distinct E.6 test (seed recipe + step-include UUIDs → `fetch_for_turn`
+  resolves them end-to-end in the SplitResult flow, registry lookup exercised
+  in context) IN ADDITION to the existing `components_registry.rs`.
+
+**Pure-unit half (in `instruction_builder.rs::tests`, both configs):**
+- `build_instruction_both_step_include_uuid_appears_in_both_channels` (plan
+  #2) — a `knowledge: both` Component step's `include` UUID appears in BOTH
+  `rust_steps` and `orchestrator_steps` of the compiled `BuildInstruction`.
+- `capture_variables_then_substitute_replaces_vars_dir_in_body_and_params`
+  (plan #5, pure-mechanism half) — the full `capture_variables` →
+  `substitute_vars` (body) + `substitute_vars_in_value` (nested JSON params)
+  chain with a non-empty `vars = [("dir","/tmp")]`.
+
+**DB-integration half (`tests/fetch_for_turn.rs`, `#![cfg(feature="skills-db")]`,
+testcontainer Postgres-16 + V000–V061 migrations + skip-if-no-docker):**
+- `split_result_channels_split_by_class` (#1) — rust channel = tool_skill
+  (class 13), orchestrator channel = skill (3) + python_code (22); asserts
+  `instruction.rust_steps.len()==1` / `orchestrator_steps.len()==2`.
+- `action_match_returns_action_short_circuit` (#3) — class-16 intent match →
+  `ActionShortCircuit { component_id, name }` with `name` from the
+  `resolve_intent` `reborn_actions` LEFT JOIN (no second fetch).
+- `recipe_match_step_link_none_returns_components` (#4) — class-21 match with
+  `step_link: None` → legacy `fetch_component_by_id` → `Components([item])`
+  (class 21, recipe validated for the SEC-01 gate).
+- `substitution_noop_at_phase_e_preserves_placeholder` (#5b) — exact-match
+  intent ⇒ no `%` template ⇒ `vars=[]` ⇒ `{{vars.dir}}` in the skill body
+  preserved unchanged (Phase M activates real substitution via the same wiring).
+- `routing_wilson_lower_populated_from_recipe_row` (#6) — `tier='mature'` +
+  `validated` + `wilson_lower=0.82` ⇒ `tier0_eligible=true`,
+  `llm_call_required=false`, `routing.wilson_lower==0.82`.
+- `registry_lookup_resolves_seeded_step_include_uuids` (#7) — seed tool_skill
+  + skill, `fetch_for_turn` resolves both via the V061 trigger-maintained
+  `reborn_components` registry in context (distinct from `components_registry`).
+- `full_intent_match_correct_channel_split_by_class_code` (Integration#1) —
+  Rust + Both + Orchestrator steps ⇒ rust_items 2×class 13 (A+B),
+  orchestrator_items {13,3} (B+C), the both-step UUID B in BOTH channels,
+  `wilson_lower==0.75`, `instruction.rust_steps.len()==2` /
+  `orchestrator_steps.len()==2`.
+
+Seeding: raw SQL inserts supplying only NOT-NULL-no-default columns; sub-
+components seeded `validation_status='validated'` so the SEC-01 gate in
+`fetch_components_by_ids` returns them; the V061 AFTER-INSERT trigger
+auto-populates `reborn_components` on every insert (no manual registry rows).
+`step_descriptions`/`variants` built as `serde_json::Value` then stringified
+and bound `$n::jsonb` (the engine idiom — exercises the same deserialization
+path production uses; UUIDs emitted as strings, which uuid's serde reads).
+Intent inputs use `input_class=2` (Partial — 2-word queries) with `score=10`
+for an unambiguous single-row `Match`; `step_link="0:0-0:E"` consistently.
+
+**`.expect("instruction compiled")` safety (verified, not assumed):**
+`build_instruction("0:0-0:E", &step_descs, &variable_patterns, …)` succeeds
+for every test shape because: `parse_step_link("0:0-0:E")` →
+`[StepRange{desc_idx:0, start:0 (first), end:End}]` selecting ALL steps in
+desc_idx 0; stepnumbers are monotonic (1,2,3) ⇒ no `StepOrderViolation`; all
+steps are `RecipeStepType::Component` (no `UnpromotedSnippet`); every rust
+step has EMPTY `tool_bindings` ⇒ the S7 guard (`rust_has_bindings` ⇒ orch step
+with non-empty include) is not triggered. So `instruction` is always `Some`
+for #1 / Integration#1.
+
+**Verification state:**
+- `cargo fmt --all -- --check` clean.
+- `cargo clippy -p brassclaw_engine --all-targets -- -D warnings` clean
+  (default) AND `--features skills-db` clean.
+- `cargo clippy -p brassclaw_reborn_composition --features
+  brassclaw_reborn_composition/skills-db --all-targets -- -D warnings` clean
+  (compiles `tests/fetch_for_turn.rs`).
+- `cargo test -p brassclaw_engine --lib` → 668 passed (default); `--features
+  skills-db` → 679 passed. Both +2 vs the E.4 baseline (666 / 677) — the two
+  new pure-unit tests, no regression.
+- The DB-integration half (`fetch_for_turn.rs`) is docker-gated via
+  `pg_rig_or_skip` (skip-if-no-docker, the repo's canonical harness shared
+  with `components_registry.rs` / `intent_step_link.rs`). **No container
+  runtime (docker/colima/orbstack) and no local Postgres exist on this host**,
+  so the DB half cannot be executed here — it skips to a pass, exactly as the
+  pre-existing E.1 `components_registry.rs` and Phase-D `intent_step_link.rs`
+  tests do on this host. It compiles + lints + formats clean in both configs
+  and is correct-by-grounding against the live migration files (V027/V029/
+  V033/V037/V050/V052/V028/V054/V061), the `resolve_intent` SQL, the
+  `build_instruction` body, and the V061 registry triggers. It will execute
+  in any environment with docker.
+
