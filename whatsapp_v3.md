@@ -122,6 +122,89 @@ for the operator-configured WhatsApp installation. The secrets themselves live i
 the encrypted `brassclaw_secrets` store — the installation row only records
 metadata (phone number ID, display name, enabled flag, credential handle names).
 
+### 0.7 `source_channel` metadata on adapter-sourced threads — current gap
+
+The `source_channel` thread metadata key drives the orchestrator's channel
+awareness (`ThreadExecutionContext.source_channel`) on the first step of a new
+thread. For WebUI and CLI threads, the engine's
+`ConversationRuntime::submit_to_conversation()` path sets this key from
+`ConversationSurface.channel` before the loop starts (see
+[`conversation.rs:312-321`](crates/brassclaw_engine/src/runtime/conversation.rs:312)).
+
+**Product-adapter-sourced threads do not use this path.** They are created via
+`DefaultInboundTurnService::accept_prepared_user_message()`, which calls
+`SessionThreadService::ensure_thread` with `metadata_json: None`
+([`inbound_turn.rs:354-360`](crates/brassclaw_product_workflow/src/inbound_turn.rs:354)).
+No `source_channel` is written. This means **Telegram, Slack, and WhatsApp**
+adapter-sourced threads all share the same gap — `source_channel` is absent, so
+`ThreadExecutionContext.source_channel` is `None` for turns arriving from any
+product adapter, including WhatsApp.
+
+**Impact on WhatsApp:** The `Reasoning.with_channel("whatsapp")` call (§0.8)
+cannot be driven from `source_channel` for WhatsApp-sourced turns. The
+composition layer must set the channel on `Reasoning` through a different path
+(see §0.8).
+
+**This is a pre-existing gap** shared by all product adapters. Fixing it for all
+adapters is out of scope for this plan. If a WhatsApp-specific fix is desired,
+`ensure_thread` can be called with a `metadata_json` that includes
+`"source_channel": "whatsapp"` at the point the thread is first created for a
+WhatsApp binding. **Action required in Phase WA-D:** Decide whether to add
+`source_channel` to the `metadata_json` in `EnsureThreadRequest` for WhatsApp,
+or accept the existing gap (consistent with Telegram and Slack). The
+`Reasoning.channel` wiring described in §0.8 is the recommended fix and does
+not require `source_channel` to be present.
+
+### 0.8 `Reasoning.with_channel("whatsapp")` — LLM formatting hints
+
+The LLM's channel-aware formatting logic lives in
+[`crates/brassclaw_llm/src/reasoning.rs:1022`](crates/brassclaw_llm/src/reasoning.rs:1022):
+`build_channel_section()`. It already has a `"whatsapp"` case at line 1033
+that suppresses markdown headers/tables and keeps messages concise. This
+formatting is only activated when `Reasoning.channel == Some("whatsapp")`.
+
+**Pre-existing gap:** `Reasoning.with_channel()` is defined in
+[`reasoning.rs:365`](crates/brassclaw_llm/src/reasoning.rs:365) but is **never
+called in production code** — only in tests. The `Reasoning.channel` field is
+always `None` for all channels today (Telegram, Slack, CLI, web). The
+`build_channel_section()` therefore returns an empty string for all live turns.
+This is a pre-existing gap shared by all channels; it is not introduced by
+WhatsApp. The WhatsApp formatting hint at line 1033 is already present and
+correct — it simply needs the production call to activate it.
+
+**Action required in Phase WA-D:** Wire `Reasoning.with_channel("whatsapp")`
+in the composition layer wherever the `Reasoning` struct is built for
+WhatsApp-sourced turns. Since `source_channel` is not available on
+adapter-sourced threads (see §0.7), the channel string must come from a
+different source — e.g., the `adapter_id` carried on the inbound envelope or
+the `AdapterKind` in the binding. The recommended approach is to pass
+`"whatsapp"` directly in the WhatsApp-specific handler path, the same way the
+handler already knows it is on a WhatsApp surface. The exact wiring point is
+where `Reasoning::new(llm)` is constructed for each turn; find that location
+in the composition runtime and add `.with_channel("whatsapp")` for the WhatsApp
+adapter path.
+
+In addition, [`crates/brassclaw_llm/src/reasoning.rs:1053-1070`](crates/brassclaw_llm/src/reasoning.rs:1053),
+the **Proactive Messaging** hint block, currently lists Signal, Telegram, Slack,
+and other channels — but does NOT list WhatsApp. Fix this in Phase WA-D
+(§4.7 below).
+
+### 0.9 `PlatformInfo.active_channels` — pre-existing wiring gap
+
+`PlatformInfo.active_channels` (in
+[`crates/brassclaw_common/src/platform.rs:19`](crates/brassclaw_common/src/platform.rs:19))
+is injected into every system prompt as `"- Channels: telegram, cli"` etc.
+However, `ExecutionLoop::with_platform_info()` is defined but never called in
+the live `manager.rs` spawn path — so `PlatformInfo` is `None` in production
+today and the `"## Platform"` section is absent from live system prompts.
+
+This is a **pre-existing gap** that affects all channels equally (Telegram,
+Slack, WhatsApp). It is not introduced by WhatsApp integration and is out of
+scope for this plan. No action is required here. Document it as a known
+limitation: when `with_platform_info` is eventually wired in production,
+`"whatsapp"` must be included in `active_channels` when the WhatsApp adapter is
+enabled.
+
 ---
 
 ## 1. Phase WA-A — New crate `brassclaw_whatsapp_v2_adapter`
@@ -1570,12 +1653,60 @@ When `true`:
 - All enabled DB installations are loaded into the adapter registry.
 - Inbound messages flow normally.
 
-### 4.6 Validation for Phase WA-D
+### 4.6 `Reasoning.channel` wiring for WhatsApp turns
+
+As documented in §0.7 and §0.8:
+- `source_channel` is **not** set on adapter-sourced threads (pre-existing gap in
+  `DefaultInboundTurnService::accept_prepared_user_message` — `metadata_json: None`).
+- `Reasoning.with_channel()` is **never called in production** (pre-existing gap).
+
+For WhatsApp, the `build_channel_section()` at
+[`reasoning.rs:1033`](crates/brassclaw_llm/src/reasoning.rs:1033) is already
+correct — it simply needs `.with_channel("whatsapp")` in the production path.
+
+**Action:** Find in the composition crate where `Reasoning::new(llm)` is
+constructed for each turn submitted via the product adapter path and chain
+`.with_channel("whatsapp")` keyed on the WhatsApp `AdapterKind`. This is a
+WhatsApp-first activation of an already-correct mechanism — it does not require
+changes to the engine, LLM, or adapter crates.
+
+### 4.7 Fix proactive messaging hint in `reasoning.rs`
+
+**File to modify:** `crates/brassclaw_llm/src/reasoning.rs`
+
+At line 1056 the `message_tool_hint` string lists the channels the agent can
+proactively reach users on. WhatsApp is missing. Update the hint:
+
+```rust
+// Before (line 1056):
+"Send messages via Signal, Telegram, Slack, or other connected channels:\n\
+
+// After:
+"Send messages via Signal, Telegram, Slack, WhatsApp, or other connected channels:\n\
+```
+
+Also add WhatsApp to the `Target formats:` section (after `Slack:`):
+
+```
+- WhatsApp: E.164 phone number (`+4915112345678`)
+```
+
+And add an example in the `Examples` block:
+
+```
+- Send to a WhatsApp number: {"channel": "whatsapp", "target": "+4915112345678", "content": "Hi!"}
+```
+
+This ensures the LLM is informed it can proactively message users via WhatsApp
+when the adapter is enabled, consistent with how Telegram and Slack are described.
+
+### 4.8 Validation for Phase WA-D
 
 ```bash
 cargo build --release --bin brassclaw
 cargo clippy --all --benches --tests --examples --all-features -- -D warnings
 cargo test -p brassclaw_reborn_composition
+cargo test -p brassclaw_llm
 ```
 
 ---
@@ -2021,7 +2152,8 @@ cargo test -p brassclaw_webui_v2
 # 4. Product workflow tests
 cargo test -p brassclaw_product_workflow
 
-# 5. Outbound/traces
+# 5. LLM hint + outbound/traces
+cargo test -p brassclaw_llm
 cargo test -p brassclaw_outbound
 cargo test -p brassclaw_reborn_traces
 
@@ -2083,12 +2215,15 @@ Every crate touched in phases WA-A through WA-G:
 | `brassclaw_reborn_cli` | `TraceChannelArg::WhatsApp` + `From` impl + `Display` | WA-E |
 | `brassclaw_webui_v2` | New handler file, new descriptors, router wiring | WA-F |
 | `brassclaw_architecture` | Boundary test update | WA-G |
+| `brassclaw_llm` | Add WhatsApp to proactive messaging hint in `reasoning.rs` (§4.7) | WA-D |
 | `Cargo.toml` (workspace) | Add `brassclaw_whatsapp_v2_adapter` member | WA-A |
 
 Crates that are **NOT touched** (confirms minimal scope):
 `brassclaw_agent_loop`, `brassclaw_engine`, `brassclaw_turns`, `brassclaw_conversations`,
 `brassclaw_host_runtime`, `brassclaw_secrets`, `brassclaw_outbound` (no schema changes),
-`brassclaw_threads` (no schema changes), `brassclaw_llm`, `brassclaw_safety`.
+`brassclaw_threads` (no schema changes), `brassclaw_safety`.
 
-The agent loop, the LLM call path, the recipe/v3 system, and the safety layer are
-completely unchanged. WhatsApp is additive at the adapter boundary only.
+The agent loop, the recipe/v3 system, and the safety layer are completely
+unchanged. WhatsApp is additive at the adapter boundary only. The single change
+to `brassclaw_llm` is a one-line string update to the proactive messaging hint
+— no behaviour change, no new dependencies.
