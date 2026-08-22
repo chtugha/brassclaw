@@ -3676,7 +3676,7 @@ computed on first insert and checked on subsequent runs.
 | EBMLeistung 2-step write | POST `/ebmleistung` → `{new_ident}`; then PUT `/kvschein/{id}` with `{"ident":<schein>,"ebmLeistungen":[{"ident":<leistung>}]}` — **reference-only**: each ebmLeistungen entry must be `{"ident":N}` only. Adding any other fields (datum, ebmKatalogEintrag, etc.) writes a nested object → `JSON2CoreData.m:679` crash loop. Confirmed live 2026-08-22. |
 | PUT /kvschein ebmLeistungen is reference-only | `DeepUpdater.mergeCollection` requires a non-zero `ident` pointing to an existing leistung row. `ident=0` → "illegal value" (HTTP 460). Passing a non-existing ident (e.g. patient ident) → server creates a bogus leistung row with that ident and writes full nested body to change table → Mac crash. Cannot create leistung via PUT /kvschein alone — POST /ebmleistung first is mandatory. |
 | EBM Ziffer → catalog ident lookup | Ziffer strings (e.g. `01100`) must be resolved to internal ints via `ebmkatalogeintrag.code`; known: `1=01100`, `270=03003`, `298=03230` (this server) |
-| 01100 late-arrival rule | GKV only (not Privat, not HZV): Saturday + Sunday `ankunft` > 19:00 local → EBM 01100 required on Schein; `ankunft` epoch ms from API is UTC — convert via `Europe/Berlin` tz |
+| 01100/01101 late-arrival rule | GKV always; HZV only for SVLFG, IKK classic, Ersatzkassen (NOT AOK, BKK, GWQ — see https://www.haevbw.de/HZV-Gegenueberstellung.pdf). Rule: Saturday + Sunday `ankunft` > 19:00 local → 01100 required; > 22:00 local → 01101 required. `ankunft` epoch ms from API is UTC — convert via `Europe/Berlin` tz |
 | `ankunft` field confirmed via API | `GET /besuch/{patient_id}/besucheForPatient` returns `ankunft` as epoch ms UTC, `kvFall` bool, `privatFall` bool — confirmed live 2026-08-22 |
 | Tier-0/Tier-1 split for automated writes | `tomedo-abend-audit` (Tier 0) reads + checks only; `tomedo-abend-audit-auto-add-01100` (Tier 1) handles the write — a Tier-0 recipe must never contain POST/PUT steps |
 | No orphaned rust steps | Every `rust` pre-load step must be immediately followed by an `orchestrator` PythonCode executor; a lone `rust` step is a Q1 hard error |
@@ -3721,6 +3721,17 @@ computed on first insert and checked on subsequent runs.
 > (practice-specific; fallback: any Ziffer starting with `"0"` that is NOT
 > a standard EBM Ziffer is HZV). The definitive reference is the practice's HZV
 > contract (https://www.haevbw.de/HZV-Gegenueberstellung.pdf).
+>
+> **§hzv-01100-kassen:** The 01100/01101 late-arrival rule applies to HZV patients
+> only for the following Kassen (SVLFG, IKK classic, Ersatzkassen).
+> It does NOT apply to AOK, BKK, or GWQ HZV patients.
+> Kassenname comes from `kvschein.kartendaten.kassenname` or
+> `kvschein.abgeleiteterKostentraeger` (IK number lookup).
+> When kassenname is unknown/null → apply rule (err on the side of billing).
+> Matching (case-insensitive substring):
+>   applies:    "svlfg", "ikk", "ersatzkasse", "tk", "barmer", "dak", "kkh",
+>               "hek", "hkk", "aok plus" is an Ersatzkasse — include
+>   excluded:   "aok" (but NOT "aok plus"), "bkk", "gwq"
 >
 > **KarteiEintragTyp idents needed for audit:**
 > | ident | kürzel | Beschreibung |
@@ -4082,14 +4093,15 @@ except Exception as e:
 # Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
 # Checks completeness for a GKV-Patient.
 # Required: Diagnose · ANA + BEF + BES in Kartei · KV-Schein vorhanden · EBM-Ziffern auf Schein.
-# Also checks whether 01100 is required (late-arrival rule) and present.
+# Also checks whether 01100 or 01101 is required (late-arrival rule) and present.
 # Inputs (all JSON strings baked in by IBS):
 #   {{vars.diagnosen_json}}       — diagnosen[] array from patientenDetailsRelationen
 #   {{vars.kartei_check_json}}    — output of pc-tomedo-check-kartei-vollstaendigkeit
 #   {{vars.kv_scheine_json}}      — kvScheine[] array from patientenDetailsRelationen
 #   {{vars.ebm_leistungen_json}}  — ebmLeistungen[] array from kvschein
 #   {{vars.check_01100_json}}     — output of pc-tomedo-check-01100-erforderlich
-#                                    {"erforderlich": bool, "reason": str}
+#                                    {"erforderlich": bool, "ziffer": str|None,
+#                                     "katalog_ident": int|None, "reason": str}
 # Returns list of missing item strings (empty list = vollständig).
 import json as _j
 try:
@@ -4107,17 +4119,18 @@ try:
     ebm = _j.loads("{{vars.ebm_leistungen_json}}")
     if not isinstance(ebm, list) or len(ebm) == 0:
         missing.append("EBM-Ziffern fehlen (keine Leistungen auf dem Schein)")
-    # 01100 late-arrival check
-    check_01100 = _j.loads("{{vars.check_01100_json}}")
-    if check_01100.get("erforderlich"):
-        # check whether 01100 (ebmKatalogEintrag.ident == 1) is already on the schein
-        ebm_list = ebm if isinstance(ebm, list) else []
-        has_01100 = any(
-            (e.get("ebmKatalogEintrag") or {}).get("ident") == 1
+    # 01100/01101 late-arrival check
+    check = _j.loads("{{vars.check_01100_json}}")
+    if check.get("erforderlich"):
+        kat_ident = check.get("katalog_ident")
+        ziffer    = check.get("ziffer", "01100")
+        ebm_list  = ebm if isinstance(ebm, list) else []
+        has_ziffer = any(
+            (e.get("ebmKatalogEintrag") or {}).get("ident") == kat_ident
             for e in ebm_list
         )
-        if not has_01100:
-            missing.append("EBM 01100 fehlt (" + check_01100.get("reason", "") + ")")
+        if not has_ziffer:
+            missing.append(f"EBM {ziffer} fehlt ({check.get('reason', '')})")
     result = missing
 except Exception as e:
     result = ["Fehler bei der Prüfung: " + str(e)]
@@ -4131,6 +4144,7 @@ except Exception as e:
 # Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
 # Checks completeness for an HZV-Patient.
 # Required: Diagnose · ANA + BEF + BES in Kartei · HZV-Schein vorhanden · HZV-Ziffern auf Schein.
+# Also checks 01100/01101 late-arrival rule for qualifying HZV Kassen (§hzv-01100-kassen).
 # HZV-Ziffern detection: scheinart contains "hzv" OR ebmLeistungen non-empty on an HZV-Schein.
 # Inputs (all JSON strings baked in by IBS):
 #   {{vars.diagnosen_json}}       — diagnosen[] array from patientenDetailsRelationen
@@ -4138,6 +4152,9 @@ except Exception as e:
 #   {{vars.kv_scheine_json}}      — kvScheine[] array from patientenDetailsRelationen
 #   {{vars.ebm_leistungen_json}}  — ebmLeistungen[] array from kvschein
 #   {{vars.scheinart}}            — scheinart string from kvschein (for HZV confirmation)
+#   {{vars.check_01100_json}}     — output of pc-tomedo-check-01100-erforderlich
+#                                    {"erforderlich": bool, "ziffer": str|None,
+#                                     "katalog_ident": int|None, "reason": str}
 # Returns list of missing item strings (empty list = vollständig).
 import json as _j
 try:
@@ -4158,6 +4175,19 @@ try:
     ebm = _j.loads("{{vars.ebm_leistungen_json}}")
     if not isinstance(ebm, list) or len(ebm) == 0:
         missing.append("HZV-Ziffern fehlen (keine Leistungen auf dem HZV-Schein)")
+    # 01100/01101 late-arrival check (qualifying HZV Kassen only — already filtered by
+    # pc-tomedo-check-01100-erforderlich via kassenname; erforderlich=False for AOK/BKK/GWQ)
+    check = _j.loads("{{vars.check_01100_json}}")
+    if check.get("erforderlich"):
+        kat_ident = check.get("katalog_ident")
+        ziffer    = check.get("ziffer", "01100")
+        ebm_list  = ebm if isinstance(ebm, list) else []
+        has_ziffer = any(
+            (e.get("ebmKatalogEintrag") or {}).get("ident") == kat_ident
+            for e in ebm_list
+        )
+        if not has_ziffer:
+            missing.append(f"EBM {ziffer} fehlt ({check.get('reason', '')})")
     result = missing
 except Exception as e:
     result = ["Fehler bei der Prüfung: " + str(e)]
@@ -4313,23 +4343,31 @@ except Exception as e:
 
 ```python
 # Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
-# Checks whether EBM 01100 (Unvorhergesehene Inanspruchnahme) must be added
-# to the KV-Schein based on the patient's arrival time (ankunft).
+# Checks whether EBM 01100 or 01101 (Unvorhergesehene Inanspruchnahme) must be
+# added to the KV-Schein based on the patient's arrival time (ankunft).
 #
-# Rule (GKV-only — do NOT apply to Privat or HZV):
-#   Saturday (weekday 5) + Sunday (weekday 6): ankunft local time > 19:00 → 01100 required
-#   Mon–Fri (weekday 0–4): 01100 not required regardless of arrival time
+# Rule applies to:
+#   GKV always.
+#   HZV only for qualifying Kassen: SVLFG, IKK classic, Ersatzkassen
+#   (NOT AOK, BKK, GWQ — see §hzv-01100-kassen).
+#
+# Thresholds (Sa=weekday 5, So=weekday 6 only; Mon–Fri never required):
+#   > 19:00 local → 01100 (ebmKatalogEintrag ident=1)
+#   > 22:00 local → 01101 (ebmKatalogEintrag ident=2 — confirm on server)
+#   ≤ 19:00        → not required
 #
 # Inputs (IBS bakes in before execution):
 #   {{vars.ankunft_ms}}   — ankunft epoch ms (UTC) from besuch API response
 #   {{vars.kv_fall}}      — "true"/"false" string
 #   {{vars.privat_fall}}  — "true"/"false" string
-#   {{vars.scheinart}}    — scheinart string from kvschein (for HZV exclusion)
+#   {{vars.scheinart}}    — scheinart string from kvschein
+#   {{vars.kassenname}}   — kassenname string from kvschein.kartendaten.kassenname
+#                           (may be null/"" — unknown kassenname → apply rule)
 #
 # Returns dict:
-#   {"erforderlich": bool, "reason": str}
-#   erforderlich=True  → 01100 must be added
-#   erforderlich=False → not required (with reason string)
+#   {"erforderlich": bool, "ziffer": str|None, "katalog_ident": int|None, "reason": str}
+#   ziffer/katalog_ident are set only when erforderlich=True.
+#   katalog_ident for 01100=1, 01101=2 (confirm 01101 ident on this server).
 #
 # Timezone: epoch ms from tomedo API is UTC. Server runs CEST (UTC+2 summer,
 # UTC+1 winter). Use Europe/Berlin for correct local-time comparison.
@@ -4341,39 +4379,72 @@ except ImportError:
     # fallback: assume UTC+2 (CEST) — valid for summer months
     _tz = _dt.timezone(_dt.timedelta(hours=2))
 
-_kv     = "{{vars.kv_fall}}".lower()    == "true"
-_privat = "{{vars.privat_fall}}".lower() == "true"
-_sa     = "{{vars.scheinart}}".lower()
-_ms     = int("{{vars.ankunft_ms}}" or "0")
+_kv      = "{{vars.kv_fall}}".lower()     == "true"
+_privat  = "{{vars.privat_fall}}".lower() == "true"
+_sa      = "{{vars.scheinart}}".lower()
+_kasse   = "{{vars.kassenname}}".lower()
+_ms      = int("{{vars.ankunft_ms}}" or "0")
+_is_hzv  = "hzv" in _sa
 
-if not _kv or _privat:
-    result = {"erforderlich": False, "reason": "Nicht GKV (Privat oder kein KV-Fall)"}
-elif "hzv" in _sa:
-    result = {"erforderlich": False, "reason": "HZV-Patient — 01100 nicht anwendbar"}
+# HZV Kassen that are subject to the 01100/01101 rule (§hzv-01100-kassen)
+_HZV_APPLIES  = ("svlfg", "ikk", "ersatzkasse", "tk", "barmer", "dak", "kkh", "hek", "hkk", "aok plus")
+_HZV_EXCLUDED = ("bkk", "gwq")  # "aok" without "plus" is also excluded (checked below)
+
+def _hzv_rule_applies(kasse):
+    if not kasse:
+        return True   # unknown → apply (err on side of billing)
+    if any(x in kasse for x in _HZV_EXCLUDED):
+        return False
+    if "aok" in kasse and "aok plus" not in kasse:
+        return False
+    return True       # SVLFG, IKK, Ersatzkassen, or unknown
+
+if _privat or not _kv:
+    result = {"erforderlich": False, "ziffer": None, "katalog_ident": None,
+              "reason": "Nicht GKV/HZV (Privat oder kein KV-Fall)"}
+elif _is_hzv and not _hzv_rule_applies(_kasse):
+    result = {"erforderlich": False, "ziffer": None, "katalog_ident": None,
+              "reason": f"HZV-Kasse '{_kasse}' — 01100/01101 nicht anwendbar (AOK/BKK/GWQ)"}
 elif _ms == 0:
-    result = {"erforderlich": False, "reason": "ankunft_ms fehlt oder null"}
+    result = {"erforderlich": False, "ziffer": None, "katalog_ident": None,
+              "reason": "ankunft_ms fehlt oder null"}
 else:
     _local = _dt.datetime.fromtimestamp(_ms / 1000, tz=_tz)
     _wday  = _local.weekday()       # 0=Montag, 6=Sonntag
     _tag   = ["Mo","Di","Mi","Do","Fr","Sa","So"][_wday]
     _hm    = _local.hour * 60 + _local.minute  # minutes since midnight (local)
-    if _wday in (5, 6) and _hm > 19 * 60:      # Sa=5, So=6, threshold 19:00
+    _prefix = "HZV" if _is_hzv else "GKV"
+    if _wday in (5, 6) and _hm > 22 * 60:      # > 22:00 → 01101
         result = {
             "erforderlich": True,
-            "reason": f"GKV-Ankunft {_tag} {_local.strftime('%H:%M')} > 19:00 → 01100 erforderlich"
+            "ziffer": "01101",
+            "katalog_ident": 2,   # ⚠️ confirm ident for 01101 on this server
+            "reason": f"{_prefix}-Ankunft {_tag} {_local.strftime('%H:%M')} > 22:00 → 01101 erforderlich"
+        }
+    elif _wday in (5, 6) and _hm > 19 * 60:    # > 19:00 → 01100
+        result = {
+            "erforderlich": True,
+            "ziffer": "01100",
+            "katalog_ident": 1,
+            "reason": f"{_prefix}-Ankunft {_tag} {_local.strftime('%H:%M')} > 19:00 → 01100 erforderlich"
         }
     elif _wday in (5, 6):
         result = {
             "erforderlich": False,
+            "ziffer": None,
+            "katalog_ident": None,
             "reason": f"Ankunft {_tag} {_local.strftime('%H:%M')} ≤ 19:00 — kein Notfalleinsatz"
         }
     else:
         result = {
             "erforderlich": False,
-            "reason": f"Ankunft {_tag} — Wochentag, 01100 nicht erforderlich"
+            "ziffer": None,
+            "katalog_ident": None,
+            "reason": f"Ankunft {_tag} — Wochentag, 01100/01101 nicht erforderlich"
         }
 except Exception as e:
-    result = {"erforderlich": False, "reason": "Fehler: " + str(e)}
+    result = {"erforderlich": False, "ziffer": None, "katalog_ident": None,
+              "reason": "Fehler: " + str(e)}
 ```
 
 ---
