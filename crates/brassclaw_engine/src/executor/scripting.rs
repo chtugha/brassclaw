@@ -1999,7 +1999,14 @@ async fn handle_rlm_query(
         &parent_thread.user_id,
         child_config,
     )
-    .with_parent(parent_thread.id);
+    .with_parent(parent_thread.id)
+    // v3 Phase F.2: the subagent child inherits the parent's tenant + agent
+    // identity — the one engine `Thread::new` site where these are already in
+    // scope. Engine spawn-created threads (manager `spawn_*`) keep the empty
+    // `#[serde(default)]` (no `brassclaw_turns` identity source in the engine);
+    // the LIVE retrieval path sources tenant from `LoopRunContext.scope.tenant_id`
+    // (F.4).
+    .with_tenant_agent(parent_thread.tenant_id.clone(), parent_thread.agent_id.clone());
 
     // Add the prompt as a user message
     child_thread.add_message(ThreadMessage::user(&prompt));
