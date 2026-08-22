@@ -19,9 +19,10 @@ use brassclaw_turns::{
         LoopModelResponse, LoopPromptBundle, LoopPromptBundleRef, LoopPromptBundleRequest,
         LoopRunContext, ModelProfileId, ModelStreamChunk, ParentLoopOutput, PromptMode,
         ProviderToolCallReplay, RedactedRunProfileProvenance, ResolvedRunProfile,
-        ResourceBudgetPolicy, ResourceBudgetTier, RunClassId, RunProfileFingerprint,
-        RuntimeProfileConstraints, SchedulingClass, StageCheckpointPayloadRequest, SteeringPolicy,
-        VisibleCapabilityRequest, VisibleCapabilitySurface,
+        ResourceBudgetPolicy, ResourceBudgetTier, RetrievalLookup, RetrievalLookupError,
+        RetrievalTurnResult, RunClassId, RunProfileFingerprint, RuntimeProfileConstraints,
+        SchedulingClass, StageCheckpointPayloadRequest, SteeringPolicy, VisibleCapabilityRequest,
+        VisibleCapabilitySurface,
     },
 };
 
@@ -82,6 +83,11 @@ pub(super) struct MockHost {
     recorded_message_refs: Arc<Mutex<Vec<LoopMessageRef>>>,
     /// Captured `context` arg from every `resolve_message_text` call.
     recorded_resolve_contexts: Arc<Mutex<Vec<LoopRunContext>>>,
+    /// Optional wired `RetrievalLookup` exposed via `LoopRetrievalPort` (v3 plan
+    /// §H4). `None` (default) → `retrieval_lookup()` returns `None` (Tier-2
+    /// fall-through). Tests install a `StubRetrievalLookup` to exercise
+    /// `RecipeStage::process`'s `fetch_for_turn` call.
+    retrieval_lookup: Option<Arc<dyn RetrievalLookup>>,
 }
 
 impl MockHost {
@@ -121,6 +127,7 @@ impl MockHost {
             scripted_message_text: Arc::new(Mutex::new(None)),
             recorded_message_refs: Arc::new(Mutex::new(Vec::new())),
             recorded_resolve_contexts: Arc::new(Mutex::new(Vec::new())),
+            retrieval_lookup: None,
         }
     }
 
@@ -187,6 +194,14 @@ impl MockHost {
     /// Captured `context` args from every `resolve_message_text` call.
     pub(super) fn recorded_resolve_contexts(&self) -> Vec<LoopRunContext> {
         self.recorded_resolve_contexts.lock().expect("lock").clone()
+    }
+
+    /// Install a `RetrievalLookup` exposed via `LoopRetrievalPort::retrieval_lookup`
+    /// (v3 plan §H4) so `RecipeStage::process` fires `fetch_for_turn` in tests.
+    /// When unset, `retrieval_lookup()` returns `None` (Tier-2 fall-through).
+    pub(super) fn with_retrieval_lookup(mut self, lookup: Arc<dyn RetrievalLookup>) -> Self {
+        self.retrieval_lookup = Some(lookup);
+        self
     }
 
     pub(super) fn with_input_batches(self, batches: Vec<LoopInputBatch>) -> Self {
@@ -809,7 +824,9 @@ impl brassclaw_turns::run_profile::LoopRecipePort for MockHost {
 
 impl brassclaw_turns::run_profile::LoopRetrievalPort for MockHost {
     fn retrieval_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RetrievalLookup> {
-        None
+        // `Arc<dyn RetrievalLookup>: Deref<Target = dyn RetrievalLookup>`, so
+        // `Option::as_deref` yields `Option<&dyn RetrievalLookup>` directly.
+        self.retrieval_lookup.as_deref()
     }
 }
 
@@ -1232,4 +1249,85 @@ pub(super) fn test_run_context() -> LoopRunContext {
         },
     };
     LoopRunContext::new(scope, TurnId::new(), TurnRunId::new(), resolved_run_profile)
+}
+
+// =========================================================================
+// StubRetrievalLookup — test double for `RetrievalLookup` (v3 plan §H4).
+// Captures every argument `RecipeStage::process` passes to `fetch_for_turn`
+// (AGENTS.md: mocks of multi-arg runtime APIs must capture every arg) and
+// returns a scripted `Ok(Some)`, `Ok(None)`, or `Err` so the recipe stage's
+// producer-only retrieval path can be exercised without Postgres.
+// =========================================================================
+
+#[derive(Clone)]
+pub(super) struct RetrievedCall {
+    pub(super) context: LoopRunContext,
+    pub(super) query: String,
+    pub(super) token_budget: usize,
+    pub(super) sender_class_code: String,
+}
+
+pub(super) struct StubRetrievalLookup {
+    calls: Arc<Mutex<Vec<RetrievedCall>>>,
+    result: Option<RetrievalTurnResult>,
+    error: Mutex<Option<RetrievalLookupError>>,
+}
+
+impl StubRetrievalLookup {
+    /// Return `Ok(Some(result))` from `fetch_for_turn`.
+    pub(super) fn returning(result: RetrievalTurnResult) -> Self {
+        Self {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            result: Some(result),
+            error: Mutex::new(None),
+        }
+    }
+
+    /// Return `Ok(None)` (soft miss) from `fetch_for_turn`.
+    pub(super) fn soft_miss() -> Self {
+        Self {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            result: None,
+            error: Mutex::new(None),
+        }
+    }
+
+    /// Return `Err(error)` from `fetch_for_turn` (one-shot; the error is
+    /// consumed on the first call).
+    pub(super) fn failing(error: RetrievalLookupError) -> Self {
+        Self {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            result: None,
+            error: Mutex::new(Some(error)),
+        }
+    }
+
+    /// Shared handle to the captured calls — clone this BEFORE wiring the
+    /// stub behind `Arc<dyn RetrievalLookup>` so the test can read the
+    /// recorded args after the stage runs.
+    pub(super) fn calls(&self) -> Arc<Mutex<Vec<RetrievedCall>>> {
+        Arc::clone(&self.calls)
+    }
+}
+
+#[async_trait]
+impl RetrievalLookup for StubRetrievalLookup {
+    async fn fetch_for_turn(
+        &self,
+        context: &LoopRunContext,
+        query: &str,
+        token_budget: usize,
+        sender_class_code: &str,
+    ) -> Result<Option<RetrievalTurnResult>, RetrievalLookupError> {
+        self.calls.lock().expect("lock").push(RetrievedCall {
+            context: context.clone(),
+            query: query.to_string(),
+            token_budget,
+            sender_class_code: sender_class_code.to_string(),
+        });
+        if let Some(error) = self.error.lock().expect("lock").take() {
+            return Err(error);
+        }
+        Ok(self.result.clone())
+    }
 }

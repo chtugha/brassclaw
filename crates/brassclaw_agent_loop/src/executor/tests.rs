@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use brassclaw_turns::{
     LoopCancelledReasonKind, LoopCompletionKind, LoopDiagnosticRef, LoopExit, LoopFailureKind,
     LoopGateRef, LoopResultRef, TurnRunId,
@@ -10,8 +12,9 @@ use brassclaw_turns::{
         LoopContextCompactionKind, LoopContextCompactionMetadata, LoopContextPort, LoopInput,
         LoopInputAckToken, LoopInputBatch, LoopInputCursor, LoopInterruptKind, LoopProcessRef,
         LoopRunInfoPort, LoopSafeSummary, LoopSummaryArtifactId, ObservationTrust,
-        ParentLoopOutput, ProcessHandleSummary, ProviderToolCallReplay, SameCallRetryConstraint,
-        ToolObservationDetail, ToolObservationStatus, VisibleCapabilityRequest,
+        ParentLoopOutput, ProcessHandleSummary, ProviderToolCallReplay, RetrievalLookup,
+        RetrievalLookupError, RetrievalTurnResult, SameCallRetryConstraint, ToolObservationDetail,
+        ToolObservationStatus, VisibleCapabilityRequest,
     },
 };
 
@@ -29,8 +32,9 @@ use super::{
     BudgetInput, BudgetStage, BudgetStep, CanonicalAgentLoopExecutor, CapabilityInput,
     CapabilityStage, DrainInput, ExecutorStage, ExitInput, ExitStage, GateInput, GateStage,
     HostStage, InputStage, InputStep, PendingInputAck, PromptInput, PromptStage, PromptStep,
-    StageContext, StopInput, StopStage, StopStep, TurnCompletedStep, UserFacingInputDrainMode,
-    consume_drainable_inputs, sanitize_result_ref_suffix, synthetic_provider_error_result_ref,
+    RecipeInput, RecipeStage, RecipeStep, StageContext, StopInput, StopStage, StopStep,
+    TurnCompletedStep, UserFacingInputDrainMode, consume_drainable_inputs,
+    sanitize_result_ref_suffix, synthetic_provider_error_result_ref,
 };
 
 #[allow(dead_code)]
@@ -2789,5 +2793,188 @@ async fn model_visible_provider_tool_failures_append_failure_tool_result_for_rep
         appended[0]
             .safe_summary
             .starts_with("capability failed with output_too_large: ")
+    );
+}
+
+// =========================================================================
+// RecipeStage — v3 Phase E.0 (plan §H4): the stage fires
+// `RetrievalLookup::fetch_for_turn` in a live turn when both a lookup is
+// wired and `last_user_text` is populated, stashes the result for the Phase H
+// consumer, and always returns `Continue` (Tier-2 fall-through — Tier-0/Tier-1
+// dispatch is Phase H). These tests run without Postgres (stub lookup).
+// =========================================================================
+
+#[tokio::test]
+async fn recipe_stage_fires_fetch_for_turn_and_stashes_result() {
+    let expected = RetrievalTurnResult {
+        tier0_eligible: false,
+        llm_call_required: true,
+        rust_items: serde_json::json!([{ "id": "02-001" }]),
+        orchestrator_items: serde_json::json!([{ "id": "04-001" }]),
+        routing_meta: serde_json::json!({ "variant": "components", "count": 1 }),
+    };
+    let stub = StubRetrievalLookup::returning(expected.clone());
+    let calls = stub.calls();
+    let host =
+        MockHost::new(Vec::new()).with_retrieval_lookup(Arc::new(stub) as Arc<dyn RetrievalLookup>);
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    let user_text = "please run the daily sync with secret hunter2";
+    state.last_user_text = Some(user_text.to_string());
+
+    let step = RecipeStage
+        .process(ctx, RecipeInput { state })
+        .await
+        .expect("recipe stage");
+
+    // (c) Tier-2 preserved.
+    let boxed = match step {
+        RecipeStep::Continue { state } => state,
+    };
+    // (b) result stashed for the Phase H consumer, exactly as returned.
+    assert_eq!(boxed.last_retrieval_result, Some(expected));
+
+    // (a) fetch_for_turn called once with the raw user text + "02" + 4096,
+    // forwarding the host's live run_context (captured verbatim, not
+    // synthesised — AGENTS.md: mocks must capture every arg).
+    let recorded = calls.lock().expect("lock").clone();
+    assert_eq!(recorded.len(), 1, "fetch_for_turn called exactly once");
+    assert_eq!(recorded[0].query, user_text);
+    assert_eq!(recorded[0].sender_class_code, "02");
+    assert_eq!(recorded[0].token_budget, 4096);
+    assert_eq!(recorded[0].context.scope, host.run_context().scope);
+}
+
+#[tokio::test]
+async fn recipe_stage_falls_through_when_no_retrieval_wired() {
+    let host = MockHost::new(Vec::new());
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.last_user_text = Some("please run the daily sync".to_string());
+
+    let step = RecipeStage
+        .process(ctx, RecipeInput { state })
+        .await
+        .expect("recipe stage");
+
+    let boxed = match step {
+        RecipeStep::Continue { state } => state,
+    };
+    assert!(
+        boxed.last_retrieval_result.is_none(),
+        "no retrieval wired → nothing stashed (Tier-2)"
+    );
+}
+
+#[tokio::test]
+async fn recipe_stage_falls_through_when_no_user_text() {
+    let stub = StubRetrievalLookup::soft_miss();
+    let calls = stub.calls();
+    let host =
+        MockHost::new(Vec::new()).with_retrieval_lookup(Arc::new(stub) as Arc<dyn RetrievalLookup>);
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    // last_user_text stays None (e.g. resolve_message_text unwired).
+    let state = LoopExecutionState::initial_for_run(host.run_context());
+
+    let step = RecipeStage
+        .process(ctx, RecipeInput { state })
+        .await
+        .expect("recipe stage");
+
+    let boxed = match step {
+        RecipeStep::Continue { state } => state,
+    };
+    assert!(
+        boxed.last_retrieval_result.is_none(),
+        "no user text → retrieval not consulted (Tier-2)"
+    );
+    assert!(
+        calls.lock().expect("lock").is_empty(),
+        "fetch_for_turn must NOT be called without user text"
+    );
+}
+
+#[tokio::test]
+async fn recipe_stage_soft_miss_leaves_no_stashed_result() {
+    let stub = StubRetrievalLookup::soft_miss();
+    let calls = stub.calls();
+    let host =
+        MockHost::new(Vec::new()).with_retrieval_lookup(Arc::new(stub) as Arc<dyn RetrievalLookup>);
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.last_user_text = Some("an unmatched query".to_string());
+
+    let step = RecipeStage
+        .process(ctx, RecipeInput { state })
+        .await
+        .expect("recipe stage");
+
+    let boxed = match step {
+        RecipeStep::Continue { state } => state,
+    };
+    assert!(
+        boxed.last_retrieval_result.is_none(),
+        "Ok(None) soft miss → nothing stashed (Tier-2)"
+    );
+    assert_eq!(
+        calls.lock().expect("lock").len(),
+        1,
+        "fetch_for_turn called"
+    );
+}
+
+#[tokio::test]
+async fn recipe_stage_soft_fails_on_retrieval_error() {
+    let stub = StubRetrievalLookup::failing(RetrievalLookupError::Backend(
+        "testcontainer unavailable".to_string(),
+    ));
+    let calls = stub.calls();
+    let host =
+        MockHost::new(Vec::new()).with_retrieval_lookup(Arc::new(stub) as Arc<dyn RetrievalLookup>);
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.last_user_text = Some("any query".to_string());
+
+    let step = RecipeStage
+        .process(ctx, RecipeInput { state })
+        .await
+        .expect("recipe stage must soft-fail, not error");
+
+    let boxed = match step {
+        RecipeStep::Continue { state } => state,
+    };
+    assert!(
+        boxed.last_retrieval_result.is_none(),
+        "Err → soft-fail, nothing stashed (Tier-2)"
+    );
+    assert_eq!(
+        calls.lock().expect("lock").len(),
+        1,
+        "fetch_for_turn called"
     );
 }
