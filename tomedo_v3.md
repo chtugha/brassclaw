@@ -165,9 +165,40 @@
 > | PUT  | `/{db}/karteieintrag/{id}` | ✅ HTTP 204 | — | Partial update; `visible:false` hides entry |
 > | PUT  | `/{db}/termin/{id}` | ✅ HTTP 204 | — | Partial update; `removed:true` cancels |
 > | POST | `/{db}/ebmleistung` | ✅ HTTP 200 | `{new_ident}` | Create EBMLeistung — **use `/ebmleistung` NOT `/leistung`** (dtype, ebmKatalogEintrag stored correctly only via this endpoint — confirmed 2026-08-22) |
-> | PUT  | `/{db}/kvschein/{id}` | ✅ HTTP 204 | — | Step 2: link EBMLeistung to Schein — `{"ident":<schein>,"ebmLeistungen":[{"ident":<leistung>}]}` |
+> | PUT  | `/{db}/kvschein/{id}` | ✅ HTTP 204 | — | Step 2: link EBMLeistung to Schein — `{"ident":<schein>,"ebmLeistungen":[{"ident":<leistung>}]}`. **This is mandatory** — the POST alone creates the leistung row but does NOT associate it with the Schein. The PUT writes `invkvschein_ident` on the `leistung` row and writes a `KVSchein` change record so Mac clients pick up the new Ziffer via `ZSTransferFetchedDataThread`. Without this step the Leistung is orphaned. |
 > | DELETE | `/{db}/karteieintrag/{id}` | ❌ HTTP 405 | — | Not supported — use PUT `visible:false` |
 > | DELETE | `/{db}/termin/{id}` | ❌ HTTP 405 | — | Not supported — use PUT `removed:true` |
+>
+> **§ebmleistung-cleanup — confirmed live 2026-08-22:**
+> EBMLeistung has NO separate join table. The KVSchein link is stored as `invkvschein_ident`
+> directly on the `leistung` row.
+>
+> **⚠️ CORRECT deletion order (confirmed live 2026-08-22):**
+> 1. **First: `PUT /{db}/ebmleistung/{ident}`** with `{"visible": false}` via REST API.
+>    This writes a `EBMLeistung` change record to the `change` table — all connected Mac clients
+>    pick it up via `ZSTransferFetchedDataThread` and remove the entry from their local CoreData.
+>    **This step must happen while the `leistung` row still exists on the server.**
+> 2. **Then: SQL DELETE** from `leistung` and `change` tables.
+>
+> **⚠️ SQL DELETE without prior PUT `visible:false` = client inconsistency (confirmed live 2026-08-22):**
+> Deleting the `leistung` row directly via SQL writes NO change record. The server silently loses
+> the row. When a Mac client that already has the entry cached does a fresh sync, it finds the
+> leistung missing from the server response and drops it from local CoreData — but writes nothing
+> to the `change` table to notify other clients. Any other Mac that already synced the entry
+> will continue to show it until it does a full re-sync or restarts.
+> The only safe direct-SQL cleanup is for entries that were **never visible to any client**
+> (i.e. `clientid IS NULL`, `changedate IS NULL` in all their change records — they were created
+> via REST API and never picked up by `ZSTransferFetchedDataThread` before deletion).
+>
+> **SQL-only cleanup (safe only for REST-API-created orphans never seen by clients):**
+> ```sql
+> -- Run in this order
+> DELETE FROM leistung WHERE ident IN (<bad_idents>);
+> DELETE FROM change WHERE revision IN (<revision_numbers>);
+> ```
+> Identify revisions via:
+> `SELECT revision, entitytype, entityid, value FROM change WHERE clientid IS NULL AND changedate IS NULL ORDER BY revision;`
+> Compare with KarteiEintrag which needs THREE tables: `karteieintrag` + `patientendetailsrelationen_karteieintraege` + `change`.
 >
 > **Key type facts learned from live probe:**
 > - `gesperrt` is **Integer** (not boolean) — send `1` not `true`
@@ -1020,27 +1051,40 @@ description:   "POST /{db}/ebmleistung — create a new EBMLeistung (billing cod
                 ⚠️ Use /ebmleistung NOT /leistung — the /leistung endpoint stores dtype='Leistung'
                 and drops ebmKatalogEintrag. Only /ebmleistung stores dtype='EBMLeistung' correctly
                 (confirmed live 2026-08-22).
+                Body is assembled by pc-tomedo-ebmleistung-create from typed slots — never pass
+                a free-form body_json string. All fields are mandatory; a partial POST writes a
+                null-relation entry to the change table that cannot be undone via the REST API.
                 Mandatory fields: datum(epoch ms), visible(true), anzahl(1),
                 ebmKatalogEintrag{ident}, leistungserbringer{ident}, betriebsstaette{ident},
                 dokumentierenderNutzer{ident}, letzterNutzer{ident}, abrechnenderArzt{ident}.
+                Known ebmKatalogEintrag idents (this server): 1=01100, 270=03003, 258=03000, 298=03230.
                 Returns HTTP 200 with {new_leistung_ident}.
                 Step 2: PUT /kvschein/{schein_ident} with {ident, ebmLeistungen:[{ident:N}]} → HTTP 204."
 param_schema:  [
-  {name: "url",     param_type: "string", required: true,
+  {name: "url",                   param_type: "string", required: true,
    description: "https://{host}:{port}/{db}/ebmleistung"},
-  {name: "method",  param_type: "string", required: true, description: "POST"},
-  {name: "body",    param_type: "string", required: true,
-   description: "JSON with all mandatory fields"},
+  {name: "method",                param_type: "string", required: true, description: "POST"},
+  {name: "datum",                 param_type: "integer", required: true,
+   description: "Epoch ms timestamp for the Leistung date"},
+  {name: "ebmkatalogeintrag_ident", param_type: "integer", required: true,
+   description: "Internal catalog ident — NOT the Ziffer string. 1=01100, 270=03003, 258=03000, 298=03230"},
+  {name: "nutzer_ident",          param_type: "integer", required: true,
+   description: "Ident of leistungserbringer / dokumentierenderNutzer / letzterNutzer / abrechnenderArzt"},
+  {name: "betriebsstaette_ident", param_type: "integer", required: true,
+   description: "Ident of Betriebsstätte — use 1 for practice default"},
   {name: "headers", param_type: "object", required: true,
    description: "Must include Content-Type: application/json"}
 ]
 param_template: {
-  "url":     "{{vars.tomedo_base_url}}/ebmleistung",
-  "method":  "POST",
-  "headers": {"Content-Type": "application/json"},
-  "body":    "{{vars.body_json}}"
+  "url":                    "{{vars.tomedo_base_url}}/ebmleistung",
+  "method":                 "POST",
+  "headers":                {"Content-Type": "application/json"},
+  "datum":                  "{{vars.datum}}",
+  "ebmkatalogeintrag_ident":"{{vars.ebmkatalogeintrag_ident}}",
+  "nutzer_ident":           "{{vars.nutzer_ident}}",
+  "betriebsstaette_ident":  "{{vars.betriebsstaette_ident}}"
 }
-preconditions:  "ebmKatalogEintrag.ident must be from ebmkatalogeintrag table. All 5 relation idents must be valid."
+preconditions:  "All slot vars must be resolved to valid integers before dispatch. ebmkatalogeintrag_ident must exist in the ebmkatalogeintrag table. A partial or blank POST cannot be undone via REST — it writes a permanent change record."
 error_handling: "HTTP 460: missing or invalid field. HTTP 200 + {ident} = success."
 category:       "tomedo"
 source:         "system"
@@ -1560,16 +1604,48 @@ result = __execute_action__("tomedo-api", {
 
 ### Step 3.36 — PythonCode: `pc-tomedo-ebmleistung-create` (class 22)
 
-```
-# Channel: orchestrator | Class: 22
-# POST /ebmleistung — create new EBMLeistung, return new ident.
-# IBS bakes in {{vars.body_json}} before execution.
-result = __execute_action__("tomedo-api", {
-    "url":     "{{vars.tomedo_base_url}}/ebmleistung",
-    "method":  "POST",
-    "headers": {"Content-Type": "application/json"},
-    "body":    "{{vars.body_json}}"
-})
+```python
+# Channel: orchestrator | Class: 22 | Tier 1 (LLM confirms Ziffer + Schein + Nutzer before call)
+# Step 1 of 2-step ebmleistung create. Creates the entry; does NOT link to KV-Schein.
+# Step 2 (KVSchein sync record) → pc-tomedo-kvschein-link-leistung
+#
+# CRITICAL CRASH RULE — same as KarteiEintrag:
+# ALL relation fields MUST be present with valid non-null idents.
+# A partial or blank POST writes a permanent null-relation entry to the change table.
+# visible:false does NOT remove it from the sync queue.
+# The only recovery is direct SQL DELETE on the change + leistung tables.
+#
+# Known ebmKatalogEintrag idents (this server):
+#   1 = 01100 (Unvorhergesehene Inanspruchnahme)
+#   258 = 03000 (Versichertenpauschale)
+#   270 = 03003 (Versichertenpauschale 19–54 Jahre)
+#   298 = 03230 (Problemorientiertes ärztliches Gespräch)
+#
+# IBS bakes in vars before execution.
+import json as _j
+_base = "{{vars.tomedo_base_url}}"
+if not _base:
+    result = {"error": "tomedo_base_url not configured"}
+else:
+    _body = _j.dumps({
+        "datum":                  int("{{vars.datum}}"),
+        "visible":                True,
+        "anzahl":                 1,
+        "ebmKatalogEintrag":      {"ident": int("{{vars.ebmkatalogeintrag_ident}}")},
+        "leistungserbringer":     {"ident": int("{{vars.nutzer_ident}}")},
+        "betriebsstaette":        {"ident": int("{{vars.betriebsstaette_ident}}")},
+        "dokumentierenderNutzer": {"ident": int("{{vars.nutzer_ident}}")},
+        "letzterNutzer":          {"ident": int("{{vars.nutzer_ident}}")},
+        "abrechnenderArzt":       {"ident": int("{{vars.nutzer_ident}}")}
+    })
+    result = __execute_action__("tomedo-api", {
+        "url":     f"{_base}/ebmleistung",
+        "method":  "POST",
+        "headers": {"Content-Type": "application/json"},
+        "body":    _body,
+        "timeout_ms": 15000
+    })
+# result contains {new_leistung_ident} — pass to pc-tomedo-kvschein-link-leistung (step 2)
 ```
 
 ---
@@ -1989,16 +2065,22 @@ body: |
   /leistung stores dtype='Leistung' and drops ebmKatalogEintrag — confirmed broken 2026-08-22.
   Only /ebmleistung stores dtype='EBMLeistung' with ebmKatalogEintrag correctly.
 
+  ⚠️ BODY RULE: the body is assembled by pc-tomedo-ebmleistung-create from typed slots.
+  Never pass a free-form body_json string. A partial POST writes a permanent null-relation
+  entry to the change table — it cannot be undone via REST, only via direct SQL DELETE.
+
   ebmKatalogEintrag.ident is an internal integer — NOT the EBM Ziffer string.
-  Known idents on this server: 1=01100, 270=03003, 298=03230.
-  All five relation idents are mandatory: leistungserbringer, betriebsstaette,
-  dokumentierenderNutzer, letzterNutzer, abrechnenderArzt.
+  Known idents on this server: 1=01100, 258=03000, 270=03003, 298=03230.
+  All five relation idents are mandatory and must be non-null integers:
+  leistungserbringer, betriebsstaette, dokumentierenderNutzer, letzterNutzer, abrechnenderArzt.
+  Use the same nutzer_ident for all four Nutzer slots.
 
   The POST returns {new_leistung_ident}. The subsequent PUT sets invkvschein_ident
   on the leistung row and writes the KVSchein change record so Mac clients pick up
   the new Leistung immediately via ZSTransferFetchedDataThread.
 
-  Before dispatching: confirm the Ziffer, Schein, and Nutzer ident with the user.
+  Before dispatching: confirm the Ziffer (resolve to catalog ident), Schein ident,
+  Nutzer ident, Betriebsstätte ident, and Datum (epoch ms) with the user.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -2473,7 +2555,7 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-karteieintrag-create"
-description:       "Create a new KarteiEintrag for a patient — three-step write: POST entry, PUT patient DB join row, PUT patientendetailsrelationen sync record. LLM confirms content before any dispatch."
+description:       "Create a new KarteiEintrag for a patient — three-step write: POST entry, PUT patient DB join row, PUT patientendetailsrelationen sync record. Tier 1 only because the note text is user-composed free text. All structural slots (patient_id, nutzer_ident, kartei_typ_ident, betriebsstaette_ident, datum) are resolved by the orchestrator from session context — the LLM does not construct any part of the POST body."
 llm_call_required: true
 step_descriptions: [
   {
@@ -2486,7 +2568,7 @@ step_descriptions: [
   {
     "step_id": "step-1",
     "type":    "llm",
-    "label":   "LLM confirms entry text, type (ANM/BEF/DIA/LAB), and patient with user before dispatch"
+    "label":   "LLM composes the note text with the user and resolves kartei_typ_ident from the entry type name (e.g. ANM→6, BEF→2, DIA→4). Sets vars.text and vars.kartei_typ_ident only — all other slots come from session context."
   },
   {
     "step_id": "step-2",
@@ -2713,12 +2795,12 @@ validation_status: "validated"
 
 ---
 
-### Recipe: `tomedo-ebmleistung-create` (class 21) — Tier 1
+### Recipe: `tomedo-ebmleistung-create` (class 21) — Tier 0
 
 ```
 name:              "tomedo-ebmleistung-create"
-description:       "Add an EBM billing code (Ziffer) to a patient's KV-Schein — two-step write: POST /ebmleistung, PUT /kvschein link. LLM confirms Ziffer and Schein with user before dispatch."
-llm_call_required: true
+description:       "Add an EBM billing code (Ziffer) to a patient's KV-Schein — two-step write: POST /ebmleistung then PUT /kvschein. Both steps are mandatory: POST creates the leistung row; PUT writes invkvschein_ident on that row AND the KVSchein change record that ZSTransferFetchedDataThread reads to show the Ziffer in the Mac client. Without the PUT the leistung is orphaned and invisible. Fully Tier 0: Ziffer→catalog ident is a static lookup baked into PythonCode; datum, schein_ident, nutzer_ident, betriebsstaette_ident are resolved from session context or a preceding patientenDetailsRelationen read. No LLM needed. Cleanup if something goes wrong: DELETE FROM leistung + DELETE FROM change (two tables only — no join table exists for EBMLeistung, unlike KarteiEintrag which needs three)."
+llm_call_required: false
 step_descriptions: [
   {
     "step_id": "step-0",
@@ -2729,36 +2811,31 @@ step_descriptions: [
   },
   {
     "step_id": "step-1",
-    "type":    "llm",
-    "label":   "LLM resolves EBM Ziffer string → catalog ident, confirms Schein ident and Nutzer ident with user before dispatch"
-  },
-  {
-    "step_id": "step-2",
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-ebmleistung-create>"],
     "label":   "Pre-load ts-tomedo-ebmleistung-create binding"
   },
   {
-    "step_id": "step-3",
+    "step_id": "step-2",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-ebmleistung-create>"],
-    "label":   "Step 1: POST /ebmleistung with all mandatory fields → {new_leistung_ident}"
+    "label":   "Step 1: POST /ebmleistung — PythonCode maps Ziffer→catalog ident from static table, assembles all 9 mandatory fields, fires POST → {new_leistung_ident}. A partial POST here creates a permanent orphan in change+leistung tables — PythonCode guards against this by int()-casting every slot before dispatch."
   },
   {
-    "step_id": "step-4",
+    "step_id": "step-3",
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-kvschein-link-leistung>"],
     "label":   "Pre-load ts-tomedo-kvschein-link-leistung binding"
   },
   {
-    "step_id": "step-5",
+    "step_id": "step-4",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-kvschein-link-leistung>"],
-    "label":   "Step 2: PUT /kvschein/{schein_ident} → links leistung, Mac client sees Ziffer immediately"
+    "label":   "Step 2: PUT /kvschein/{schein_ident} — writes invkvschein_ident on the leistung row AND the KVSchein change record. This step is mandatory: without it the leistung exists in the DB but is not associated with the Schein and is invisible to Mac clients."
   }
 ]
 intent_examples: [
@@ -3415,8 +3492,8 @@ validation_status: "validated"
 
 | Tier | Recipes | Reason |
 |------|---------|--------|
-| **Tier 0** | 13 | Direct REST reads + Leistungen two-step + patient-summary + all audit check recipes (tagesliste, per-patient fetch/check, full audit, karteieintragtyp-list) — **no POST/PUT in any Tier-0 recipe** |
-| **Tier 1** | 9 | 1 name-search + 7 writes (karteieintrag create/anmerkung/update, termin create/update, ebmleistung create, abend-audit-auto-add-01100) + 1 cert-fetch |
+| **Tier 0** | 14 | Direct REST reads + Leistungen two-step + patient-summary + ebmleistung-create + all audit check recipes. **ebmleistung-create is Tier 0**: Ziffer→ident is a static baked-in lookup, all slots from session context, PythonCode assembles the body — no LLM involvement at any point. |
+| **Tier 1** | 8 | 1 name-search + 6 writes (karteieintrag create/anmerkung/update, termin create/update, abend-audit-auto-add-01100) + 1 cert-fetch. **karteieintrag-create is Tier 1 only because the note text is user-composed free text** — all structural slots (patient_id, nutzer_ident, typ, datum) come from session context, not the LLM. |
 
 ---
 
@@ -3481,8 +3558,7 @@ Group 4 — PythonCode pure-logic helpers (class 22, no __execute_action__):
   49. pc-tomedo-parse-next-appointment
   50. pc-tomedo-epoch-to-date
   51. pc-tomedo-extract-phone-fields
-  52. pc-tomedo-build-today-date                    ← Abenddokumentation-Audit
-  53. pc-tomedo-parse-tagesliste                    ← extract unique patient IDs
+  52. pc-tomedo-parse-tagesliste                    ← extract unique patient IDs
   54. pc-tomedo-classify-insurance                  ← Privat | GKV | HZV
   55. pc-tomedo-extract-diagnosen-from-relations    ← extract diagnosen[]
   56. pc-tomedo-extract-karteieintraege-from-relations ← extract karteiEintraege[]
@@ -3591,7 +3667,7 @@ computed on first insert and checked on subsequent runs.
 | 3-step karteieintrag write (JSON2CoreData crash rule) | POST creates entry → PUT /patient links DB join row → PUT /patientendetailsrelationen syncs Mac client; without step 3 the Mac client crashes with `JSON2CoreData.m:349 ident != NULL` |
 | `letzterNutzer` required in POST body, forbidden in PUT | Missing from POST → crash; present in PUT → corrupts sync record → crash |
 | visits recipe single-step | /besuch/{patient_id}/besucheForPatient takes patient ident directly — confirmed live 2026-08-22 |
-| Abenddokumentation-Audit fully Tier-0 | Date computation (pc-tomedo-build-today-date), insurance classification, and completeness checks are all deterministic — no LLM needed |
+| Abenddokumentation-Audit fully Tier-0 | Date computation (builtin ts-time-now / pc-exec-time-now, Europe/Berlin), insurance classification, and completeness checks are all deterministic — no LLM needed |
 | Audit has 3 separate completeness-check leaf skills | `check-privat`, `check-gkv`, `check-hzv` are distinct skills (not one monolithic skill) — each covers one insurance type's rules |
 | Tagesliste pending validation | Two endpoint candidates (`termin?datum` + `besuch/tagesliste`) need live probing; recipe pre-loads both with fallback logic |
 | ANA ident requires one-time setup | `GET /karteieintragtyp` once to discover ANA ident; fallback is kürzel-string matching in check logic |
@@ -4233,19 +4309,6 @@ except Exception as e:
 
 ---
 
-#### PythonCode: `pc-tomedo-build-today-date` (class 22)
-
-```python
-# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
-# Returns today's date as a YYYY-MM-DD string (local time on the BrassClaw host).
-# Used by the audit recipe to compute datum_ymd without LLM involvement.
-# No inputs needed — uses the system clock at execution time.
-import datetime as _dt
-result = _dt.date.today().strftime("%Y-%m-%d")
-```
-
----
-
 #### PythonCode: `pc-tomedo-check-01100-erforderlich` (class 22)
 
 ```python
@@ -4343,7 +4406,7 @@ body: |
   After fetching: use pc-tomedo-parse-tagesliste to extract unique patient IDs
   with their arrival/departure times and insurance flags.
 
-  datum_ymd is computed by pc-tomedo-build-today-date — no LLM needed.
+  datum_ymd is computed by ts-time-now / pc-exec-time-now (builtin, Europe/Berlin) — no LLM needed.
   ⚠️ Both endpoints are pending live validation on this server.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
@@ -4599,40 +4662,47 @@ step_descriptions: [
   {
     "step_id": "step-1",
     "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:pc-tomedo-build-today-date>"],
-    "label":   "Compute today's date as YYYY-MM-DD string — no LLM needed"
+    "channel": "rust",
+    "include": ["<uuid:ts-time-now>"],
+    "label":   "Pre-load ts-time-now binding (builtin.time)"
   },
   {
     "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-now>"],
+    "label":   "Get current timestamp in Europe/Berlin (slot0=Europe/Berlin) → result.date used as datum_ymd"
+  },
+  {
+    "step_id": "step-3",
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-tagesliste-get>"],
     "label":   "Pre-load ts-tomedo-tagesliste-get binding (primary: termin?datum)"
   },
   {
-    "step_id": "step-3",
+    "step_id": "step-4",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-tagesliste-get>"],
     "label":   "Execute: GET /termin?datum={today}&flach=true → day Termin list"
   },
   {
-    "step_id": "step-4",
+    "step_id": "step-5",
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-besuch-tagesliste-get>"],
     "label":   "Pre-load ts-tomedo-besuch-tagesliste-get binding (fallback: besuch/tagesliste)"
   },
   {
-    "step_id": "step-5",
+    "step_id": "step-6",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-besuch-tagesliste-get>"],
     "label":   "Fallback execute: GET /besuch/tagesliste?datum={today} if primary returned 404/empty"
   },
   {
-    "step_id": "step-6",
+    "step_id": "step-7",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-parse-tagesliste>"],
@@ -4877,40 +4947,47 @@ step_descriptions: [
   {
     "step_id": "step-1",
     "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:pc-tomedo-build-today-date>"],
-    "label":   "Compute today's date as YYYY-MM-DD (no LLM — pure Python datetime)"
+    "channel": "rust",
+    "include": ["<uuid:ts-time-now>"],
+    "label":   "Pre-load ts-time-now binding (builtin.time)"
   },
   {
     "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-now>"],
+    "label":   "Get current timestamp in Europe/Berlin (slot0=Europe/Berlin) → result.date used as datum_ymd"
+  },
+  {
+    "step_id": "step-3",
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-tagesliste-get>"],
     "label":   "Pre-load ts-tomedo-tagesliste-get binding (primary day-list endpoint)"
   },
   {
-    "step_id": "step-3",
+    "step_id": "step-4",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-tagesliste-get>"],
     "label":   "Execute: GET /termin?datum={today}&flach=true → day Termin list"
   },
   {
-    "step_id": "step-4",
+    "step_id": "step-5",
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-besuch-tagesliste-get>"],
     "label":   "Pre-load ts-tomedo-besuch-tagesliste-get binding (fallback day-list endpoint)"
   },
   {
-    "step_id": "step-5",
+    "step_id": "step-6",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-besuch-tagesliste-get>"],
     "label":   "Fallback execute: GET /besuch/tagesliste?datum={today} if primary returned 404/empty"
   },
   {
-    "step_id": "step-6",
+    "step_id": "step-7",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-parse-tagesliste>"],
@@ -5081,25 +5158,39 @@ step_descriptions: [
     "step_id": "step-1",
     "type":    "component",
     "channel": "rust",
-    "include": ["<uuid:ts-tomedo-ebmleistung-create>"],
-    "label":   "Pre-load ts-tomedo-ebmleistung-create binding (Rust makes the tool available)"
+    "include": ["<uuid:ts-time-now>"],
+    "label":   "Pre-load ts-time-now binding (builtin.time)"
   },
   {
     "step_id": "step-2",
     "type":    "component",
     "channel": "orchestrator",
-    "include": ["<uuid:pc-tomedo-ebmleistung-create>"],
-    "label":   "Orchestrator executes: POST /ebmleistung with all mandatory fields → {new_leistung_ident}"
+    "include": ["<uuid:pc-exec-time-now>"],
+    "label":   "Get current timestamp in Europe/Berlin (slot0=Europe/Berlin) → result.epoch_ms used as datum"
   },
   {
     "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-ebmleistung-create>"],
+    "label":   "Pre-load ts-tomedo-ebmleistung-create binding (Rust makes the tool available)"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-ebmleistung-create>"],
+    "label":   "Orchestrator executes: POST /ebmleistung with datum=epoch_ms from step-2 and all mandatory fields → {new_leistung_ident}"
+  },
+  {
+    "step_id": "step-5",
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-kvschein-link-leistung>"],
     "label":   "Pre-load ts-tomedo-kvschein-link-leistung binding (Rust makes the tool available)"
   },
   {
-    "step_id": "step-4",
+    "step_id": "step-6",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-kvschein-link-leistung>"],
