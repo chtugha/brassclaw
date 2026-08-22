@@ -1300,13 +1300,26 @@ def run_loop(context, goal, actions, state, config):
                     # prose block) — a `tier_zero` pkr with no channel content
                     # has nothing deterministic to run, so it is treated as a
                     # failure and degrades to Tier-2 below (NOT skipped).
-                    __emit_event__("recipe_tier_zero_started", recipe=pkr.get("recipe_name", ""))
+                    __emit_event__("recipe_tier_zero_started",
+                                   recipe=pkr.get("recipe_name", ""),
+                                   recipe_id=pkr.get("recipe_id", ""))
                     __transition_to__("running", "recipe tier-0 execution")
                     tier0_result = execute_recipe_orchestrator_channel(pkr.get("orchestrator_content", ""))
                     if tier0_result.get("outcome") == "success":
+                        # Q-H6: stamp the Tier-0 success into `extra` so the
+                        # engine can build `OrchestratorResult.tier_zero_outcome`
+                        # from the result dict (H4.6) AND emit the terminal
+                        # `recipe_tier_zero_succeeded` event (H4.7 composition
+                        # listener fires `record_recipe_outcome(recipe_id, true)`).
+                        __emit_event__("recipe_tier_zero_succeeded",
+                                       recipe=pkr.get("recipe_name", ""),
+                                       recipe_id=pkr.get("recipe_id", ""))
                         __transition_to__("completed", "tier-0 recipe executed")
                         return complete_result(state, "completed",
-                                               response=tier0_result.get("result", ""))
+                                               response=tier0_result.get("result", ""),
+                                               extra={"tier_zero_outcome": {
+                                                   "recipe_id": pkr.get("recipe_id", ""),
+                                                   "success": True}})
                     # outcome == "error" (Q-H4 — `outcome` is the SOLE signal):
                     # a Tier-0 failure does NOT abort the turn — it degrades to
                     # a Tier-2 (LLM) call so the user still gets a reply. The
@@ -1321,6 +1334,7 @@ def run_loop(context, goal, actions, state, config):
                     # action_short_circuit unresolved fall-through above).
                     __emit_event__("recipe_tier_zero_failed",
                                    recipe=pkr.get("recipe_name", ""),
+                                   recipe_id=pkr.get("recipe_id", ""),
                                    message=tier0_result.get("message", ""))
                     __transition_to__("prompting", "tier-0 recipe failed -> tier-2")
                     # fall through to Tier-2 (un-augmented __llm_complete__).

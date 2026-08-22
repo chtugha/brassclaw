@@ -679,6 +679,7 @@ mod tests {
             wilson_lower: 0.82,
             tier0_eligible: true,
             recipe_id: None,
+            recipe_name: "daily-sync".to_string(),
         };
         let instruction = Some(Box::new(
             brassclaw_engine::memory::instruction_builder::BuildInstruction {

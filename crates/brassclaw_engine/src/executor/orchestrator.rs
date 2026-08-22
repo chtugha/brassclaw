@@ -2788,6 +2788,7 @@ async fn handle_assemble_prior_knowledge(
                     "variant_label": routing.variant_label,
                     "step_link": routing.step_link,
                     "recipe_id": routing.recipe_id,
+                    "recipe_name": routing.recipe_name,
                     "wilson_lower": routing.wilson_lower,
                     "llm_call_required": routing.llm_call_required,
                     "tier0_eligible": routing.tier0_eligible,
@@ -7106,6 +7107,19 @@ FINAL(1 if ok else 0)
         rec.events.iter().any(|(n, _)| n == name)
     }
 
+    /// Find the kwargs JSON of the first event named `name`, if emitted.
+    /// Used by the Phase H4.5 tests to assert `recipe_id` / `recipe` ride
+    /// the `recipe_tier_zero_*` event kwargs (Q-H6 / Q-H7-surface).
+    fn recording_event_kwargs<'a>(
+        rec: &'a Step0Recording,
+        name: &str,
+    ) -> Option<&'a serde_json::Value> {
+        rec.events
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, kwargs)| kwargs)
+    }
+
     #[test]
     fn phase_h3_tier_zero_success_returns_completed_no_llm() {
         // tier_zero + a single PythonCode step whose FINAL("hello") succeeds
@@ -7116,6 +7130,7 @@ FINAL(1 if ok else 0)
             "tier_zero": true,
             "orchestrator_content": "## [PythonCode: greet]\nFINAL(\"hello\")",
             "recipe_name": "greet-recipe",
+            "recipe_id": "11111111-1111-1111-1111-111111111111",
             "matched_component_ids": [],
             "active_skills": []
         });
@@ -7144,9 +7159,46 @@ FINAL(1 if ok else 0)
             recording_has_event(&rec, "recipe_tier_zero_started"),
             "must emit recipe_tier_zero_started"
         );
+        // v3 Phase H4.5: success emits the terminal `recipe_tier_zero_
+        // succeeded` event carrying recipe_id (Q-H7-surface A2 — the
+        // composition listener fires record_recipe_outcome(recipe_id, true)).
+        assert!(
+            recording_has_event(&rec, "recipe_tier_zero_succeeded"),
+            "Tier-0 success must emit recipe_tier_zero_succeeded"
+        );
         assert!(
             !recording_has_event(&rec, "recipe_tier_zero_failed"),
             "a success must NOT emit recipe_tier_zero_failed"
+        );
+        // recipe_id + recipe name ride the started + succeeded event kwargs.
+        for ev in ["recipe_tier_zero_started", "recipe_tier_zero_succeeded"] {
+            let kwargs = recording_event_kwargs(&rec, ev).expect("event emitted");
+            assert_eq!(
+                kwargs.get("recipe_id").and_then(|v| v.as_str()),
+                Some("11111111-1111-1111-1111-111111111111"),
+                "{ev} must carry recipe_id"
+            );
+            assert_eq!(
+                kwargs.get("recipe").and_then(|v| v.as_str()),
+                Some("greet-recipe"),
+                "{ev} must carry the recipe name"
+            );
+        }
+        // Q-H6: the success is ALSO stamped into the result dict as
+        // `tier_zero_outcome` (complete_result flattens `extra`), which the
+        // engine reads to build OrchestratorResult.tier_zero_outcome (H4.6).
+        let stamp = outcome
+            .get("tier_zero_outcome")
+            .expect("success must stamp tier_zero_outcome");
+        assert_eq!(
+            stamp.get("recipe_id").and_then(|v| v.as_str()),
+            Some("11111111-1111-1111-1111-111111111111"),
+            "stamp must carry recipe_id"
+        );
+        assert_eq!(
+            stamp.get("success").and_then(|v| v.as_bool()),
+            Some(true),
+            "stamp must mark success true"
         );
         assert!(
             recording_has_transition(&rec, "running", "recipe tier-0 execution"),
@@ -7170,6 +7222,7 @@ FINAL(1 if ok else 0)
             "tier_zero": true,
             "orchestrator_content": "## [PythonCode: bad]\nbody",
             "recipe_name": "bad-recipe",
+            "recipe_id": "22222222-2222-2222-2222-222222222222",
             "matched_component_ids": [],
             "active_skills": []
         });
@@ -7201,6 +7254,31 @@ FINAL(1 if ok else 0)
         assert!(
             recording_has_event(&rec, "recipe_tier_zero_failed"),
             "a failure must emit recipe_tier_zero_failed"
+        );
+        // v3 Phase H4.5: recipe_id rides the started + failed event kwargs
+        // (Q-H7-surface A2 — the composition listener fires
+        // record_recipe_outcome(recipe_id, false) on the failed event).
+        for ev in ["recipe_tier_zero_started", "recipe_tier_zero_failed"] {
+            let kwargs = recording_event_kwargs(&rec, ev).expect("event emitted");
+            assert_eq!(
+                kwargs.get("recipe_id").and_then(|v| v.as_str()),
+                Some("22222222-2222-2222-2222-222222222222"),
+                "{ev} must carry recipe_id"
+            );
+        }
+        let failed_kwargs =
+            recording_event_kwargs(&rec, "recipe_tier_zero_failed").expect("failed emitted");
+        assert_eq!(
+            failed_kwargs.get("recipe").and_then(|v| v.as_str()),
+            Some("bad-recipe"),
+            "failed event must carry the recipe name"
+        );
+        // Q-H6: a failure does NOT stamp `tier_zero_outcome` into the result
+        // dict — the failure signal rides the `recipe_tier_zero_failed` event
+        // (the engine scans thread.events for it in H4.6).
+        assert!(
+            outcome.get("tier_zero_outcome").is_none(),
+            "failure must NOT stamp tier_zero_outcome (signal rides the event)"
         );
         assert!(
             recording_has_transition(&rec, "prompting", "tier-0 recipe failed -> tier-2"),
@@ -9047,6 +9125,7 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             wilson_lower: 0.0,
             tier0_eligible: false,
             recipe_id: None,
+            recipe_name: "recipe_ls".to_string(),
         };
         FetchForTurnResult::SplitResult {
             rust_items: vec![toolskill],

@@ -142,6 +142,14 @@ pub struct TurnRoutingSignals {
     /// tier_zero_outcome` (v3 Phase H.4). `None` on non-recipe paths and in
     /// test fixtures (v3 Phase H4.3).
     pub recipe_id: Option<String>,
+    /// The matched Recipe's display name (`reborn_recipes.name`, read at
+    /// `fetch_recipe_split_result` line 810). Surfaced end-to-end (v3 Phase
+    /// H4.5, Q-A) so the `recipe_tier_zero_*` `EventKind` variants carry a
+    /// human-readable recipe name (not just the UUID) — the `variant_label`
+    /// above is the matched variant key, NOT the recipe name. Always present
+    /// on the recipe path (every `TurnRoutingSignals` is built inside
+    /// `fetch_recipe_split_result` or a test fixture that supplies one).
+    pub recipe_name: String,
 }
 
 /// Result of an intent-driven `fetch_for_turn` call.
@@ -854,6 +862,7 @@ impl PostgresSource {
                     wilson_lower,
                     tier0_eligible: false,
                     recipe_id: Some(recipe_id.to_string()),
+                    recipe_name: recipe_name.clone(),
                 },
                 instruction: None,
             });
@@ -941,6 +950,7 @@ impl PostgresSource {
                 wilson_lower,
                 tier0_eligible,
                 recipe_id: Some(recipe_id.to_string()),
+                recipe_name: recipe_name.clone(),
             },
             instruction: Some(Box::new(instruction)),
         })
@@ -1665,6 +1675,7 @@ mod tests {
             wilson_lower: 0.85,
             tier0_eligible: true,
             recipe_id: Some(recipe_uuid.to_string()),
+            recipe_name: "greet-recipe".to_string(),
         };
         let split = FetchForTurnResult::SplitResult {
             rust_items: Vec::new(),
@@ -1678,6 +1689,10 @@ mod tests {
                     routing.recipe_id.as_deref(),
                     Some(recipe_uuid.to_string()).as_deref(),
                     "recipe_id must be carried through the SplitResult variant"
+                );
+                assert_eq!(
+                    routing.recipe_name, "greet-recipe",
+                    "recipe_name must be carried through the SplitResult variant"
                 );
             }
             _ => panic!("expected SplitResult"),
