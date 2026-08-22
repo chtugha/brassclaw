@@ -3434,13 +3434,13 @@ validation_status: "validated"
 | Class | Count | Names |
 |-------|-------|-------|
 | 0 — Tool | 2 | `tomedo-api`, `tomedo-cert-fetch-tool` |
-| 1 — Leaf Skill | 22 | `skill-tomedo-serverstatus` … `skill-tomedo-ebmleistung-create` |
+| 1 — Leaf Skill | 23 | `skill-tomedo-serverstatus` … `skill-tomedo-abend-audit-auto-add-01100` |
 | 2 — Domain Skill | 1 | `skill-tomedo` |
 | 13 — ToolSkill | 21 | `ts-tomedo-serverstatus` … `ts-tomedo-kvschein-link-leistung` |
 | 21 — Recipe | 21 | `tomedo-serverstatus` … `tomedo-ebmleistung-create` |
 | 22 — PythonCode | 41 | `pc-tomedo-serverstatus` … `pc-tomedo-check-01100-erforderlich` |
 | 23 — ExtensionCatalogue | 2 | `ext-tomedo`, `ext-tomedo-cert-fetch` |
-| **Total** | **110** | |
+| **Total** | **111** | |
 
 ---
 
@@ -3542,16 +3542,17 @@ Group 5 — Leaf Skills (class 1):
   75. skill-tomedo-termin-update
   76. skill-tomedo-leistungen-read
   77. skill-tomedo-ebmleistung-create               ← EBM Ziffer write
-  78. skill-tomedo-cert-fetch
-  79. skill-tomedo-karteieintragtyp-list            ← Abenddokumentation-Audit setup
-  80. skill-tomedo-tagesliste-get                   ← day schedule fetch
-  81. skill-tomedo-abend-audit-fetch-patient        ← per-patient data fetch
-  82. skill-tomedo-abend-audit-check-privat         ← Privat completeness leaf
-  83. skill-tomedo-abend-audit-check-gkv            ← GKV completeness leaf
-  84. skill-tomedo-abend-audit-check-hzv            ← HZV completeness leaf
+  78. skill-tomedo-abend-audit-auto-add-01100       ← auto-add 01100 late-arrival
+  79. skill-tomedo-cert-fetch
+  80. skill-tomedo-karteieintragtyp-list            ← Abenddokumentation-Audit setup
+  81. skill-tomedo-tagesliste-get                   ← day schedule fetch
+  82. skill-tomedo-abend-audit-fetch-patient        ← per-patient data fetch
+  83. skill-tomedo-abend-audit-check-privat         ← Privat completeness leaf
+  84. skill-tomedo-abend-audit-check-gkv            ← GKV completeness leaf
+  85. skill-tomedo-abend-audit-check-hzv            ← HZV completeness leaf
 
 Group 6 — Domain Skills (class 2):
-  85. skill-tomedo
+  86. skill-tomedo
 
 Group 7 — Recipes (class 21):
   86. tomedo-serverstatus                            (Tier 0)
@@ -4537,6 +4538,58 @@ validation_status: "validated"
 
 ---
 
+#### Leaf Skill: `skill-tomedo-abend-audit-auto-add-01100` (class 1)
+
+```
+name:        "skill-tomedo-abend-audit-auto-add-01100"
+class_code:  1
+description: "Leaf skill: auto-add EBM 01100 to a GKV patient's KV-Schein during the evening audit when the late-arrival rule is triggered and 01100 is not yet present — Tier 0 (no LLM, all inputs deterministic)."
+body: |
+  Automatically add EBM 01100 (Unvorhergesehene Inanspruchnahme, ebmKatalogEintrag.ident=1)
+  to a GKV patient's KV-Schein when all of these are true:
+    1. insurance_type == "GKV" (not Privat, not HZV)
+    2. pc-tomedo-check-01100-erforderlich returned erforderlich=true
+    3. EBM 01100 (ebmKatalogEintrag.ident==1) is NOT already in ebmLeistungen[]
+
+  Only run when the above conditions are confirmed. Do not run for Privat or HZV patients.
+
+  STEP 1 — POST /ebmleistung (pc-tomedo-ebmleistung-create):
+    Body vars required:
+      tomedo_base_url         — from config
+      body_json               — JSON string with all mandatory fields:
+        {
+          "datum":                  <ankunft_ms>,          ← use patient's ankunft_ms as datum
+          "visible":                true,
+          "anzahl":                 1,
+          "ebmKatalogEintrag":      {"ident": 1},          ← 01100, always ident=1 on this server
+          "leistungserbringer":     {"ident": <nutzer>},   ← from config key tomedo_nutzer_ident
+          "betriebsstaette":        {"ident": 1},
+          "dokumentierenderNutzer": {"ident": <nutzer>},
+          "letzterNutzer":          {"ident": <nutzer>},
+          "abrechnenderArzt":       {"ident": <nutzer>}
+        }
+    Returns: {new_leistung_ident}
+
+  STEP 2 — PUT /kvschein/{schein_ident} (pc-tomedo-kvschein-link-leistung):
+    Vars: schein_ident (first kvSchein ident from patientenDetailsRelationen),
+          leistung_ident (from step 1 result)
+    Returns: HTTP 204 — leistung linked, Mac client sees 01100 immediately.
+
+  After successful write: remove "EBM 01100 fehlt" from this patient's missing[] list
+  in the audit report — it has been resolved automatically.
+
+  Config keys required:
+    tomedo_nutzer_ident   — default Arzt ident for auto-written Leistungen
+    tomedo_base_url       — https://{host}:8443/{db}
+
+  ⚠️ ENDPOINT: POST to /ebmleistung (NOT /leistung) — confirmed live 2026-08-22.
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
 ### Step 8.5 — Recipes (class 21) for Abenddokumentation-Audit
 
 All Tier 0. The orchestrator runs the full audit without LLM involvement.
@@ -4785,7 +4838,7 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-abend-audit-check-patient"
-description:       "Run the documentation completeness check for one patient. Classifies insurance type (Privat/GKV/HZV) from the already-fetched besuch flags and scheinart, checks kartei entry types, then applies the insurance-specific completeness rule. Returns a list of missing items. No LLM."
+description:       "Run the documentation completeness check for one patient. Classifies insurance type (Privat/GKV/HZV), checks kartei entries, evaluates 01100 late-arrival rule for GKV, then applies insurance-specific completeness rule. Returns a list of missing items. No LLM."
 llm_call_required: false
 step_descriptions: [
   {
@@ -4818,18 +4871,25 @@ step_descriptions: [
     "step_id": "step-3",
     "type":    "component",
     "channel": "orchestrator",
-    "include": ["<uuid:pc-tomedo-check-privat-vollstaendigkeit>"],
-    "label":   "Check Privat completeness (diagnose + kartei ANA/BEF/BES + GOÄ-Leistungen)"
+    "include": ["<uuid:pc-tomedo-check-01100-erforderlich>"],
+    "label":   "GKV: evaluate 01100 late-arrival rule from ankunft_ms + kv_fall + scheinart (pure logic)"
   },
   {
     "step_id": "step-4",
     "type":    "component",
     "channel": "orchestrator",
-    "include": ["<uuid:pc-tomedo-check-gkv-vollstaendigkeit>"],
-    "label":   "Check GKV completeness (diagnose + kartei ANA/BEF/BES + schein + EBM-Ziffern)"
+    "include": ["<uuid:pc-tomedo-check-privat-vollstaendigkeit>"],
+    "label":   "Check Privat completeness (diagnose + kartei ANA/BEF/BES + GOÄ-Leistungen)"
   },
   {
     "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-gkv-vollstaendigkeit>"],
+    "label":   "Check GKV completeness (diagnose + kartei + schein + EBM-Ziffern + 01100 if erforderlich)"
+  },
+  {
+    "step_id": "step-6",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-check-hzv-vollstaendigkeit>"],
@@ -4862,7 +4922,7 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-abend-audit"
-description:       "Automated evening documentation audit: fetch today's patient list, classify by insurance type (Privat/GKV/HZV), check each patient for documentation completeness (diagnose, karteiEintraege ANA/BEF/BES, schein, leistungen), and send a report to chat listing only patients with missing items. Fully orchestrator-driven — no LLM."
+description:       "Automated evening documentation audit: fetch today's patient list, classify by insurance type (Privat/GKV/HZV), check each patient for documentation completeness (diagnose, karteiEintraege ANA/BEF/BES, schein, leistungen, 01100 late-arrival rule), auto-add EBM 01100 to GKV Schein if required and missing, then send a report to chat. Fully orchestrator-driven — no LLM."
 llm_call_required: false
 step_descriptions: [
   {
@@ -4875,9 +4935,10 @@ step_descriptions: [
       "<uuid:skill-tomedo-abend-audit-check-privat>",
       "<uuid:skill-tomedo-abend-audit-check-gkv>",
       "<uuid:skill-tomedo-abend-audit-check-hzv>",
+      "<uuid:skill-tomedo-abend-audit-auto-add-01100>",
       "<uuid:skill-tomedo>"
     ],
-    "label":   "Load all audit leaf skills + domain skill into orchestrator context"
+    "label":   "Load all audit leaf skills (incl. auto-add-01100) + domain skill into orchestrator context"
   },
   {
     "step_id": "step-1",
@@ -5013,11 +5074,18 @@ step_descriptions: [
     "label":   "Per-patient (Privat only): check diagnose + kartei + GOÄ-Leistungen"
   },
   {
+    "step_id": "step-19b",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-check-01100-erforderlich>"],
+    "label":   "Per-patient (GKV only): evaluate 01100 late-arrival rule from ankunft_ms + kv_fall + scheinart"
+  },
+  {
     "step_id": "step-20",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-check-gkv-vollstaendigkeit>"],
-    "label":   "Per-patient (GKV only): check diagnose + kartei + schein + EBM-Ziffern"
+    "label":   "Per-patient (GKV only): check diagnose + kartei + schein + EBM-Ziffern + 01100 if erforderlich"
   },
   {
     "step_id": "step-21",
@@ -5027,11 +5095,39 @@ step_descriptions: [
     "label":   "Per-patient (HZV only): check diagnose + kartei + HZV-Schein + HZV-Ziffern"
   },
   {
+    "step_id": "step-21b",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-ebmleistung-create>"],
+    "label":   "Pre-load ts-tomedo-ebmleistung-create binding (used for auto-add 01100)"
+  },
+  {
+    "step_id": "step-21c",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-ebmleistung-create>"],
+    "label":   "Per-patient (GKV, 01100 erforderlich + fehlt): POST /ebmleistung → {new_leistung_ident}"
+  },
+  {
+    "step_id": "step-21d",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-kvschein-link-leistung>"],
+    "label":   "Pre-load ts-tomedo-kvschein-link-leistung binding (used for auto-add 01100)"
+  },
+  {
+    "step_id": "step-21e",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-kvschein-link-leistung>"],
+    "label":   "Per-patient (GKV, 01100 erforderlich + fehlt): PUT /kvschein/{id} → links leistung, Mac client notified"
+  },
+  {
     "step_id": "step-22",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-format-audit-bericht>"],
-    "label":   "Format audit report: list only patients with missing items → send to chat"
+    "label":   "Format audit report: list patients with remaining missing items → send to chat"
   }
 ]
 intent_examples: [
