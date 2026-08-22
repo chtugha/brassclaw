@@ -99,11 +99,15 @@ impl RetrievalLookup for PgRetrievalLookup {
 
 /// Build the engine `ComponentScope` for a live turn from the loop run context.
 ///
-/// Matches the Phase-1 stub convention from `orchestrator.rs:2586–2591`: real
-/// tenancy / agent scoping arrives in Phase F (when `Thread` carries
-/// `tenant_id` / `agent_id`). Until then `tenant_id` mirrors the effective
-/// user id (the turn actor, else the explicit thread owner, else the system
-/// sentinel) and `agent_id` falls back to `"default"`.
+/// v3 Phase F (Q-F2 / Q-F4): real tenancy is sourced from the live
+/// `LoopRunContext.scope.tenant_id` (a `TurnScope::tenant_id: TenantId`,
+/// always present — see `brassclaw_turns::scope`). `agent_id` comes from
+/// `scope.agent_id` (falls back to `"default"`) and `project_id` from
+/// `scope.project_id`. `user_id` stays the effective turn actor / explicit
+/// thread owner / system sentinel (the *user*, distinct from the tenant).
+/// This is the LIVE agent-loop retrieval scope; the dormant engine
+/// `handle_assemble_prior_knowledge` reads `thread.tenant_id` / `thread.agent_id`
+/// (F.1/F.3).
 #[cfg(feature = "skills-db")]
 fn build_component_scope(context: &LoopRunContext) -> brassclaw_engine::memory::ComponentScope {
     let scope = &context.scope;
@@ -128,7 +132,7 @@ fn build_component_scope(context: &LoopRunContext) -> brassclaw_engine::memory::
         .map(|pid| pid.as_str().to_string())
         .unwrap_or_default();
     brassclaw_engine::memory::ComponentScope {
-        tenant_id: user_id.clone(),
+        tenant_id: scope.tenant_id.as_str().to_string(),
         user_id,
         agent_id,
         project_id,
