@@ -4190,8 +4190,15 @@ fn extract_i64_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory::intent_system::IntentCandidate;
+    use crate::memory::{
+        ComponentItem, ComponentScope, FetchForTurnResult, RetrievalEngine, RetrievalSource,
+        RetrievalSourceError, TurnRoutingSignals,
+    };
     use crate::types::memory::{DocType, MemoryDoc};
     use crate::types::project::ProjectId;
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex};
 
     // ── Test constants ──────────────────────────────────────────────────────
     /// Max VM allocations for test helper runs (lower than production).
@@ -7381,5 +7388,422 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             !formatted.contains("[Plan]"),
             "raw PKC Rust-internal format must not appear in formatted_content"
         );
+    }
+
+    // ── Phase F.7: RetrievalSource arm tests ────────────────────────────────
+    //
+    // The plan's Phase F test list (saved_plan_to_v3.md:5190–5198). These drive
+    // the dormant `handle_assemble_prior_knowledge` RetrievalSource path (the
+    // four `FetchForTurnResult` arms) through a mock `RetrievalSource` so the
+    // §0.9 routing dict + prose `orchestrator_content` (FINDING F) are verified
+    // without a live Postgres. Tests #8/#9 (DB-integration) live in
+    // `crates/brassclaw_reborn_composition/tests/fetch_component.rs`.
+
+    /// In-memory `RetrievalSource` for Phase F.7 tests. Captures the
+    /// `ComponentScope` handed to `fetch_for_turn` (test #7) and returns a
+    /// preset `FetchForTurnResult` on the first call (tests #1–#5). Subsequent
+    /// calls return an empty `Components` result.
+    struct MockRetrievalSource {
+        result: Mutex<Option<FetchForTurnResult>>,
+        captured_scope: Arc<Mutex<Option<ComponentScope>>>,
+    }
+
+    impl MockRetrievalSource {
+        fn new(
+            result: FetchForTurnResult,
+            captured_scope: Arc<Mutex<Option<ComponentScope>>>,
+        ) -> Self {
+            Self {
+                result: Mutex::new(Some(result)),
+                captured_scope,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl RetrievalSource for MockRetrievalSource {
+        async fn fetch_for_consumer(
+            &self,
+            _scope: &ComponentScope,
+            _query: &str,
+            _token_budget: usize,
+            _consumer_tag: &str,
+        ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_for_turn(
+            &self,
+            scope: &ComponentScope,
+            _query: &str,
+            _token_budget: usize,
+            _sender_class_code: &str,
+        ) -> Result<FetchForTurnResult, RetrievalSourceError> {
+            *self.captured_scope.lock().unwrap() = Some(scope.clone());
+            let result = self
+                .result
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap_or(FetchForTurnResult::Components(Vec::new()));
+            Ok(result)
+        }
+    }
+
+    /// Build a `ComponentItem` with a deterministic UUID (u128 seed).
+    fn phase_f7_item(seed: u128, class_code: i32, name: &str, content: &str) -> ComponentItem {
+        ComponentItem {
+            id: uuid::Uuid::from_u128(seed),
+            class_code,
+            prompt_uid: seed as i64,
+            name: name.to_string(),
+            description: String::new(),
+            effective_content: content.to_string(),
+            override_prompt_creation: false,
+        }
+    }
+
+    /// Build a foreground `Thread` for `handle_assemble_prior_knowledge`.
+    fn phase_f7_thread(goal: &str) -> Thread {
+        crate::types::thread::Thread::new(
+            goal,
+            crate::types::thread::ThreadType::Foreground,
+            ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        )
+    }
+
+    /// Args for `__assemble_prior_knowledge__(goal, 2k, "02")`.
+    fn phase_f7_args(goal: &str) -> Vec<MontyObject> {
+        vec![
+            MontyObject::String(goal.into()),
+            MontyObject::Int(TEST_TOKEN_ALLOC_2K),
+            MontyObject::String("02".into()),
+        ]
+    }
+
+    /// Call `handle_assemble_prior_knowledge` with a `RetrievalSource` (no
+    /// legacy `RetrievalEngine`) and return the resulting JSON dict.
+    async fn phase_f7_assemble(
+        src: Arc<dyn RetrievalSource>,
+        thread: &Thread,
+    ) -> serde_json::Value {
+        let args = phase_f7_args(&thread.goal);
+        let result = handle_assemble_prior_knowledge(&args, thread, None, Some(&src)).await;
+        match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        }
+    }
+
+    /// A `SplitResult` with a Skill + PythonCode in the orchestrator channel
+    /// and a ToolSkill in the Rust channel (tests #1 / #2).
+    fn phase_f7_split_result() -> FetchForTurnResult {
+        let skill = phase_f7_item(1, 3, "ls", "list files in a directory");
+        let pycode = phase_f7_item(2, 22, "ls-result-handler", "print(result)");
+        let toolskill = phase_f7_item(3, 13, "ls-tool", "secret rust tool body");
+        let routing = TurnRoutingSignals {
+            override_prompt_creation: false,
+            matched_component_ids: vec![skill.id.to_string(), pycode.id.to_string()],
+            variant_label: "default".to_string(),
+            step_link: "recipe_ls#step1".to_string(),
+            llm_call_required: true,
+            wilson_lower: 0.0,
+            tier0_eligible: false,
+        };
+        FetchForTurnResult::SplitResult {
+            rust_items: vec![toolskill],
+            orchestrator_items: vec![skill, pycode],
+            routing,
+            instruction: None,
+        }
+    }
+
+    /// Phase F.7 #1 — `SplitResult` `orchestrator_content` is the prose
+    /// StepContextSpec-headed block: it carries the Skill + PythonCode bodies
+    /// with Capitalized headings, does NOT carry the Rust-channel ToolSkill
+    /// body, and contains no `type:text` / Annotation step info.
+    #[tokio::test]
+    async fn phase_f7_split_result_orchestrator_content_is_prose_with_skill_and_pythoncode() {
+        let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
+            phase_f7_split_result(),
+            Arc::new(Mutex::new(None)),
+        ));
+        let thread = phase_f7_thread("list files");
+        let json = phase_f7_assemble(src, &thread).await;
+
+        let oc = json["orchestrator_content"]
+            .as_str()
+            .expect("orchestrator_content must be a prose string");
+
+        // Skill + PythonCode bodies present with Capitalized headings.
+        assert!(oc.contains("## [Skill: ls]"), "missing Skill heading: {oc}");
+        assert!(
+            oc.contains("list files in a directory"),
+            "missing skill body: {oc}"
+        );
+        assert!(
+            oc.contains("## [PythonCode: ls-result-handler]"),
+            "missing PythonCode heading: {oc}"
+        );
+        assert!(
+            oc.contains("print(result)"),
+            "missing pythoncode body: {oc}"
+        );
+
+        // ToolSkill (class 13) is Rust-channel-only: never in orchestrator_content.
+        assert!(
+            !oc.contains("secret rust tool body"),
+            "ToolSkill body must NOT appear in orchestrator_content: {oc}"
+        );
+        assert!(
+            !oc.contains("## [ToolSkill:"),
+            "no ToolSkill heading must be emitted: {oc}"
+        );
+
+        // No type:"text" / Annotation step info in orchestrator_content.
+        assert!(
+            !oc.contains("type:text"),
+            "no type:text step info in orchestrator_content: {oc}"
+        );
+        assert!(
+            !oc.contains("## [Annotation:"),
+            "no Annotation heading from a ComponentItem: {oc}"
+        );
+    }
+
+    /// Phase F.7 #2 — `SplitResult` `formatted_content` aliases
+    /// `orchestrator_content` (FINDING F: JSON object → prose string).
+    #[tokio::test]
+    async fn phase_f7_split_result_formatted_content_aliases_orchestrator_content() {
+        let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
+            phase_f7_split_result(),
+            Arc::new(Mutex::new(None)),
+        ));
+        let thread = phase_f7_thread("list files");
+        let json = phase_f7_assemble(src, &thread).await;
+
+        let oc = json["orchestrator_content"].as_str().unwrap_or("");
+        let fc = json["formatted_content"].as_str().unwrap_or("");
+        assert_eq!(
+            oc, fc,
+            "formatted_content must alias orchestrator_content (FINDING F)"
+        );
+    }
+
+    /// Phase F.7 #3 — `ActionShortCircuit` sets `action_short_circuit: true`
+    /// and emits an empty `orchestrator_content` (an Action executes directly,
+    /// no LLM prior knowledge).
+    #[tokio::test]
+    async fn phase_f7_action_short_circuit_emits_empty_orchestrator_content() {
+        let component_id = uuid::Uuid::from_u128(42);
+        let result = FetchForTurnResult::ActionShortCircuit {
+            component_id,
+            name: "deploy".to_string(),
+        };
+        let src: Arc<dyn RetrievalSource> =
+            Arc::new(MockRetrievalSource::new(result, Arc::new(Mutex::new(None))));
+        let thread = phase_f7_thread("deploy now");
+        let json = phase_f7_assemble(src, &thread).await;
+
+        assert_eq!(
+            json["action_short_circuit"], true,
+            "ActionShortCircuit must set action_short_circuit"
+        );
+        assert_eq!(
+            json["orchestrator_content"], "",
+            "ActionShortCircuit has no prior knowledge -> empty orchestrator_content"
+        );
+        assert_eq!(
+            json["formatted_content"], "",
+            "ActionShortCircuit formatted_content is empty too"
+        );
+        assert_eq!(json["action_name"], "deploy");
+        assert_eq!(json["action_component_id"], component_id.to_string());
+    }
+
+    /// Phase F.7 #4 — `Components` (no-match broad scan) `orchestrator_content`
+    /// contains every emittable retrieved item (Q-F7-1) with Capitalized
+    /// headings, skips class-13 ToolSkill (§0.9 invariant), yet keeps all item
+    /// ids in `matched_component_ids`. Not a short-circuit / disambiguation.
+    #[tokio::test]
+    async fn phase_f7_components_arm_orchestrator_content_contains_all_emittable_items() {
+        let skill = phase_f7_item(10, 3, "grep", "search file contents");
+        let spec = phase_f7_item(11, 12, "search-spec", "spec body text");
+        let action = phase_f7_item(12, 16, "search-action", "action body text");
+        let toolskill = phase_f7_item(13, 13, "search-tool", "hidden tool body");
+        let result = FetchForTurnResult::Components(vec![skill, spec, action, toolskill]);
+
+        let src: Arc<dyn RetrievalSource> =
+            Arc::new(MockRetrievalSource::new(result, Arc::new(Mutex::new(None))));
+        let thread = phase_f7_thread("search files");
+        let json = phase_f7_assemble(src, &thread).await;
+
+        let oc = json["orchestrator_content"]
+            .as_str()
+            .expect("orchestrator_content required");
+
+        // All emittable classes labelled with Capitalized headings + bodies.
+        assert!(oc.contains("## [Skill: grep]"), "{oc}");
+        assert!(oc.contains("search file contents"), "{oc}");
+        assert!(oc.contains("## [Spec: search-spec]"), "{oc}");
+        assert!(oc.contains("spec body text"), "{oc}");
+        assert!(oc.contains("## [Action: search-action]"), "{oc}");
+        assert!(oc.contains("action body text"), "{oc}");
+
+        // Class 13 ToolSkill skipped from orchestrator_content (§0.9 invariant)...
+        assert!(!oc.contains("hidden tool body"), "{oc}");
+        assert!(!oc.contains("## [ToolSkill:"), "{oc}");
+
+        // ...but its id is still in matched_component_ids (all items).
+        let matched = json["matched_component_ids"]
+            .as_array()
+            .expect("matched_component_ids array");
+        assert_eq!(matched.len(), 4, "all 4 item ids in matched_component_ids");
+
+        // Not a short-circuit / disambiguation.
+        assert_eq!(json["action_short_circuit"], false);
+        assert_eq!(json["disambiguation"], false);
+        assert_eq!(json["override_prompt_creation"], false);
+
+        // formatted_content aliases orchestrator_content.
+        assert_eq!(json["formatted_content"].as_str().unwrap_or(""), oc);
+    }
+
+    /// Phase F.7 #5 — `Disambiguation` sets `disambiguation: true` and surfaces
+    /// the candidate list (component_id / class_code / class_label / score).
+    #[tokio::test]
+    async fn phase_f7_disambiguation_surfaces_candidates() {
+        let candidates = vec![
+            IntentCandidate {
+                row_id: uuid::Uuid::from_u128(100),
+                component_id: uuid::Uuid::from_u128(101),
+                component_class_code: 3,
+                input_class: 0,
+                score: 5,
+                class_label: "skill_rusty".to_string(),
+            },
+            IntentCandidate {
+                row_id: uuid::Uuid::from_u128(102),
+                component_id: uuid::Uuid::from_u128(103),
+                component_class_code: 21,
+                input_class: 0,
+                score: 5,
+                class_label: "recipe".to_string(),
+            },
+        ];
+        let result = FetchForTurnResult::Disambiguation(candidates);
+        let src: Arc<dyn RetrievalSource> =
+            Arc::new(MockRetrievalSource::new(result, Arc::new(Mutex::new(None))));
+        let thread = phase_f7_thread("ambiguous query");
+        let json = phase_f7_assemble(src, &thread).await;
+
+        assert_eq!(json["disambiguation"], true);
+        assert_eq!(json["content"], "");
+        assert_eq!(json["formatted_content"], "");
+
+        let arr = json["candidates"].as_array().expect("candidates array");
+        assert_eq!(arr.len(), 2, "two disambiguation candidates");
+        assert_eq!(arr[0]["component_class_code"], 3);
+        assert_eq!(arr[0]["class_label"], "skill_rusty");
+        assert_eq!(arr[0]["score"], 5);
+        assert_eq!(
+            arr[0]["component_id"],
+            uuid::Uuid::from_u128(101).to_string()
+        );
+        assert_eq!(arr[1]["component_class_code"], 21);
+        assert_eq!(arr[1]["class_label"], "recipe");
+    }
+
+    /// Phase F.7 #6 — `__retrieve_docs__` is untouched by Phase F: it still
+    /// returns a FLAT list of `{type, title, content}` entries, not a dict
+    /// with the v3 routing keys.
+    #[tokio::test]
+    async fn phase_f7_handle_retrieve_docs_remains_flat_list() {
+        let project = ProjectId::new();
+        let retrieval =
+            RetrievalEngine::new(Arc::new(crate::tests::InMemoryStore::with_docs(vec![
+                MemoryDoc::new(
+                    project,
+                    "user",
+                    DocType::Lesson,
+                    "web_search tool alias",
+                    "Use web_search",
+                ),
+            ])));
+        let thread = crate::types::thread::Thread::new(
+            "web_search error",
+            crate::types::thread::ThreadType::Foreground,
+            project,
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        let args = vec![
+            MontyObject::String("web_search error".into()),
+            MontyObject::Int(5),
+        ];
+
+        let result = handle_retrieve_docs(&args, &[], &thread, Some(&retrieval)).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+
+        // Phase F must leave __retrieve_docs__ returning a FLAT array of
+        // {type, title, content} entries — NOT a dict with v3 routing keys.
+        let arr = json
+            .as_array()
+            .expect("retrieve_docs must return a flat array");
+        assert!(!arr.is_empty(), "the seeded lesson must be retrieved");
+        let first = &arr[0];
+        assert!(first.get("type").is_some(), "type key required");
+        assert!(first.get("title").is_some(), "title key required");
+        assert!(first.get("content").is_some(), "content key required");
+        assert_eq!(first["title"], "web_search tool alias");
+        assert_eq!(first["content"], "Use web_search");
+
+        // No v3 routing / orchestrator keys leaked into the flat list entries.
+        assert!(first.get("orchestrator_content").is_none());
+        assert!(first.get("matched_component_ids").is_none());
+        assert!(first.get("action_short_circuit").is_none());
+        assert!(first.get("disambiguation").is_none());
+    }
+
+    /// Phase F.7 #7 — the `ComponentScope` built by
+    /// `handle_assemble_prior_knowledge` carries the thread's `tenant_id` +
+    /// `agent_id` (the F.1 / F.3 fix), not the old `user_id` / `"default"` stub.
+    #[tokio::test]
+    async fn phase_f7_assemble_scope_uses_thread_tenant_and_agent() {
+        let captured: Arc<Mutex<Option<ComponentScope>>> = Arc::new(Mutex::new(None));
+        let result = FetchForTurnResult::Components(Vec::new());
+        let src: Arc<dyn RetrievalSource> =
+            Arc::new(MockRetrievalSource::new(result, captured.clone()));
+        let thread = crate::types::thread::Thread::new(
+            "scoped goal",
+            crate::types::thread::ThreadType::Foreground,
+            ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        )
+        .with_tenant_agent("tenant-t", "agent-a");
+
+        let _ = phase_f7_assemble(src, &thread).await;
+
+        let scope = captured
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("fetch_for_turn must have been called with a scope");
+        assert_eq!(
+            scope.tenant_id, "tenant-t",
+            "scope tenant_id from thread.tenant_id"
+        );
+        assert_eq!(
+            scope.agent_id, "agent-a",
+            "scope agent_id from thread.agent_id"
+        );
+        assert_eq!(scope.user_id, "user");
+        assert_eq!(scope.project_id, thread.project_id.to_string());
     }
 }

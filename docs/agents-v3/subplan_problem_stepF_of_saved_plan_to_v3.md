@@ -296,4 +296,33 @@ limitation of the dormant engine path); both orchestrator.rs stubs read
   `Components` arm. See SF5.1–SF5.5 verification there. **Done.**
 - F.6 — `__fetch_component__(uuid, class_code)` registered (cfg-gated pool
   pattern, dict-or-Null). Committed `756ac551`. **Done.**
-- F.7 — Phase F tests (9: pure-unit #1–#7 + DB-integration #8/#9). **Pending.**
+- F.7 — Phase F tests (9: pure-unit #1–#7 + DB-integration #8/#9). **Done.**
+  - Pure-unit #1–#7 in `crates/brassclaw_engine/src/executor/orchestrator.rs`
+    `mod tests` (a new `MockRetrievalSource` capturing the `ComponentScope` +
+    returning a preset `FetchForTurnResult`): #1 SplitResult prose
+    `orchestrator_content` (Skill+PythonCode bodies, no ToolSkill, no
+    `type:text`/Annotation); #2 `formatted_content` == `orchestrator_content`
+    (FINDING F alias); #3 `ActionShortCircuit` → `action_short_circuit:true` +
+    empty `orchestrator_content`; #4 `Components` broad-scan → all emittable
+    items labelled, class-13 skipped, all 4 ids in `matched_component_ids`;
+    #5 `Disambiguation` → `disambiguation:true` + candidates; #6
+    `handle_retrieve_docs` untouched flat `[{type,title,content}]` (no v3
+    routing keys); #7 scope carries `thread.tenant_id`/`agent_id` (F.1/F.3).
+  - DB-integration #8/#9 in
+    `crates/brassclaw_reborn_composition/tests/fetch_component.rs`
+    (`#![cfg(feature="skills-db")]`, skip-if-no-docker, mirror
+    `fetch_for_turn.rs`): #8 `fetch_component_by_id(uuid,16)` → correct Action
+    item (`override_prompt_creation=true` per V029 default; SEC-01 passes via
+    `consumer_tags='{}'`); #9 cross-tenant isolation — tenant A's intent does
+    NOT match for tenant B's thread (positive control + leak-panic guard).
+  - **Verify (both configs):** `cargo fmt --all -- --check` clean; `cargo
+    clippy -p brassclaw_engine --all-targets -- -D warnings` (default +
+    `--features brassclaw_engine/skills-db`) clean; `cargo clippy -p
+    brassclaw_reborn_composition --all-targets -- -D warnings` (default +
+    `--features brassclaw_reborn_composition/skills-db`) clean; `cargo test -p
+    brassclaw_engine --lib` default **676 passed** / skills-db **687 passed**
+    (was 669/680; +7 `phase_f7` tests), 0 failed; `cargo test -p
+    brassclaw_reborn_composition --features …/skills-db --test fetch_component`
+    **2 passed** (skip on this host — no docker, same as E.1/Phase-D/E.6).
+    No regression (legacy `retrieve_context` path test
+    `assemble_prior_knowledge_returns_both_surfaces` unchanged).
