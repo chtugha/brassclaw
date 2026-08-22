@@ -428,5 +428,20 @@ composition tests):**
   tests pass (0 regressions; the 96 orchestrator helper tests compile
   `_execute_action_steps` + `execute_action_procedure` via Monty).
   Committed+pushed `84518fb4`.
-- G.7 — pending.
+- G.7 — Done. New `crates/brassclaw_pg/migrations/V062__call_action_action_id_resolution.sql`
+  — back-fills `action_id` (UUID) onto every existing `call_action` step in
+  `reborn_actions.steps` so the G.6 Option A fast path is taken; unresolvable
+  names (within scope) are left without `action_id` and degrade to the Option B
+  name-lookup fallback at runtime. SQL is the plan's data-migration (lines
+  5300–5325), made a tracked refinery migration per the Q-G6 subplan decision
+  (plan called it a manual data-only script; completing it as versioned +
+  idempotent + `refinery_schema_history`-recorded is the documented upgrade).
+  Idempotent (CASE gates on `action_id IS NULL`; WHERE `@> '[{"type":"call_action"}]'`
+  restricts to rows with a call_action step so `jsonb_agg` never sees empty
+  input); scope-isolated (SEC-01: `a2` matched on `a1`'s full scope tuple);
+  post-migration audit SELECT documented as a header comment for operators.
+  Verified: `refinery::embed_migrations!` picks up the file; the embedded-PG
+  `full_boot_cycle_from_scratch` integration test passes (refinery applies
+  V000–V062 cleanly against real Postgres 16); clippy `brassclaw_pg` clean;
+  fmt clean. Committed+pushed `ea68f214`.
 - G.8 — pending.
