@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- *(recipe-system / v3 Phase F.5)* **Breaking — `__assemble_prior_knowledge__` `formatted_content` shape changed from JSON to prose** (`crates/brassclaw_engine/src/executor/orchestrator.rs`): in the v3 `SplitResult` and `Components` retrieval arms, `formatted_content` transitions from a JSON-encoded object (`{"prior_knowledge":[...],"matched_components":[...]}`) to a **prose string** = the new `orchestrator_content` (a `StepContextSpec`-headed block — `## [Skill: name]\n<body>` blocks joined by blank lines, per plan §0.9 line 780–786). Custom Python orchestrators that do `json.loads(pkr["formatted_content"])` will break and must switch to using `pkr["orchestrator_content"]` (or `pkr["formatted_content"]`) as a string. The built-in `default.py` is unaffected (it consumes `formatted_content` as a string with no `json.loads`). The legacy `retrieve_context` fallback path retains the JSON `formatted_content` shape until Phase K removes it. See plan FINDING F (§0.9 line 1334–1350).
+
+### Added
+
+- *(recipe-system / v3 Phase F.5)* **`orchestrator_content` field + full §0.9 routing dict in the `Components` arm** (`crates/brassclaw_engine/src/executor/orchestrator.rs`): the `Components` broad-scan arm of `handle_assemble_prior_knowledge` now emits the complete §0.9 dict — `orchestrator_content` (prose; all retrieved classes labelled with Capitalized `StepContextSpec` category headings; class 13 ToolSkill and class 11 reserved skipped per the §0.9 invariant), `formatted_content` (alias), `content` (raw plain-text), `override_prompt_creation`, `matched_component_ids`, `action_short_circuit`, `disambiguation`. The Solution Override sub-path emits the verbatim body as `orchestrator_content` / `formatted_content` / `content`. `StepContextSpec` (`crates/brassclaw_engine/src/memory/instruction_builder.rs`) is extended from the plan's 6 orchestrator-channel variants to cover every component class, with `from_class_code(i32) -> Option<Self>` (`None` for class 13/11) + `heading() -> &'static str`; a thin `step_context_label` helper and the `format_orchestrator_content` prose formatter live in `orchestrator.rs`.
+
 ## [0.64.0] - 2026-08-12
 
 ### Added

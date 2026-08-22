@@ -206,6 +206,16 @@ pub type DependencyExpr = Vec<DependencyNode>;
 /// Derived content type for orchestrator-channel steps (§0.5). Inferred from
 /// the component's `class_code` in `handle_assemble_prior_knowledge` at fetch
 /// time — never stored, never set by authors.
+///
+/// v3 Phase F.5 (Q-F7-1 / Q-F7-2): extended beyond the plan's 6
+/// orchestrator-channel variants to cover **every** component class, because
+/// the `Components` broad-scan arm of `handle_assemble_prior_knowledge` returns
+/// all retrieved classes and the prose formatter (`format_orchestrator_content`)
+/// must label each. `Annotation` is plan-faithful (a `type:"text"` step — never
+/// produced from a `ComponentItem`). Class 13 (ToolSkill) and class 11
+/// (reserved) map to `None` via [`StepContextSpec::from_class_code`] — they are
+/// never emitted into `orchestrator_content` (ToolSkill is Rust-channel-only,
+/// §0.9 invariant).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepContextSpec {
     Skill,
@@ -214,6 +224,77 @@ pub enum StepContextSpec {
     PythonCode,
     Catalogue,
     Annotation,
+    Extension,
+    Orchestrator,
+    Plan,
+    Summary,
+    Action,
+    Docu,
+    Lesson,
+    Issue,
+    Note,
+    Scaffold,
+    Tool,
+    Component,
+}
+
+impl StepContextSpec {
+    /// Derive the context spec from a component `class_code`.
+    ///
+    /// Returns `None` for class 13 (ToolSkill — never in the orchestrator
+    /// channel, §0.9 invariant) and class 11 (reserved), so the formatter
+    /// skips those items. Every other class maps to its category variant;
+    /// unknown codes fall back to [`StepContextSpec::Component`].
+    pub fn from_class_code(class_code: i32) -> Option<StepContextSpec> {
+        let spec = match class_code {
+            0 => StepContextSpec::Tool,
+            1..=3 => StepContextSpec::Skill,
+            4..=9 => StepContextSpec::Extension,
+            10 => StepContextSpec::Orchestrator,
+            11 => return None,
+            12 => StepContextSpec::Spec,
+            13 => return None,
+            14 => StepContextSpec::Plan,
+            15 => StepContextSpec::Summary,
+            16 => StepContextSpec::Action,
+            17 => StepContextSpec::Docu,
+            18 => StepContextSpec::Lesson,
+            19 => StepContextSpec::Issue,
+            20 => StepContextSpec::Note,
+            21 => StepContextSpec::Recipe,
+            22 => StepContextSpec::PythonCode,
+            23 => StepContextSpec::Catalogue,
+            50 => StepContextSpec::Scaffold,
+            _ => StepContextSpec::Component,
+        };
+        Some(spec)
+    }
+
+    /// The Capitalized category label used as the prose block heading
+    /// (`## [{heading}: {name}]`). Per Q-F7-2 / Q-F7-case this is a category
+    /// label, NOT the lowercase specific subtype from `class_label()`.
+    pub fn heading(&self) -> &'static str {
+        match self {
+            StepContextSpec::Skill => "Skill",
+            StepContextSpec::Spec => "Spec",
+            StepContextSpec::Recipe => "Recipe",
+            StepContextSpec::PythonCode => "PythonCode",
+            StepContextSpec::Catalogue => "Catalogue",
+            StepContextSpec::Annotation => "Annotation",
+            StepContextSpec::Extension => "Extension",
+            StepContextSpec::Orchestrator => "Orchestrator",
+            StepContextSpec::Plan => "Plan",
+            StepContextSpec::Summary => "Summary",
+            StepContextSpec::Action => "Action",
+            StepContextSpec::Docu => "Docu",
+            StepContextSpec::Lesson => "Lesson",
+            StepContextSpec::Issue => "Issue",
+            StepContextSpec::Note => "Note",
+            StepContextSpec::Scaffold => "Scaffold",
+            StepContextSpec::Tool => "Tool",
+            StepContextSpec::Component => "Component",
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1600,5 +1681,105 @@ mod tests {
         assert_eq!(sub["list"][0], "/tmp");
         assert_eq!(sub["list"][1], "plain");
         assert_eq!(sub["count"], 3);
+    }
+
+    #[test]
+    fn step_context_spec_from_class_code_maps_all_classes_and_skips_toolskill() {
+        // v3 Phase F.5 (Q-F7-1 / Q-F7-2): the prose formatter derives a
+        // `StepContextSpec` per item; class 13 (ToolSkill) and 11 (reserved)
+        // MUST map to `None` so they are never emitted into
+        // `orchestrator_content` (§0.9 invariant — ToolSkill is Rust-channel
+        // only). Every other class maps to its Capitalized category variant.
+        assert_eq!(StepContextSpec::from_class_code(13), None);
+        assert_eq!(StepContextSpec::from_class_code(11), None);
+
+        // Plan's 5 orchestrator-channel classes + the skill sub-range.
+        assert_eq!(
+            StepContextSpec::from_class_code(1),
+            Some(StepContextSpec::Skill)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(3),
+            Some(StepContextSpec::Skill)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(12),
+            Some(StepContextSpec::Spec)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(21),
+            Some(StepContextSpec::Recipe)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(22),
+            Some(StepContextSpec::PythonCode)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(23),
+            Some(StepContextSpec::Catalogue)
+        );
+
+        // Extended categories (Q-F7-1 broad-scan coverage).
+        assert_eq!(
+            StepContextSpec::from_class_code(4),
+            Some(StepContextSpec::Extension)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(9),
+            Some(StepContextSpec::Extension)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(10),
+            Some(StepContextSpec::Orchestrator)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(0),
+            Some(StepContextSpec::Tool)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(14),
+            Some(StepContextSpec::Plan)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(15),
+            Some(StepContextSpec::Summary)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(16),
+            Some(StepContextSpec::Action)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(17),
+            Some(StepContextSpec::Docu)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(18),
+            Some(StepContextSpec::Lesson)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(19),
+            Some(StepContextSpec::Issue)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(20),
+            Some(StepContextSpec::Note)
+        );
+        assert_eq!(
+            StepContextSpec::from_class_code(50),
+            Some(StepContextSpec::Scaffold)
+        );
+        // Unknown code → Component fallback.
+        assert_eq!(
+            StepContextSpec::from_class_code(99),
+            Some(StepContextSpec::Component)
+        );
+
+        // Headings are Capitalized category labels (Q-F7-2 / Q-F7-case), NOT
+        // the lowercase `class_label()` subtypes.
+        assert_eq!(StepContextSpec::Skill.heading(), "Skill");
+        assert_eq!(StepContextSpec::PythonCode.heading(), "PythonCode");
+        assert_eq!(StepContextSpec::Extension.heading(), "Extension");
+        assert_eq!(StepContextSpec::Action.heading(), "Action");
+        assert_eq!(StepContextSpec::Component.heading(), "Component");
     }
 }

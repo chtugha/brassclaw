@@ -693,15 +693,21 @@ pub async fn execute_orchestrator(
                     }
 
                     // __assemble_prior_knowledge__(goal, token_budget, sender_class_code)
-                    // Returns {content, formatted_content, override_prompt_creation,
-                    // matched_component_ids}. Phase 8 Step 8.1 (§3.13/§3.14):
-                    //   content          — raw PKC text (Rust dispatch + KV fingerprint)
-                    //   formatted_content — LLM-readable JSON for working_messages
+                    // Returns {orchestrator_content, formatted_content, content,
+                    // override_prompt_creation, matched_component_ids,
+                    // action_short_circuit, disambiguation, ...routing}. v3 Phase F
+                    // (§3.13/§3.14 + §0.9):
+                    //   orchestrator_content — LLM-facing prose StepContextSpec-headed
+                    //                          block (`## [Skill: name]\n<body>`)
+                    //   formatted_content   — alias of orchestrator_content (v3 Phase
+                    //                          F.5 / FINDING F: was JSON, now prose)
+                    //   content             — raw PKC text (Rust dispatch + KV fingerprint)
                     //   override_prompt_creation — bool; true → use formatted_content
                     //                              as the complete prompt base
                     //   matched_component_ids    — list of UUID strings
                     // Phase 5: retrieval_source is the real backend (PostgresSource or
-                    // RamSource). Falls back to legacy retrieve_context when None.
+                    // RamSource). Falls back to legacy retrieve_context when None (the
+                    // legacy path still emits JSON formatted_content until Phase K).
                     "__assemble_prior_knowledge__" => {
                         handle_assemble_prior_knowledge(args, thread, retrieval, retrieval_source)
                             .await
@@ -2547,10 +2553,16 @@ async fn handle_retrieve_docs(
 /// Handle `__assemble_prior_knowledge__(goal, token_budget, sender_class_code)`.
 ///
 /// Phase 8 Step 8.1 / Phase 5 Step 6.1 (§3.13/§3.14 — two-surface PKC design):
-/// Returns `{content, formatted_content, override_prompt_creation,
-/// matched_component_ids}` to Python. The Python orchestrator uses
-/// `formatted_content` for `working_messages`; `content` (raw PKC) is
-/// reserved for Rust dispatch and KV-cache fingerprinting.
+/// Returns `{orchestrator_content, formatted_content, content,
+/// override_prompt_creation, matched_component_ids, action_short_circuit,
+/// disambiguation, ...routing}` to Python. The Python orchestrator uses
+/// `orchestrator_content` (alias `formatted_content`) for `working_messages`;
+/// `content` (raw PKC) is reserved for Rust dispatch and KV-cache
+/// fingerprinting. v3 Phase F.5 / FINDING F: in the v3 `SplitResult` and
+/// `Components` arms `orchestrator_content` / `formatted_content` are a **prose**
+/// StepContextSpec-headed block (was a JSON object); the legacy
+/// `retrieve_context` fallback still emits JSON `formatted_content` until
+/// Phase K.
 ///
 /// Priority:
 /// 1. `retrieval_source` (Phase 5/6.7 path) — `PostgresSource` (intent-driven)
@@ -2675,7 +2687,10 @@ async fn handle_assemble_prior_knowledge(
                 // The LIVE Tier-0/Tier-1 dispatch is the Phase-H agent-loop
                 // consumer (via the composition `PgRetrievalLookup` bridge);
                 // this path is dormant but plan-faithful if re-activated.
-                let (orchestrator_content, _, _) = assemble_component_strings(&orchestrator_items);
+                // v3 Phase F.5 (FINDING F): `orchestrator_content` is the prose
+                // StepContextSpec-headed block (`## [Skill: name]\n<body>`),
+                // NOT the legacy JSON object; `formatted_content` is an alias.
+                let orchestrator_content = format_orchestrator_content(&orchestrator_items);
                 let rust_items_json: Vec<serde_json::Value> = rust_items
                     .iter()
                     .map(|item| {
@@ -2827,13 +2842,63 @@ async fn handle_fetch_component(
     ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
 }
 
+/// The Capitalized category label for a component `class_code`, used as the
+/// prose block heading in `orchestrator_content` (`## [{label}: {name}]`).
+///
+/// v3 Phase F.5 (Q-F7-2 / Q-F7-case): a thin helper over
+/// [`crate::memory::instruction_builder::StepContextSpec::from_class_code`] +
+/// [`StepContextSpec::heading`]. Returns `None` for class 13 (ToolSkill —
+/// Rust-channel-only, §0.9 invariant) and class 11 (reserved), so the
+/// formatter skips those items. This is NOT the lowercase specific subtype
+/// from `class_label()` (e.g. `skill_rusty` / `extension_worker`); it is the
+/// Capitalized category label the plan §0.9 StepContextSpec table specifies.
+fn step_context_label(class_code: i32) -> Option<&'static str> {
+    crate::memory::instruction_builder::StepContextSpec::from_class_code(class_code)
+        .map(|spec| spec.heading())
+}
+
+/// Format the orchestrator-channel prior knowledge as a **prose**
+/// StepContextSpec-headed block (plan §0.9 line 780–786).
+///
+/// Each [`ComponentItem`] becomes a `## [{heading}: {name}]\n{effective_content}`
+/// block; blocks are joined by a blank line. Items whose `class_code` maps to
+/// `None` (class 13 ToolSkill, class 11 reserved) are **skipped** — they never
+/// appear in `orchestrator_content` (§0.9 invariant). An item with empty
+/// `effective_content` emits a heading-only block (e.g. a Recipe with no body —
+/// plan line 758). This is the v3 shape of `orchestrator_content` and
+/// `formatted_content` (FINDING F: `formatted_content` transitions from a
+/// JSON-encoded object to this prose string). Shared by the `SplitResult` arm
+/// and the `Components` broad-scan arm of `handle_assemble_prior_knowledge` so
+/// both emit identical `orchestrator_content` for the same items.
+fn format_orchestrator_content(items: &[crate::memory::ComponentItem]) -> String {
+    items
+        .iter()
+        .filter_map(|item| {
+            let heading = step_context_label(item.class_code)?;
+            let block = if item.effective_content.is_empty() {
+                format!("## [{heading}: {}]", item.name)
+            } else {
+                format!("## [{heading}: {}]\n{}", item.name, item.effective_content)
+            };
+            Some(block)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 /// Build the PKC result from a vec of [`ComponentItem`]s (Phase 5 path).
 ///
 /// Checks if any component requests Solution Override (§3.13). If exactly
 /// one Override component exists, returns it verbatim. Otherwise assembles
-/// the normal multi-component JSON.
+/// the normal multi-component prose block (v3 Phase F.5: `orchestrator_content`
+/// and `formatted_content` are now the prose StepContextSpec-headed block per
+/// FINDING F; the legacy JSON shape is retired from this arm).
 fn assemble_from_component_items(items: &[crate::memory::ComponentItem]) -> ExtFunctionResult {
     // Solution Override: single component with override_prompt_creation = true.
+    // §3.13 — the override body IS the whole user message, so it is emitted
+    // verbatim (no StepContextSpec heading). v3 Phase F.5 (FINDING F):
+    // `orchestrator_content` / `formatted_content` carry the verbatim body
+    // (a degenerate prose block) with `formatted_content` as an alias.
     let override_items: Vec<_> = items
         .iter()
         .filter(|item| item.override_prompt_creation)
@@ -2842,58 +2907,45 @@ fn assemble_from_component_items(items: &[crate::memory::ComponentItem]) -> ExtF
         let item = override_items[0];
         let matched_ids = vec![item.id.to_string()];
         return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-            "content": item.effective_content,
+            "orchestrator_content": item.effective_content,
             "formatted_content": item.effective_content,
+            "content": item.effective_content,
             "override_prompt_creation": true,
             "matched_component_ids": matched_ids,
+            "action_short_circuit": false,
+            "disambiguation": false,
         })));
     }
 
-    let (formatted, raw_content, matched_ids) = assemble_component_strings(items);
+    // Normal multi-component path. v3 Phase F.5 (FINDING F): `orchestrator_content`
+    // is the prose StepContextSpec-headed block (`## [Skill: name]\n<body>` …),
+    // `formatted_content` is an alias, and `content` is the raw plain-text
+    // concatenation (Rust dispatch fingerprinting). All retrieved classes are
+    // labelled (Q-F7-1); class 13 ToolSkill / class 11 reserved are skipped by
+    // the formatter (§0.9 invariant — never in `orchestrator_content`).
+    let (raw_content, matched_ids) = assemble_component_strings(items);
+    let orchestrator_content = format_orchestrator_content(items);
     ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+        "orchestrator_content": orchestrator_content,
+        "formatted_content": orchestrator_content,
         "content": raw_content,
-        "formatted_content": formatted,
         "override_prompt_creation": false,
         "matched_component_ids": matched_ids,
+        "action_short_circuit": false,
+        "disambiguation": false,
     })))
 }
 
-/// Assemble the normal multi-component LLM-readable JSON, the raw plain-text
-/// concatenation, and the matched component id list from a slice of
-/// [`ComponentItem`]s (no Solution Override short-circuit). Shared by
-/// [`assemble_from_component_items`] (the `Components` arm) and the `SplitResult`
-/// §0.9 routing-dict assembly (v3 Phase F.5) so both produce identical body
-/// content. Entries follow the same schema as `format_prior_knowledge_for_llm`.
-fn assemble_component_strings(
-    items: &[crate::memory::ComponentItem],
-) -> (String, String, Vec<String>) {
+/// Assemble the raw plain-text concatenation (`content`) and the matched
+/// component id list from a slice of [`ComponentItem`]s (no Solution Override
+/// short-circuit). Used by [`assemble_from_component_items`] (the `Components`
+/// arm). v3 Phase F.5 (FINDING F): the LLM-readable prose `orchestrator_content`
+/// is now produced separately by [`format_orchestrator_content`]; the legacy
+/// JSON `formatted` blob (`{"prior_knowledge":[...],"matched_components":[...]}`)
+/// was retired, so this helper returns only the raw `content` (Rust dispatch
+/// fingerprinting) + the id list.
+fn assemble_component_strings(items: &[crate::memory::ComponentItem]) -> (String, Vec<String>) {
     let matched_ids: Vec<String> = items.iter().map(|item| item.id.to_string()).collect();
-
-    // Build the JSON entries using the same schema as format_prior_knowledge_for_llm.
-    let entries: Vec<serde_json::Value> = items
-        .iter()
-        .map(|item| {
-            let class_label = crate::memory::intent_system::class_label(item.class_code);
-            let mut entry = serde_json::json!({
-                "class": class_label,
-                "class_code": item.class_code,
-                "name": item.name,
-            });
-            if !item.description.is_empty() {
-                entry["description"] = serde_json::Value::String(item.description.clone());
-            }
-            if !item.effective_content.is_empty() {
-                entry["content"] = serde_json::Value::String(item.effective_content.clone());
-            }
-            entry
-        })
-        .collect();
-
-    let formatted = serde_json::json!({
-        "prior_knowledge": entries,
-        "matched_components": matched_ids,
-    })
-    .to_string();
 
     // Raw content for Rust dispatch fingerprinting.
     let raw_content: String = items
@@ -2910,7 +2962,7 @@ fn assemble_component_strings(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    (formatted, raw_content, matched_ids)
+    (raw_content, matched_ids)
 }
 
 /// Map a `DocType` to its `(class_code, label)` pair.

@@ -281,4 +281,19 @@ limitation of the dormant engine path); both orchestrator.rs stubs read
 
 (updated as substeps complete)
 
-- F.1–F.7: pending.
+- F.1 — `Thread` carries `tenant_id` + `agent_id` (both `#[serde(default)]`).
+  Committed `8ad91ddf`. **Done.**
+- F.2 — subagent child inherits parent's tenant/agent; engine spawn
+  default-empty. Committed `82aaf7cd`. **Done.**
+- F.3 — live `build_component_scope` + both orchestrator.rs scope stubs fixed.
+  Committed `a3bf2807`. **Done.**
+- F.4 — LIVE retrieval scope sourced from `LoopRunContext.scope.tenant_id`.
+  Committed `e1443ca3`. **Done.**
+- F.5 — dormant `handle_assemble_prior_knowledge` `SplitResult` + `ActionShortCircuit`
+  arms upgraded to §0.9 routing dict. Committed `46d64d31` (JSON stub) →
+  **F.5-stub subplan** (`subplan_stub_stepF5_saved_plan_to_v3.md`) replaced the
+  JSON with the prose StepContextSpec-headed block (FINDING F) + reworked the
+  `Components` arm. See SF5.1–SF5.5 verification there. **Done.**
+- F.6 — `__fetch_component__(uuid, class_code)` registered (cfg-gated pool
+  pattern, dict-or-Null). Committed `756ac551`. **Done.**
+- F.7 — Phase F tests (9: pure-unit #1–#7 + DB-integration #8/#9). **Pending.**

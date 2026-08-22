@@ -5028,6 +5028,25 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
 > Run that subplan's steps (F.1 `Thread` fields first) before the remainder of
 > this Phase F section.
 
+> **🔗 SUBSTEP — Phase F.5 stub fix (orchestrator_content prose + `formatted_content`
+> JSON→prose, FINDING F):** discovered while grounding Phase F tests (below). F.5
+> (commit `46d64d31`) emitted `orchestrator_content` / `formatted_content` as the
+> **JSON string** from `assemble_component_strings` (`{"prior_knowledge":[...],
+> "matched_components":[...]}`), but plan §0.9 (line 780–786) mandates a **prose
+> StepContextSpec-headed block** (`## [Skill: name]\n<body>`) and FINDING F (line
+> 1334–1350) mandates `formatted_content` transition **JSON object → prose string =
+> `orchestrator_content`** (a breaking shape change; built-in `default.py` is
+> unaffected — it uses `formatted_content` as a string). Also plan test #4 (line
+> 5216) requires the `Components` (no-match) arm to emit `orchestrator_content`
+> containing **all** retrieved items, which F.5 did not touch. User design
+> decisions (Q-F7-1 → ALL retrieved classes in the `Components` arm; Q-F7-2 →
+> Capitalized category labels via a new `step_context_label` helper;
+> class-13 ToolSkill always skipped — plan-specified) and the ordered
+> SF5.1–SF5.5 substeps:
+> **`docs/agents-v3/subplan_stub_stepF5_saved_plan_to_v3.md`**.
+> Run that subplan's steps (SF5.1 the `StepContextSpec` enum + prose formatter
+> first) before resuming F.7 (the Phase F tests).
+
 **Goal:** Upgrade the Rust handler behind `__assemble_prior_knowledge__` to handle all
 four `FetchForTurnResult` variants — including the new `SplitResult` and
 `ActionShortCircuit` variants added in Phase E. Register `__fetch_component__`.
