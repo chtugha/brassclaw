@@ -895,6 +895,8 @@ impl RebornBinaryE2EHarness {
             hook_security_audit_sink: None,
             turn_event_sink: None,
             recipe_lookup: None,
+            retrieval_lookup: None,
+            message_text_resolver: None,
             interceptor_store: None,
             // The brassclaw_reborn dep always enables root-llm-provider, so these
             // fields are unconditionally present in the struct.  The harness always

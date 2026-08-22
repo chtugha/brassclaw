@@ -26,7 +26,8 @@ use brassclaw_turns::{
     loop_exit::LoopExitEvidencePort,
     run_profile::{
         AgentLoopHostError, InstructionSafetyContext, LoopCapabilityPort, LoopHostMilestoneSink,
-        LoopModelBudgetAccountant, LoopModelPolicyGuard, LoopRunContext, RecipeLookup,
+        LoopModelBudgetAccountant, LoopModelPolicyGuard, LoopRunContext, MessageTextResolver,
+        RecipeLookup, RetrievalLookup,
     },
     runner::TurnRunTransitionPort,
 };
@@ -157,6 +158,19 @@ where
     /// the request (Tier 0/1). When `None`, the executor falls through to the
     /// LLM (Tier 2 — pre-Phase-7 behavior).
     pub recipe_lookup: Option<Arc<dyn RecipeLookup>>,
+    /// Intent-driven retrieval source (v3 Phase E.0 / plan §H4). When `Some`,
+    /// `RecipeStage` calls `fetch_for_turn` on a live turn and stashes the
+    /// result for the Phase-H consumer; when `None`, falls through to Tier 2.
+    /// The engine-backed `RetrievalLookup` impl is supplied by composition
+    /// (skills-db-gated), mirroring `recipe_lookup` / `RecipeLookup`.
+    pub retrieval_lookup: Option<Arc<dyn RetrievalLookup>>,
+    /// Raw accepted-message text resolver (v3 Phase E.0 / plan §H3). When
+    /// `Some`, `LoopContextPort::resolve_message_text` returns the unsanitized
+    /// user text so `InputStage::drain` populates `state.last_user_text` and
+    /// `RecipeStage` can run intent-driven retrieval; when `None`, returns
+    /// `Err(Unimplemented)` (Tier-2 fall-through). Supplied by composition
+    /// (backed by `messages_by_run`), mirroring `retrieval_lookup`.
+    pub message_text_resolver: Option<Arc<dyn MessageTextResolver>>,
     /// Sempai–Kohai interceptor store (Phase 8). When `Some`, each agent-loop
     /// turn persists a [`brassclaw_interceptor::ForensicPacket`] capturing the
     /// assembled prompt and Kohai response. When `None`, a no-op store is used.
@@ -577,6 +591,12 @@ where
     }
     if let Some(lookup) = parts.recipe_lookup {
         host_factory = host_factory.with_recipe_lookup(lookup);
+    }
+    if let Some(lookup) = parts.retrieval_lookup {
+        host_factory = host_factory.with_retrieval_lookup(lookup);
+    }
+    if let Some(resolver) = parts.message_text_resolver {
+        host_factory = host_factory.with_message_text_resolver(resolver);
     }
     if let Some(store) = parts.interceptor_store {
         host_factory = host_factory.with_interceptor_store(store);

@@ -25,6 +25,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use crate::traits::store::Store;
 use crate::types::error::EngineError;
@@ -34,7 +35,7 @@ use crate::types::project::ProjectId;
 const TOKENS_PER_BYTE: f64 = 0.25;
 
 /// A single retrieved component row normalised across all class tables.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentItem {
     /// Unique component ID (UUID).
     pub id: uuid::Uuid,

@@ -113,7 +113,7 @@ mod local_dev;
 mod skills;
 #[cfg(test)]
 #[path = "runtime/test_pg.rs"]
-mod test_pg;
+pub(crate) mod test_pg;
 
 #[cfg(test)]
 pub(crate) use local_dev::SKILL_ACTIVATE_CAPABILITY_ID;
@@ -2544,6 +2544,38 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "postgres"))]
     let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = None;
 
+    // v3 Phase E.0 / plan §H4: wire PgRetrievalLookup (engine
+    // `PostgresSource`-backed) when the `skills-db` feature is active and a
+    // Postgres pool is available. When the feature is off or PG is unavailable
+    // the slot stays `None` and `RecipeStage` falls through to Tier 2 (the
+    // correct explicit behaviour — no intent-driven retrieval).
+    #[cfg(feature = "skills-db")]
+    let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> =
+        services.pg_pool.as_ref().map(|pool| {
+            Arc::new(crate::retrieval_lookup_impl::PgRetrievalLookup::new(
+                Arc::new(brassclaw_engine::memory::PostgresSource::new(Arc::clone(
+                    pool,
+                ))),
+            )) as Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>
+        });
+    #[cfg(not(feature = "skills-db"))]
+    let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> = None;
+
+    // v3 Phase E.0 / plan §H3: wire SkillActivationMessageTextResolver so the
+    // production host can resolve the raw accepted-message body via the
+    // non-consuming `messages_by_run` read (intent matching sees unsanitized
+    // text). Not engine-gated — raw-text resolution needs no Postgres; the
+    // slot is `None` only when no local-dev skill activation source was
+    // configured (the pure-PG path has no `messages_by_run` store).
+    let message_text_resolver: Option<Arc<dyn brassclaw_turns::run_profile::MessageTextResolver>> =
+        skill_activation_source.as_ref().map(|source| {
+            Arc::new(
+                crate::retrieval_lookup_impl::SkillActivationMessageTextResolver::new(Arc::clone(
+                    source,
+                )),
+            ) as Arc<dyn brassclaw_turns::run_profile::MessageTextResolver>
+        });
+
     // Wire PgInterceptorStore when a Postgres pool is available.
     // In DB-less mode the interceptor store remains None and the
     // `on_prompt_assembled` hook is a no-op.
@@ -2644,6 +2676,8 @@ pub async fn build_reborn_runtime(
         turn_event_sink: None,
         hook_dispatcher_builder_factory,
         recipe_lookup,
+        retrieval_lookup,
+        message_text_resolver,
         interceptor_store,
         #[cfg(feature = "root-llm-provider")]
         sempai_gateway: llm_reload.as_ref().and_then(|r| r.sempai_gateway.clone()),

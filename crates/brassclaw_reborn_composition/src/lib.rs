@@ -125,6 +125,7 @@ pub(crate) mod recipe_store;
 pub(crate) mod reduction_rules_store;
 #[cfg(feature = "postgres")]
 pub mod retention_sweep;
+pub(crate) mod retrieval_lookup_impl;
 mod runtime;
 mod runtime_input;
 #[cfg(feature = "postgres")]

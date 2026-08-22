@@ -969,6 +969,13 @@ where
     /// (the sole crate depending on `brassclaw_engine`), mirroring
     /// `recipe_lookup` / `RecipeLookup`.
     retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
+    /// Raw accepted-message text resolver (v3 Phase E.0 / plan §H3). When
+    /// `Some`, `LoopContextPort::resolve_message_text` returns the unsanitized
+    /// user text so `RecipeStage` can run intent-driven retrieval without the
+    /// assembled prompt; when `None`, returns `Err(Unimplemented)` (Tier-2
+    /// fall-through). The `messages_by_run`-backed `MessageTextResolver` impl
+    /// is supplied by composition, mirroring `retrieval_lookup` / `RetrievalLookup`.
+    message_text_resolver: Option<Arc<dyn brassclaw_turns::run_profile::MessageTextResolver>>,
     /// Optional forensic packet store for the Sempai–Kohai interceptor.
     /// When `None` (default), a [`NoopInterceptorStore`] is used and no
     /// packets are persisted.
@@ -1055,6 +1062,7 @@ where
             driver_requirements: HashMap::new(),
             recipe_lookup: None,
             retrieval_lookup: None,
+            message_text_resolver: None,
             interceptor_store: Arc::new(NoopInterceptorStore),
             #[cfg(feature = "root-llm-provider")]
             proposal_sink: Arc::new(NoopProposalSink),
@@ -1387,6 +1395,22 @@ where
         lookup: Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>,
     ) -> Self {
         self.retrieval_lookup = Some(lookup);
+        self
+    }
+
+    /// Install the raw accepted-message text resolver (v3 Phase E.0 / plan §H3).
+    /// When set, `LoopContextPort::resolve_message_text` returns the
+    /// unsanitized user text so `InputStage::drain` populates
+    /// `state.last_user_text` and `RecipeStage` can run intent-driven
+    /// retrieval. When unset, `resolve_message_text` returns
+    /// `Err(Unimplemented)` (Tier-2 fall-through — pre-E.0 behavior). Mirrors
+    /// `with_retrieval_lookup`: the `messages_by_run`-backed
+    /// `MessageTextResolver` impl is supplied by composition.
+    pub fn with_message_text_resolver(
+        mut self,
+        resolver: Arc<dyn brassclaw_turns::run_profile::MessageTextResolver>,
+    ) -> Self {
+        self.message_text_resolver = Some(resolver);
         self
     }
 
@@ -1762,6 +1786,7 @@ where
             cancellation,
             recipe_lookup: self.recipe_lookup.clone(),
             retrieval_lookup: self.retrieval_lookup.clone(),
+            message_text_resolver: self.message_text_resolver.clone(),
             interceptor_store: Arc::clone(&self.interceptor_store),
             #[cfg(feature = "root-llm-provider")]
             proposal_sink: Arc::clone(&self.proposal_sink),
@@ -1838,6 +1863,7 @@ pub struct RebornLoopDriverHost {
     cancellation: Arc<dyn LoopCancellationPort>,
     recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
     retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
+    message_text_resolver: Option<Arc<dyn brassclaw_turns::run_profile::MessageTextResolver>>,
     interceptor_store: Arc<dyn InterceptorStore>,
     /// Proposal sink for Sempai-proposed component updates and intent examples.
     /// Routes `proposed_recipe_updates` / `proposed_intent_examples` to Q1.
@@ -2271,6 +2297,34 @@ impl LoopContextPort for RebornLoopDriverHost {
         request: LoopContextRequest,
     ) -> Result<LoopContextBundle, AgentLoopHostError> {
         self.context.load_loop_context(request).await
+    }
+
+    // v3 plan §H3: override the default (Err(Unimplemented)) to delegate to the
+    // wired `MessageTextResolver` (backed by `messages_by_run` in composition).
+    // `Ok(Some(text))` → raw text; `Ok(None)` (no message recorded for the ref)
+    // and unwired → `Err(Unimplemented)` so `InputStage::drain` leaves
+    // `last_user_text = None` (Tier-2 fall-through). `self.context`
+    // (ThreadBackedLoopContextPort) cannot reach `messages_by_run`, so only
+    // this method is overridden — `load_loop_context` still delegates to it.
+    async fn resolve_message_text(
+        &self,
+        context: &LoopRunContext,
+        message_ref: &brassclaw_turns::LoopMessageRef,
+    ) -> Result<String, AgentLoopHostError> {
+        match &self.message_text_resolver {
+            Some(resolver) => match resolver.resolve_message_text(context, message_ref).await {
+                Ok(Some(text)) => Ok(text),
+                Ok(None) => Err(AgentLoopHostError::new(
+                    AgentLoopHostErrorKind::Unimplemented,
+                    "no raw message text recorded for this message_ref",
+                )),
+                Err(error) => Err(error),
+            },
+            None => Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unimplemented,
+                "resolve_message_text not wired on this host",
+            )),
+        }
     }
 }
 
