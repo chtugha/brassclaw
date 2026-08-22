@@ -381,8 +381,36 @@ composition tests):**
   called (wired in G.5). Verified: ast.parse clean; clippy clean both configs;
   96 orchestrator helper tests pass both configs (Monty parses it).
   Committed+pushed `0b02d024`.
-- G.4 — pending.
-- G.5 — pending.
+- G.4 — Done. `_set_active_skills_from_matched_ids(matched_component_ids,
+  state, active_skills)` in `default.py` (helpers region). 3-arg signature
+  (Q-G3 deviation recorded). Forwards pkr `active_skills` to
+  `__set_active_skills__` + emits `skill_activated` + records
+  `state[active_skill_ids]`/`skill_snippet_names=[]`. Monty-safe. Not yet
+  called (wired in G.5). Verified: ast.parse clean; 96 orchestrator helper
+  tests pass both configs. Committed+pushed `15dfbe8e`.
+- G.5 — Done. Restructured `default.py` step-0 to the §0.9 v3 flow MINUS
+  `tier_zero` (Q-G1, deferred to Phase H). Single `__assemble_prior_knowledge__`
+  call → `matched_ids`/`active_skills` from pkr → `action_short_circuit`
+  (fetch+execute, `fall_back_to_tier2` falls through to Tier-2) /
+  `disambiguation` (`handle_disambiguation`, G.3) / `override_prompt_creation`
+  (`orchestrator_content` w/ `formatted_content` alias) / `orchestrator_content`
+  (`insert_as_user_message_at_n_minus_1`); always (outside dict-branch)
+  `insert_volatile_context_at_n_minus_1` (no-op placeholder, Phase 5.2b) +
+  `_set_active_skills_from_matched_ids` (G.4). Removed the dead
+  `docs = __retrieve_docs__(goal, 5)` shim + the `__list_skills__()`/
+  `select_skills()` block. Verified: ast.parse clean; fmt clean; clippy
+  clean both configs; 678 default / 689 skills-db lib tests pass
+  (0 regressions; G.5 adds no test — G.8 extends the Monty step-0 harness).
+  Committed+pushed `5fe65a00`.
+  **Finding (G.5):** removing the step-0 `select_skills()` block orphans
+  `select_skills` + `SELECT_SKILLS_DEFAULT_MAX_TOKENS` (`default.py:216,580`)
+  from production — they now survive ONLY via the Rust test
+  `select_skills_matches_curly_apostrophe_input` (orchestrator.rs:4738).
+  Answer 2 deletes only the step-0 *block*, not the helper, so per the
+  "don't blindly remove upgrades not in the plan" rule these are LEFT and
+  documented here. Open: decide in a later Phase G cleanup substep whether
+  to retire `select_skills` + its test (they are dead production code) or
+  keep them as a helper-library artifact. Not blocking G.6.
 - G.6 — pending.
 - G.7 — pending.
 - G.8 — pending.
