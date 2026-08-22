@@ -58,6 +58,14 @@ pub struct ThreadManager {
     /// `Some` overrides `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` (Step 9.3).
     /// `None` falls back to the env-var / compiled-in DB-less default.
     max_duration_secs: Option<u64>,
+    /// Postgres pool for DB-backed skill provenance loading (`skills-db`
+    /// feature). Plumbed into every spawned `ExecutionLoop` via
+    /// [`Self::with_pg_pool`] so `skill_provenance_for_items` (Phase G.1)
+    /// can read `reborn_skills` for the active-skill provenance instead of
+    /// returning an empty list. `None` (the default) keeps the legacy
+    /// in-memory / `RamSource` behaviour.
+    #[cfg(feature = "skills-db")]
+    pg_pool: Option<std::sync::Arc<brassclaw_pg::PgPool>>,
 }
 
 impl ThreadManager {
@@ -84,6 +92,8 @@ impl ThreadManager {
             event_tx,
             gate_controller: tokio::sync::RwLock::new(crate::gate::CancellingGateController::arc()),
             max_duration_secs: None,
+            #[cfg(feature = "skills-db")]
+            pg_pool: None,
         }
     }
 
@@ -94,6 +104,18 @@ impl ThreadManager {
     /// env-var / compiled-in DB-less fallback.
     pub fn with_max_duration_secs(mut self, secs: u64) -> Self {
         self.max_duration_secs = Some(secs);
+        self
+    }
+
+    /// Set a Postgres pool for DB-backed skill provenance loading
+    /// (`skills-db` feature). The pool is plumbed into every spawned
+    /// [`ExecutionLoop`] so `skill_provenance_for_items` (Phase G.1) can
+    /// read `reborn_skills` for the active-skill provenance instead of
+    /// returning an empty list. Hosts without a pool keep the legacy
+    /// in-memory behaviour.
+    #[cfg(feature = "skills-db")]
+    pub fn with_pg_pool(mut self, pool: std::sync::Arc<brassclaw_pg::PgPool>) -> Self {
+        self.pg_pool = Some(pool);
         self
     }
 
@@ -398,6 +420,15 @@ impl ThreadManager {
         .with_retrieval(retrieval)
         .with_store(Arc::clone(&self.store))
         .with_retrieval_source(retrieval_source);
+        // v3 Phase H4.8: plumb the DB pool into the ExecutionLoop so
+        // `skill_provenance_for_items` (Phase G.1) can read `reborn_skills`
+        // for the active-skill provenance instead of returning an empty list.
+        #[cfg(feature = "skills-db")]
+        {
+            if let Some(pool) = self.pg_pool.clone() {
+                exec_loop = exec_loop.with_pg_pool(pool);
+            }
+        }
         // Thread DB-backed max duration into the execution loop (Step 9.3).
         if let Some(secs) = self.max_duration_secs {
             exec_loop = exec_loop.with_max_duration_secs(secs);
