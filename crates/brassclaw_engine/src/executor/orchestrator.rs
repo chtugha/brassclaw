@@ -709,8 +709,15 @@ pub async fn execute_orchestrator(
                     // RamSource). Falls back to legacy retrieve_context when None (the
                     // legacy path still emits JSON formatted_content until Phase K).
                     "__assemble_prior_knowledge__" => {
-                        handle_assemble_prior_knowledge(args, thread, retrieval, retrieval_source)
-                            .await
+                        handle_assemble_prior_knowledge(
+                            args,
+                            thread,
+                            retrieval,
+                            retrieval_source,
+                            #[cfg(feature = "skills-db")]
+                            pg_pool,
+                        )
+                        .await
                     }
 
                     // __fetch_component__(uuid, class_code) -> dict | None
@@ -2581,6 +2588,7 @@ async fn handle_assemble_prior_knowledge(
     thread: &Thread,
     retrieval: Option<&RetrievalEngine>,
     retrieval_source: Option<&Arc<dyn RetrievalSource>>,
+    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
 ) -> ExtFunctionResult {
     use crate::memory::retrieval_source::FetchForTurnResult;
 
@@ -2619,7 +2627,11 @@ async fn handle_assemble_prior_knowledge(
             .await
         {
             Ok(FetchForTurnResult::Components(items)) => {
-                return assemble_from_component_items(&items);
+                #[cfg(feature = "skills-db")]
+                let active_skills = skill_provenance_for_items(pg_pool, &scope, &items).await;
+                #[cfg(not(feature = "skills-db"))]
+                let active_skills: Vec<serde_json::Value> = Vec::new();
+                return assemble_from_component_items(&items, active_skills);
             }
             Ok(FetchForTurnResult::Disambiguation(candidates)) => {
                 // Surface disambiguation result to Python (§3.12 Q11).
@@ -2643,6 +2655,7 @@ async fn handle_assemble_prior_knowledge(
                     "matched_component_ids": [],
                     "disambiguation": true,
                     "candidates": candidates_json,
+                    "active_skills": [],
                 })));
             }
             Ok(FetchForTurnResult::ActionShortCircuit { component_id, name }) => {
@@ -2663,6 +2676,7 @@ async fn handle_assemble_prior_knowledge(
                     "action_short_circuit": true,
                     "action_component_id": component_id.to_string(),
                     "action_name": name,
+                    "active_skills": [],
                 })));
             }
             Ok(FetchForTurnResult::SplitResult {
@@ -2691,6 +2705,11 @@ async fn handle_assemble_prior_knowledge(
                 // StepContextSpec-headed block (`## [Skill: name]\n<body>`),
                 // NOT the legacy JSON object; `formatted_content` is an alias.
                 let orchestrator_content = format_orchestrator_content(&orchestrator_items);
+                #[cfg(feature = "skills-db")]
+                let active_skills =
+                    skill_provenance_for_items(pg_pool, &scope, &orchestrator_items).await;
+                #[cfg(not(feature = "skills-db"))]
+                let active_skills: Vec<serde_json::Value> = Vec::new();
                 let rust_items_json: Vec<serde_json::Value> = rust_items
                     .iter()
                     .map(|item| {
@@ -2710,6 +2729,7 @@ async fn handle_assemble_prior_knowledge(
                     "tier_zero": !routing.llm_call_required,
                     "override_prompt_creation": routing.override_prompt_creation,
                     "matched_component_ids": routing.matched_component_ids,
+                    "active_skills": active_skills,
                     "rust_items": rust_items_json,
                     "variant_label": routing.variant_label,
                     "step_link": routing.step_link,
@@ -2886,6 +2906,45 @@ fn format_orchestrator_content(items: &[crate::memory::ComponentItem]) -> String
         .join("\n\n")
 }
 
+/// Extract the skill-class (class 1–3) ids from `items` and fetch their
+/// active-skill provenance from `reborn_skills` (Q-G3). Returns `[]` when the
+/// pool is absent (non-skills-db config / tests) or no skill-class items are
+/// present. A DB error degrades to `[]` (logged at `debug!`) rather than
+/// failing the whole prior-knowledge assembly.
+#[cfg(feature = "skills-db")]
+async fn skill_provenance_for_items(
+    pg_pool: Option<&brassclaw_pg::PgPool>,
+    scope: &crate::memory::ComponentScope,
+    items: &[crate::memory::ComponentItem],
+) -> Vec<serde_json::Value> {
+    use crate::executor::db_skill_loader::{fetch_skill_provenance_by_ids, scope_from_thread_ids};
+
+    let Some(pool) = pg_pool else {
+        return Vec::new();
+    };
+    let skill_ids: Vec<uuid::Uuid> = items
+        .iter()
+        .filter(|item| (1..=3).contains(&item.class_code))
+        .map(|item| item.id)
+        .collect();
+    if skill_ids.is_empty() {
+        return Vec::new();
+    }
+    let skill_scope = scope_from_thread_ids(
+        &scope.tenant_id,
+        &scope.user_id,
+        &scope.agent_id,
+        &scope.project_id,
+    );
+    match fetch_skill_provenance_by_ids(pool, &skill_scope, &skill_ids).await {
+        Ok(provenance) => provenance,
+        Err(e) => {
+            debug!("assemble_prior_knowledge: skill provenance fetch failed: {e}");
+            Vec::new()
+        }
+    }
+}
+
 /// Build the PKC result from a vec of [`ComponentItem`]s (Phase 5 path).
 ///
 /// Checks if any component requests Solution Override (§3.13). If exactly
@@ -2893,7 +2952,17 @@ fn format_orchestrator_content(items: &[crate::memory::ComponentItem]) -> String
 /// the normal multi-component prose block (v3 Phase F.5: `orchestrator_content`
 /// and `formatted_content` are now the prose StepContextSpec-headed block per
 /// FINDING F; the legacy JSON shape is retired from this arm).
-fn assemble_from_component_items(items: &[crate::memory::ComponentItem]) -> ExtFunctionResult {
+///
+/// v3 Phase G (Q-G3): `active_skills` is the `ActiveSkillProvenance`-shaped
+/// list the Python `_set_active_skills_from_matched_ids` helper forwards to
+/// `__set_active_skills__`. It is computed by the caller from the skill-class
+/// (class 1–3) ids in `items` via `skill_provenance_for_items` and emitted in
+/// both the Override and the Normal-assembly dicts.
+fn assemble_from_component_items(
+    items: &[crate::memory::ComponentItem],
+    active_skills: Vec<serde_json::Value>,
+) -> ExtFunctionResult {
+    let active_skills_val = serde_json::Value::Array(active_skills);
     // Solution Override: single component with override_prompt_creation = true.
     // §3.13 — the override body IS the whole user message, so it is emitted
     // verbatim (no StepContextSpec heading). v3 Phase F.5 (FINDING F):
@@ -2914,6 +2983,7 @@ fn assemble_from_component_items(items: &[crate::memory::ComponentItem]) -> ExtF
             "matched_component_ids": matched_ids,
             "action_short_circuit": false,
             "disambiguation": false,
+            "active_skills": active_skills_val,
         })));
     }
 
@@ -2932,6 +3002,7 @@ fn assemble_from_component_items(items: &[crate::memory::ComponentItem]) -> ExtF
         "override_prompt_creation": false,
         "matched_component_ids": matched_ids,
         "action_short_circuit": false,
+        "active_skills": active_skills_val,
         "disambiguation": false,
     })))
 }
@@ -7340,7 +7411,15 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             MontyObject::String("02".into()),
         ];
 
-        let result = handle_assemble_prior_knowledge(&args, &thread, None, None).await;
+        let result = handle_assemble_prior_knowledge(
+            &args,
+            &thread,
+            None,
+            None,
+            #[cfg(feature = "skills-db")]
+            None,
+        )
+        .await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -7490,7 +7569,15 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         thread: &Thread,
     ) -> serde_json::Value {
         let args = phase_f7_args(&thread.goal);
-        let result = handle_assemble_prior_knowledge(&args, thread, None, Some(&src)).await;
+        let result = handle_assemble_prior_knowledge(
+            &args,
+            thread,
+            None,
+            Some(&src),
+            #[cfg(feature = "skills-db")]
+            None,
+        )
+        .await;
         match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -7714,6 +7801,72 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         );
         assert_eq!(arr[1]["component_class_code"], 21);
         assert_eq!(arr[1]["class_label"], "recipe");
+    }
+
+    /// Phase G.1 (Q-G3) — every `handle_assemble_prior_knowledge` arm emits an
+    /// `active_skills` array. On the no-pool path (unit tests; non-skills-db or
+    /// no `pg_pool`) it is `[]`; the skills-db path populates it from
+    /// `fetch_skill_provenance_by_ids` (DB-integration, skipped here — no
+    /// docker). This guards the contract the Python
+    /// `_set_active_skills_from_matched_ids` helper relies on (pkr always
+    /// carries `active_skills`).
+    #[tokio::test]
+    async fn phase_g1_active_skills_emitted_in_every_arm() {
+        let empty_arr = |json: &serde_json::Value, arm: &str| {
+            let arr = json["active_skills"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{arm} arm must emit an active_skills array"));
+            assert!(arr.is_empty(), "{arm} arm active_skills must be [] without a pool");
+        };
+
+        // SplitResult arm.
+        let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
+            phase_f7_split_result(),
+            Arc::new(Mutex::new(None)),
+        ));
+        empty_arr(&phase_f7_assemble(src, &phase_f7_thread("list files")).await, "SplitResult");
+
+        // Components arm (no-match broad scan).
+        let result = FetchForTurnResult::Components(vec![
+            phase_f7_item(10, 3, "grep", "search file contents"),
+            phase_f7_item(11, 12, "search-spec", "spec body text"),
+        ]);
+        let src: Arc<dyn RetrievalSource> =
+            Arc::new(MockRetrievalSource::new(result, Arc::new(Mutex::new(None))));
+        empty_arr(
+            &phase_f7_assemble(src, &phase_f7_thread("search files")).await,
+            "Components",
+        );
+
+        // ActionShortCircuit arm.
+        let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
+            FetchForTurnResult::ActionShortCircuit {
+                component_id: uuid::Uuid::from_u128(42),
+                name: "deploy".to_string(),
+            },
+            Arc::new(Mutex::new(None)),
+        ));
+        empty_arr(
+            &phase_f7_assemble(src, &phase_f7_thread("deploy now")).await,
+            "ActionShortCircuit",
+        );
+
+        // Disambiguation arm.
+        let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
+            FetchForTurnResult::Disambiguation(vec![IntentCandidate {
+                row_id: uuid::Uuid::from_u128(100),
+                component_id: uuid::Uuid::from_u128(101),
+                component_class_code: 3,
+                input_class: 0,
+                score: 5,
+                class_label: "skill_rusty".to_string(),
+            }]),
+            Arc::new(Mutex::new(None)),
+        ));
+        empty_arr(
+            &phase_f7_assemble(src, &phase_f7_thread("ambiguous query")).await,
+            "Disambiguation",
+        );
     }
 
     /// Phase F.7 #6 — `__retrieve_docs__` is untouched by Phase F: it still
