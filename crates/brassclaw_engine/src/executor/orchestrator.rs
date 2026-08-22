@@ -707,6 +707,21 @@ pub async fn execute_orchestrator(
                             .await
                     }
 
+                    // __fetch_component__(uuid, class_code) -> dict | None
+                    // Fetches a single validated component by UUID + class code from
+                    // its class-specific table (SEC-01 gate). Used by `call_action`
+                    // nested lookups (plan §0.9); Phase G depends on it. v3 Phase F.6
+                    // (Q-F3).
+                    "__fetch_component__" => {
+                        handle_fetch_component(
+                            args,
+                            thread,
+                            #[cfg(feature = "skills-db")]
+                            pg_pool,
+                        )
+                        .await
+                    }
+
                     // Unknown — let Monty resolve it (user-defined functions, builtins)
                     other => ExtFunctionResult::NotFound(other.to_string()),
                 };
@@ -2734,6 +2749,82 @@ async fn handle_assemble_prior_knowledge(
         "override_prompt_creation": false,
         "matched_component_ids": matched_ids,
     })))
+}
+
+/// Handle `__fetch_component__(uuid, class_code)` (v3 Phase F.6 / Q-F3).
+///
+/// Fetches a single validated component by UUID + class code from its
+/// class-specific table, enforcing the SEC-01 validation gate
+/// (`validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`).
+/// Used by `call_action` nested lookups (plan §0.9); Phase G depends on it.
+///
+/// Returns a Python dict `{ id, class_code, name, description, content,
+/// override_prompt_creation }` for the single matched [`ComponentItem`], or
+/// `None` when: the `skills-db` feature is off, no pool is wired, the UUID or
+/// class-code args are missing/invalid, the component is absent, or the fetch
+/// errors. The retrieval scope is built from the thread's real identity
+/// (`thread.tenant_id` / `thread.agent_id` — F.1/F.3); the LIVE agent-loop path
+/// sources tenant from `LoopRunContext.scope.tenant_id` (F.4).
+async fn handle_fetch_component(
+    _args: &[MontyObject],
+    _thread: &Thread,
+    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+) -> ExtFunctionResult {
+    #[cfg(feature = "skills-db")]
+    {
+        use crate::memory::retrieval_source::fetch_component_by_id;
+
+        let uuid_str = _args.first().map(monty_to_string).unwrap_or_default();
+        let Ok(component_id) = uuid::Uuid::parse_str(&uuid_str) else {
+            return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+        };
+        let class_code = match _args.get(1) {
+            Some(MontyObject::Int(i)) => *i as i32,
+            _ => {
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+            }
+        };
+        let Some(pool) = pg_pool else {
+            return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+        };
+
+        // Build the retrieval scope from the thread's real identity. v3 Phase F
+        // (Q-F2 / FIND-P8-01): mirrors the F.3-fixed `handle_assemble_prior_
+        // knowledge` scope. The LIVE retrieval path sources tenant from
+        // `LoopRunContext.scope.tenant_id` (F.4); this dormant engine handler
+        // reads `thread.tenant_id` / `thread.agent_id` so it is correct if
+        // re-activated.
+        let scope = ComponentScope {
+            tenant_id: _thread.tenant_id.clone(),
+            user_id: _thread.user_id.clone(),
+            agent_id: _thread.agent_id.clone(),
+            project_id: _thread.project_id.to_string(),
+        };
+
+        match fetch_component_by_id(pool, &scope, component_id, class_code).await {
+            Ok(items) => {
+                if let Some(item) = items.into_iter().next() {
+                    return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                        "id": item.id.to_string(),
+                        "class_code": item.class_code,
+                        "name": item.name,
+                        "description": item.description,
+                        "content": item.effective_content,
+                        "override_prompt_creation": item.override_prompt_creation,
+                    })));
+                }
+                debug!("__fetch_component__: no validated component for uuid {component_id}");
+                ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+            }
+            Err(e) => {
+                debug!("__fetch_component__: fetch failed: {e}");
+                ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+            }
+        }
+    }
+
+    #[cfg(not(feature = "skills-db"))]
+    ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
 }
 
 /// Build the PKC result from a vec of [`ComponentItem`]s (Phase 5 path).
