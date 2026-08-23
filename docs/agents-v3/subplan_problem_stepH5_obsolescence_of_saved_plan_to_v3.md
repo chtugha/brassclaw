@@ -361,6 +361,31 @@ H subplan doc (`subplan_problem_stepH_of_saved_plan_to_v3.md` H.5 entry) + the Z
 substep that H.5 is **obsolete/skipped** (Model A dormant; never built; superseded by
 H.6–H.13). No code. Commit + push. Mark this obsolescence subplan's Zenflow substep
 Completed.
+  ✅ **DONE.** Added the "O1–O5 complete — H.5 obsolete/skipped" blockquote to
+  `saved_plan_to_v3.md` after the H.5 obsolescence-ref block (selectively staging only
+  that hunk — the user's concurrent K.1 WIP hunk in the same file was left uncommitted).
+  Marked the H.5 entry "Obsolete/Skipped" in the Phase H subplan doc + changed its status
+  list line `- H.5 — Pending` → `- H.5 — Obsolete/Skipped (O1–O5 done; Model A dormant/
+  never-built; superseded by H.6–H.13).`. Marked this subplan's Zenflow substep `2ae5b518`
+  Completed.
+
+  **Incident note (`001dbee7` — accidental user-WIP commit, remediated non-destructively).**
+  The O4 doc-follow-up commit `001dbee7` accidentally swept in 28 user-WIP files (broke
+  main: `composition/src/lib.rs:99` declared `pub(crate) mod pg_basic_prompt_store;` but
+  the untracked `pg_basic_prompt_store.rs` was not in the commit → E0063). Root cause: the
+  `git stash --keep-index --include-untracked` verification for O4 left the stash applied,
+  and `git stash pop` with a conflict STAGES cleanly-applied files; the subsequent plain
+  `git commit` committed everything staged, not just the doc. Fix (no force-push): restored
+  the 28 files to their `8ebdb19b` state via `git restore --source=8ebdb19b --staged
+  --worktree` (xargs-piped; `git restore -- $FILES` fails under zsh because zsh does not
+  word-split unquoted expansions), verified `cargo check --workspace --all-targets` clean
+  on the reverted state, committed `9a172fb5` "revert: undo user WIP accidentally committed
+  in 001dbee7 (broke main)", pushed — main compiles again. Then restored the user's WIP as
+  uncommitted working-tree changes via `git restore --source=001dbee7 --worktree` (worktree
+  only). Nothing lost; history retains the `001dbee7`+`9a172fb5` commit/revert pair.
+  **Lesson for all future portions:** after `git stash pop`, use a **pathspec-limited
+  commit** (`git commit -- <specific files>`) so only named files are committed regardless
+  of what else is staged; always `git status` before committing.
 
 ### Then resume Phase H at H.6 (Model B/C) — outside this subplan
 
@@ -382,4 +407,5 @@ H.8 — NOT in this subplan.
   deletion follow-up Done (commits `9c780fd7` + doc `8e9593ed`).
 - O3 — Done (commit `110b3a6c`).
 - O4 — Done (commit `8ebdb19b`).
-- O5 — Pending.
+- O5 — Done (this commit; `001dbee7`/`9a172fb5` incident pair remediated — see §2 O5 note).
+  **The H.5 obsolescence subplan (O1–O5) is complete.** Phase H resumes at H.6 (Model B/C).

@@ -260,6 +260,17 @@ channel, NO LLM call made, returns `completed` with the PythonCode result, and
 recorder / spy on the `RecipeLookup` impl). Skip-if-no-docker (real Postgres).
 This is the Model A acceptance test.
 
+> **Obsolete/Skipped (v3 Phase H.5 obsolescence subplan O1–O5).** Grounding
+> overturned the §1 claim that Model A "drives real turns today": production
+> turns run on the agent loop, not the engine Python runtime, so Model A is
+> dormant/never-built. H.5 was re-scoped to the obsolescence subplan
+> `./subplan_problem_stepH5_obsolescence_of_saved_plan_to_v3.md` (O1–O5):
+> missions purged, the `brassclaw_gateway` crate deleted, the Model A Python
+> `tier_zero` branch removed (O3), and the reusable H.4 pieces re-documented
+> as reused by Model B/C (O4). H.5 itself is **skipped**; Phase H resumes at
+> H.6 (Model B/C). The severed engine Python runtime wrapper + H.1/H.2 Python
+> fns are deleted in a later subplan opened after H.8.
+
 ### Model B/C — agent-loop target state, test-only (H.6–H.13)
 
 **H.6 — `PriorKnowledgeBundle` + `TierZeroReply` turns types**
@@ -467,7 +478,7 @@ Mark this subplan Zenflow substep Completed.
   (default: 700 total = 697 + 3; skills-db: 711 total = 708 + 3; 0
   regressions).
 - H.4 — Done. Spawned the nested subplan `./docs/agents-v3/subplan_problem_stepH4_of_saved_plan_to_v3.md` (Zenflow nested subplan step `fa9fb137`) for `recipe_id` surfacing + the engine→composition Tier-0 outcome-recording bridge. H4.1–H4.7 implemented one-by-one (`b84a6197`→`edc0ab95`): `RecipeTierZeroStarted`/`Succeeded`/`Failed` `EventKind` variants; `handle_emit_event` dispatch arms; `TurnRoutingSignals.recipe_id`+`recipe_name` surfaced end-to-end into the pkr dict; `default.py` tier_zero branch emits the events + the success `tier_zero_outcome` extra stamp; `TierZeroOutcome`+`OrchestratorResult.tier_zero_outcome`+`build_tier_zero_outcome`; composition `RecipeOutcomeListener` (event→`record_recipe_outcome` projection, spy-tested). H4.8 final-verification spawned its OWN nested subplan `./docs/agents-v3/subplan_problem_stepH4_8_of_saved_plan_to_v3.md` (Zenflow substep `d48d5809`) to fix a pre-existing Phase-G.1 test regression (`skill_codeact_persists_active_skill_provenance` red since `e7c2ce31` — `ThreadManager` did not plumb a pg_pool into `ExecutionLoop`); S1–S4 done (`701f4194`, `b01129ef`+`5426cce0`, `ad07906a`, `0f78d80d`) — `ThreadManager::with_pg_pool` plumbing + test migrated to testcontainer-pg + `skills-db` + skip-if-no-docker. Verified: fmt clean; engine clippy `-D warnings` clean both configs; full default `cargo test` GREEN; full `--features skills-db` `cargo test` GREEN. One outside-H4.8 blockage remains (user's uncommitted `basic_prompt_store` WIP blocks the full-workspace `cargo clippy --all ... -D warnings` gate — documented in the H4.8 subplan §7, not H4.8's). Zenflow `fa9fb137` + `d48d5809` marked Completed.
-- H.5 — Pending.
+- H.5 — Obsolete/Skipped (O1–O5 done; see `subplan_problem_stepH5_obsolescence_of_saved_plan_to_v3.md`). Model A dormant/never-built; superseded by H.6–H.13 (Model B/C).
 - H.6 — Pending.
 - H.7 — Pending.
 - H.8 — Pending.
