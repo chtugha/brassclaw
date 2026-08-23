@@ -237,6 +237,29 @@ mission footprint is done (§3.1): two distinct surfaces (engine mission system 
   Ground the full consumer set FIRST during this step. Verify: fmt + workspace clippy
   `--all --benches --tests --examples --all-features -- -D warnings` (modulo the user's
   `basic_prompt_store` WIP blockage) + `cargo test` (both configs). Commit + push.
+  ✅ **DONE** (commit `5c113151`, pushed `8bda603d..5c113151 main -> main`). Grounded the
+  full surface: `MissionId` newtype + `mission_id: Option<MissionId>`/`Option<String>`/
+  `String` fields on ~20 scope/context/struct types across **~24 crates, ~150 sites**, plus
+  Mission enum variants (`Principal::Mission`, `ProjectionTarget::Mission`,
+  `ProjectionViewClass::ProductMission`, `ResourceAccount::Mission`, `BackgroundKind::MissionTick`)
+  + their match arms/ctors/cascade tiers/Display arms. Per 3 user decisions (D1: full purge;
+  D2: one commit, build-green at the single resulting commit; D3: option 1 — accept all 3
+  persisted-data breaks): removed every field/clone/comparison/path-segment block/JSON entry/
+  test fixture/helper; removed `mission_id` from `secrets/crypto.rs` `ScopeKey` +
+  `credential_session_aad` (AAD change approved); rewrote `threads/pg_service.rs` SQL (column
+  dropped, `$N` placeholders renumbered); removed the `loop_driver_host` `ReadScope.mission_id`
+  tightening block + the `effective_read_scope_rejects_mission_widening` test (deleted
+  dimension); removed mission-only `event_streams` projection tests (variants gone); retargeted
+  the resource cascade assertion 5→4 accounts. Added `V065__drop_session_threads_mission_id.sql`
+  (`DROP COLUMN IF EXISTS mission_id` — the only such column, V008). The purge was committed
+  from a **selectively-staged index** that excludes the user's concurrent prefix-cache
+  (`system_bundle_source`/`pg_basic_prompt_store`/`Prefix*`) WIP, which stays uncommitted in the
+  working tree. Verified on that committed index (HEAD − mission, no unrelated WIP — so the
+  pre-existing `system_bundle_source` E0063 blockage is absent): `cargo check --workspace
+  --all-targets` **0 errors** (incl. `brassclaw` root + CLI); `cargo clippy --workspace
+  --all-targets -- -D warnings` **0 errors/warnings**; `cargo test` (17 touched crates incl.
+  `brassclaw` root + `brassclaw_reborn_composition`) **all GREEN, 0 failed**. Final grep
+  `\bMissionId\b|mission_id` (excl. `submission_id` false positives) = **0**.
 
   **O2.4 — Delete e2e mission test + update CLAUDE.md/AGENTS.md.** Delete
   `tests/e2e/scenarios/test_mission_gmail_3133.py`; update mission mentions in
