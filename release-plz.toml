@@ -21,8 +21,3 @@ release = false
 name = "brassclaw_tui"
 publish = false
 release = false
-
-[[package]]
-name = "brassclaw_gateway"
-publish = false
-release = false

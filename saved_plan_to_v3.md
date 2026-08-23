@@ -5538,6 +5538,17 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `./docs/agents-v3/subplan_problem_stepH5_obsolescence_of_saved_plan_to_v3.md`
 > (Zenflow substep under the Phase H step `9d94d6cb`, after the H4.8 substep `d48d5809`).
 > Execute O1→O5 one-by-one before resuming Phase H at H.6.
+>
+> **O2.4 follow-up sub-substep — delete the legacy `brassclaw_gateway` crate.** The O2.4
+> follow-up (removing the dead `MissionThreadSpawned` debug-panel handler + orphaned i18n
+> keys) surfaced a larger pre-existing dead surface: the entire `brassclaw_gateway` crate
+> is legacy v1 debug-panel UI with **zero dependents** (not compiled into the `brassclaw`
+> binary; `brassclaw_webui_v2` is the current UI); its Missions Tab calls the endpoints
+> removed in O2.2/O2.3. User decision: **option 2 — delete the whole crate now** (also
+> fixes the duplicate workspace-member entry). Full grounding + steps G1–G12 + verification
+> in `./docs/agents-v3/subplan_problem_stepH5_brassclaw_gateway_of_saved_plan_to_v3.md`
+> (Zenflow sub-substep `784b68a4` under the H.5 substep `2ae5b518`). Execute G1→G12
+> one-by-one before resuming H.5 at O3.
 
 **Status:** [ ] Pending
 

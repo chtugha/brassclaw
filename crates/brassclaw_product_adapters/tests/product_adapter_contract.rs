@@ -40,7 +40,6 @@ const FORBIDDEN_DEPENDENCIES: &[&str] = &[
     "brassclaw_safety",
     "brassclaw_skills",
     "brassclaw_engine",
-    "brassclaw_gateway",
     "brassclaw_tui",
     "brassclaw_memory",
     "brassclaw_events",

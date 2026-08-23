@@ -90,7 +90,6 @@ A good rule of thumb: if a change adds new authority or persistence, put it in t
 | `brassclaw_product_workflow_storage` | `brassclaw_product_workflow_storage` | Durable libSQL/PostgreSQL adapters for the product workflow idempotency ledger. |
 | `brassclaw_engine` | `brassclaw_engine` | Unified thread-capability-CodeAct execution engine. It is closer to product/agent orchestration than low-level host policy. |
 | `brassclaw_skills` | `brassclaw_skills` | Skill selection, scoring, and management. |
-| `brassclaw_gateway` | `brassclaw_gateway` | Browser gateway frontend assets, layout configuration, and widget extension system. |
 | `brassclaw_webui_v2` | `brassclaw_webui_v2` | Reborn WebChat v2 HTTP route surface and route descriptors. Off by default; enable with `webui-v2-beta`. |
 | `brassclaw_tui` | `brassclaw_tui` | Modular Ratatui-based terminal UI. |
 | `brassclaw_telegram_v2_adapter` | `brassclaw_telegram_v2_adapter` | Telegram v2 channel adapter for the Reborn product surface. Maps Telegram traffic into Reborn capability and turn contracts. |
@@ -113,7 +112,7 @@ A good rule of thumb: if a change adds new authority or persistence, put it in t
 - **User-visible read models and live projection streams**: prefer `brassclaw_event_projections`, `brassclaw_event_streams`, or `brassclaw_product_adapters` over parsing storage rows in UI code.
 - **Product workflow persistence**: keep orchestration in `brassclaw_product_workflow` and durable ledger adapters in `brassclaw_product_workflow_storage`.
 - **Agent loop/product orchestration**: use `brassclaw_agent_loop`, `brassclaw_loop_support`, `brassclaw_turns`, `brassclaw_engine`, or `brassclaw_reborn` depending on layer.
-- **Web or terminal UI**: use `brassclaw_gateway`, `brassclaw_webui_v2`, `brassclaw_reborn_webui_ingress`, or `brassclaw_tui`; keep authority and persistence in lower crates.
+- **Web or terminal UI**: use `brassclaw_webui_v2`, `brassclaw_reborn_webui_ingress`, or `brassclaw_tui`; keep authority and persistence in lower crates.
 
 ## Boundary rules
 

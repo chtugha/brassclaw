@@ -109,25 +109,6 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  gateway-js-syntax:
-    name: Gateway JS syntax
-    needs: changes
-    if: needs.changes.outputs.has_code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
-      - name: Install Node.js
-        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4
-        with:
-          node-version: "22"
-      - name: Check gateway JS syntax
-        run: |
-          find crates/brassclaw_gateway/static/js -type f -name '*.js' \
-            -exec node --check {} + 2>/dev/null || true
-
   deny-check:
     name: cargo-deny
     needs: changes
@@ -259,7 +240,6 @@ jobs:
       - changes
       - clippy-matrix
       - format
-      - gateway-js-syntax
       - clippy
       - clippy-windows
       - deny-check
@@ -275,7 +255,6 @@ jobs:
 
           for job_result in \
             "format=${{ needs.format.result }}" \
-            "gateway-js-syntax=${{ needs.gateway-js-syntax.result }}" \
             "clippy=${{ needs.clippy.result }}" \
             "deny-check=${{ needs.deny-check.result }}" \
             "gateway-boundaries=${{ needs.gateway-boundaries.result }}"; do

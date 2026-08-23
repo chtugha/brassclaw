@@ -547,17 +547,6 @@ WebUI HTTP ingress layer.
 
 ---
 
-### `brassclaw_gateway`
-
-Web gateway for browser UI (legacy / v1).
-
-**Owns:**
-- SSE/WebSocket streaming
-- Chat API endpoints
-- Memory/jobs/extensions/routines management
-
----
-
 ### `brassclaw_tui`
 
 Terminal user interface.
@@ -1333,7 +1322,6 @@ brassclaw/
 │   ├── brassclaw_webui_v2/         # WebUI v2 product adapter
 │   ├── brassclaw_webui_v2_static/  # Embedded React SPA assets
 │   ├── brassclaw_reborn_webui_ingress/ # WebUI HTTP ingress (axum, SSE)
-│   ├── brassclaw_gateway/          # Web gateway (legacy v1)
 │   ├── brassclaw_tui/              # Terminal user interface
 │   ├── brassclaw_architecture/     # Boundary enforcement tests
 │   └── ...                         # ~50 more substrate/support crates

@@ -1326,7 +1326,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_mcp",
                 "brassclaw_network",
                 "brassclaw_engine",
-                "brassclaw_gateway",
             ],
         },
         BoundaryRule {
@@ -1347,7 +1346,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_events",
                 "brassclaw_extensions",
                 "brassclaw_filesystem",
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_llm",
                 "brassclaw_loop_support",
@@ -1394,7 +1392,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_events",
                 "brassclaw_extensions",
                 "brassclaw_filesystem",
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_llm",
                 "brassclaw_loop_support",
@@ -1446,7 +1443,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_engine",
                 "brassclaw_events",
                 "brassclaw_filesystem",
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_mcp",
                 "brassclaw_memory",
@@ -1482,7 +1478,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_events",
                 "brassclaw_extensions",
                 "brassclaw_first_party_extension_ports",
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_llm",
                 "brassclaw_loop_support",
@@ -1522,7 +1517,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_engine",
                 "brassclaw_events",
                 "brassclaw_extensions",
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_llm",
                 "brassclaw_mcp",
@@ -1558,7 +1552,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_events",
                 "brassclaw_extensions",
                 "brassclaw_filesystem",
-                "brassclaw_gateway",
                 "brassclaw_host_api",
                 "brassclaw_host_runtime",
                 "brassclaw_llm",
@@ -1595,7 +1588,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
             forbidden: vec![
                 "brassclaw",
                 "brassclaw_engine",
-                "brassclaw_gateway",
                 "brassclaw_llm",
                 "brassclaw_loop_support",
                 "brassclaw_reborn",
@@ -1623,7 +1615,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_events",
                 "brassclaw_extensions",
                 "brassclaw_filesystem",
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_llm",
                 "brassclaw_loop_support",
@@ -1803,7 +1794,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_events",
                 "brassclaw_extensions",
                 "brassclaw_filesystem",
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_mcp",
                 "brassclaw_memory",
@@ -1845,7 +1835,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 // routes outbound persistence through ScopedFilesystem under
                 // the universal-fs-dispatch rework (plan
                 // 2026-05-14-universal-fs-dispatch).
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_mcp",
                 "brassclaw_memory",
@@ -1876,7 +1865,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_events",
                 "brassclaw_extensions",
                 "brassclaw_filesystem",
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_mcp",
                 "brassclaw_memory",
@@ -2011,7 +1999,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 // routes thread/transcript persistence through ScopedFilesystem
                 // under the universal-fs-dispatch rework (plan
                 // 2026-05-14-universal-fs-dispatch).
-                "brassclaw_gateway",
                 "brassclaw_host_runtime",
                 "brassclaw_mcp",
                 "brassclaw_memory",

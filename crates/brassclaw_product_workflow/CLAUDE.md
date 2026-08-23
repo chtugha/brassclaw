@@ -44,7 +44,7 @@ handling, gate routing, mission routing, and redacted acknowledgements.
 
 Must NOT depend on: `brassclaw_dispatcher`, `brassclaw_extensions`,
 `brassclaw_host_runtime`, `brassclaw_mcp`,
-`brassclaw_network`, `brassclaw_engine`, `brassclaw_gateway`.
+`brassclaw_network`, `brassclaw_engine`.
 
 Agent-loop note: product-facing turns enter through workflow services and
 canonical turn submission. Do not shortcut directly to `AgentLoopDriver`,

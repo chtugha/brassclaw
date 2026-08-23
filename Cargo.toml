@@ -1,6 +1,6 @@
 [workspace]
 members = [".", "crates/brassclaw_common", "crates/brassclaw_host_api", "crates/brassclaw_filesystem", "crates/brassclaw_memory", "crates/brassclaw_events", "crates/brassclaw_event_projections", "crates/brassclaw_event_streams", "crates/brassclaw_reborn_event_store", "crates/brassclaw_extensions", "crates/brassclaw_processes", "crates/brassclaw_dispatcher", "crates/brassclaw_process_sandbox", "crates/brassclaw_mcp", "crates/brassclaw_capabilities", "crates/brassclaw_secrets", "crates/brassclaw_network", "crates/brassclaw_host_runtime", "crates/brassclaw_runtime_policy", "crates/brassclaw_authorization", "crates/brassclaw_run_state", "crates/brassclaw_approvals", "crates/brassclaw_resources", "crates/brassclaw_auth", "crates/brassclaw_trust", "crates/brassclaw_turns", "crates/brassclaw_agent_loop", "crates/brassclaw_threads", "crates/brassclaw_prompt_envelope", "crates/brassclaw_hooks", "crates/brassclaw_hooks_pg", "crates/brassclaw_loop_support", "crates/brassclaw_reborn", "crates/brassclaw_reborn_config", "crates/brassclaw_reborn_composition", "crates/brassclaw_reborn_identity", "crates/brassclaw_reborn_cli", "crates/brassclaw_reborn_traces", "crates/brassclaw_reborn_webui_ingress", "crates/brassclaw_conversations", "crates/brassclaw_product_adapters", "crates/brassclaw_product_workflow", "crates/brassclaw_product_workflow_storage", "crates/brassclaw_product_adapter_registry",
-    "crates/brassclaw_telegram_v2_adapter", "crates/brassclaw_outbound", "crates/brassclaw_triggers", "crates/brassclaw_architecture", "crates/brassclaw_safety", "crates/brassclaw_skills", "crates/brassclaw_oauth", "crates/brassclaw_llm", "crates/brassclaw_embeddings", "crates/brassclaw_engine", "crates/brassclaw_gateway", "crates/brassclaw_gateway", "crates/brassclaw_first_party_extensions", "crates/brassclaw_webui_v2", "crates/brassclaw_webui_v2_static", "crates/brassclaw_interceptor",
+    "crates/brassclaw_telegram_v2_adapter", "crates/brassclaw_outbound", "crates/brassclaw_triggers", "crates/brassclaw_architecture", "crates/brassclaw_safety", "crates/brassclaw_skills", "crates/brassclaw_oauth", "crates/brassclaw_llm", "crates/brassclaw_embeddings", "crates/brassclaw_engine", "crates/brassclaw_first_party_extensions", "crates/brassclaw_webui_v2", "crates/brassclaw_webui_v2_static", "crates/brassclaw_interceptor",
     "crates/brassclaw_embedded_postgres", "crates/brassclaw_pg"]
 # Phase 6 removed the v1 channels-src/ and tools-src/ trees entirely; the
 # remaining excludes cover crates the workspace still skips (the restructuring
@@ -147,7 +147,6 @@ brassclaw_reborn_cli = { path = "crates/brassclaw_reborn_cli", version = "0.66.2
 
 # Safety/sanitization
 brassclaw_engine = { path = "crates/brassclaw_engine", version = "0.1.0" }
-brassclaw_gateway = { path = "crates/brassclaw_gateway", version = "0.1.0" }
 brassclaw_llm = { path = "crates/brassclaw_llm", version = "0.1.0" }
 brassclaw_embeddings = { path = "crates/brassclaw_embeddings", version = "0.1.0" }
 brassclaw_oauth = { path = "crates/brassclaw_oauth", version = "0.1.0" }

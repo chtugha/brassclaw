@@ -1310,7 +1310,6 @@ dependencies = [
  "brassclaw_engine",
  "brassclaw_extensions",
  "brassclaw_filesystem",
- "brassclaw_gateway",
  "brassclaw_host_api",
  "brassclaw_host_runtime",
  "brassclaw_llm",
@@ -1769,16 +1768,6 @@ dependencies = [
  "similar",
  "thiserror 2.0.19",
  "tokio",
- "tracing",
-]
-
-[[package]]
-name = "brassclaw_gateway"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.19",
  "tracing",
 ]
 
