@@ -25,6 +25,14 @@
 //! implemented (no stub): `handle_event` is a pure async fn over a
 //! `&ThreadEvent` and is unit-tested directly with a spy
 //! `RecipeLookup`.
+//!
+//! **Reused by Model B/C (v3 Phase H.5 O4):** the `RecipeTierZero*`
+//! events this listener consumes are emitted by the Model B/C
+//! agent-loop Tier-0 path (the `LoopOrchestratorPort` driver + the
+//! engine `pub` fns extracted in H.8). The Model A `default.py` step-0
+//! `tier_zero` branch that previously emitted them was removed in v3
+//! Phase H.5 O3, so the listener's sole future emitter is the Model
+//! B/C path wired in H.6–H.13.
 
 use std::sync::Arc;
 

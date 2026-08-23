@@ -410,6 +410,10 @@ pub enum EventKind {
     },
 
     // ── Recipe Tier-0 execution (v3 Phase H.4) ───────────────
+    // Reused by Model B/C: emitted by the agent-loop Tier-0 path (the
+    // `LoopOrchestratorPort` driver + the engine `pub` fns extracted in
+    // H.8), NOT by Model A — the `default.py` step-0 `tier_zero` branch
+    // that previously emitted these was removed in v3 Phase H.5 O3.
     /// Emitted when a Tier-0 Recipe (class 21, `llm_call_required == false`)
     /// begins deterministic no-LLM execution of its orchestrator channel.
     /// `recipe_id` is the matched Recipe component UUID; `recipe_name` is

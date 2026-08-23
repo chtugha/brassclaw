@@ -60,8 +60,8 @@ pub const ORCHESTRATOR_TITLE: &str = "orchestrator:main";
 /// Well-known tag for orchestrator code docs.
 pub const ORCHESTRATOR_TAG: &str = "orchestrator_code";
 
-/// Outcome of a Tier-0 (no-LLM) recipe execution, surfaced from
-/// `default.py` step-0 through [`OrchestratorResult`] (v3 Phase H4.6,
+/// Outcome of a Tier-0 (no-LLM) recipe execution, surfaced from the
+/// Tier-0 recipe branch through [`OrchestratorResult`] (v3 Phase H4.6,
 /// Q-H7 Architecture A). `Some` only when the turn went through the
 /// Tier-0 recipe branch: success is read from the `complete_result(
 /// extra={"tier_zero_outcome": {"recipe_id","success":true}})` stamp
@@ -71,6 +71,12 @@ pub const ORCHESTRATOR_TAG: &str = "orchestrator_code";
 /// success)` off the terminal `RecipeTierZeroSucceeded` /
 /// `RecipeTierZeroFailed` event — this field is for engine-internal
 /// consumers + unit tests (the listener is the durable recording path).
+///
+/// Reused by Model B/C (v3 Phase H.5 O4): the stamp + events are
+/// produced by the agent-loop Tier-0 path (the `LoopOrchestratorPort`
+/// driver + the engine `pub` fns extracted in H.8). The Model A
+/// `default.py` step-0 `tier_zero` branch that previously wrote this
+/// stamp was removed in v3 Phase H.5 O3.
 #[derive(Debug, Clone)]
 pub struct TierZeroOutcome {
     /// The matched Recipe component UUID (class 21) as a string.
@@ -103,6 +109,11 @@ pub struct OrchestratorResult {
 ///   signal rides the event, NOT a result-dict stamp, per Q-H6 — a
 ///   failure degrades to Tier-2 and the result dict has no stamp).
 /// - otherwise `None` (a plain Tier-2 LLM turn, no Tier-0 attempt).
+///
+/// Reused by Model B/C (v3 Phase H.5 O4): the stamp + events this reads
+/// are produced by the agent-loop Tier-0 path (the `LoopOrchestratorPort`
+/// driver + the engine `pub` fns extracted in H.8); the Model A
+/// `default.py` writer was removed in v3 Phase H.5 O3.
 pub fn build_tier_zero_outcome(
     result: &serde_json::Value,
     events: &[ThreadEvent],
@@ -2512,15 +2523,19 @@ fn handle_emit_event(
             }
         }
         // ── Recipe Tier-0 execution (v3 Phase H.4) ───────────────
-        // `default.py`'s step-0 tier_zero branch emits these (H.3/H4.5).
+        // Reused by Model B/C: emitted by the agent-loop Tier-0 path (the
+        // `LoopOrchestratorPort` driver + the engine `pub` fns extracted in
+        // H.8). The Model A `default.py` step-0 `tier_zero` branch that
+        // previously emitted these was removed in v3 Phase H.5 O3.
         // Before H4.2 the fallthrough below DROPPED them (`debug!` + return,
         // NOT pushed to `thread.events`), so a Tier-0 run left no record and
         // the composition listener (H4.7) could never see the outcome. Now
         // they are typed `EventKind` variants pushed to `thread.events` +
         // broadcast on `event_tx`. `recipe_id` rides the `recipe_id` kwarg
         // (H4.5 adds it); `recipe_name` rides the `recipe` kwarg (the name
-        // the H.3 branch already passes as `recipe=...`); `message` (failed
-        // only) rides the `message` kwarg.
+        // the emitter passes as `recipe=...` — kwarg shape preserved from
+        // the removed H.3 branch); `message` (failed only) rides the
+        // `message` kwarg.
         "recipe_tier_zero_started" => {
             let recipe_id = extract_string_kwarg(kwargs, "recipe_id").unwrap_or_default();
             let recipe_name = extract_string_kwarg(kwargs, "recipe").unwrap_or_default();
@@ -2816,8 +2831,10 @@ async fn handle_assemble_prior_knowledge(
                 // §0.9 note), `matched_component_ids` from `routing` (the
                 // orchestrator-channel identity set), and the routing context
                 // (incl. `recipe_id` — the matched Recipe UUID, surfaced in
-                // v3 Phase H4.4 so `default.py` step-0 can stamp it onto
-                // `recipe_tier_zero_*` events in H4.5).
+                // v3 Phase H4.4 so the Model B/C agent-loop Tier-0 path can
+                // stamp it onto `recipe_tier_zero_*` events in H4.5; the
+                // Model A `default.py` step-0 reader was removed in v3 Phase
+                // H.5 O3).
                 // The LIVE Tier-0/Tier-1 dispatch is the Phase-H agent-loop
                 // consumer (via the composition `PgRetrievalLookup` bridge);
                 // this path is dormant but plan-faithful if re-activated.
@@ -4916,7 +4933,6 @@ mod tests {
         pkr: serde_json::Value,
         fetch_doc: Option<serde_json::Value>,
         resolve_doc: Option<serde_json::Value>,
-        code_step_result: serde_json::Value,
     ) -> (serde_json::Value, Step0Recording) {
         // default.py ends with its own entry point
         //   `result = run_loop(context, goal, actions, state, config); FINAL(result)`
@@ -5034,15 +5050,6 @@ mod tests {
                             rec.retrieve_docs_called = true;
                             ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
                         }
-                        "__execute_code_step__" => {
-                            // Phase H.3: the tier_zero branch calls
-                            // execute_recipe_orchestrator_channel, which calls
-                            // __execute_code_step__(body, {}). Return the
-                            // caller-supplied result dict so H.3 tests can drive
-                            // both the success (-> completed, no LLM) and the
-                            // error (-> degrade to Tier-2 LLM) paths.
-                            ExtFunctionResult::Return(json_to_monty(&code_step_result))
-                        }
                         "__execute_action__" => ExtFunctionResult::Return(json_to_monty(
                             &serde_json::json!({"output": "mocked_action_output"}),
                         )),
@@ -5146,12 +5153,7 @@ mod tests {
             "matched_component_ids": [],
             "active_skills": []
         });
-        let (outcome, rec) = run_python_step0(
-            pkr,
-            None,
-            None,
-            step_result(serde_json::Value::Null, "", None, false, None),
-        );
+        let (outcome, rec) = run_python_step0(pkr, None, None);
 
         assert!(
             rec.llm_complete_called,
@@ -5202,12 +5204,7 @@ mod tests {
             "steps": [{"type": "return", "value": "done"}],
             "allowed_tools": []
         });
-        let (outcome, rec) = run_python_step0(
-            pkr,
-            Some(fetch_doc),
-            None,
-            step_result(serde_json::Value::Null, "", None, false, None),
-        );
+        let (outcome, rec) = run_python_step0(pkr, Some(fetch_doc), None);
 
         assert_eq!(
             rec.fetch_component_calls,
@@ -5267,12 +5264,7 @@ mod tests {
             "matched_component_ids": ["act-uuid"],
             "active_skills": []
         });
-        let (outcome, rec) = run_python_step0(
-            pkr,
-            None,
-            None,
-            step_result(serde_json::Value::Null, "", None, false, None),
-        );
+        let (outcome, rec) = run_python_step0(pkr, None, None);
 
         assert_eq!(
             rec.fetch_component_calls,
@@ -5318,12 +5310,7 @@ mod tests {
             "matched_component_ids": [],
             "active_skills": []
         });
-        let (outcome, rec) = run_python_step0(
-            pkr,
-            None,
-            None,
-            step_result(serde_json::Value::Null, "", None, false, None),
-        );
+        let (outcome, rec) = run_python_step0(pkr, None, None);
 
         assert!(
             !rec.llm_complete_called,
@@ -5382,12 +5369,7 @@ mod tests {
             "matched_component_ids": ["c1", "c2"],
             "active_skills": [{"name": "skillX"}]
         });
-        let (outcome, rec) = run_python_step0(
-            pkr,
-            None,
-            None,
-            step_result(serde_json::Value::Null, "", None, false, None),
-        );
+        let (outcome, rec) = run_python_step0(pkr, None, None);
 
         assert!(
             rec.llm_complete_called,
@@ -5467,12 +5449,7 @@ mod tests {
             "steps": [{"type": "tool_call", "tool": "blocked_tool", "params": {}}],
             "allowed_tools": ["allowed_tool"]
         });
-        let (outcome, rec) = run_python_step0(
-            pkr,
-            Some(fetch_doc),
-            None,
-            step_result(serde_json::Value::Null, "", None, false, None),
-        );
+        let (outcome, rec) = run_python_step0(pkr, Some(fetch_doc), None);
 
         assert!(
             !rec.llm_complete_called,
@@ -7793,12 +7770,16 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
 
     #[test]
     fn handle_emit_event_dispatches_recipe_tier_zero_events() {
-        // v3 Phase H4.2: the three Tier-0 events emitted by `default.py`'s
-        // step-0 tier_zero branch must be recorded as typed `EventKind`
-        // variants on `thread.events` (before H4.2 the fallthrough DROPPED
-        // them). `recipe_id` rides the `recipe_id` kwarg, `recipe_name`
-        // rides the `recipe` kwarg, and `message` (failed only) rides the
-        // `message` kwarg — matching the H4.5 `default.py` emit shapes.
+        // v3 Phase H4.2: the three Tier-0 events emitted by the Model B/C
+        // agent-loop Tier-0 path (the `LoopOrchestratorPort` driver + the
+        // engine `pub` fns extracted in H.8) must be recorded as typed
+        // `EventKind` variants on `thread.events` (before H4.2 the
+        // fallthrough DROPPED them). The Model A `default.py` step-0
+        // `tier_zero` branch that previously emitted these was removed in
+        // v3 Phase H.5 O3; the kwarg shapes it established are preserved.
+        // `recipe_id` rides the `recipe_id` kwarg, `recipe_name` rides the
+        // `recipe` kwarg, and `message` (failed only) rides the `message`
+        // kwarg — matching the H4.5 emit shapes.
         let mut thread = Thread::new(
             "goal",
             crate::types::thread::ThreadType::Foreground,
@@ -7882,9 +7863,14 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
     fn build_tier_zero_outcome_success_via_extra_stamp() {
         // v3 Phase H4.6 branch (1): the success `extra` stamp present in
         // the result dict → Some(success == true). Mirrors the H4.5
+        // success-path stamp shape
         // `complete_result(state, "completed", response=...,
         // extra={"tier_zero_outcome": {"recipe_id": ..., "success":
-        // True}})` success path. A `RecipeTierZeroStarted` event alone
+        // True}})`. The stamp is now written by the Model B/C agent-loop
+        // Tier-0 path (the `LoopOrchestratorPort` driver + the engine
+        // `pub` fns extracted in H.8); the Model A `default.py` writer
+        // was removed in v3 Phase H.5 O3, but the stamp shape this reader
+        // expects is preserved. A `RecipeTierZeroStarted` event alone
         // must NOT be misread as the terminal outcome (it is non-terminal).
         let thread = Thread::new(
             "goal",

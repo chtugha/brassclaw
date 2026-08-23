@@ -137,10 +137,14 @@ pub struct TurnRoutingSignals {
     /// The matched Recipe component UUID (class 21) as a string. `Some`
     /// whenever this `SplitResult` came from `fetch_recipe_split_result`
     /// (both construction sites there receive the `recipe_id` param), so
-    /// Tier-0 consumers can stamp it onto `recipe_tier_zero_*` events and
-    /// the engine can surface it through the pkr dict + `OrchestratorResult.
-    /// tier_zero_outcome` (v3 Phase H.4). `None` on non-recipe paths and in
-    /// test fixtures (v3 Phase H4.3).
+    /// the Model B/C agent-loop Tier-0 path can stamp it onto
+    /// `recipe_tier_zero_*` events and the engine can surface it through
+    /// the pkr dict + `OrchestratorResult.tier_zero_outcome` (v3 Phase
+    /// H.4). Reused by Model B/C (the `LoopOrchestratorPort` driver + the
+    /// engine `pub` fns extracted in H.8), NOT Model A — the `default.py`
+    /// step-0 `tier_zero` branch that previously read this was removed in
+    /// v3 Phase H.5 O3. `None` on non-recipe paths and in test fixtures
+    /// (v3 Phase H4.3).
     pub recipe_id: Option<String>,
     /// The matched Recipe's display name (`reborn_recipes.name`, read at
     /// `fetch_recipe_split_result` line 810). Surfaced end-to-end (v3 Phase
@@ -149,6 +153,8 @@ pub struct TurnRoutingSignals {
     /// above is the matched variant key, NOT the recipe name. Always present
     /// on the recipe path (every `TurnRoutingSignals` is built inside
     /// `fetch_recipe_split_result` or a test fixture that supplies one).
+    /// Reused by Model B/C (same emitter path as `recipe_id` above), NOT
+    /// Model A (the `default.py` reader was removed in v3 Phase H.5 O3).
     pub recipe_name: String,
 }
 
