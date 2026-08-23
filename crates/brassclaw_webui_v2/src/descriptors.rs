@@ -71,12 +71,12 @@ pub const WEBUI_V2_ROUTE_GET_COMPONENT_AUDIT_STATUS: &str = "webui.v2.get_compon
 // Phase 5.5 — Interceptor configuration routes.
 pub const WEBUI_V2_ROUTE_GET_INTERCEPTOR_CONFIG: &str = "webui.v2.get_interceptor_config";
 pub const WEBUI_V2_ROUTE_UPDATE_INTERCEPTOR_CONFIG: &str = "webui.v2.update_interceptor_config";
-pub const WEBUI_V2_ROUTE_LIST_PREFIXES: &str = "webui.v2.list_prefixes";
-pub const WEBUI_V2_ROUTE_REGENERATE_PREFIX: &str = "webui.v2.regenerate_prefix";
+pub const WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR: &str = "webui.v2.reassemble_interceptor";
+pub const WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR: &str = "webui.v2.prewarm_interceptor";
 
 pub const WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG: &str = "/api/webchat/v2/interceptor/config";
-pub const WEBUI_V2_PATTERN_LIST_PREFIXES: &str = "/api/webchat/v2/prefixes";
-pub const WEBUI_V2_PATTERN_REGENERATE_PREFIX: &str = "/api/webchat/v2/prefixes/{name}/regenerate";
+pub const WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR: &str = "/api/webchat/v2/interceptor/reassemble";
+pub const WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR: &str = "/api/webchat/v2/interceptor/prewarm";
 
 // Phase 6 — Settings UI routes (10-tab editor).
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_SKILLS: &str = "webui.v2.get_settings_skills";
@@ -236,8 +236,8 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         // Phase 5.5 — Interceptor configuration routes.
         get_interceptor_config_descriptor(),
         update_interceptor_config_descriptor(),
-        list_prefixes_descriptor(),
-        regenerate_prefix_descriptor(),
+        reassemble_interceptor_descriptor(),
+        prewarm_interceptor_descriptor(),
         // Phase 6 — Settings UI routes (10-tab editor).
         get_settings_skills_descriptor(),
         get_settings_tools_descriptor(),
@@ -935,26 +935,27 @@ fn update_interceptor_config_descriptor() -> IngressRouteDescriptor {
     )
 }
 
-fn list_prefixes_descriptor() -> IngressRouteDescriptor {
+fn reassemble_interceptor_descriptor() -> IngressRouteDescriptor {
+    // Reassemble has a 1/min per-caller rate limit (enforced in the service).
     descriptor(
-        WEBUI_V2_ROUTE_LIST_PREFIXES,
-        NetworkMethod::Get,
-        WEBUI_V2_PATTERN_LIST_PREFIXES,
-        read_policy(
-            read_rate_limit(),
+        WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
             AuditTraceClass::UserAction,
-            AllowedEffectPath::ProjectionOnly,
-            StreamingMode::None,
+            AllowedEffectPath::ProductWorkflow,
         ),
     )
 }
 
-fn regenerate_prefix_descriptor() -> IngressRouteDescriptor {
-    // regenerate_prefix has a 1/min per-caller rate limit (enforced in the service).
+fn prewarm_interceptor_descriptor() -> IngressRouteDescriptor {
+    // Pre-warm has a 1/min per-caller rate limit (enforced in the service).
     descriptor(
-        WEBUI_V2_ROUTE_REGENERATE_PREFIX,
+        WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR,
         NetworkMethod::Post,
-        WEBUI_V2_PATTERN_REGENERATE_PREFIX,
+        WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR,
         mutation_policy(
             BodyLimitPolicy::NoBody,
             mutation_rate_limit(),

@@ -2612,19 +2612,6 @@ pub async fn build_reborn_runtime(
             )) as Arc<dyn brassclaw_interceptor::SempaiProposalSink>
         });
 
-    // Wire PgBasicPromptStore as SystemBundleSource (§K.1.5).
-    // Each Kohai context load and Sempai review call prepends the stored
-    // bundle as System message [0] for KV-cache reuse.
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    let system_bundle_source: Option<Arc<dyn brassclaw_loop_support::SystemBundleSource>> =
-        services.pg_pool.as_ref().map(|pool| {
-            Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
-                Arc::clone(pool),
-                validated_identity.tenant_id.as_str(),
-                validated_identity.agent_id.as_str(),
-            )) as Arc<dyn brassclaw_loop_support::SystemBundleSource>
-        });
-
     let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
         turn_state: Arc::clone(&turn_state_store),
         thread_service: Arc::clone(&thread_service),
@@ -2700,8 +2687,6 @@ pub async fn build_reborn_runtime(
         },
         #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
         proposal_sink,
-        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-        system_bundle_source,
     })?;
     let default_resolved_run_profile = composition
         .run_profile_resolver

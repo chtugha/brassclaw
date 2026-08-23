@@ -104,8 +104,7 @@ pub trait CapabilityPermissionStore: Send + Sync {
 pub use error::{RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind};
 pub use interceptor_config::{
     InterceptorConfigService, InterceptorConfigServiceError, InterceptorConfigSnapshot,
-    PrefixEntry, PrefixListResponse, PrefixRegenerateResponse, UpdateInterceptorConfigRequest,
-    interceptor_config_unavailable, map_interceptor_config_error,
+    UpdateInterceptorConfigRequest, interceptor_config_unavailable, map_interceptor_config_error,
 };
 pub use llm_config::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
@@ -1192,24 +1191,19 @@ pub trait RebornServicesApi: Send + Sync {
         Err(interceptor_config::interceptor_config_unavailable())
     }
 
-    /// List named prefix-cache entries for a scope.
-    async fn list_interceptor_prefixes(
+    /// Reassemble the static base prompt (Part A) from validated components.
+    async fn reassemble_interceptor_base_prompt(
         &self,
         _caller: WebUiAuthenticatedCaller,
-        _user_id: &str,
-        _project_id: &str,
-    ) -> Result<PrefixListResponse, RebornServicesError> {
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
 
-    /// Regenerate (assemble + optionally pre-warm) a named prefix bundle.
-    async fn regenerate_interceptor_prefix(
+    /// Pre-warm the Sempai KV cache by sending the base prompt.
+    async fn prewarm_interceptor(
         &self,
         _caller: WebUiAuthenticatedCaller,
-        _name: &str,
-        _user_id: &str,
-        _project_id: &str,
-    ) -> Result<PrefixRegenerateResponse, RebornServicesError> {
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
 
@@ -3655,31 +3649,26 @@ impl RebornServicesApi for RebornServices {
             .map_err(interceptor_config::map_interceptor_config_error)
     }
 
-    async fn list_interceptor_prefixes(
+    async fn reassemble_interceptor_base_prompt(
         &self,
         caller: WebUiAuthenticatedCaller,
-        user_id: &str,
-        project_id: &str,
-    ) -> Result<PrefixListResponse, RebornServicesError> {
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
         self.interceptor_config
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
-            .list_prefix_entries(caller, user_id, project_id)
+            .reassemble_base_prompt(caller)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }
 
-    async fn regenerate_interceptor_prefix(
+    async fn prewarm_interceptor(
         &self,
         caller: WebUiAuthenticatedCaller,
-        name: &str,
-        user_id: &str,
-        project_id: &str,
-    ) -> Result<PrefixRegenerateResponse, RebornServicesError> {
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
         self.interceptor_config
             .as_ref()
             .ok_or_else(interceptor_config::interceptor_config_unavailable)?
-            .regenerate_prefix(caller, name, user_id, project_id)
+            .prewarm(caller)
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }

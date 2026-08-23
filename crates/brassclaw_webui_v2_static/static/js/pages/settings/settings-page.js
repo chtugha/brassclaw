@@ -6,7 +6,6 @@ import { AgentTab } from "./components/agent-tab.js";
 import { ChannelsTab } from "./components/channels-tab.js";
 import { InferenceTab } from "./components/inference-tab.js";
 import { InterceptorTab } from "./components/interceptor-tab.js";
-import { PrefixTab } from "./components/prefix-tab.js";
 import { LanguageTab } from "./components/language-tab.js";
 import { MontyVmTab } from "./components/monty-vm-tab.js";
 import { NetworkingTab } from "./components/networking-tab.js";
@@ -84,7 +83,6 @@ export function SettingsPage() {
     "validation-queue": html`<${ValidationQueueTab} searchQuery=${searchQuery} />`,
     reliability: html`<${ReliabilityTab} />`,
     interceptor: html`<${InterceptorTab} searchQuery=${searchQuery} />`,
-    prefix: html`<${PrefixTab} />`,
     safety: html`<${SafetyPanel} searchQuery=${searchQuery} />`,
     tokens: html`<${TokensTab} searchQuery=${searchQuery} />`,
     users: html`<${UsersTab} searchQuery=${searchQuery} />`,

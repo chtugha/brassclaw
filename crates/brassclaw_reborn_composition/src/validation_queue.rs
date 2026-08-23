@@ -46,9 +46,6 @@ use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
-#[cfg(feature = "postgres")]
-use crate::pg_basic_prompt_store::PgBasicPromptStore;
-
 /// Default rejection threshold: after 3 rejections a row auto-promotes to
 /// state 4 (deletion candidate) — §0.18. Configurable per-store via
 /// [`ValidationQueueStore::with_reject_threshold`] (Q2 answer — construction-time
@@ -137,11 +134,6 @@ pub struct QueueRow {
 pub struct ValidationQueueStore {
     pool: Arc<PgPool>,
     reject_threshold: u8,
-    /// Optional: when set, `approve()` calls `mark_stale` on this store after
-    /// each Q2 graduation so the Sempai prefix bundle is re-assembled on the
-    /// next turn (§12 of prefix_V3.md).
-    #[cfg(feature = "postgres")]
-    basic_prompt_store: Option<Arc<PgBasicPromptStore>>,
 }
 
 impl ValidationQueueStore {
@@ -150,8 +142,6 @@ impl ValidationQueueStore {
         Self {
             pool,
             reject_threshold: DEFAULT_REJECT_THRESHOLD,
-            #[cfg(feature = "postgres")]
-            basic_prompt_store: None,
         }
     }
 
@@ -162,17 +152,7 @@ impl ValidationQueueStore {
         Self {
             pool,
             reject_threshold,
-            #[cfg(feature = "postgres")]
-            basic_prompt_store: None,
         }
-    }
-
-    /// Attach a [`PgBasicPromptStore`] so that `approve()` calls `mark_stale`
-    /// after each Q2 graduation (§12 — side-effect 4).
-    #[cfg(feature = "postgres")]
-    pub(crate) fn with_basic_prompt_store(mut self, store: Arc<PgBasicPromptStore>) -> Self {
-        self.basic_prompt_store = Some(store);
-        self
     }
 
     /// Submit a component to the Q1 queue (state 1).
@@ -510,21 +490,6 @@ impl ValidationQueueStore {
         }
 
         tx.commit().await.map_err(map_pg)?;
-
-        // §12 (prefix_V3.md): mark the Sempai prefix bundle stale so the next
-        // Sempai call re-assembles from the freshly-graduated component rows.
-        // Best-effort: errors here must not fail the graduation.
-        #[cfg(feature = "postgres")]
-        if let Some(store) = &self.basic_prompt_store
-            && let Err(e) = store.mark_stale(&scope.user_id, &scope.project_id).await
-        {
-            tracing::debug!(
-                component_id = %component_id,
-                error = %e,
-                "approve: mark_stale after Q2 graduation failed (non-fatal)"
-            );
-        }
-
         Ok(component_id)
     }
 
