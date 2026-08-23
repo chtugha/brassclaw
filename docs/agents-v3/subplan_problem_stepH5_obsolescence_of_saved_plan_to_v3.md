@@ -314,6 +314,21 @@ unit tests that assert Tier-0 early-return behavior. **KEEP H.1
 `execute_tier_zero_channel` extraction and are deleted in the final cleanup after H.8.
 Verify: `python3 ast.parse` clean; engine fmt + clippy (both configs) + `cargo test`
 (both configs). Commit + push.
+  ✅ **DONE** (commit `110b3a6c`, pushed `8e9593ed..110b3a6c main -> main`). Removed the
+  `default.py` step-0 `elif pkr.get("tier_zero")...` branch (55 lines: the 3
+  `recipe_tier_zero_*` event emissions + the `tier_zero_outcome` extra stamp + the
+  no-LLM early return) + updated the step-0 prior-knowledge comment + the H.2
+  `execute_recipe_orchestrator_channel` docstring (H.3 Python caller removed;
+  `tier_zero` still surfaced by Rust for Model B/C). Removed the 3
+  `phase_h3_tier_zero_*` integration tests + their 3 exclusive helpers
+  (`recording_has_transition`/`recording_has_event`/`recording_event_kwargs`) +
+  section header from `orchestrator.rs` (241 lines). KEPT H.1/H.2 Python fns + tests
+  + all Rust H.4 pieces (4 tests + `build_tier_zero_outcome` + event dispatch +
+  producer + `TurnRoutingSignals` + `RecipeOutcomeListener`). Verified on a clean
+  staged index (user WIP stashed): `ast.parse` clean; `cargo fmt -p brassclaw_engine
+  --check` clean; `cargo clippy -p brassclaw_engine --all-targets -- -D warnings`
+  clean (default + skills-db); `cargo test -p brassclaw_engine` GREEN (default 599
+  passed, skills-db 610 passed, 0 failed).
 
 **O4 — Re-document the reusable H.4 pieces as reused by Model B/C.** Update doc comments
 on `RecipeTierZeroStarted`/`Succeeded`/`Failed` `EventKind` variants
@@ -343,10 +358,11 @@ H.8 — NOT in this subplan.
 ## 5. Verification + status (updated as steps complete)
 
 - O1 — Done (commit `d6c91828`).
-- O2.1 — Pending.
-- O2.2 — Pending.
-- O2.3 — Pending.
-- O2.4 — Pending.
-- O3 — Pending.
+- O2.1 — Done (commit `ea07aa93`).
+- O2.2 — Done (commits `cd413643` + doc `8bda603d`).
+- O2.3 — Done (commit `5c113151` + doc `df5a4010`).
+- O2.4 — Done (commit `ee6fb6f8` + doc `d418b784`); + the `brassclaw_gateway` crate
+  deletion follow-up Done (commits `9c780fd7` + doc `8e9593ed`).
+- O3 — Done (commit `110b3a6c`).
 - O4 — Pending.
 - O5 — Pending.
