@@ -18,6 +18,7 @@ mod milestones;
 mod model;
 mod model_observation;
 mod model_work;
+mod orchestrator_lookup;
 mod policy;
 mod prompt;
 mod prompt_text;
@@ -97,6 +98,7 @@ pub use model_observation::{
     ToolObservationStatus, ToolRecoveryObservation,
 };
 pub use model_work::{ModelWorkKind, ModelWorkOutcome, ModelWorkRequest, ModelWorkUsage};
+pub use orchestrator_lookup::{PriorKnowledgeBundle, TierZeroReply};
 pub use policy::{
     CancellationPolicy, CheckpointPolicy, PersonalContextAuthority, PrivilegedRunProfileDimension,
     RedactedRunProfileProvenance, RedactedRunProfileSource, ResourceBudgetPolicy,
