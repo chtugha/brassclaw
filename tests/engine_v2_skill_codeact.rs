@@ -22,9 +22,8 @@ use brassclaw_engine::types::capability::{EffectType, LeaseId, ModelToolSurface}
 use brassclaw_engine::{
     ActionDef, ActionResult, Capability, CapabilityLease, CapabilityRegistry, DocId, DocType,
     EffectExecutor, EngineError, LeaseManager, LlmBackend, LlmCallConfig, LlmOutput, LlmResponse,
-    MemoryDoc, Mission, MissionId, MissionStatus, PolicyEngine, Project, ProjectId, Step, Store,
-    Thread, ThreadConfig, ThreadEvent, ThreadId, ThreadManager, ThreadMessage, ThreadOutcome,
-    ThreadState, ThreadType, TokenUsage,
+    MemoryDoc, PolicyEngine, Project, ProjectId, Step, Store, Thread, ThreadConfig, ThreadEvent,
+    ThreadId, ThreadManager, ThreadMessage, ThreadOutcome, ThreadState, ThreadType, TokenUsage,
 };
 
 use brassclaw_skills::types::ActivationCriteria;
@@ -353,7 +352,6 @@ struct TestStore {
     threads: RwLock<HashMap<ThreadId, Thread>>,
     events: RwLock<Vec<ThreadEvent>>,
     docs: RwLock<Vec<MemoryDoc>>,
-    missions: RwLock<Vec<Mission>>,
     leases: RwLock<Vec<CapabilityLease>>,
     steps: RwLock<Vec<Step>>,
 }
@@ -364,7 +362,6 @@ impl TestStore {
             threads: RwLock::new(HashMap::new()),
             events: RwLock::new(Vec::new()),
             docs: RwLock::new(Vec::new()),
-            missions: RwLock::new(Vec::new()),
             leases: RwLock::new(Vec::new()),
             steps: RwLock::new(Vec::new()),
         })
@@ -482,42 +479,6 @@ impl Store for TestStore {
         Ok(vec![])
     }
     async fn revoke_lease(&self, _: LeaseId, _: &str) -> Result<(), EngineError> {
-        Ok(())
-    }
-    async fn save_mission(&self, m: &Mission) -> Result<(), EngineError> {
-        let mut missions = self.missions.write().await;
-        missions.retain(|x| x.id != m.id);
-        missions.push(m.clone());
-        Ok(())
-    }
-    async fn load_mission(&self, id: MissionId) -> Result<Option<Mission>, EngineError> {
-        Ok(self
-            .missions
-            .read()
-            .await
-            .iter()
-            .find(|m| m.id == id)
-            .cloned())
-    }
-    async fn list_missions(
-        &self,
-        pid: ProjectId,
-        _user_id: &str,
-    ) -> Result<Vec<Mission>, EngineError> {
-        Ok(self
-            .missions
-            .read()
-            .await
-            .iter()
-            .filter(|m| m.project_id == pid)
-            .cloned()
-            .collect())
-    }
-    async fn update_mission_status(
-        &self,
-        _: MissionId,
-        _: MissionStatus,
-    ) -> Result<(), EngineError> {
         Ok(())
     }
 }

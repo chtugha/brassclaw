@@ -26,8 +26,8 @@
 //!   delegate to the per-owner `list_memory_docs` query and fan out
 //!   across the shared-owner candidates.
 //! - Returns `Err(EngineError::Store { … })` for every `Store` method
-//!   that is outside the MemoryDoc surface (thread CRUD, mission CRUD,
-//!   lease CRUD). These code paths are not reached by the
+//!   that is outside the MemoryDoc surface (thread CRUD, lease CRUD).
+//!   These code paths are not reached by the
 //!   reduction-rule pipeline, but returning a proper error is safer
 //!   than panicking — a future caller that accidentally routes a
 //!   thread-CRUD call through this adapter gets a diagnosable error
@@ -43,7 +43,6 @@ use brassclaw_engine::traits::store::Store;
 use brassclaw_engine::types::capability::{CapabilityLease, LeaseId};
 use brassclaw_engine::types::event::ThreadEvent;
 use brassclaw_engine::types::memory::{DocId, DocType, MemoryDoc};
-use brassclaw_engine::types::mission::{Mission, MissionId, MissionStatus};
 use brassclaw_engine::types::project::{Project, ProjectId};
 use brassclaw_engine::types::step::Step;
 use brassclaw_engine::types::thread::{Thread, ThreadId, ThreadState};
@@ -339,48 +338,6 @@ impl Store for MemoryDocLibSqlStore {
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
         Err(brassclaw_engine::types::error::EngineError::Store {
             reason: "MemoryDocLibSqlStore::revoke_lease is not implemented \
-                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
-                .into(),
-        })
-    }
-    async fn save_mission(
-        &self,
-        _mission: &Mission,
-    ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        Err(brassclaw_engine::types::error::EngineError::Store {
-            reason: "MemoryDocLibSqlStore::save_mission is not implemented \
-                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
-                .into(),
-        })
-    }
-    async fn load_mission(
-        &self,
-        _id: MissionId,
-    ) -> Result<Option<Mission>, brassclaw_engine::types::error::EngineError> {
-        Err(brassclaw_engine::types::error::EngineError::Store {
-            reason: "MemoryDocLibSqlStore::load_mission is not implemented \
-                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
-                .into(),
-        })
-    }
-    async fn list_missions(
-        &self,
-        _project_id: ProjectId,
-        _user_id: &str,
-    ) -> Result<Vec<Mission>, brassclaw_engine::types::error::EngineError> {
-        Err(brassclaw_engine::types::error::EngineError::Store {
-            reason: "MemoryDocLibSqlStore::list_missions is not implemented \
-                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
-                .into(),
-        })
-    }
-    async fn update_mission_status(
-        &self,
-        _id: MissionId,
-        _status: MissionStatus,
-    ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        Err(brassclaw_engine::types::error::EngineError::Store {
-            reason: "MemoryDocLibSqlStore::update_mission_status is not implemented \
                      (MemoryDoc-only adapter; Phase 6 will land the full store)"
                 .into(),
         })

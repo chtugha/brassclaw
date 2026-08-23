@@ -8,7 +8,6 @@ use crate::types::conversation::{ConversationId, ConversationSurface};
 use crate::types::error::EngineError;
 use crate::types::event::ThreadEvent;
 use crate::types::memory::{DocId, MemoryDoc};
-use crate::types::mission::{Mission, MissionId, MissionStatus};
 use crate::types::project::{Project, ProjectId};
 use crate::types::step::Step;
 use crate::types::thread::{Thread, ThreadId, ThreadState};
@@ -185,57 +184,6 @@ pub trait Store: Send + Sync {
     ) -> Result<Vec<CapabilityLease>, EngineError>;
     async fn revoke_lease(&self, lease_id: LeaseId, reason: &str) -> Result<(), EngineError>;
 
-    // ── Mission operations ───────────────────────────────────
-
-    async fn save_mission(&self, mission: &Mission) -> Result<(), EngineError>;
-    async fn load_mission(&self, id: MissionId) -> Result<Option<Mission>, EngineError>;
-    async fn list_missions(
-        &self,
-        project_id: ProjectId,
-        user_id: &str,
-    ) -> Result<Vec<Mission>, EngineError>;
-    async fn update_mission_status(
-        &self,
-        id: MissionId,
-        status: MissionStatus,
-    ) -> Result<(), EngineError>;
-
-    /// List missions visible to a user: their own + shared missions.
-    ///
-    /// Shared learning missions (self-improvement, skill-extraction, etc.) are
-    /// created under the shared owner id and should be visible/manageable by all
-    /// users through the API.
-    async fn list_missions_with_shared(
-        &self,
-        project_id: ProjectId,
-        user_id: &str,
-    ) -> Result<Vec<Mission>, EngineError> {
-        if is_shared_owner(user_id) {
-            return self.list_shared_missions(project_id).await;
-        }
-        let mut missions = self.list_missions(project_id, user_id).await?;
-        missions.extend(self.list_shared_missions(project_id).await?);
-        // Sort deterministically so callers (LLM tool dispatch, replay
-        // tests, UI lists) see a stable order independent of HashMap
-        // iteration. Sort key: name (stable, human-readable), then id
-        // (tiebreaker for any duplicate names).
-        missions.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.0.cmp(&b.id.0)));
-        Ok(missions)
-    }
-
-    async fn list_shared_missions(
-        &self,
-        project_id: ProjectId,
-    ) -> Result<Vec<Mission>, EngineError> {
-        let mut missions = Vec::new();
-        for owner_id in shared_owner_candidates() {
-            missions.extend(self.list_missions(project_id, owner_id).await?);
-        }
-        missions.sort_by_key(|mission| mission.id.0);
-        missions.dedup_by_key(|mission| mission.id);
-        Ok(missions)
-    }
-
     // ── Admin operations (system-level, cross-tenant) ──────────
 
     /// List all threads in a project regardless of user.
@@ -243,14 +191,6 @@ pub trait Store: Send + Sync {
     async fn list_all_threads(&self, project_id: ProjectId) -> Result<Vec<Thread>, EngineError> {
         Err(EngineError::Store {
             reason: format!("Store::list_all_threads not implemented for project '{project_id}'"),
-        })
-    }
-
-    /// List all missions in a project regardless of user.
-    /// Used by: cron ticker, event listener, bootstrap.
-    async fn list_all_missions(&self, project_id: ProjectId) -> Result<Vec<Mission>, EngineError> {
-        Err(EngineError::Store {
-            reason: format!("Store::list_all_missions not implemented for project '{project_id}'"),
         })
     }
 }

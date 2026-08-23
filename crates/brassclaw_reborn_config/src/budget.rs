@@ -24,8 +24,6 @@ use crate::BudgetSection;
 pub const USER_DAILY_USD_ENV: &str = "BRASSCLAW_BUDGET_USER_DAILY_USD";
 /// Per-project daily ceiling in USD. `0` = unlimited.
 pub const PROJECT_DAILY_USD_ENV: &str = "BRASSCLAW_BUDGET_PROJECT_DAILY_USD";
-/// Per-tick budget for background missions. `0` = unlimited.
-pub const MISSION_PER_TICK_USD_ENV: &str = "BRASSCLAW_BUDGET_MISSION_PER_TICK_USD";
 /// Per-tick budget for heartbeat ticks. `0` = unlimited.
 pub const HEARTBEAT_PER_TICK_USD_ENV: &str = "BRASSCLAW_BUDGET_HEARTBEAT_PER_TICK_USD";
 /// Per-fire budget for lightweight routines. `0` = unlimited.
@@ -53,7 +51,6 @@ pub const BUDGET_OVERESTIMATE_FACTOR_ENV: &str = "BRASSCLAW_BUDGET_OVERESTIMATE_
 pub struct BudgetDefaults {
     pub user_daily_usd: f64,
     pub project_daily_usd: f64,
-    pub mission_per_tick_usd: f64,
     pub heartbeat_per_tick_usd: f64,
     pub routine_lightweight_usd: f64,
     pub routine_standard_usd: f64,
@@ -70,7 +67,6 @@ impl BudgetDefaults {
         Self {
             user_daily_usd: 5.00,
             project_daily_usd: 2.00,
-            mission_per_tick_usd: 0.50,
             heartbeat_per_tick_usd: 0.05,
             routine_lightweight_usd: 0.02,
             routine_standard_usd: 0.10,
@@ -89,9 +85,6 @@ impl BudgetDefaults {
         }
         if let Some(v) = section.project_daily_usd {
             self.project_daily_usd = v;
-        }
-        if let Some(v) = section.mission_per_tick_usd {
-            self.mission_per_tick_usd = v;
         }
         if let Some(v) = section.heartbeat_per_tick_usd {
             self.heartbeat_per_tick_usd = v;
@@ -127,9 +120,6 @@ impl BudgetDefaults {
         }
         if let Some(v) = read_f64_env(PROJECT_DAILY_USD_ENV)? {
             self.project_daily_usd = v;
-        }
-        if let Some(v) = read_f64_env(MISSION_PER_TICK_USD_ENV)? {
-            self.mission_per_tick_usd = v;
         }
         if let Some(v) = read_f64_env(HEARTBEAT_PER_TICK_USD_ENV)? {
             self.heartbeat_per_tick_usd = v;
@@ -167,7 +157,6 @@ impl BudgetDefaults {
         for (label, value) in [
             ("user_daily_usd", self.user_daily_usd),
             ("project_daily_usd", self.project_daily_usd),
-            ("mission_per_tick_usd", self.mission_per_tick_usd),
             ("heartbeat_per_tick_usd", self.heartbeat_per_tick_usd),
             ("routine_lightweight_usd", self.routine_lightweight_usd),
             ("routine_standard_usd", self.routine_standard_usd),

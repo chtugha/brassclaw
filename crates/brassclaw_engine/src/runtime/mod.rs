@@ -9,7 +9,6 @@ pub mod internal_write;
 pub mod lease_refresh;
 pub mod manager;
 pub mod messaging;
-pub mod mission;
 pub mod tree;
 
 pub use conversation::ConversationManager;
@@ -19,5 +18,4 @@ pub use internal_write::{
 };
 pub use manager::ThreadManager;
 pub use messaging::ThreadOutcome;
-pub use mission::MissionManager;
 pub use tree::ThreadTree;

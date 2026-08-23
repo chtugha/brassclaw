@@ -22,7 +22,6 @@ use brassclaw_engine::types::capability::{CapabilityLease, LeaseId};
 use brassclaw_engine::types::error::EngineError;
 use brassclaw_engine::types::event::ThreadEvent;
 use brassclaw_engine::types::memory::{DocId, DocType, MemoryDoc};
-use brassclaw_engine::types::mission::{Mission, MissionId, MissionStatus};
 use brassclaw_engine::types::project::{Project, ProjectId};
 use brassclaw_engine::types::step::Step;
 use brassclaw_engine::types::thread::{Thread, ThreadId as EngineThreadId, ThreadState};
@@ -221,22 +220,6 @@ impl Store for PgMemoryDocStore {
     }
     async fn revoke_lease(&self, _: LeaseId, _: &str) -> Result<(), EngineError> {
         Err(stub("revoke_lease"))
-    }
-    async fn save_mission(&self, _: &Mission) -> Result<(), EngineError> {
-        Err(stub("save_mission"))
-    }
-    async fn load_mission(&self, _: MissionId) -> Result<Option<Mission>, EngineError> {
-        Err(stub("load_mission"))
-    }
-    async fn list_missions(&self, _: ProjectId, _: &str) -> Result<Vec<Mission>, EngineError> {
-        Err(stub("list_missions"))
-    }
-    async fn update_mission_status(
-        &self,
-        _: MissionId,
-        _: MissionStatus,
-    ) -> Result<(), EngineError> {
-        Err(stub("update_mission_status"))
     }
 
     // ── MemoryDoc operations (functional) ──

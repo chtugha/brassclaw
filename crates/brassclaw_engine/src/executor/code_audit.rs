@@ -27,8 +27,8 @@
 //! # Security invariants
 //!
 //! The audit prompt is constructed entirely in Rust — the Python orchestrator
-//! has no involvement. This ensures the self-improvement mission cannot craft
-//! an input that bypasses the audit (spec §3.5 validator independence).
+//! has no involvement. This ensures the self-improvement validation loop cannot
+//! craft an input that bypasses the audit (spec §3.5 validator independence).
 
 use crate::traits::llm::{LlmBackend, LlmCallConfig};
 use crate::types::message::ThreadMessage;

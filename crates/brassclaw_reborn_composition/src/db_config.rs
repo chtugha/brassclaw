@@ -435,7 +435,6 @@ fn assemble_webui(kv: &BTreeMap<String, String>) -> Option<WebuiSection> {
 fn assemble_budget(kv: &BTreeMap<String, String>) -> Option<BudgetSection> {
     let user_daily_usd = get_f64(kv, "budget.user_daily_usd");
     let project_daily_usd = get_f64(kv, "budget.project_daily_usd");
-    let mission_per_tick_usd = get_f64(kv, "budget.mission_per_tick_usd");
     let heartbeat_per_tick_usd = get_f64(kv, "budget.heartbeat_per_tick_usd");
     let routine_lightweight_usd = get_f64(kv, "budget.routine_lightweight_usd");
     let routine_standard_usd = get_f64(kv, "budget.routine_standard_usd");
@@ -446,7 +445,6 @@ fn assemble_budget(kv: &BTreeMap<String, String>) -> Option<BudgetSection> {
     let overestimate_factor = get_f64(kv, "budget.overestimate_factor");
     let any = user_daily_usd.is_some()
         || project_daily_usd.is_some()
-        || mission_per_tick_usd.is_some()
         || heartbeat_per_tick_usd.is_some()
         || routine_lightweight_usd.is_some()
         || routine_standard_usd.is_some()
@@ -459,7 +457,6 @@ fn assemble_budget(kv: &BTreeMap<String, String>) -> Option<BudgetSection> {
         BudgetSection {
             user_daily_usd,
             project_daily_usd,
-            mission_per_tick_usd,
             heartbeat_per_tick_usd,
             routine_lightweight_usd,
             routine_standard_usd,

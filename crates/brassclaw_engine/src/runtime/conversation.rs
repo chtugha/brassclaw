@@ -823,32 +823,6 @@ mod tests {
         ) -> Result<(), EngineError> {
             Ok(())
         }
-        async fn save_mission(
-            &self,
-            _: &crate::types::mission::Mission,
-        ) -> Result<(), EngineError> {
-            Ok(())
-        }
-        async fn load_mission(
-            &self,
-            _: crate::types::mission::MissionId,
-        ) -> Result<Option<crate::types::mission::Mission>, EngineError> {
-            Ok(None)
-        }
-        async fn list_missions(
-            &self,
-            _: ProjectId,
-            _: &str,
-        ) -> Result<Vec<crate::types::mission::Mission>, EngineError> {
-            Ok(vec![])
-        }
-        async fn update_mission_status(
-            &self,
-            _: crate::types::mission::MissionId,
-            _: crate::types::mission::MissionStatus,
-        ) -> Result<(), EngineError> {
-            Ok(())
-        }
     }
 
     fn make_conv_manager() -> (Arc<ThreadManager>, ConversationManager) {

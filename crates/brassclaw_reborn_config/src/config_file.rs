@@ -370,8 +370,6 @@ pub struct BudgetSection {
     pub user_daily_usd: Option<f64>,
     /// Per-project daily ceiling. Default in composition is `2.00`.
     pub project_daily_usd: Option<f64>,
-    /// Per-tick budget for background missions. Default `0.50`.
-    pub mission_per_tick_usd: Option<f64>,
     /// Per-tick budget for heartbeat ticks. Default `0.05`.
     pub heartbeat_per_tick_usd: Option<f64>,
     /// Per-fire budget for lightweight routines. Default `0.02`.
@@ -671,7 +669,6 @@ impl RebornConfigFile {
             for (label, value) in [
                 ("budget.user_daily_usd", budget.user_daily_usd),
                 ("budget.project_daily_usd", budget.project_daily_usd),
-                ("budget.mission_per_tick_usd", budget.mission_per_tick_usd),
                 (
                     "budget.heartbeat_per_tick_usd",
                     budget.heartbeat_per_tick_usd,
@@ -1042,7 +1039,6 @@ api_version = "brassclaw.runtime/v1.not-a-number"
 [budget]
 user_daily_usd = 7.50
 project_daily_usd = 0.00
-mission_per_tick_usd = 0.25
 heartbeat_per_tick_usd = 0.05
 routine_lightweight_usd = 0.01
 routine_standard_usd = 0.20
@@ -1061,6 +1057,18 @@ overestimate_factor = 1.50
         assert_eq!(budget.warn_at, Some(0.60));
         assert_eq!(budget.pause_at, Some(0.85));
         assert_eq!(budget.overestimate_factor, Some(1.50));
+    }
+
+    #[test]
+    fn rejects_removed_budget_mission_per_tick_usd_field() {
+        let toml = "[budget]\nmission_per_tick_usd = 0.25\n";
+        let err = RebornConfigFile::parse_text(toml, &attributed()).expect_err(
+            "removed [budget].mission_per_tick_usd must be rejected by deny_unknown_fields",
+        );
+        assert!(
+            matches!(err, RebornConfigFileError::Toml { .. }),
+            "expected Toml parse error for [budget].mission_per_tick_usd, got: {err:?}"
+        );
     }
 
     #[test]

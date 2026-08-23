@@ -25,17 +25,15 @@ tokio::task_local! {
     /// Side-channel between `drive_inline_gate`'s `Cancelled+Authentication`
     /// fallback and `execute_code`'s exit. When the inline-await for an
     /// Authentication gate cancels (e.g. because the controller has no
-    /// `PerExecutionContext` registered — the typical case for mission
-    /// child threads), the fallback writes the original `ThreadOutcome::GatePaused`
-    /// here before raising the legacy `RuntimeError("execution paused by
-    /// gate ...")`. `execute_code` reads it on the way out and surfaces
-    /// it as `CodeExecutionResult::need_approval`, which the orchestrator
-    /// then converts to `ThreadOutcome::GatePaused` so the mission flow
-    /// (#3133 half-1) transitions the mission to Paused.
+    /// `PerExecutionContext` registered), the fallback writes the original
+    /// `ThreadOutcome::GatePaused` here before raising the legacy
+    /// `RuntimeError("execution paused by gate ...")`. `execute_code` reads
+    /// it on the way out and surfaces it as `CodeExecutionResult::need_approval`,
+    /// which the orchestrator then converts to `ThreadOutcome::GatePaused`.
     ///
-    /// Without this, Tier 1 mission child threads would silently swallow
-    /// the gate, the mission would stay Active, and the cron would keep
-    /// re-firing — the original #3133 ghost-fire pattern.
+    /// Without this, threads that hit an unresolvable auth gate would
+    /// silently swallow it instead of surfacing the pause — the original
+    /// #3133 swallow pattern.
     static PENDING_GATE_STASH:
         RefCell<Option<crate::runtime::messaging::ThreadOutcome>>;
 }
@@ -608,8 +606,9 @@ async fn execute_code_with_skills_inner(
     let (input_names, input_values) = build_context_inputs(thread, persisted_state);
 
     // Collect known tool names so NameLookup can return callable stubs.
-    // Without this, `mission_list()` in code raises NameError because Monty
-    // resolves the name before calling it, and Undefined → NameError.
+    // Without this, calling an unbound tool name in code raises NameError
+    // because Monty resolves the name before calling it, and Undefined →
+    // NameError.
     let active_leases = leases.active_for_thread(thread.id).await;
     let inventory = match effects
         .available_action_inventory(&active_leases, context)
@@ -695,9 +694,8 @@ async fn execute_code_with_skills_inner(
             // Authentication gate fired and surfaced as a
             // `RuntimeError("execution paused by gate ...")`, surface
             // it as `need_approval` so the orchestrator can produce
-            // `ThreadOutcome::GatePaused` and mission flows transition
-            // to Paused. Without this, Tier 1 mission threads silently
-            // swallow the gate (the original #3133 ghost-fire shape).
+            // `ThreadOutcome::GatePaused`. Without this, threads silently
+            // swallow the gate (the original #3133 swallow shape).
             let pending_gate = take_pending_gate_stash();
             let category = classify_runtime_error(&e.to_string());
             return Ok(CodeExecutionResult {
@@ -2191,11 +2189,11 @@ async fn drive_inline_gate(
         if let Some(outcome) = denial_outcome_for_resolution(&resolution) {
             // Cancelled+Authentication → unwind via the legacy
             // `RuntimeError("execution paused by gate ...")` so the
-            // outer orchestrator can produce `ThreadOutcome::GatePaused`
-            // and missions can transition to Paused. Cancelled here
-            // means the controller can't resolve the auth inline (no
-            // OAuth wiring) — the legacy unwind path is the right
-            // fallback. Denied / explicit user-cancel remain failures.
+            // outer orchestrator can produce `ThreadOutcome::GatePaused`.
+            // Cancelled here means the controller can't resolve the auth
+            // inline (no OAuth wiring) — the legacy unwind path is the
+            // right fallback. Denied / explicit user-cancel remain
+            // failures.
             if matches!(resolution, crate::gate::GateResolution::Cancelled)
                 && matches!(
                     gate.resume_kind,
@@ -2203,13 +2201,12 @@ async fn drive_inline_gate(
                 )
             {
                 // Stash the original gate so `execute_code`'s exit can
-                // surface it as `need_approval`. Without this, Tier 1
-                // mission child threads silently swallow the gate and
-                // the cron keeps re-firing the mission (#3133 ghost
-                // fire). Best-effort — if the task-local isn't in
-                // scope (theoretically impossible since we always run
-                // inside `execute_code_with_skills`'s scope, but
-                // defensive), `try_with` no-ops.
+                // surface it as `need_approval`. Without this, threads
+                // silently swallow the gate (#3133 swallow shape).
+                // Best-effort — if the task-local isn't in scope
+                // (theoretically impossible since we always run inside
+                // `execute_code_with_skills`'s scope, but defensive),
+                // `try_with` no-ops.
                 let _ = PENDING_GATE_STASH.try_with(|cell| {
                     *cell.borrow_mut() =
                         Some(crate::runtime::messaging::ThreadOutcome::GatePaused {
@@ -2535,12 +2532,8 @@ async fn resolve_tool_future(
             // when `bridge::resolve_inline_gates_for_credential` (the
             // OAuth-callback hook from #3133 half-2) delivers
             // `GateResolution::Approved` to the parked controller.
-            // (Mission-scoped resumes go through
-            // `bridge::resume_paused_missions_for_credential` — that's
-            // a separate path for background missions whose child
-            // threads were paused on the same gate.) In both
-            // inline-await cases the action retries inline and the
-            // script continues without unwinding.
+            // In both inline-await cases the action retries inline and
+            // the script continues without unwinding.
             if !matches!(
                 *resume_kind,
                 crate::gate::ResumeKind::Approval { .. }

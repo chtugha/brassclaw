@@ -3,7 +3,7 @@
 //! Replaces the Rust `ExecutionLoop::run()` with versioned Python code
 //! executed via Monty. The orchestrator is the "glue layer" between the
 //! LLM and tools — tool dispatch, output formatting, state management,
-//! truncation — all in Python, patchable by the self-improvement Mission.
+//! truncation — all in Python, patchable by the self-improvement validation loop.
 //!
 //! Host functions exposed to the orchestrator Python:
 //! - `__llm_complete__` — make an LLM call
@@ -4655,8 +4655,7 @@ mod tests {
 
     /// Regression for Copilot review on PR #2753 (commit 042c2ee7) —
     /// `Other`'s user-facing Display used to embed the raw `err_msg`.
-    /// Surfaces like `runtime/mission.rs::process_mission_outcome_and_notify`
-    /// render `format!("Mission failed: {error}")` directly, bypassing the
+    /// Surfaces that render `format!("{error}")` directly bypass the
     /// channel-edge sanitizer in `bridge::user_facing_errors`, so any
     /// unclassified Monty output would leak tracebacks / internal paths
     /// there. The generic user-facing text now reads "internal orchestrator
@@ -8430,34 +8429,6 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             ) -> Result<(), crate::types::error::EngineError> {
                 self.inner.revoke_lease(id, reason).await
             }
-            async fn save_mission(
-                &self,
-                m: &crate::types::mission::Mission,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.save_mission(m).await
-            }
-            async fn load_mission(
-                &self,
-                id: crate::types::mission::MissionId,
-            ) -> Result<Option<crate::types::mission::Mission>, crate::types::error::EngineError>
-            {
-                self.inner.load_mission(id).await
-            }
-            async fn list_missions(
-                &self,
-                p: crate::types::project::ProjectId,
-                u: &str,
-            ) -> Result<Vec<crate::types::mission::Mission>, crate::types::error::EngineError>
-            {
-                self.inner.list_missions(p, u).await
-            }
-            async fn update_mission_status(
-                &self,
-                id: crate::types::mission::MissionId,
-                s: crate::types::mission::MissionStatus,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.update_mission_status(id, s).await
-            }
         }
 
         let project_id = crate::types::project::ProjectId::new();
@@ -8693,34 +8664,6 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
                 &self,
                 _: crate::types::capability::LeaseId,
                 _: &str,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn save_mission(
-                &self,
-                _: &crate::types::mission::Mission,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn load_mission(
-                &self,
-                _: crate::types::mission::MissionId,
-            ) -> Result<Option<crate::types::mission::Mission>, crate::types::error::EngineError>
-            {
-                Ok(None)
-            }
-            async fn list_missions(
-                &self,
-                _: crate::types::project::ProjectId,
-                _: &str,
-            ) -> Result<Vec<crate::types::mission::Mission>, crate::types::error::EngineError>
-            {
-                Ok(vec![])
-            }
-            async fn update_mission_status(
-                &self,
-                _: crate::types::mission::MissionId,
-                _: crate::types::mission::MissionStatus,
             ) -> Result<(), crate::types::error::EngineError> {
                 Ok(())
             }

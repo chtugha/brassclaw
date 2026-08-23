@@ -1114,32 +1114,6 @@ mod tests {
             }
             Ok(())
         }
-        async fn save_mission(
-            &self,
-            _: &crate::types::mission::Mission,
-        ) -> Result<(), EngineError> {
-            Ok(())
-        }
-        async fn load_mission(
-            &self,
-            _: crate::types::mission::MissionId,
-        ) -> Result<Option<crate::types::mission::Mission>, EngineError> {
-            Ok(None)
-        }
-        async fn list_missions(
-            &self,
-            _: ProjectId,
-            _: &str,
-        ) -> Result<Vec<crate::types::mission::Mission>, EngineError> {
-            Ok(vec![])
-        }
-        async fn update_mission_status(
-            &self,
-            _: crate::types::mission::MissionId,
-            _: crate::types::mission::MissionStatus,
-        ) -> Result<(), EngineError> {
-            Ok(())
-        }
     }
 
     fn make_manager(llm: Arc<dyn LlmBackend>) -> ThreadManager {
@@ -1277,9 +1251,8 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_thread_with_title_persists_title() {
-        // Regression: mission-spawned threads pass `Some(mission.name)` so
-        // the sidebar shows the short label instead of the multi-paragraph
-        // meta-prompt that lives in `goal`.
+        // Regression: callers can pass `Some(title)` so the sidebar shows
+        // the short label instead of the multi-paragraph goal text.
         let mgr = make_manager(MockLlm::text("done"));
         let long_goal = "a".repeat(2000);
         let tid = mgr

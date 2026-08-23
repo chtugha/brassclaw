@@ -1101,7 +1101,6 @@ mod tests {
     use brassclaw_engine::types::error::EngineError;
     use brassclaw_engine::types::event::ThreadEvent;
     use brassclaw_engine::types::memory::DocId;
-    use brassclaw_engine::types::mission::{Mission, MissionId, MissionStatus};
     use brassclaw_engine::types::recipe::{
         RecipeStep, RecipeTrigger, RecipeValidation, ToolSkillParam,
     };
@@ -1228,26 +1227,6 @@ mod tests {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
         async fn revoke_lease(&self, _lease_id: LeaseId, _reason: &str) -> Result<(), EngineError> {
-            unimplemented!("InMemoryEngineStore is recipe-test-only scope")
-        }
-        async fn save_mission(&self, _mission: &Mission) -> Result<(), EngineError> {
-            unimplemented!("InMemoryEngineStore is recipe-test-only scope")
-        }
-        async fn load_mission(&self, _id: MissionId) -> Result<Option<Mission>, EngineError> {
-            unimplemented!("InMemoryEngineStore is recipe-test-only scope")
-        }
-        async fn list_missions(
-            &self,
-            _project_id: ProjectId,
-            _user_id: &str,
-        ) -> Result<Vec<Mission>, EngineError> {
-            unimplemented!("InMemoryEngineStore is recipe-test-only scope")
-        }
-        async fn update_mission_status(
-            &self,
-            _id: MissionId,
-            _status: MissionStatus,
-        ) -> Result<(), EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
     }

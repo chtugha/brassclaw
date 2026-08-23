@@ -247,8 +247,8 @@ pub trait GateController: Send + Sync {
 ///
 /// - **Post-resolution replay** (`execute_pending_gate_action`) — the
 ///   gate has already been resolved before this call site runs.
-/// - **Mission protected writes** — background paths with no
-///   originating user channel to surface a prompt on.
+/// - **Background protected writes** — paths with no originating user
+///   channel to surface a prompt on.
 /// - **Tests** that don't exercise the gate flow.
 ///
 /// Returning [`GateResolution::Cancelled`] surfaces as a typed denial

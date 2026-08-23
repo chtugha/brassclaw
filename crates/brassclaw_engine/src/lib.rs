@@ -41,6 +41,7 @@ pub mod workspace;
 
 // ── Re-exports: types ───────────────────────────────────────
 
+pub use brassclaw_common::ValidTimezone;
 pub use types::capability::{
     ActionDef, ActionDiscoveryMetadata, ActionDiscoverySummary, ActionInventory, Capability,
     CapabilityLease, CapabilityStatus, CapabilitySummary, CapabilitySummaryKind, EffectType,
@@ -50,7 +51,6 @@ pub use types::error::{CapabilityError, EngineError, StepError, ThreadError};
 pub use types::event::{EventId, EventKind, ThreadEvent};
 pub use types::memory::{DocId, DocType, MemoryDoc};
 pub use types::message::{MessageRole, ThreadMessage};
-pub use types::mission::{Mission, MissionCadence, MissionId, MissionStatus, ValidTimezone};
 pub use types::project::{Project, ProjectId, ProjectMetric};
 pub use types::provenance::Provenance;
 pub use types::step::{
@@ -96,12 +96,7 @@ pub use runtime::manager::{
     RUNTIME_CHECKPOINT_METADATA_KEY, ThreadManager,
 };
 pub use runtime::messaging::ThreadOutcome;
-pub use runtime::mission::{
-    BudgetGate, FireRateLimit, GateResolutionOutcome, MissionManager, MissionNotification,
-    MissionUpdate,
-};
 pub use runtime::tree::ThreadTree;
-pub use types::mission::MissionGateInfo;
 
 pub use types::conversation::{
     ConversationEntry, ConversationId, ConversationSurface, EntrySender,
@@ -138,7 +133,6 @@ pub(crate) mod tests {
     use crate::types::error::EngineError;
     use crate::types::event::ThreadEvent;
     use crate::types::memory::{DocId, MemoryDoc};
-    use crate::types::mission::{Mission, MissionId, MissionStatus};
     use crate::types::project::{Project, ProjectId};
     use crate::types::step::Step;
     use crate::types::thread::{Thread, ThreadId, ThreadState};
@@ -155,7 +149,6 @@ pub(crate) mod tests {
         conversations: RwLock<Vec<ConversationSurface>>,
         docs: RwLock<Vec<MemoryDoc>>,
         leases: RwLock<Vec<CapabilityLease>>,
-        missions: RwLock<Vec<Mission>>,
     }
 
     impl InMemoryStore {
@@ -168,7 +161,6 @@ pub(crate) mod tests {
                 conversations: RwLock::new(Vec::new()),
                 docs: RwLock::new(Vec::new()),
                 leases: RwLock::new(Vec::new()),
-                missions: RwLock::new(Vec::new()),
             }
         }
 
@@ -376,46 +368,6 @@ pub(crate) mod tests {
             }
             Ok(())
         }
-        async fn save_mission(&self, mission: &Mission) -> Result<(), EngineError> {
-            let mut missions = self.missions.write().await;
-            missions.retain(|m| m.id != mission.id);
-            missions.push(mission.clone());
-            Ok(())
-        }
-        async fn load_mission(&self, id: MissionId) -> Result<Option<Mission>, EngineError> {
-            Ok(self
-                .missions
-                .read()
-                .await
-                .iter()
-                .find(|m| m.id == id)
-                .cloned())
-        }
-        async fn list_missions(
-            &self,
-            project_id: ProjectId,
-            user_id: &str,
-        ) -> Result<Vec<Mission>, EngineError> {
-            Ok(self
-                .missions
-                .read()
-                .await
-                .iter()
-                .filter(|m| m.project_id == project_id && m.user_id == user_id)
-                .cloned()
-                .collect())
-        }
-        async fn update_mission_status(
-            &self,
-            id: MissionId,
-            status: MissionStatus,
-        ) -> Result<(), EngineError> {
-            let mut missions = self.missions.write().await;
-            if let Some(m) = missions.iter_mut().find(|m| m.id == id) {
-                m.status = status;
-            }
-            Ok(())
-        }
         async fn list_all_threads(
             &self,
             project_id: ProjectId,
@@ -426,19 +378,6 @@ pub(crate) mod tests {
                 .await
                 .iter()
                 .filter(|t| t.project_id == project_id)
-                .cloned()
-                .collect())
-        }
-        async fn list_all_missions(
-            &self,
-            project_id: ProjectId,
-        ) -> Result<Vec<Mission>, EngineError> {
-            Ok(self
-                .missions
-                .read()
-                .await
-                .iter()
-                .filter(|m| m.project_id == project_id)
                 .cloned()
                 .collect())
         }
@@ -515,26 +454,6 @@ pub(crate) mod tests {
             Ok(Vec::new())
         }
         async fn revoke_lease(&self, _lease_id: LeaseId, _reason: &str) -> Result<(), EngineError> {
-            Ok(())
-        }
-        async fn save_mission(&self, _mission: &Mission) -> Result<(), EngineError> {
-            Ok(())
-        }
-        async fn load_mission(&self, _id: MissionId) -> Result<Option<Mission>, EngineError> {
-            Ok(None)
-        }
-        async fn list_missions(
-            &self,
-            _project_id: ProjectId,
-            _user_id: &str,
-        ) -> Result<Vec<Mission>, EngineError> {
-            Ok(Vec::new())
-        }
-        async fn update_mission_status(
-            &self,
-            _id: MissionId,
-            _status: MissionStatus,
-        ) -> Result<(), EngineError> {
             Ok(())
         }
     }

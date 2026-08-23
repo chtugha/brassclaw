@@ -303,9 +303,6 @@ async fn write_config_to_db(
         if let Some(v) = b.project_daily_usd {
             rows.push(("budget.project_daily_usd".to_string(), v.to_string()));
         }
-        if let Some(v) = b.mission_per_tick_usd {
-            rows.push(("budget.mission_per_tick_usd".to_string(), v.to_string()));
-        }
         if let Some(v) = &b.default_tz {
             rows.push(("budget.default_tz".to_string(), v.clone()));
         }

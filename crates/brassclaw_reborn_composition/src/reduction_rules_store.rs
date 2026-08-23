@@ -373,40 +373,6 @@ mod tests {
                 "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
             )
         }
-        async fn save_mission(
-            &self,
-            _mission: &brassclaw_engine::types::mission::Mission,
-        ) -> Result<(), EngineError> {
-            panic!(
-                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
-            )
-        }
-        async fn load_mission(
-            &self,
-            _id: brassclaw_engine::types::mission::MissionId,
-        ) -> Result<Option<brassclaw_engine::types::mission::Mission>, EngineError> {
-            panic!(
-                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
-            )
-        }
-        async fn list_missions(
-            &self,
-            _project_id: ProjectId,
-            _user_id: &str,
-        ) -> Result<Vec<brassclaw_engine::types::mission::Mission>, EngineError> {
-            panic!(
-                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
-            )
-        }
-        async fn update_mission_status(
-            &self,
-            _id: brassclaw_engine::types::mission::MissionId,
-            _status: brassclaw_engine::types::mission::MissionStatus,
-        ) -> Result<(), EngineError> {
-            panic!(
-                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
-            )
-        }
     }
 
     /// Build a fresh test store pair: the typed backing struct for

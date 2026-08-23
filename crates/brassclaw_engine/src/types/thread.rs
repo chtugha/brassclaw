@@ -106,7 +106,7 @@ pub enum ThreadType {
     Foreground,
     /// Background research or sub-task.
     Research,
-    /// Long-running goal that spawns threads over time.
+    /// Dormant: reserved for future background-goal thread kinds.
     Mission,
 }
 
