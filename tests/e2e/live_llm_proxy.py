@@ -81,7 +81,7 @@ from aiohttp import web
 
 
 _TOOL_CALL_ID_RE = re.compile(r"call_[A-Za-z0-9_-]{8,}")
-# UUIDs (project_id, thread_id, mission_id, etc.) are dynamic per run.
+# UUIDs (project_id, thread_id, etc.) are dynamic per run.
 # Strip them so hashing is stable across recordings.
 _UUID_RE = re.compile(
     r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
@@ -107,7 +107,6 @@ def _strip_dynamic(text: str) -> str:
     text = _UUID_RE.sub("<uuid>", text)
     text = _TS_RE.sub("<ts>", text)
     text = _normalize_skills_block(text)
-    text = _normalize_mission_list_result(text)
     return text
 
 
@@ -128,7 +127,7 @@ def _normalize_skills_block(text: str) -> str:
     with a single `[SKILLS]` placeholder.
 
     Skills appear in two forms: prefixed with `### ` (system prompt
-    style) or bare (rendered into the user-facing mission goal). The
+    style) or bare (rendered into the user-facing goal). The
     full body of each skill varies as the registry adds/edits/removes
     entries between recordings. The local skill registry is also
     machine-specific, so even the *set* of active skill names cannot
@@ -164,23 +163,6 @@ def _normalize_skills_block(text: str) -> str:
     # prompt is engineered so the LLM's response does not branch on
     # which skills are present.
     return f"{head}\n[SKILLS]\n{tail}"
-
-
-_MISSION_LIST_RE = re.compile(r"\[\{'cadence':.*?\}\](?=\n|$|]|,)", re.DOTALL)
-
-
-def _normalize_mission_list_result(text: str) -> str:
-    """Collapse mission_list tool results to a stable shape.
-
-    The mission_list tool returns full mission rows with descriptions
-    that contain non-deterministic content (system seed missions can
-    be added/reordered between runs). For canonicalization we only
-    care about the names. With the deterministic sort applied in
-    `list_missions_with_shared`, a stable repr appears in the
-    fixture; this helper protects against past recordings whose
-    capture predates the sort.
-    """
-    return text  # No-op; sort in store_adapter.rs handles ordering now.
 
 
 def _canonicalize_request(body: dict[str, Any]) -> dict[str, Any]:

@@ -505,15 +505,6 @@
       addActivity('state', t('debug.activityChildSpawned'), timeNow(), null, body, { labelKey: 'debug.activityChildSpawned' });
     });
 
-    on('mission_thread_spawned', function (data) {
-      var body = [
-        data.mission_name ? 'mission: ' + data.mission_name : '',
-        data.mission_id ? 'mission_id: ' + data.mission_id : '',
-        data.thread_id ? 'thread_id: ' + data.thread_id : '',
-      ].filter(Boolean).join('\n');
-      addActivity('state', t('debug.activityMissionSpawned'), timeNow(), null, body, { labelKey: 'debug.activityMissionSpawned' });
-    });
-
     on('onboarding_state', function (data) {
       var body = [
         data.extension_name ? 'extension: ' + data.extension_name : '',

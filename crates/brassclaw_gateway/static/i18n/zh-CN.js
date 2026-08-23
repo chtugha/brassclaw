@@ -791,7 +791,6 @@ I18n.register('zh-CN', {
   'debug.activityPlanUpdate': '计划更新',
   'debug.activityThreadState': '线程状态',
   'debug.activityChildSpawned': '子线程',
-  'debug.activityMissionSpawned': '任务线程',
   'debug.activityImage': '图像',
   'debug.activityOnboarding': '引导',
   'debug.activitySuggestions': '建议',

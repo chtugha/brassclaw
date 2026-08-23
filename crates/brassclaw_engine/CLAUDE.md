@@ -14,7 +14,7 @@ See `docs/plans/2026-03-20-engine-v2-architecture.md` for the 8-phase roadmap.
 | **Step** | Unit of execution (one LLM call + its action executions) | Agentic loop iteration + tool calls |
 | **Capability** | Unit of effect (actions + knowledge + policies) | Tool + Skill + Hook + Extension |
 | **MemoryDoc** | Unit of durable knowledge (summaries, lessons, skills) | Workspace memory blobs |
-| **Project** | Unit of context (scopes memory, threads, missions) | Flat workspace namespace |
+| **Project** | Unit of context (scopes memory, threads) | Flat workspace namespace |
 
 ## Build & Test
 
@@ -39,7 +39,6 @@ src/
 │   ├── message.rs        # ThreadMessage, MessageRole
 │   ├── provenance.rs     # Provenance enum (User/System/ToolOutput/LlmGenerated/etc.)
 │   ├── conversation.rs   # ConversationSurface, ConversationEntry, EntrySender
-│   ├── mission.rs        # Mission, MissionId, MissionCadence, MissionStatus
 │   └── error.rs          # EngineError, ThreadError, StepError, CapabilityError
 ├── traits/               # External dependency abstractions (host implements these)
 │   ├── llm.rs            # LlmBackend trait
@@ -52,7 +51,6 @@ src/
 ├── runtime/              # Thread lifecycle management
 │   ├── manager.rs        # ThreadManager — spawn, stop, inject messages, join threads
 │   ├── conversation.rs   # ConversationManager — routes UI messages to threads
-│   ├── mission.rs        # MissionManager — long-running goals that spawn threads on cadence
 │   ├── tree.rs           # ThreadTree — parent-child relationships
 │   └── messaging.rs      # ThreadSignal, ThreadOutcome, signal channels
 ├── executor/             # Step execution
@@ -81,17 +79,17 @@ Created → Running → Waiting → Running (resume)
 
 Validated by `ThreadState::can_transition_to()`. Terminal states: `Done`, `Failed`.
 
-## Learning Missions
+## Learning Missions (REMOVED in v3 H.5 obsolescence cleanup)
 
-Five event-driven missions, firing through `fire_on_system_event()` (wired by `start_event_listener()`) on the system event each one subscribes to:
-
-1. **Error diagnosis** (`self-improvement`) — fires when a thread completes with trace issues. Diagnoses root cause and applies prompt overlays or orchestrator patches.
-2. **Skill repair** (`skill-repair`) — fires on `engine`/`thread_completed_with_skill_gap` when a completed thread used an active skill but the trace suggests the skill instructions were stale, incomplete, or missing verification. Applies the smallest safe versioned update to the implicated skill.
-3. **Skill extraction** (`skill-extraction`) — fires on `engine`/`thread_completed_with_learnings` when a thread succeeds with 5+ steps and 3+ tool actions. Extracts reusable skills with activation metadata, CodeAct code snippets, and domain tags. Output stored as `DocType::Skill` MemoryDoc.
-4. **Conversation insights** (`conversation-insights`) — fires on `engine`/`conversation_insights_due` (every 5 completed threads in a project). Extracts user preferences, domain knowledge, and workflow patterns.
-5. **Expected behavior** (`expected-behavior`) — fires on `user_feedback`/`expected_behavior` (a user-reported expectation gap), **not** thread completion. Investigates the gap and applies fixes.
-
-`MissionManager::ensure_learning_missions()` idempotently *bootstraps* (registers) all five at project setup — it does not fire them.
+The v1 learning-missions system (`MissionManager`, `fire_on_system_event()`,
+`start_event_listener()`, `ensure_learning_missions()`, and the five event-driven
+missions — `self-improvement`, `skill-repair`, `skill-extraction`,
+`conversation-insights`, `expected-behavior`) plus the `Mission`/`MissionId`/
+`MissionCadence`/`MissionStatus` types were dormant v1 routines-reborn code that
+was never live-active. They were deleted in the v3 H.5 obsolescence cleanup (engine
+mission system in O2.2; `brassclaw_host_api::MissionId` in O2.3). Knowledge
+extraction is now handled by the v3 recipe/skill/tool/validation system (Phases
+H.6+). `ThreadType::Mission` is retained as dormant API.
 
 ## Data Retention: Never Delete LLM Output
 

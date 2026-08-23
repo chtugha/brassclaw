@@ -6,7 +6,7 @@ This document describes the BrassClaw Engine v2 architecture for new contributor
 
 BrassClaw Engine v2 replaces ~10 fragmented abstractions (Session, Job, Routine, Channel, Tool, Skill, Hook, Observer, Extension, LoopDelegate) with a unified model built on 5 primitives. The engine lives in `crates/brassclaw_engine/` as a standalone crate with no dependency on the main `brassclaw` crate.
 
-The key architectural innovation: **the execution loop is Python code running inside the Monty interpreter, not Rust**. Rust provides the infrastructure (LLM calls, tool execution, safety, persistence). Python provides the orchestration (tool dispatch, output formatting, state management). This makes the glue layer self-modifiable at runtime by the self-improvement Mission.
+The key architectural innovation: **the execution loop is Python code running inside the Monty interpreter, not Rust**. Rust provides the infrastructure (LLM calls, tool execution, safety, persistence). Python provides the orchestration (tool dispatch, output formatting, state management). This makes the glue layer self-modifiable at runtime by the self-improvement loop (the v1 "self-improvement Mission" was removed in the v3 H.5 obsolescence cleanup; self-improvement is now driven by the v3 recipe/skill/tool/validation system, Phases H.6+).
 
 ## Five Primitives
 
@@ -16,7 +16,7 @@ The key architectural innovation: **the execution loop is Python code running in
 | **Step** | Unit of execution (one LLM call + its action executions) | Agentic loop iteration + tool calls |
 | **Capability** | Unit of effect (actions + knowledge + policies) | Tool + Skill + Hook + Extension |
 | **MemoryDoc** | Unit of durable knowledge (summaries, lessons, skills) | Workspace memory blobs |
-| **Project** | Unit of context (scopes memory, threads, missions) | Flat workspace namespace |
+| **Project** | Unit of context (scopes memory, threads) | Flat workspace namespace |
 
 ## Execution Model
 
@@ -141,7 +141,11 @@ For trace debugging set `BRASSCLAW_RECORD_TRACE=1`. Engine v2 reuses the host cr
 | `Spec` | Missing capability request | Self-improvement mission |
 | `Note` | Working memory / scratch | Orchestrator, prompt overlays |
 
-### Learning Missions (replaced Reflection)
+> **Note:** The "Produced By" mission references above (`Conversation insights mission`, `Self-improvement mission`, `Skill extraction mission`) refer to the v1 learning-missions system, which was REMOVED in the v3 H.5 obsolescence cleanup (O2.2/O2.3). These MemoryDoc types are now produced by the v3 recipe/skill/tool/validation system (Phases H.6+) or manually.
+
+### Learning Missions (replaced Reflection) — REMOVED in v3 H.5 obsolescence cleanup
+
+> **Removed:** The entire v1 learning-missions system (`MissionManager`, `fire_on_system_event()`, `ensure_learning_missions()`, the `Mission`/`MissionId`/`MissionCadence`/`MissionStatus` types, and the `self-improvement`/`skill-repair`/`skill-extraction`/`conversation-insights`/`expected-behavior` missions) was dormant v1 routines-reborn code, never live-active, and was deleted in the v3 H.5 obsolescence cleanup (engine mission system in O2.2; `brassclaw_host_api::MissionId` in O2.3). Knowledge extraction is now handled by the v3 recipe/skill/tool/validation system (Phases H.6+). `ThreadType::Mission` is retained as dormant API. The text below is retained as historical design context only.
 
 Instead of a separate reflection pipeline, knowledge extraction is handled by four event-driven **learning missions** that fire automatically after thread completion:
 
@@ -254,7 +258,9 @@ At engine startup (`init_engine()`), v1 SKILL.md files are converted to v2 Memor
 - Code snippets empty (v1 skills are prompt-only)
 - Content hash checked for idempotency (unchanged skills are skipped)
 
-## Missions
+## Missions — REMOVED in v3 H.5 obsolescence cleanup
+
+> **Removed:** The entire v1 Missions system (`Mission`, `MissionManager`, the cron/event/manual/webhook firing machinery, and the built-in learning missions) was dormant v1 routines-reborn code, never live-active, and was deleted in the v3 H.5 obsolescence cleanup (engine mission system in O2.2; `brassclaw_host_api::MissionId` in O2.3). `ThreadType::Mission` is retained as dormant API. The text below is retained as historical design context only; the v3 recipe/skill/tool/validation system (Phases H.6+) replaces this functionality.
 
 Missions are long-running goals that spawn threads over time. They replace v1 Routines and the old reflection pipeline.
 
@@ -429,7 +435,7 @@ Paginate with `cursor` param when `response_metadata.next_cursor` is non-empty.
 
 ~350 tokens of knowledge covers 4+ API endpoints. The LLM generalizes the pattern to other Slack endpoints from training data. Credentials are declared in frontmatter and injected automatically — the LLM never sees token values.
 
-Skills can also be **auto-extracted** by the skill-extraction mission from successful multi-step threads, complete with activation keywords and CodeAct code snippets learned from actual usage.
+Skills can also be **auto-extracted** from successful multi-step threads, complete with activation keywords and CodeAct code snippets learned from actual usage. (The v1 "skill-extraction mission" that performed this was removed in the v3 H.5 obsolescence cleanup; extraction is now driven by the v3 recipe/skill/tool/validation system, Phases H.6+.)
 
 ### Classification of v1 Built-in Tools
 

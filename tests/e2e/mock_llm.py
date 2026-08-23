@@ -613,7 +613,6 @@ TOOL_CALL_PATTERNS = [
                 {"title": "Implement changes", "status": "pending"},
                 {"title": "Run verification", "status": "pending"},
             ],
-            "mission_id": "00000000-0000-0000-0000-000000000001",
         },
     ),
     # Plan mode: status → calls plan_update to refresh UI
@@ -629,7 +628,6 @@ TOOL_CALL_PATTERNS = [
                 {"title": "Implement changes", "status": "in_progress"},
                 {"title": "Run verification", "status": "pending"},
             ],
-            "mission_id": "00000000-0000-0000-0000-000000000001",
         },
     ),
     # ---- Frontend customization via chat (PR #1725 widget system) ----
@@ -2473,13 +2471,12 @@ async def mcp_oauth_token(request: web.Request) -> web.Response:
     })
 
 
-# ── Gmail API mocks (#3133 / #3166) ──────────────────────────────────────
+# ── Gmail API mocks ───────────────────────────────────────────────────────
 #
-# Per-app counters that the e2e test for the mission auto-resume path
-# inspects to confirm the gmail WASM tool actually fired against this
-# mock (rather than hitting the real Gmail API or silently no-oping).
-# Stored in `app["gmail_state"]` so each mock_llm instance owns its own
-# counters.
+# Per-app counters that the gmail/oauth e2e tests inspect to confirm the
+# gmail WASM tool actually fired against this mock (rather than hitting the
+# real Gmail API or silently no-oping). Stored in `app["gmail_state"]` so
+# each mock_llm instance owns its own counters.
 
 
 def _new_gmail_state() -> dict:

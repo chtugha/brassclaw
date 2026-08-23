@@ -765,7 +765,6 @@ I18n.register('ko', {
   'debug.activityPlanUpdate': '계획 업데이트',
   'debug.activityThreadState': '스레드 상태',
   'debug.activityChildSpawned': '자식 스레드',
-  'debug.activityMissionSpawned': '미션 스레드',
   'debug.activityImage': '이미지',
   'debug.activityOnboarding': '온보딩',
   'debug.activitySuggestions': '제안',

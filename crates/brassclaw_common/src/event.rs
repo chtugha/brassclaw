@@ -510,13 +510,6 @@ pub enum AppEvent {
         child_thread_id: String,
     },
 
-    /// A mission spawned a new thread.
-    #[serde(rename = "mission_thread_spawned")]
-    MissionThreadSpawned {
-        thread_id: String,
-        mission_name: String,
-    },
-
     /// Plan progress update — full checklist snapshot.
     ///
     /// Emitted when a plan is created, approved, or when any step changes
@@ -745,7 +738,6 @@ impl AppEvent {
             Self::ThreadStateChanged { .. } => "thread_state_changed",
             Self::ChildThreadSpawned { .. } => "child_thread_spawned",
             Self::ChildThreadCompleted { .. } => "child_thread_completed",
-            Self::MissionThreadSpawned { .. } => "mission_thread_spawned",
             Self::PlanUpdate { .. } => "plan_update",
             Self::CodeExecuted { .. } => "code_executed",
             Self::Warning { .. } => "warning",
@@ -950,10 +942,6 @@ mod tests {
                 parent_thread_id: String::new(),
                 child_thread_id: String::new(),
                 goal: String::new(),
-            },
-            AppEvent::MissionThreadSpawned {
-                thread_id: String::new(),
-                mission_name: String::new(),
             },
             AppEvent::PlanUpdate {
                 plan_id: String::new(),

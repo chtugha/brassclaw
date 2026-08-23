@@ -10,12 +10,12 @@
 ## What This Crate Owns
 
 - The unified thread-capability-CodeAct execution engine (engine v2), which replaces ~10 legacy abstractions with five primitives — Thread, Step, Capability, MemoryDoc, Project. Currently:
-- Core data types (`types`, no async/no I/O): `Thread`/`Step`/`Capability`/`MemoryDoc`/`Project` and their IDs, `ThreadEvent`/`EventKind`, `ThreadMessage`/`MessageRole`, `Mission`/`MissionCadence`/`MissionStatus`, `Provenance`, conversation surfaces, and the `EngineError`/`ThreadError`/`StepError`/`CapabilityError` family.
+- Core data types (`types`, no async/no I/O): `Thread`/`Step`/`Capability`/`MemoryDoc`/`Project` and their IDs, `ThreadEvent`/`EventKind`, `ThreadMessage`/`MessageRole`, `Provenance`, conversation surfaces, and the `EngineError`/`ThreadError`/`StepError`/`CapabilityError` family.
 - External-dependency traits the host implements via bridge adapters (`traits`): `LlmBackend` (over `LlmProvider`), `Store` (over the `Database` backends), `EffectExecutor` (over `ToolRegistry` + `SafetyLayer`), and `WorkspaceReader`.
 - Capability management (`capability`): `CapabilityRegistry`, `LeaseManager`, `LeasePlanner`/`CapabilityGrantPlan`, and the deterministic `PolicyEngine`/`PolicyDecision` (`Deny > RequireApproval > Allow`, with provenance taint).
 - Gate pipeline (`gate`): `GatePipeline`, `LeaseGate`, `ExecutionGate`/`GateController`/`GateDecision`/`GateResolution`/`ResumeKind`, and tool-tier classification (`ToolTier`, `classify_tool_tier`).
 - Step execution (`executor`): `ExecutionLoop` (replaces the legacy agentic loop), Tier-0 structured tool calls (`structured`) and Tier-1 CodeAct via Monty (`scripting`, `orchestrator`), context/prompt building (`context`, `thread_context`, `prompt`), and execution trace recording (`trace`).
-- Thread lifecycle runtime (`runtime`): `ThreadManager`, `ConversationManager`, `MissionManager` (learning missions), `ThreadTree`, signal/`ThreadOutcome` messaging, lease refresh, and internal writes.
+- Thread lifecycle runtime (`runtime`): `ThreadManager`, `ConversationManager`, `ThreadTree`, signal/`ThreadOutcome` messaging, lease refresh, and internal writes.
 - Memory document system (`memory`): `MemoryStore`, `RetrievalEngine`, `SkillTracker`.
 - Workspace mounts (`workspace`): `MountBackend`, `ProjectMounts`/`WorkspaceMounts`, `ProjectMountFactory`.
 - `ReliabilityTracker` (per-action EMA success/latency) and the prompt templates in `prompts/*.md` (loaded via `include_str!`).
@@ -40,5 +40,5 @@
 - Thread state transitions go through `ThreadState::can_transition_to()`; terminal states are `Done` and `Failed`.
 - Tier-1 CodeAct follows the RLM pattern: context-as-variables (not attention input), recursive `llm_query()`, and compact output metadata between steps. Execution is bounded (30s / 64MB / 1M allocations) and wrapped in `catch_unwind` for Monty panic safety.
 - Installed-but-unauthed provider tools are direct-callable: the auth preflight raises an `Authentication` gate at execute time and the OAuth callback resumes the parked VM. Tools needing user-driven setup (`NeedsSetup`, `Inactive`, `AvailableNotInstalled`) are surfaced under `Activatable Integrations`; the model cannot enable them itself.
-- `MissionManager::ensure_learning_missions()` idempotently *bootstraps* five learning missions at project setup — `self-improvement`, `skill-repair`, `skill-extraction`, `conversation-insights`, and `expected-behavior` — it registers them, it does not fire them. Firing is event-driven through `fire_on_system_event()` (wired by `start_event_listener()`): the first four key off engine events (e.g. `thread_completed_with_skill_gap` / `thread_completed_with_learnings` / `conversation_insights_due`), while `expected-behavior` keys off a `user_feedback` / `expected_behavior` event, not thread completion.
+- The v1 learning-missions system (`MissionManager`, `ensure_learning_missions()`, `fire_on_system_event()`, `start_event_listener()`) and `Mission`/`MissionId`/`MissionCadence`/`MissionStatus` types were deleted in the v3 H.5 obsolescence cleanup (O2.2/O2.3) — dormant v1 routines-reborn code, never live-active. Knowledge extraction is now handled by the v3 recipe/skill/tool/validation system (Phases H.6+). `ThreadType::Mission` is retained as dormant API.
 - Keep multi-line prompt templates in `prompts/*.md`, never inline as Rust string constants.

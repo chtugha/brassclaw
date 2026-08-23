@@ -792,7 +792,6 @@ I18n.register('en', {
   'debug.activityPlanUpdate': 'Plan Update',
   'debug.activityThreadState': 'Thread State',
   'debug.activityChildSpawned': 'Child Thread',
-  'debug.activityMissionSpawned': 'Mission Thread',
   'debug.activityImage': 'Image',
   'debug.activityOnboarding': 'Onboarding',
   'debug.activitySuggestions': 'Suggestions',

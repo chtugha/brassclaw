@@ -399,7 +399,7 @@ v2 engine with Python orchestrator (Monty VM).
 - `SkillSelector` — deterministic skill scoring and injection
 - `SkillTracker` — confidence tracking with rollback
 - `ThreadManager` — spawn, stop, join threads
-- `MissionManager` — learning missions lifecycle
+- `MissionManager` — learning missions lifecycle (REMOVED in v3 H.5 obsolescence cleanup; dormant v1 code deleted in O2.2/O2.3)
 
 ---
 
