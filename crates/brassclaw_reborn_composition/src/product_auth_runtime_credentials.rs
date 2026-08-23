@@ -196,7 +196,6 @@ fn account_visible_from_runtime_scope(
         && account_resource.user_id == runtime_resource.user_id
         && account_resource.agent_id == runtime_resource.agent_id
         && account_resource.project_id == runtime_resource.project_id
-        && account_resource.mission_id == runtime_resource.mission_id
         && account_resource.thread_id == runtime_resource.thread_id
         && account.scope.session_id == runtime_scope.session_id
 }
@@ -246,7 +245,6 @@ fn runtime_account_owner_scope(
     scope: &brassclaw_host_api::ResourceScope,
 ) -> brassclaw_host_api::ResourceScope {
     let mut owner = scope.clone();
-    owner.mission_id = None;
     owner.thread_id = None;
     owner
 }
@@ -267,8 +265,8 @@ mod tests {
         InMemoryAuthProductServices, NewCredentialAccount,
     };
     use brassclaw_host_api::{
-        ExtensionId, InvocationId, MissionId, ResourceScope, RuntimeCredentialAccountProviderId,
-        SecretHandle, ThreadId, UserId,
+        ExtensionId, InvocationId, ResourceScope, RuntimeCredentialAccountProviderId, SecretHandle,
+        ThreadId, UserId,
     };
 
     use super::*;
@@ -404,12 +402,10 @@ mod tests {
     #[tokio::test]
     async fn resolver_matches_reusable_setup_account_from_new_mission() {
         let accounts = Arc::new(InMemoryAuthProductServices::new());
-        let mut setup_scope =
+        let setup_scope =
             ResourceScope::local_default(UserId::new("alice").unwrap(), InvocationId::new())
                 .unwrap();
-        setup_scope.mission_id = Some(MissionId::new("mission-auth-1").unwrap());
         let mut runtime_scope = setup_scope.clone();
-        runtime_scope.mission_id = Some(MissionId::new("mission-auth-2").unwrap());
         runtime_scope.invocation_id = InvocationId::new();
         let access_secret = SecretHandle::new("github_manual_access").unwrap();
         accounts

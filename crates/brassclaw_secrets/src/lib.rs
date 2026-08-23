@@ -22,8 +22,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
 use brassclaw_host_api::{
-    AgentId, CapabilityId, ExtensionId, InvocationId, MissionId, NetworkMethod, ProjectId,
-    ResourceScope, SecretHandle, TenantId, ThreadId, Timestamp, UserId,
+    AgentId, CapabilityId, ExtensionId, InvocationId, NetworkMethod, ProjectId, ResourceScope,
+    SecretHandle, TenantId, ThreadId, Timestamp, UserId,
 };
 use chrono::{Duration, Utc};
 pub use crypto::{
@@ -1045,7 +1045,6 @@ struct SecretLeaseKey {
     user_id: UserId,
     agent_id: Option<AgentId>,
     project_id: Option<ProjectId>,
-    mission_id: Option<MissionId>,
     thread_id: Option<ThreadId>,
     invocation_id: InvocationId,
     lease_id: SecretLeaseId,
@@ -1058,7 +1057,6 @@ impl SecretLeaseKey {
             user_id: scope.user_id.clone(),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: scope.mission_id.clone(),
             thread_id: scope.thread_id.clone(),
             invocation_id: scope.invocation_id,
             lease_id,
@@ -1070,7 +1068,6 @@ impl SecretLeaseKey {
             && self.user_id == scope.user_id
             && self.agent_id == scope.agent_id
             && self.project_id == scope.project_id
-            && self.mission_id == scope.mission_id
             && self.thread_id == scope.thread_id
             && self.invocation_id == scope.invocation_id
     }
@@ -1461,8 +1458,8 @@ mod tests {
     use std::sync::Arc;
 
     use brassclaw_host_api::{
-        AgentId, CapabilityId, ExtensionId, InvocationId, MissionId, NetworkMethod, ProjectId,
-        ResourceScope, SecretHandle, TenantId, ThreadId, UserId,
+        AgentId, CapabilityId, ExtensionId, InvocationId, NetworkMethod, ProjectId, ResourceScope,
+        SecretHandle, TenantId, ThreadId, UserId,
     };
     use chrono::Utc;
     use secrecy::ExposeSecret;
@@ -1801,7 +1798,6 @@ mod tests {
         let broker = InMemoryCredentialBroker::new();
         let account_scope = sample_scope("tenant-a", "user-a");
         let request_scope = ResourceScope {
-            mission_id: Some(MissionId::new("mission-b").unwrap()),
             thread_id: Some(ThreadId::new("thread-b").unwrap()),
             invocation_id: InvocationId::new(),
             ..account_scope.clone()
@@ -2109,7 +2105,6 @@ mod tests {
             user_id: UserId::new(user).unwrap(),
             agent_id: None,
             project_id: Some(ProjectId::new("project-a").unwrap()),
-            mission_id: Some(MissionId::new("mission-a").unwrap()),
             thread_id: Some(ThreadId::new("thread-a").unwrap()),
             invocation_id: InvocationId::new(),
         }

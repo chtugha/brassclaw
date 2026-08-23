@@ -570,7 +570,6 @@ where
             agent_id,
             project_id: record.child_scope.project_id.clone(),
             owner_user_id: event.owner_user_id.clone(),
-            mission_id: None,
         };
         let final_text = self
             .thread_service
@@ -614,7 +613,6 @@ where
             agent_id,
             project_id: record.parent_run_context.scope.project_id.clone(),
             owner_user_id: event.owner_user_id.clone(),
-            mission_id: None,
         };
         self.thread_service
             .update_tool_result_reference(UpdateToolResultReferenceRequest {
@@ -975,7 +973,6 @@ fn thread_scope_from_turn_scope(
         agent_id,
         project_id: scope.project_id.clone(),
         owner_user_id: event.owner_user_id.clone(),
-        mission_id: None,
     })
 }
 
@@ -2004,7 +2001,6 @@ mod tests {
                     agent_id: AgentId::new("agent1").unwrap(),
                     project_id: None,
                     owner_user_id: Some(UserId::new("owner-b").unwrap()),
-                    mission_id: None,
                 },
                 thread_id: Some(thread_id),
                 created_by_actor_id: "test".to_string(),
@@ -2244,7 +2240,6 @@ mod tests {
                     agent_id: child_scope.agent_id.clone().unwrap(),
                     project_id: None,
                     owner_user_id: None,
-                    mission_id: None,
                 },
                 thread_id: Some(thread_id),
                 created_by_actor_id: "test".to_string(),
@@ -2286,7 +2281,6 @@ mod tests {
                     agent_id: child_scope.agent_id.clone().unwrap(),
                     project_id: None,
                     owner_user_id: Some(owner.clone()),
-                    mission_id: None,
                 },
                 thread_id: Some(thread_id),
                 created_by_actor_id: "test".to_string(),
@@ -2390,7 +2384,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_scope = TurnScope::new(
             tenant.clone(),
@@ -2403,7 +2396,6 @@ mod tests {
             agent_id: agent,
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_run_id = TurnRunId::new();
@@ -2584,7 +2576,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_scope = TurnScope::new(
             tenant.clone(),
@@ -2597,7 +2588,6 @@ mod tests {
             agent_id: agent,
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_run_id = TurnRunId::new();
@@ -2725,7 +2715,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_scope = TurnScope::new(
             tenant.clone(),
@@ -2738,7 +2727,6 @@ mod tests {
             agent_id: agent,
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_run_id = TurnRunId::new();
@@ -2827,7 +2815,6 @@ mod tests {
                     agent_id: parent_thread_scope.agent_id.clone(),
                     project_id: None,
                     owner_user_id: Some(owner.clone()),
-                    mission_id: None,
                 },
                 &child_scope.thread_id,
                 child_reply.message_id,
@@ -2903,7 +2890,6 @@ mod tests {
             agent_id: agent,
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_run_id = TurnRunId::new();
@@ -3046,7 +3032,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_scope = TurnScope::new(
             tenant,
@@ -3059,7 +3044,6 @@ mod tests {
             agent_id: agent,
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_run_id = TurnRunId::new();
@@ -3288,7 +3272,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_scope = TurnScope::new(
             tenant.clone(),
@@ -3301,7 +3284,6 @@ mod tests {
             agent_id: agent,
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_run_id = TurnRunId::new();
@@ -3446,7 +3428,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_a_scope = TurnScope::new(
             tenant.clone(),
@@ -3465,7 +3446,6 @@ mod tests {
             agent_id: parent_thread_scope.agent_id.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_a_run_id = TurnRunId::new();
@@ -3643,7 +3623,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_a_scope = TurnScope::new(
             tenant.clone(),
@@ -3662,7 +3641,6 @@ mod tests {
             agent_id: parent_thread_scope.agent_id.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_a_run_id = TurnRunId::new();
@@ -3865,7 +3843,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_a_scope = TurnScope::new(
             tenant.clone(),
@@ -3884,7 +3861,6 @@ mod tests {
             agent_id: parent_thread_scope.agent_id.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_a_run_id = TurnRunId::new();
@@ -4101,7 +4077,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_a_scope = TurnScope::new(
             tenant.clone(),
@@ -4120,7 +4095,6 @@ mod tests {
             agent_id: parent_thread_scope.agent_id.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_a_run_id = TurnRunId::new();
@@ -4317,7 +4291,6 @@ mod tests {
             agent_id: agent.clone(),
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let child_scope = TurnScope::new(
             tenant.clone(),
@@ -4330,7 +4303,6 @@ mod tests {
             agent_id: agent,
             project_id: None,
             owner_user_id: Some(owner.clone()),
-            mission_id: None,
         };
         let parent_run_id = TurnRunId::new();
         let child_run_id = TurnRunId::new();

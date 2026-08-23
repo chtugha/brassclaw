@@ -521,7 +521,6 @@ async fn filesystem_session_thread_service_isolates_two_tenants_with_same_user_p
         agent_id: AgentId::new("agent-x").unwrap(),
         project_id: Some(ProjectId::new("project-1").unwrap()),
         owner_user_id: Some(UserId::new("alice").unwrap()),
-        mission_id: None,
     };
     let scope_b = ThreadScope {
         tenant_id: TenantId::new("tenant-b").unwrap(),
@@ -1070,7 +1069,6 @@ fn scope(label: &str) -> ThreadScope {
         agent_id: AgentId::new(format!("agent-{label}")).unwrap(),
         project_id: Some(ProjectId::new(format!("project-{label}")).unwrap()),
         owner_user_id: Some(UserId::new(format!("user-{label}")).unwrap()),
-        mission_id: None,
     }
 }
 

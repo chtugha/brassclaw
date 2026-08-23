@@ -8,7 +8,7 @@
 //! # Field exposure
 //!
 //! `event` is the full [`RuntimeEvent`], including its `ResourceScope`
-//! (tenant_id, user_id, agent_id, project_id, mission_id, thread_id,
+//! (tenant_id, user_id, agent_id, project_id, thread_id,
 //! invocation_id). For Installed-tier hooks this is more identifying
 //! information than the trust class warrants. The longer-term plan is to
 //! hand Installed hooks a narrowed `HookObservableEvent` projection that

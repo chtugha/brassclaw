@@ -495,7 +495,6 @@ fn context_for_user_with_invocation(user: &str, invocation_id: InvocationId) -> 
     context.user_id = resource_scope.user_id.clone();
     context.agent_id = resource_scope.agent_id.clone();
     context.project_id = resource_scope.project_id.clone();
-    context.mission_id = resource_scope.mission_id.clone();
     context.thread_id = resource_scope.thread_id.clone();
     context.resource_scope = resource_scope;
     context.validate().unwrap();

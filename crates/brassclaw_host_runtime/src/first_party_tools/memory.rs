@@ -128,7 +128,6 @@ impl PromptWriteSafetyEventSink for AuditPromptWriteSafetyEventSink {
             user_id: resource_scope.user_id,
             agent_id: resource_scope.agent_id,
             project_id: resource_scope.project_id,
-            mission_id: resource_scope.mission_id,
             thread_id: resource_scope.thread_id,
             invocation_id: resource_scope.invocation_id,
             process_id: None,

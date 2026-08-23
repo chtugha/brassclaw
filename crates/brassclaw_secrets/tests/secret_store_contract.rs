@@ -1,6 +1,5 @@
 use brassclaw_host_api::{
-    AgentId, InvocationId, MissionId, ProjectId, ResourceScope, SecretHandle, TenantId, ThreadId,
-    UserId,
+    AgentId, InvocationId, ProjectId, ResourceScope, SecretHandle, TenantId, ThreadId, UserId,
 };
 use brassclaw_secrets::{InMemorySecretStore, SecretLeaseStatus, SecretMaterial, SecretStore};
 use secrecy::ExposeSecret;
@@ -342,7 +341,6 @@ fn sample_scope(tenant: &str, user: &str) -> ResourceScope {
         user_id: UserId::new(user).unwrap(),
         agent_id: None,
         project_id: Some(ProjectId::new("project-a").unwrap()),
-        mission_id: Some(MissionId::new("mission-a").unwrap()),
         thread_id: Some(ThreadId::new("thread-a").unwrap()),
         invocation_id: InvocationId::new(),
     }

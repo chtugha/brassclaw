@@ -839,7 +839,6 @@ pub(super) fn scope_from_authenticated_caller_parts(
             user_id: caller.user_id.clone(),
             agent_id: caller.agent_id.clone(),
             project_id: caller.project_id.clone(),
-            mission_id: None,
             thread_id,
             invocation_id,
         },
@@ -962,7 +961,6 @@ pub(super) fn scope_from_callback_query(
             user_id,
             agent_id,
             project_id,
-            mission_id: None,
             thread_id,
             invocation_id,
         },
@@ -1397,7 +1395,6 @@ mod tests {
             user_id: UserId::new("user-alpha").expect("user"),
             agent_id: None,
             project_id: None,
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }

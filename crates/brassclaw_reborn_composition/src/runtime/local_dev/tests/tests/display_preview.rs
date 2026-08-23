@@ -19,7 +19,6 @@ async fn capability_io_writes_display_preview_to_durable_history() {
         agent_id: run_context.scope.agent_id.clone().expect("agent id"),
         project_id: run_context.scope.project_id.clone(),
         owner_user_id: None,
-        mission_id: None,
     };
     let thread_service = Arc::new(InMemorySessionThreadService::default());
     thread_service

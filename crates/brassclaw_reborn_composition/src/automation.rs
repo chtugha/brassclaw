@@ -243,7 +243,6 @@ fn trigger_execution_context(
         user_id: caller.user_id.clone(),
         agent_id: Some(caller.agent_id.clone()),
         project_id: caller.project_id.clone(),
-        mission_id: None,
         thread_id: None,
         invocation_id,
     };
@@ -273,7 +272,6 @@ fn trigger_execution_context(
         user_id: caller.user_id.clone(),
         agent_id: Some(caller.agent_id.clone()),
         project_id: caller.project_id.clone(),
-        mission_id: None,
         thread_id: None,
         extension_id,
         runtime: RuntimeKind::FirstParty,

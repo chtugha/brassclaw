@@ -1,4 +1,4 @@
-use brassclaw_host_api::{AgentId, MissionId, ProjectId, TenantId, ThreadId, UserId};
+use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId};
 use serde::{Deserialize, Serialize};
 
 use crate::capability_display_preview::CapabilityDisplayPreviewEnvelope;
@@ -16,8 +16,6 @@ pub struct ThreadScope {
     pub project_id: Option<ProjectId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_user_id: Option<UserId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mission_id: Option<MissionId>,
 }
 
 impl ThreadScope {
@@ -35,7 +33,6 @@ impl ThreadScope {
             }),
             agent_id: Some(self.agent_id.clone()),
             project_id: self.project_id.clone(),
-            mission_id: self.mission_id.clone(),
             thread_id: None,
             invocation_id: brassclaw_host_api::InvocationId::new(),
         }

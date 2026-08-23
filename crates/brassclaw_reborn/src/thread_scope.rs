@@ -61,7 +61,6 @@ mod tests {
             agent_id: AgentId::new("agent").expect("agent"),
             project_id: None,
             owner_user_id: owner.map(|o| UserId::new(o).expect("user")),
-            mission_id: None,
         }
     }
 

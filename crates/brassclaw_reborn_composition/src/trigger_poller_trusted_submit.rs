@@ -284,7 +284,6 @@ async fn record_trigger_prompt(
         agent_id,
         project_id: resolution.turn_scope.project_id.clone(),
         owner_user_id: Some(resolution.actor.user_id.clone()),
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {
@@ -525,7 +524,6 @@ mod tests {
             agent_id: agent_id.clone(),
             project_id: Some(project_id),
             owner_user_id: Some(creator_user_id),
-            mission_id: None,
         };
         let materializer = ConversationContentRefMaterializer::new(
             PanicBindingService,
@@ -1540,7 +1538,6 @@ mod tests {
                     agent_id: resolution.turn_scope.agent_id.clone().expect("agent id"),
                     project_id: None,
                     owner_user_id: Some(resolution.actor.user_id.clone()),
-                    mission_id: None,
                 },
                 thread_id,
             })
@@ -1649,7 +1646,6 @@ mod tests {
             agent_id,
             project_id: Some(project_id),
             owner_user_id: Some(creator_user_id),
-            mission_id: None,
         };
         let threads = thread_service
             .list_threads_for_scope(ListThreadsForScopeRequest {
@@ -1795,7 +1791,6 @@ mod tests {
                     agent_id,
                     project_id: None,
                     owner_user_id: Some(UserId::new("trigger-foreign-user").expect("user id")),
-                    mission_id: None,
                 },
                 limit: Some(10),
                 cursor: None,

@@ -506,10 +506,10 @@ impl EventTriggeredHookSubscription {
     /// can never observe events from other threads/projects/missions that share
     /// the same `(tenant, user, agent)` stream — regardless of what the caller
     /// passed. The derived filter always pins `thread_id` to the run's thread
-    /// and pins `project_id`/`mission_id` whenever the run/thread scope carries
+    /// and pins `project_id` whenever the run/thread scope carries
     /// them; only `process_id` (a strict narrowing within the thread) is
     /// carried from the caller. Any explicit `Some(want)` the caller supplied
-    /// for `project_id`/`mission_id`/`thread_id` must additionally equal the
+    /// for `project_id`/`thread_id` must additionally equal the
     /// corresponding run/thread value, so a caller cannot *widen* the scope
     /// below what the run authorizes.
     ///
@@ -566,15 +566,6 @@ impl EventTriggeredHookSubscription {
                 run_scope.project_id.as_ref().map(|p| p.as_str()),
             ));
         }
-        if let Some(want) = self.read_scope.mission_id.as_ref()
-            && thread_scope.mission_id.as_ref() != Some(want)
-        {
-            return Err(format!(
-                "event subscription read_scope.mission_id={} does not match thread scope mission_id={:?}",
-                want.as_str(),
-                thread_scope.mission_id.as_ref().map(|m| m.as_str()),
-            ));
-        }
         if let Some(want) = self.read_scope.thread_id.as_ref()
             && &run_scope.thread_id != want
         {
@@ -586,7 +577,7 @@ impl EventTriggeredHookSubscription {
         }
         // Derive the effective filter from the authoritative run/thread scope.
         // thread_id is always present on the run scope and is the minimum
-        // tightening that prevents cross-thread leakage. project_id/mission_id
+        // tightening that prevents cross-thread leakage. project_id
         // are pinned whenever the run/thread scope carries them. process_id is
         // preserved from the caller's supplied filter (it is a strictly
         // narrower partition within the thread and the run scope does not own
@@ -609,7 +600,6 @@ impl EventTriggeredHookSubscription {
         }
         Ok(ReadScope {
             project_id: run_scope.project_id.clone(),
-            mission_id: thread_scope.mission_id.clone(),
             thread_id: Some(run_scope.thread_id.clone()),
             process_id: self.read_scope.process_id,
         })
@@ -3041,7 +3031,6 @@ mod tests {
             agent_id: AgentId::new("agent-scope-test").unwrap(),
             project_id: None,
             owner_user_id: Some(UserId::new("operator").unwrap()),
-            mission_id: None,
         };
 
         // This drives the resolution exactly as the host does — through
@@ -3366,7 +3355,6 @@ mod event_subscription_scope_tests {
             agent_id: agent.clone(),
             project_id: Some(project.clone()),
             owner_user_id: Some(user.clone()),
-            mission_id: None,
         }
     }
 
@@ -3425,7 +3413,6 @@ mod event_subscription_scope_tests {
             .expect("valid scope derives");
         assert_eq!(effective.thread_id, Some(thread));
         assert_eq!(effective.project_id, Some(project));
-        assert_eq!(effective.mission_id, None);
     }
 
     #[test]
@@ -3520,29 +3507,6 @@ mod event_subscription_scope_tests {
     }
 
     #[test]
-    fn effective_read_scope_rejects_mission_widening() {
-        let (tenant, agent, user, project, thread) = ids();
-        let foreign_mission = brassclaw_host_api::MissionId::new("mission-OTHER").expect("mission");
-        let supplied = ReadScope {
-            mission_id: Some(foreign_mission),
-            ..ReadScope::any()
-        };
-        let sub = subscription(stream_key(&tenant, &user, &agent), supplied);
-
-        let err = sub
-            .effective_read_scope(
-                &run_scope(&tenant, &agent, &project, &thread),
-                &thread_scope(&tenant, &agent, &user, &project),
-            )
-            .expect_err("divergent explicit mission_id must be rejected");
-
-        assert!(
-            err.contains("mission_id"),
-            "err names the mission axis: {err}"
-        );
-    }
-
-    #[test]
     fn effective_read_scope_rejects_thread_widening() {
         let (tenant, agent, user, project, thread) = ids();
         let other_thread = ThreadId::new("thread-OTHER").expect("thread");
@@ -3578,7 +3542,6 @@ mod event_subscription_scope_tests {
             user_id: user.clone(),
             agent_id: Some(agent.clone()),
             project_id: Some(project.clone()),
-            mission_id: None,
             thread_id: Some(thread.clone()),
             invocation_id: brassclaw_host_api::InvocationId::new(),
         };

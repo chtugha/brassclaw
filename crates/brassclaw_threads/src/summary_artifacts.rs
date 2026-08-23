@@ -76,7 +76,6 @@ mod tests {
             agent_id: AgentId::new("agent-test").unwrap(),
             project_id: Some(ProjectId::new("project-test").unwrap()),
             owner_user_id: Some(UserId::new("user-test").unwrap()),
-            mission_id: None,
         }
     }
 

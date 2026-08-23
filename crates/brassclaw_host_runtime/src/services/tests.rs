@@ -562,7 +562,6 @@ async fn host_runtime_services_with_security_audit_sink_records_leak_block() {
         user_id: UserId::new("user1").unwrap(),
         agent_id: Some(AgentId::new("agent-a").unwrap()),
         project_id: Some(ProjectId::new("project1").unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id,
     };
@@ -575,7 +574,6 @@ async fn host_runtime_services_with_security_audit_sink_records_leak_block() {
         user_id: resource_scope.user_id.clone(),
         agent_id: resource_scope.agent_id.clone(),
         project_id: resource_scope.project_id.clone(),
-        mission_id: resource_scope.mission_id.clone(),
         thread_id: resource_scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
         runtime: RuntimeKind::Mcp,
@@ -1182,7 +1180,6 @@ fn sample_scope() -> ResourceScope {
         user_id: UserId::new("user1").unwrap(),
         agent_id: None,
         project_id: None,
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     }

@@ -39,7 +39,6 @@ fn local_scope(user: &str, agent: Option<&str>) -> ResourceScope {
         user_id,
         agent_id,
         project_id: Some(ProjectId::new("bootstrap").expect("project id")),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     }
@@ -963,7 +962,6 @@ async fn read_scope_filter_isolates_project_within_same_stream() {
         user_id: user_id.clone(),
         agent_id: Some(agent_id.clone()),
         project_id: Some(project),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     };

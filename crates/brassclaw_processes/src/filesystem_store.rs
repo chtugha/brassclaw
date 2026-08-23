@@ -10,7 +10,7 @@
 //! tenant isolation is structural rather than something this crate must
 //! re-derive from `ResourceScope.tenant_id`/`user_id`.
 //!
-//! Within the alias, sub-scope (`agent_id`, `project_id`, `mission_id`,
+//! Within the alias, sub-scope (`agent_id`, `project_id`, `thread_id`,
 //! `thread_id`) is still encoded in the path so a single tenant/user can
 //! own multiple agent/project/mission/thread cells:
 //!
@@ -663,10 +663,6 @@ fn scope_owner_root_string(scope: &ResourceScope) -> String {
     if let Some(project_id) = &scope.project_id {
         base.push_str("/projects/");
         base.push_str(project_id.as_str());
-    }
-    if let Some(mission_id) = &scope.mission_id {
-        base.push_str("/missions/");
-        base.push_str(mission_id.as_str());
     }
     if let Some(thread_id) = &scope.thread_id {
         base.push_str("/threads/");

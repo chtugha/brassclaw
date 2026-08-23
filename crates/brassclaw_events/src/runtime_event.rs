@@ -890,7 +890,6 @@ mod tests {
             user_id: UserId::new("user-hook").unwrap(),
             agent_id: Some(AgentId::new("agent-hook").unwrap()),
             project_id: Some(ProjectId::new("project-hook").unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }

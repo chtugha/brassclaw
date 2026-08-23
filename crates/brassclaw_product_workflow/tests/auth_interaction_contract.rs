@@ -1181,7 +1181,6 @@ fn auth_scope(scope: &TurnScope, actor: &TurnActor) -> AuthProductScope {
         user_id: actor.user_id.clone(),
         agent_id: scope.agent_id.clone(),
         project_id: scope.project_id.clone(),
-        mission_id: None,
         thread_id: Some(scope.thread_id.clone()),
         invocation_id: InvocationId::new(),
     };

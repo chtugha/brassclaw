@@ -1421,7 +1421,6 @@ impl RebornRuntime {
                     user_id: self.actor_user_id.clone(),
                     agent_id: scope.agent_id.clone(),
                     project_id: scope.project_id.clone(),
-                    mission_id: None,
                     thread_id: Some(scope.thread_id.clone()),
                     invocation_id: InvocationId::from_uuid(run_id.as_uuid()),
                 },
@@ -2185,7 +2184,6 @@ pub async fn build_reborn_runtime(
         // Keep local-dev runtime threads aligned with WebUI's owner-scoped
         // facade so both entrypoints drive the same runner/evidence path.
         owner_user_id: Some(actor_user_id.clone()),
-        mission_id: None,
     };
 
     // Resolve the model gateway in three flat steps so the cfg gates
@@ -2981,7 +2979,6 @@ async fn append_trusted_laptop_access_audit(
             user_id: actor_user_id.clone(),
             agent_id: Some(thread_scope.agent_id.clone()),
             project_id: thread_scope.project_id.clone(),
-            mission_id: thread_scope.mission_id.clone(),
             thread_id: None,
             invocation_id,
             process_id: None,
@@ -4537,7 +4534,6 @@ mod tests {
             agent_id: child_scope.agent_id.clone().unwrap(),
             project_id: child_scope.project_id.clone(),
             owner_user_id: Some(runtime.actor_user_id.clone()),
-            mission_id: None,
         };
         runtime
             .thread_service
@@ -6137,7 +6133,6 @@ mod tests {
             user_id: actor.user_id.clone(),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: None,
             thread_id: Some(scope.thread_id.clone()),
             invocation_id: InvocationId::new(),
         };

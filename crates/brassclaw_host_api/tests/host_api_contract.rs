@@ -228,7 +228,6 @@ fn local_default_resource_scope_uses_default_agent_and_bootstrap_project() {
         Some(LOCAL_DEFAULT_PROJECT_ID)
     );
     assert_eq!(scope.invocation_id, invocation_id);
-    assert!(scope.mission_id.is_none());
     assert!(scope.thread_id.is_none());
 }
 
@@ -1669,7 +1668,6 @@ fn sample_context() -> ExecutionContext {
         user_id: user_id.clone(),
         agent_id: None,
         project_id: Some(project_id.clone()),
-        mission_id: None,
         thread_id: None,
         extension_id,
         runtime: RuntimeKind::FirstParty,
@@ -1686,7 +1684,6 @@ fn sample_context() -> ExecutionContext {
             user_id,
             agent_id: None,
             project_id: Some(project_id),
-            mission_id: None,
             thread_id: None,
             invocation_id,
         },

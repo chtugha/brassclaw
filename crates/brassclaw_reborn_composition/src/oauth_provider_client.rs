@@ -706,7 +706,6 @@ fn oauth_execution_context(
         user_id: resource_scope.user_id.clone(),
         agent_id: resource_scope.agent_id.clone(),
         project_id: resource_scope.project_id.clone(),
-        mission_id: resource_scope.mission_id.clone(),
         thread_id: resource_scope.thread_id.clone(),
         extension_id: ExtensionId::new("brassclaw_auth")
             .map_err(|_| AuthProductError::BackendUnavailable)?,

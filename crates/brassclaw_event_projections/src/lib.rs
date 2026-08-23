@@ -80,7 +80,6 @@ impl ProjectionScope {
             stream: EventStreamKey::from_scope(scope),
             read_scope: ReadScope {
                 project_id: scope.project_id.clone(),
-                mission_id: scope.mission_id.clone(),
                 thread_id: scope.thread_id.clone(),
                 process_id: None,
             },
@@ -92,7 +91,6 @@ impl ProjectionScope {
             stream: EventStreamKey::from_scope(scope),
             read_scope: ReadScope {
                 project_id: scope.project_id.clone(),
-                mission_id: scope.mission_id.clone(),
                 thread_id: scope.thread_id.clone(),
                 process_id: Some(process_id),
             },
@@ -565,7 +563,6 @@ fn memory_significant_audit(
         user_id: resource_scope.user_id,
         agent_id: resource_scope.agent_id,
         project_id: resource_scope.project_id,
-        mission_id: resource_scope.mission_id,
         thread_id: resource_scope.thread_id,
         invocation_id: resource_scope.invocation_id,
         process_id: None,
@@ -606,7 +603,6 @@ fn prompt_write_safety_audit(
         user_id: resource_scope.user_id,
         agent_id: resource_scope.agent_id,
         project_id: resource_scope.project_id,
-        mission_id: resource_scope.mission_id,
         thread_id: resource_scope.thread_id,
         invocation_id: resource_scope.invocation_id,
         process_id: None,
@@ -671,7 +667,6 @@ fn resolve_memory_audit_context(
                 .map_err(|error| {
                     memory_audit_error(format!("invalid memory project id: {error}"))
                 })?,
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         },

@@ -2218,7 +2218,6 @@ impl RebornServicesApi for RebornServices {
             agent_id,
             project_id: caller.project_id.clone(),
             owner_user_id: Some(caller.user_id.clone()),
-            mission_id: None,
         };
         let response = self
             .thread_service
@@ -4508,7 +4507,6 @@ fn thread_scope_from_turn_scope(
         agent_id,
         project_id: scope.project_id.clone(),
         owner_user_id,
-        mission_id: None,
     })
 }
 

@@ -557,7 +557,6 @@ fn safe_truncate(content: &str, max_bytes: usize) -> String {
 // ── Tool-call argument parameterization ────────────────────────────
 //
 // Recorded tool calls often reference IDs returned by *prior* tool calls
-// (e.g. `mission_fire(<mission_id from mission_create>)`). If we serialize
 // the literal ID into the fixture, replay-time mission_create will produce
 // a fresh ID and the recorded mission_fire will fail with "not found".
 //

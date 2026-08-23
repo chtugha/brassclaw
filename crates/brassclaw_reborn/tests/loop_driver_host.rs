@@ -6430,7 +6430,6 @@ impl HostFixture {
             agent_id: agent_id.clone(),
             project_id: Some(project_id.clone()),
             owner_user_id: None,
-            mission_id: None,
         };
         thread_service
             .ensure_thread(EnsureThreadRequest {
@@ -6617,7 +6616,6 @@ fn thread_scope_from_turn(scope: &TurnScope) -> ThreadScope {
         agent_id: scope.agent_id.clone().unwrap(),
         project_id: scope.project_id.clone(),
         owner_user_id: None,
-        mission_id: None,
     }
 }
 

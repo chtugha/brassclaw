@@ -28,10 +28,10 @@ use chrono::Utc;
 const CAS_RETRY_ATTEMPTS: usize = 3;
 use brassclaw_host_api::{
     AgentId, CapabilityDescriptor, CapabilityGrant, CapabilityGrantId, Decision, DenyReason,
-    EffectKind, ExecutionContext, HostApiError, InvocationFingerprint, InvocationId, MissionId,
-    NetworkPolicy, Obligation, Obligations, Principal, ProjectId, ResourceCeiling,
-    ResourceEstimate, ResourceScope, RuntimeCredentialRequirementSource, RuntimeKind, SandboxQuota,
-    ScopedPath, TenantId, ThreadId, UserId,
+    EffectKind, ExecutionContext, HostApiError, InvocationFingerprint, InvocationId, NetworkPolicy,
+    Obligation, Obligations, Principal, ProjectId, ResourceCeiling, ResourceEstimate,
+    ResourceScope, RuntimeCredentialRequirementSource, RuntimeKind, SandboxQuota, ScopedPath,
+    TenantId, ThreadId, UserId,
 };
 use brassclaw_trust::{AuthorityCeiling, TrustDecision};
 use serde::{Deserialize, Serialize};
@@ -879,7 +879,6 @@ struct CapabilityLeaseKey {
     user_id: UserId,
     agent_id: Option<AgentId>,
     project_id: Option<ProjectId>,
-    mission_id: Option<MissionId>,
     thread_id: Option<ThreadId>,
     invocation_id: InvocationId,
     lease_id: CapabilityGrantId,
@@ -892,7 +891,6 @@ impl CapabilityLeaseKey {
             user_id: scope.user_id.clone(),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: scope.mission_id.clone(),
             thread_id: scope.thread_id.clone(),
             invocation_id: scope.invocation_id,
             lease_id,
@@ -906,7 +904,6 @@ struct CapabilityLeaseOwnerKey {
     user_id: UserId,
     agent_id: Option<AgentId>,
     project_id: Option<ProjectId>,
-    mission_id: Option<MissionId>,
     thread_id: Option<ThreadId>,
 }
 
@@ -917,7 +914,6 @@ impl CapabilityLeaseOwnerKey {
             user_id: scope.user_id.clone(),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: scope.mission_id.clone(),
             thread_id: scope.thread_id.clone(),
         }
     }
@@ -1242,7 +1238,6 @@ fn principal_matches_context(principal: &Principal, context: &ExecutionContext) 
         Principal::User(id) => id == &context.user_id,
         Principal::Agent(id) => context.agent_id.as_ref() == Some(id),
         Principal::Project(id) => context.project_id.as_ref() == Some(id),
-        Principal::Mission(id) => context.mission_id.as_ref() == Some(id),
         Principal::Thread(id) => context.thread_id.as_ref() == Some(id),
         Principal::Extension(id) => id == &context.extension_id,
         Principal::HostRuntime | Principal::System(_) => false,
@@ -1510,7 +1505,6 @@ pub(crate) fn same_scope_owner(left: &ResourceScope, right: &ResourceScope) -> b
         && left.user_id == right.user_id
         && left.agent_id == right.agent_id
         && left.project_id == right.project_id
-        && left.mission_id == right.mission_id
         && left.thread_id == right.thread_id
 }
 
@@ -1531,7 +1525,7 @@ pub(crate) fn same_scope_owner(left: &ResourceScope, right: &ResourceScope) -> b
 // /authorization/leases/<within-tenant-scope>/_lease_index.json
 // ```
 //
-// where `<within-tenant-scope>` is `[agents/<agent_id>/][projects/<project_id>/][missions/<mission_id>/][threads/<thread_id>]`.
+// where `<within-tenant-scope>` is `[agents/<agent_id>/][projects/<project_id>/][threads/<thread_id>]`.
 
 const LEASES_PREFIX: &str = "/authorization/leases";
 
@@ -1573,9 +1567,6 @@ fn within_tenant_scope(scope: &ResourceScope) -> String {
     }
     if let Some(project_id) = &scope.project_id {
         segments.push(format!("projects/{project_id}"));
-    }
-    if let Some(mission_id) = &scope.mission_id {
-        segments.push(format!("missions/{mission_id}"));
     }
     if let Some(thread_id) = &scope.thread_id {
         segments.push(format!("threads/{thread_id}"));

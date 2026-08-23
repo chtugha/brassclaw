@@ -40,7 +40,6 @@ fn scope_for(user: &str, project: &str) -> ResourceScope {
         user_id: UserId::new(user).expect("user id"),
         agent_id: Some(AgentId::new("default").expect("agent id")),
         project_id: Some(ProjectId::new(project).expect("project id")),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     }
@@ -56,7 +55,6 @@ fn audit_for(scope: &ResourceScope, status: &str) -> AuditEnvelope {
         user_id: scope.user_id.clone(),
         agent_id: scope.agent_id.clone(),
         project_id: scope.project_id.clone(),
-        mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         invocation_id: scope.invocation_id,
         process_id: None,

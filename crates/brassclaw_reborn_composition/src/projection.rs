@@ -467,7 +467,6 @@ fn runtime_projection_scope(actor: &TurnActor, scope: &TurnScope) -> EventProjec
         ),
         read_scope: ReadScope {
             project_id: scope.project_id.clone(),
-            mission_id: None,
             thread_id: Some(scope.thread_id.clone()),
             process_id: None,
         },

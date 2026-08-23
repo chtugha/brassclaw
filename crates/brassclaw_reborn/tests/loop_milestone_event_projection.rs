@@ -11,8 +11,8 @@ use brassclaw_events::{
     InMemoryDurableEventLog, ReadScope,
 };
 use brassclaw_host_api::{
-    AgentId, CapabilityId, ExtensionId, InvocationId, MissionId, ProjectId, RuntimeKind, TenantId,
-    ThreadId, UserId,
+    AgentId, CapabilityId, ExtensionId, InvocationId, ProjectId, RuntimeKind, TenantId, ThreadId,
+    UserId,
 };
 use brassclaw_loop_support::{
     HostManagedModelError, HostManagedModelErrorKind, HostManagedModelGateway,
@@ -67,7 +67,6 @@ async fn durable_milestone_scope_requires_thread_owner_binding() {
         agent_id: agent_id(),
         project_id: Some(project_id()),
         owner_user_id: None,
-        mission_id: Some(mission_id()),
     };
 
     let error = DurableLoopHostMilestoneScope::from_thread_scope(&thread_scope)
@@ -84,7 +83,6 @@ async fn durable_milestone_sink_rejects_mismatched_milestone_scope() {
         agent_id: agent_id(),
         project_id: Some(project_id()),
         owner_user_id: Some(user_id()),
-        mission_id: Some(mission_id()),
     };
     let sink = DurableLoopHostMilestoneSink::new(
         Arc::clone(&events),
@@ -123,7 +121,6 @@ async fn durable_milestone_sink_rejects_mismatched_thread_or_run_binding() {
         agent_id: agent_id(),
         project_id: Some(project_id()),
         owner_user_id: Some(user_id()),
-        mission_id: Some(mission_id()),
     };
     let expected_thread_id = ThreadId::new("thread-loop-events-expected").unwrap();
     let expected_run_id = TurnRunId::new();
@@ -184,7 +181,6 @@ async fn durable_milestone_sink_does_not_project_lossy_loop_progress_milestones(
         agent_id: agent_id(),
         project_id: Some(project_id()),
         owner_user_id: Some(user_id()),
-        mission_id: Some(mission_id()),
     };
     let thread_id = ThreadId::new("thread-loop-events-progress").unwrap();
     let run_id = TurnRunId::new();
@@ -581,7 +577,6 @@ fn projection_scope() -> ProjectionScope {
         stream: EventStreamKey::new(tenant_id(), user_id(), Some(agent_id())),
         read_scope: ReadScope {
             project_id: Some(project_id()),
-            mission_id: Some(mission_id()),
             thread_id: None,
             process_id: None,
         },
@@ -593,7 +588,6 @@ fn projection_scope_for_thread(thread_id: ThreadId) -> ProjectionScope {
         stream: EventStreamKey::new(tenant_id(), user_id(), Some(agent_id())),
         read_scope: ReadScope {
             project_id: Some(project_id()),
-            mission_id: Some(mission_id()),
             thread_id: Some(thread_id),
             process_id: None,
         },
@@ -683,7 +677,6 @@ impl HostFixture {
             agent_id: agent_id(),
             project_id: Some(project_id()),
             owner_user_id: Some(user_id()),
-            mission_id: Some(mission_id()),
         };
         thread_service
             .ensure_thread(EnsureThreadRequest {
@@ -847,10 +840,6 @@ fn project_id() -> ProjectId {
     ProjectId::new("project-loop-events").unwrap()
 }
 
-fn mission_id() -> MissionId {
-    MissionId::new("mission-loop-events").unwrap()
-}
-
 fn user_id() -> UserId {
     UserId::new("user-loop-events").unwrap()
 }
@@ -874,7 +863,6 @@ fn milestone_thread_scope() -> ThreadScope {
         agent_id: agent_id(),
         project_id: Some(project_id()),
         owner_user_id: Some(user_id()),
-        mission_id: Some(mission_id()),
     }
 }
 

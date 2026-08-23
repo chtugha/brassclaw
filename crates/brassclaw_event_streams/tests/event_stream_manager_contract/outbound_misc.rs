@@ -87,22 +87,6 @@ async fn push_candidates_reject_mismatched_projection_scope() {
 }
 
 #[tokio::test]
-async fn push_candidates_reject_extra_projection_scope_filters() {
-    let scope = projection_scope("thread-a");
-    let turn_scope = turn_scope("thread-a");
-    let mut request = push_request(&turn_scope, OutboundPushKind::Progress);
-    request.projection_scope.read_scope.mission_id = Some(MissionId::new("mission-a").unwrap());
-    let manager = manager(scope);
-
-    let error = manager
-        .push_candidates_for_update(request)
-        .await
-        .expect_err("extra projection filters must not authorize whole-thread push");
-
-    assert!(matches!(error, ProjectionStreamError::AccessDenied));
-}
-
-#[tokio::test]
 async fn push_candidates_reject_actor_stream_user_mismatch_before_outbound_lookup() {
     let turn_scope = turn_scope("thread-a");
     let mut request = push_request(&turn_scope, OutboundPushKind::Progress);
@@ -161,27 +145,6 @@ async fn push_candidates_maps_outbound_store_failures() {
 
         assert_same_error_kind(actual, expected);
     }
-}
-
-#[tokio::test]
-async fn unsupported_view_target_returns_invalid_request() {
-    let scope = projection_scope("thread-a");
-    let manager = manager(scope.clone());
-    let error = manager
-        .subscribe(ProjectionSubscribeRequest {
-            view: ProjectionViewClass::ProductMission,
-            target: ProjectionTarget::Mission {
-                mission_id: MissionId::new("mission-a").unwrap(),
-            },
-            ..subscribe_request(scope, None)
-        })
-        .await
-        .expect_err("unsupported first-slice view");
-
-    assert!(matches!(
-        error,
-        ProjectionStreamError::InvalidRequest { .. }
-    ));
 }
 
 #[tokio::test]

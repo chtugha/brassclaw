@@ -49,8 +49,7 @@ use brassclaw_filesystem::{
     IndexValue, RootFilesystem, ScopedFilesystem,
 };
 use brassclaw_host_api::{
-    AgentId, HostApiError, MissionId, ProjectId, ResourceScope, ScopedPath, SecretHandle, ThreadId,
-    Timestamp,
+    AgentId, HostApiError, ProjectId, ResourceScope, ScopedPath, SecretHandle, ThreadId, Timestamp,
 };
 use chrono::{Duration, Utc};
 use secrecy::ExposeSecret;
@@ -553,7 +552,7 @@ where
         // threads / invocations under that owner contribute, and active
         // one-shot leases are short-lived (TTL `DEFAULT_SECRET_LEASE_TTL_SECONDS`).
         // If we add an index here it should sit on a composite scope-derived
-        // key (mission_id + thread_id + invocation_id) and route through
+        // key (thread_id + invocation_id) and route through
         // `RootFilesystem::query` with `Filter::Eq` — the secrets store
         // currently declares no indexes (no `ensure_*` calls in `new`), so
         // adding that path is a follow-up. Until then, the list+get fan-out
@@ -1042,7 +1041,6 @@ fn same_scope_owner(left: &ResourceScope, right: &ResourceScope) -> bool {
 
 fn same_scope_for_lease(left: &ResourceScope, right: &ResourceScope) -> bool {
     same_scope_owner(left, right)
-        && left.mission_id == right.mission_id
         && left.thread_id == right.thread_id
         && left.invocation_id == right.invocation_id
 }
@@ -1103,7 +1101,7 @@ fn filesystem_session_lock(path: &ScopedPath) -> FilesystemRecordLock {
 
 fn owner_lock_prefix(scope: &ResourceScope) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}",
         scope.tenant_id.as_str(),
         scope.user_id.as_str(),
         scope.agent_id.as_ref().map(AgentId::as_str).unwrap_or(""),
@@ -1111,11 +1109,6 @@ fn owner_lock_prefix(scope: &ResourceScope) -> String {
             .project_id
             .as_ref()
             .map(ProjectId::as_str)
-            .unwrap_or(""),
-        scope
-            .mission_id
-            .as_ref()
-            .map(MissionId::as_str)
             .unwrap_or(""),
         scope.thread_id.as_ref().map(ThreadId::as_str).unwrap_or(""),
         scope.invocation_id,
@@ -1534,9 +1527,9 @@ mod tests {
 
     use brassclaw_filesystem::{InMemoryBackend, ScopedFilesystem};
     use brassclaw_host_api::{
-        AgentId, CapabilityId, ExtensionId, InvocationId, MissionId, MountAlias, MountGrant,
-        MountPermissions, MountView, NetworkMethod, ProjectId, ResourceScope, SecretHandle,
-        TenantId, ThreadId, UserId, VirtualPath,
+        AgentId, CapabilityId, ExtensionId, InvocationId, MountAlias, MountGrant, MountPermissions,
+        MountView, NetworkMethod, ProjectId, ResourceScope, SecretHandle, TenantId, ThreadId,
+        UserId, VirtualPath,
     };
     use chrono::Utc;
     use secrecy::ExposeSecret;
@@ -1591,7 +1584,6 @@ mod tests {
             user_id: UserId::new(user).unwrap(),
             agent_id: None,
             project_id: Some(ProjectId::new("project-a").unwrap()),
-            mission_id: Some(MissionId::new("mission-a").unwrap()),
             thread_id: Some(ThreadId::new("thread-a").unwrap()),
             invocation_id: InvocationId::new(),
         }
@@ -2513,7 +2505,6 @@ mod tests {
             user_id: UserId::new("alice").unwrap(),
             agent_id: None,
             project_id: Some(ProjectId::new("project-1").unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         };
@@ -2522,7 +2513,6 @@ mod tests {
             user_id: UserId::new("alice").unwrap(),
             agent_id: None,
             project_id: Some(ProjectId::new("project-1").unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         };
@@ -2589,12 +2579,10 @@ mod tests {
             user_id: UserId::new("user-a").unwrap(),
             agent_id: Some(AgentId::new("agent-1").unwrap()),
             project_id: Some(ProjectId::new("project-1").unwrap()),
-            mission_id: Some(MissionId::new("mission-write").unwrap()),
             thread_id: Some(ThreadId::new("thread-write").unwrap()),
             invocation_id: InvocationId::new(),
         };
         let mut reader_scope = writer_scope.clone();
-        reader_scope.mission_id = Some(MissionId::new("mission-read").unwrap());
         reader_scope.thread_id = Some(ThreadId::new("thread-read").unwrap());
         reader_scope.invocation_id = InvocationId::new();
         assert_ne!(

@@ -434,7 +434,6 @@ mod tests {
             user_id: UserId::new("test-user").unwrap(),
             agent_id: None,
             project_id: Some(ProjectId::new("test-project").unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }

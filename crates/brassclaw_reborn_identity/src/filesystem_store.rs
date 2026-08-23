@@ -82,7 +82,6 @@ where
                 user_id,
                 agent_id: Some(agent_id),
                 project_id,
-                mission_id: None,
                 thread_id: None,
                 invocation_id: InvocationId::new(),
             },

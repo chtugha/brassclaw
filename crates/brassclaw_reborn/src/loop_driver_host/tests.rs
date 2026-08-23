@@ -226,7 +226,6 @@ fn thread_scope_for(context: &LoopRunContext, owner: Option<UserId>) -> ThreadSc
             .expect("test run context is agent-scoped"),
         project_id: context.scope.project_id.clone(),
         owner_user_id: owner,
-        mission_id: None,
     }
 }
 

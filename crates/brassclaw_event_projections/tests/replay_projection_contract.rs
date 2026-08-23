@@ -1781,7 +1781,6 @@ fn scope_for_thread_with_invocation(
         user_id: UserId::new("user-a").unwrap(),
         agent_id: Some(AgentId::new("agent-a").unwrap()),
         project_id: Some(ProjectId::new("project-a").unwrap()),
-        mission_id: None,
         thread_id: Some(thread_id),
         invocation_id,
     }
@@ -1797,7 +1796,6 @@ fn execution_context_for_scope(scope: ResourceScope) -> brassclaw_host_api::Exec
         user_id: scope.user_id.clone(),
         agent_id: scope.agent_id.clone(),
         project_id: scope.project_id.clone(),
-        mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
         runtime: RuntimeKind::Mcp,

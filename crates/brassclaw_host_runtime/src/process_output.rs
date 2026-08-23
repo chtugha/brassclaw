@@ -586,7 +586,6 @@ mod tests {
             user_id: UserId::new(user).unwrap(),
             agent_id: Some(AgentId::new("agent").unwrap()),
             project_id: project.map(|p| ProjectId::new(p).unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }

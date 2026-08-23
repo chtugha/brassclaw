@@ -461,7 +461,6 @@ fn thread_scope_from_turn_scope(scope: &TurnScope) -> Result<ThreadScope, TurnEr
         agent_id,
         project_id: scope.project_id.clone(),
         owner_user_id: None,
-        mission_id: None,
     })
 }
 

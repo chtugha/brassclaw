@@ -2,16 +2,14 @@
 //!
 //! `brassclaw_resources` owns enforcement, but this module defines the shared
 //! shapes used by callers and audit records. [`ResourceScope`] captures the
-//! tenant/user/agent/project/mission/thread/invocation cascade. [`ResourceEstimate`]
+//! tenant/user/agent/project/thread/invocation cascade. [`ResourceEstimate`]
 //! and [`ResourceUsage`] describe budgeted work, while [`SandboxQuota`] and
 //! [`ResourceCeiling`] describe runtime limits that sandbox providers enforce.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    AgentId, HostApiError, InvocationId, MissionId, ProjectId, TenantId, ThreadId, UserId,
-};
+use crate::{AgentId, HostApiError, InvocationId, ProjectId, TenantId, ThreadId, UserId};
 
 /// Canonical local/single-user tenant id.
 pub const LOCAL_DEFAULT_TENANT_ID: &str = "default";
@@ -34,7 +32,6 @@ pub struct ResourceScope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<AgentId>,
     pub project_id: Option<ProjectId>,
-    pub mission_id: Option<MissionId>,
     pub thread_id: Option<ThreadId>,
     pub invocation_id: InvocationId,
 }
@@ -54,7 +51,6 @@ impl ResourceScope {
             user_id,
             agent_id: Some(AgentId::new(LOCAL_DEFAULT_AGENT_ID)?),
             project_id: Some(ProjectId::new(LOCAL_DEFAULT_PROJECT_ID)?),
-            mission_id: None,
             thread_id: None,
             invocation_id,
         })
@@ -70,7 +66,6 @@ impl ResourceScope {
             user_id: UserId::from_trusted(SYSTEM_RESERVED_ID.to_string()),
             agent_id: None,
             project_id: None,
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }
@@ -83,7 +78,7 @@ impl ResourceScope {
 }
 
 /// Origin of a background reservation. Distinguishes heartbeats, routines,
-/// missions, container jobs, and user-initiated work so per-kind budgets
+/// container jobs, and user-initiated work so per-kind budgets
 /// can be tracked separately within the same user's daily budget.
 ///
 /// **Contract-only for now:** schedulers that pre-date this enum still
@@ -99,8 +94,6 @@ pub enum BackgroundKind {
     RoutineLightweight,
     /// User-defined standard routine (heavier per-fire budget).
     RoutineStandard,
-    /// Multi-step mission tick.
-    MissionTick,
     /// One-shot container job (e.g., sandboxed shell).
     ContainerJob,
     /// Explicitly user-triggered work that is not scheduled.
@@ -113,7 +106,6 @@ impl BackgroundKind {
             Self::HeartbeatTick => "heartbeat_tick",
             Self::RoutineLightweight => "routine_lightweight",
             Self::RoutineStandard => "routine_standard",
-            Self::MissionTick => "mission_tick",
             Self::ContainerJob => "container_job",
             Self::UserInitiated => "user_initiated",
         }

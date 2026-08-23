@@ -339,7 +339,6 @@ fn sample_scope(tenant: &str, user: &str) -> ResourceScope {
         user_id: UserId::new(user).unwrap(),
         agent_id: None,
         project_id: Some(ProjectId::new("project-a").unwrap()),
-        mission_id: None,
         thread_id: Some(ThreadId::new("thread-a").unwrap()),
         invocation_id: InvocationId::new(),
     }

@@ -139,7 +139,6 @@ impl PgSessionThreadService {
             .unwrap_or_else(|| brassclaw_host_api::SYSTEM_RESERVED_ID.to_string());
         let agent_id = record.scope.agent_id.to_string();
         let project_id = record.scope.project_id.as_ref().map(|p| p.to_string());
-        let mission_id = record.scope.mission_id.as_ref().map(|m| m.to_string());
         let created_by = &record.created_by_actor_id;
         let title = record.title.as_deref();
         let metadata_val = serde_json::to_value(snapshot).map_err(map_json)?;
@@ -149,19 +148,18 @@ impl PgSessionThreadService {
         let rows = client
             .execute(
                 "INSERT INTO brassclaw_session_threads \
-                 (id, tenant_id, user_id, agent_id, project_id, mission_id, \
+                 (id, tenant_id, user_id, agent_id, project_id, \
                   created_by_actor_id, title, metadata, version) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1) \
                  ON CONFLICT (id) DO UPDATE \
                  SET user_id = excluded.user_id, \
                      agent_id = excluded.agent_id, \
                      project_id = excluded.project_id, \
-                     mission_id = excluded.mission_id, \
                      title = excluded.title, \
                      metadata = excluded.metadata, \
-                     version = $10, \
+                     version = $9, \
                      updated_at = now() \
-                 WHERE brassclaw_session_threads.version = $11 \
+                 WHERE brassclaw_session_threads.version = $10 \
                    AND brassclaw_session_threads.deleted_at IS NULL",
                 &[
                     &thread_id,
@@ -169,7 +167,6 @@ impl PgSessionThreadService {
                     &user_id,
                     &agent_id,
                     &project_id,
-                    &mission_id,
                     created_by,
                     &title,
                     &metadata_val,

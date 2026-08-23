@@ -61,7 +61,6 @@ fn resource_scope(
         user_id: user_id.clone(),
         agent_id: Some(agent_id.clone()),
         project_id: None,
-        mission_id: None,
         thread_id: Some(thread_id.clone()),
         invocation_id,
     }

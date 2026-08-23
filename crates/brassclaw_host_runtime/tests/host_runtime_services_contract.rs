@@ -4024,7 +4024,6 @@ fn execution_context_without_grants_for_scope(scope: ResourceScope) -> Execution
         user_id: scope.user_id.clone(),
         agent_id: scope.agent_id.clone(),
         project_id: scope.project_id.clone(),
-        mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
         runtime: RuntimeKind::Mcp,
@@ -4075,7 +4074,6 @@ fn execution_context_with_effect_grants_for_scope(
         user_id: scope.user_id.clone(),
         agent_id: scope.agent_id.clone(),
         project_id: scope.project_id.clone(),
-        mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
         runtime: RuntimeKind::FirstParty,
@@ -4227,7 +4225,6 @@ fn sample_scope(invocation_id: InvocationId) -> ResourceScope {
         user_id: UserId::new("user-a").unwrap(),
         agent_id: Some(AgentId::new("agent-a").unwrap()),
         project_id: Some(ProjectId::new("project-a").unwrap()),
-        mission_id: Some(MissionId::new("mission-a").unwrap()),
         thread_id: Some(ThreadId::new("thread-a").unwrap()),
         invocation_id,
     }

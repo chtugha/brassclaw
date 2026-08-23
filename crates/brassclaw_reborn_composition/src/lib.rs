@@ -643,7 +643,7 @@ mod mount_view_tests {
     use super::*;
     use brassclaw_filesystem::{FilesystemError, FilesystemOperation, InMemoryBackend};
     use brassclaw_host_api::{
-        AgentId, InvocationId, MissionId, ProjectId, ScopedPath, TenantId, ThreadId, UserId,
+        AgentId, InvocationId, ProjectId, ScopedPath, TenantId, ThreadId, UserId,
     };
 
     fn sample_scope() -> ResourceScope {
@@ -652,7 +652,6 @@ mod mount_view_tests {
             user_id: UserId::new("user-1").unwrap(),
             agent_id: Some(AgentId::new("agent-x").unwrap()),
             project_id: Some(ProjectId::new("project-y").unwrap()),
-            mission_id: Some(MissionId::new("mission-w").unwrap()),
             thread_id: Some(ThreadId::new("thread-z").unwrap()),
             invocation_id: InvocationId::new(),
         }
@@ -851,7 +850,6 @@ mod two_tenant_isolation_tests {
             user_id: UserId::new(user).unwrap(),
             agent_id: Some(AgentId::new("github").unwrap()),
             project_id: Some(ProjectId::new("default").unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }

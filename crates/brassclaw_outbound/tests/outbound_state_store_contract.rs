@@ -912,7 +912,6 @@ fn projection_scope_for_user(user_id: &str) -> ProjectionScope {
         ),
         read_scope: ReadScope {
             project_id: Some(ProjectId::new("project-outbound").unwrap()),
-            mission_id: None,
             thread_id: Some(thread_id()),
             process_id: None,
         },

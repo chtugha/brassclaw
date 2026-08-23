@@ -226,7 +226,6 @@ fn sample_scope() -> ResourceScope {
         user_id: UserId::new("user1").unwrap(),
         agent_id: None,
         project_id: Some(ProjectId::new("project1").unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     }

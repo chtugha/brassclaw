@@ -1494,7 +1494,6 @@ fn thread_scope(label: &str) -> ThreadScope {
         agent_id: AgentId::new(format!("agent-{label}")).unwrap(),
         project_id: None,
         owner_user_id: None,
-        mission_id: None,
     }
 }
 

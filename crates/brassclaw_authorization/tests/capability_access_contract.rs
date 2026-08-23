@@ -917,7 +917,6 @@ fn execution_context(grants: CapabilitySet) -> ExecutionContext {
         user_id: UserId::new("user1").unwrap(),
         agent_id: None,
         project_id: Some(ProjectId::new("project1").unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id,
     };
@@ -930,7 +929,6 @@ fn execution_context(grants: CapabilitySet) -> ExecutionContext {
         user_id: resource_scope.user_id.clone(),
         agent_id: resource_scope.agent_id.clone(),
         project_id: resource_scope.project_id.clone(),
-        mission_id: resource_scope.mission_id.clone(),
         thread_id: resource_scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
         runtime: RuntimeKind::FirstParty,

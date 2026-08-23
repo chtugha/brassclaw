@@ -157,7 +157,6 @@ fn resource_scope_for_interaction(scope: &ApprovalInteractionScope) -> ResourceS
         user_id: scope.user_id.clone(),
         agent_id: scope.agent_id.clone(),
         project_id: scope.project_id.clone(),
-        mission_id: None,
         thread_id: Some(scope.thread_id.clone()),
         invocation_id: InvocationId::new(),
     }
@@ -168,7 +167,6 @@ fn same_interaction_owner(left: &ResourceScope, right: &ResourceScope) -> bool {
         && left.user_id == right.user_id
         && left.agent_id == right.agent_id
         && left.project_id == right.project_id
-        && left.mission_id == right.mission_id
         && left.thread_id == right.thread_id
 }
 

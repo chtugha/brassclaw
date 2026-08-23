@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt, sync::Arc, sync::Mutex};
 
 use async_trait::async_trait;
 use brassclaw_host_api::{
-    AgentId, ExtensionId, MissionId, ProjectId, SecretHandle, TenantId, ThreadId, UserId,
+    AgentId, ExtensionId, ProjectId, SecretHandle, TenantId, ThreadId, UserId,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::OwnedMutexGuard;
@@ -538,7 +538,6 @@ pub struct CredentialAccountOwnerScope {
     pub user_id: UserId,
     pub agent_id: Option<AgentId>,
     pub project_id: Option<ProjectId>,
-    pub mission_id: Option<MissionId>,
     pub thread_id: Option<ThreadId>,
     pub session_id: Option<crate::AuthSessionId>,
 }
@@ -550,7 +549,6 @@ impl CredentialAccountOwnerScope {
             user_id: scope.resource.user_id.clone(),
             agent_id: scope.resource.agent_id.clone(),
             project_id: scope.resource.project_id.clone(),
-            mission_id: scope.resource.mission_id.clone(),
             thread_id: scope.resource.thread_id.clone(),
             session_id: scope.session_id.clone(),
         }
@@ -562,10 +560,6 @@ impl CredentialAccountOwnerScope {
             && resource.user_id == self.user_id
             && resource.agent_id == self.agent_id
             && resource.project_id == self.project_id
-            && self
-                .mission_id
-                .as_ref()
-                .is_none_or(|mission_id| resource.mission_id.as_ref() == Some(mission_id))
             && self
                 .thread_id
                 .as_ref()

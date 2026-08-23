@@ -206,7 +206,6 @@ pub(crate) struct ScopeKey {
     pub user_id: String,
     pub agent_id: String,
     pub project_id: String,
-    pub mission_id: String,
     pub thread_id: String,
     pub invocation_id: String,
 }
@@ -226,7 +225,6 @@ impl ScopeKey {
                 .as_ref()
                 .map(ToString::to_string)
                 .unwrap_or_default(),
-            mission_id: String::new(),
             thread_id: String::new(),
             invocation_id: String::new(),
         }
@@ -243,11 +241,6 @@ impl ScopeKey {
                 .unwrap_or_default(),
             project_id: scope
                 .project_id
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_default(),
-            mission_id: scope
-                .mission_id
                 .as_ref()
                 .map(ToString::to_string)
                 .unwrap_or_default(),
@@ -299,7 +292,6 @@ pub fn credential_session_aad(scope: &ResourceScope, session_id: CredentialSessi
             key.user_id.as_bytes(),
             key.agent_id.as_bytes(),
             key.project_id.as_bytes(),
-            key.mission_id.as_bytes(),
             key.thread_id.as_bytes(),
             key.invocation_id.as_bytes(),
             session_id_string.as_bytes(),
@@ -318,7 +310,7 @@ pub fn filesystem_secret_aad(scope: &ResourceScope, handle: &SecretHandle) -> Ve
     // The filesystem secret store keys by *owner scope*
     // (`tenant/user/agent/project`) — see `secret_path` and
     // `same_scope_owner` in `filesystem_store.rs`. The AAD must match the
-    // storage scope: previously this bound `mission_id`/`thread_id`/
+    // storage scope: previously this bound `thread_id`/
     // `invocation_id` too, so a secret written by one invocation could be
     // *read* by another invocation under the same owner (the path layer
     // allowed it) but `consume` failed with a confusing decryption error.

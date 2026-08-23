@@ -1931,7 +1931,6 @@ async fn invoke_capability_batch_rolls_back_preceding_spawn_on_inner_batch_failu
         agent_id: child_request.child_scope.agent_id.clone().unwrap(),
         project_id: child_request.child_scope.project_id.clone(),
         owner_user_id: Some(actor.user_id),
-        mission_id: None,
     };
     let read = thread_service
         .read_thread(ThreadHistoryRequest {
@@ -2017,7 +2016,6 @@ async fn invoke_capability_batch_stops_on_first_spawn_suspension_when_requested(
         agent_id: child_request.child_scope.agent_id.clone().unwrap(),
         project_id: child_request.child_scope.project_id.clone(),
         owner_user_id: Some(actor.user_id),
-        mission_id: None,
     };
     let read = thread_service
         .read_thread(ThreadHistoryRequest {
@@ -2170,7 +2168,6 @@ async fn invoke_spawn_cancels_child_when_post_submit_thread_mark_fails() {
         agent_id: child_request.child_scope.agent_id.clone().unwrap(),
         project_id: child_request.child_scope.project_id.clone(),
         owner_user_id: Some(actor.user_id),
-        mission_id: None,
     };
     let read = thread_service
         .read_thread(ThreadHistoryRequest {

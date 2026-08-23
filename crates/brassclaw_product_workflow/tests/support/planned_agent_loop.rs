@@ -173,7 +173,6 @@ impl ProductLiveAgentLoopHarness {
             agent_id: binding.agent_id.clone().expect("harness agent id"),
             project_id: binding.project_id.clone(),
             owner_user_id: binding.subject_user_id.clone(),
-            mission_id: None,
         };
         let thread_service = InMemorySessionThreadService::default();
         let turn_store = Arc::new(InMemoryTurnStateStore::default());

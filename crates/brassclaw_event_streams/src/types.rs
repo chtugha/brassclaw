@@ -3,7 +3,7 @@ use std::sync::Arc;
 use brassclaw_event_projections::{
     ProjectionCursor, ProjectionReplay, ProjectionScope, ProjectionSnapshot,
 };
-use brassclaw_host_api::{CapabilityId, InvocationId, MissionId, ProcessId, ThreadId};
+use brassclaw_host_api::{CapabilityId, InvocationId, ProcessId, ThreadId};
 use brassclaw_outbound::{OutboundPushKind, ProjectionUpdateRef};
 use brassclaw_turns::{ReplyTargetBindingRef, TurnActor, TurnRunId, TurnScope};
 use serde::{Deserialize, Serialize};
@@ -82,7 +82,6 @@ pub struct PushCandidatesForUpdateRequest {
 #[serde(rename_all = "snake_case")]
 pub enum ProjectionViewClass {
     ProductThread,
-    ProductMission,
     ProductRun,
     DeliveryStatus,
     DebugSupport,
@@ -93,7 +92,6 @@ pub enum ProjectionViewClass {
 #[serde(rename_all = "snake_case")]
 pub enum ProjectionTarget {
     Thread { thread_id: ThreadId },
-    Mission { mission_id: MissionId },
     Run { invocation_id: InvocationId },
     Process { process_id: ProcessId },
     DeliveryStatus { thread_id: ThreadId },

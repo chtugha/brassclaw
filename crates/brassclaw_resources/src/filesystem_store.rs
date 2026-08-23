@@ -372,7 +372,6 @@ mod tests {
             user_id: UserId::new(user).unwrap(),
             agent_id: None,
             project_id: project.map(|value| ProjectId::new(value).unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }
@@ -538,7 +537,6 @@ mod tests {
             user_id: UserId::new(user).unwrap(),
             agent_id: None,
             project_id: None,
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }

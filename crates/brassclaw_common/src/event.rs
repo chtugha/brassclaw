@@ -513,7 +513,6 @@ pub enum AppEvent {
     /// A mission spawned a new thread.
     #[serde(rename = "mission_thread_spawned")]
     MissionThreadSpawned {
-        mission_id: String,
         thread_id: String,
         mission_name: String,
     },
@@ -532,9 +531,6 @@ pub enum AppEvent {
         status: String,
         /// Full step checklist (not incremental — UI replaces entire list).
         steps: Vec<PlanStepDto>,
-        /// Associated mission ID (once approved and executing).
-        #[serde(skip_serializing_if = "Option::is_none")]
-        mission_id: Option<String>,
         /// Thread scope for SSE filtering.
         #[serde(skip_serializing_if = "Option::is_none")]
         thread_id: Option<String>,
@@ -956,7 +952,6 @@ mod tests {
                 goal: String::new(),
             },
             AppEvent::MissionThreadSpawned {
-                mission_id: String::new(),
                 thread_id: String::new(),
                 mission_name: String::new(),
             },
@@ -965,7 +960,6 @@ mod tests {
                 title: String::new(),
                 status: String::new(),
                 steps: vec![],
-                mission_id: None,
                 thread_id: None,
             },
             AppEvent::CodeExecuted {

@@ -19,7 +19,7 @@ use brassclaw_event_streams::{
 };
 use brassclaw_events::{EventCursor, EventStreamKey, ReadScope};
 use brassclaw_host_api::{
-    CapabilityId, ExtensionId, InvocationId, MissionId, ProjectId, RuntimeKind, TenantId, ThreadId,
+    CapabilityId, ExtensionId, InvocationId, ProjectId, RuntimeKind, TenantId, ThreadId,
     UserId,
 };
 use brassclaw_outbound::{

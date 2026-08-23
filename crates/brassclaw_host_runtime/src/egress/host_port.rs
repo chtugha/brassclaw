@@ -208,7 +208,6 @@ fn execution_context_for_host_http_egress(
         user_id: scope.user_id.clone(),
         agent_id: scope.agent_id.clone(),
         project_id: scope.project_id.clone(),
-        mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         extension_id,
         runtime,

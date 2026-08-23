@@ -81,7 +81,6 @@ mod tests {
             user_id: UserId::new(user).unwrap(),
             agent_id: Some(AgentId::new("agent").unwrap()),
             project_id: project.map(|value| ProjectId::new(value).unwrap()),
-            mission_id: None,
             thread_id: thread.map(|value| ThreadId::new(value).unwrap()),
             invocation_id: InvocationId::new(),
         }

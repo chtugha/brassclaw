@@ -299,7 +299,6 @@ fn scope(label: &str) -> ThreadScope {
         agent_id: AgentId::new(format!("agent-{label}")).unwrap(),
         project_id: Some(ProjectId::new(format!("project-{label}")).unwrap()),
         owner_user_id: Some(UserId::new(format!("user-{label}")).unwrap()),
-        mission_id: None,
     }
 }
 

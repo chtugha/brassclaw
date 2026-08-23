@@ -1189,7 +1189,6 @@ fn sample_scope(tenant: &str, user: &str, project: Option<&str>) -> ResourceScop
         user_id: UserId::new(user).unwrap(),
         agent_id: None,
         project_id: project.map(|value| ProjectId::new(value).unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     }
@@ -1297,11 +1296,10 @@ fn project_and_agent_limits_both_apply_without_override() {
 fn reservation_and_usage_are_charged_to_full_scope_cascade() {
     let governor = InMemoryResourceGovernor::new();
     let mut scope = sample_scope("tenant1", "user1", Some("project1"));
-    scope.mission_id = Some(MissionId::new("mission1").unwrap());
     scope.thread_id = Some(ThreadId::new("thread1").unwrap());
 
     let accounts = ResourceAccount::cascade(&scope);
-    assert_eq!(accounts.len(), 5);
+    assert_eq!(accounts.len(), 4);
 
     let reservation = governor
         .reserve(
@@ -2191,7 +2189,6 @@ fn limit_exceeded_carries_warnings_from_other_dimensions() {
         user_id: UserId::new("cascade-warn-user").unwrap(),
         agent_id: None,
         project_id: None,
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     };
@@ -2287,7 +2284,6 @@ fn governor_emits_budget_events_through_event_sink() {
         user_id: UserId::new("sink-user").unwrap(),
         agent_id: None,
         project_id: None,
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     };

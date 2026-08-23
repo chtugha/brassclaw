@@ -497,7 +497,6 @@ fn lifecycle_resource_scope(
         user_id: context.user_id.clone(),
         agent_id: context.agent_id.clone(),
         project_id: context.project_id.clone(),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     })

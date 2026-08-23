@@ -337,7 +337,6 @@ mod tests {
             agent_id: run_context.scope.agent_id.clone().expect("agent id"),
             project_id: run_context.scope.project_id.clone(),
             owner_user_id: None,
-            mission_id: None,
         };
         install_gsuite_extensions(&services, extension_state).await;
         let wiring = capability_wiring(
@@ -412,7 +411,6 @@ mod tests {
             agent_id: run_context.scope.agent_id.clone().expect("agent id"),
             project_id: run_context.scope.project_id.clone(),
             owner_user_id: None,
-            mission_id: None,
         };
         let thread_service = Arc::new(InMemorySessionThreadService::default());
         thread_service
@@ -492,7 +490,6 @@ mod tests {
             agent_id: run_context.scope.agent_id.clone().expect("agent id"),
             project_id: run_context.scope.project_id.clone(),
             owner_user_id: None,
-            mission_id: None,
         };
         let thread_service = Arc::new(InMemorySessionThreadService::default());
         let display_previews = Arc::new(CapabilityDisplayPreviewStore::default());
@@ -985,7 +982,6 @@ mod tests {
             agent_id: run_context.scope.agent_id.clone().expect("agent id"),
             project_id: run_context.scope.project_id.clone(),
             owner_user_id: None,
-            mission_id: None,
         };
         let skill_context = local_dev_filesystem_skill_context_source(
             local_runtime,
@@ -1531,7 +1527,6 @@ mod tests {
             agent_id: run_context.scope.agent_id.clone().expect("agent id"),
             project_id: run_context.scope.project_id.clone(),
             owner_user_id: None,
-            mission_id: None,
         };
         let wiring = capability_wiring(
             &services,
@@ -1566,7 +1561,6 @@ mod tests {
             agent_id: run_context.scope.agent_id.clone().expect("agent id"),
             project_id: run_context.scope.project_id.clone(),
             owner_user_id: None,
-            mission_id: None,
         };
         let wiring = capability_wiring(
             &services,

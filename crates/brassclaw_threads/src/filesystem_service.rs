@@ -12,7 +12,7 @@
 //! `ThreadScope.tenant_id`.
 //!
 //! Within the alias, sub-scope (`agent_id`, `project_id`, `owner_user_id`,
-//! `mission_id`) is encoded in the path so a single tenant/user can own
+//! `thread_id`) is encoded in the path so a single tenant/user can own
 //! multiple agent/project/mission cells. Within a single thread, messages,
 //! summary artifacts, and inbound idempotency records are stored as
 //! individual records keyed by their identifiers:
@@ -144,7 +144,7 @@ struct InboundIdempotencyRecord {
 /// before backend dispatch — so tenant isolation is structural rather
 /// than something this crate must re-derive from
 /// `ThreadScope.tenant_id`. Within-tenant axes (`agent_id`,
-/// `project_id`, `owner_user_id`, `mission_id`) stay in the
+/// `project_id`, `owner_user_id`, `thread_id`) stay in the
 /// alias-relative path because they are not covered by the per-tenant
 /// `MountAlias`.
 pub struct FilesystemSessionThreadService<F>
@@ -1767,10 +1767,6 @@ fn scope_axes_string(scope: &ThreadScope) -> String {
         base.push_str("/owners/");
         base.push_str(owner_user_id.as_str());
     }
-    if let Some(mission_id) = &scope.mission_id {
-        base.push_str("/missions/");
-        base.push_str(mission_id.as_str());
-    }
     base
 }
 
@@ -2178,7 +2174,6 @@ mod tests {
                 agent_id: AgentId::new("agent-a").unwrap(),
                 project_id: Some(ProjectId::new("project-a").unwrap()),
                 owner_user_id: Some(UserId::new("user-a").unwrap()),
-                mission_id: None,
             },
             source_binding_id: "web-client".into(),
             external_event_id: format!("event-{}", "x".repeat(10_000)),

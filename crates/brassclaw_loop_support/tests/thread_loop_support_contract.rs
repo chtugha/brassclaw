@@ -3589,7 +3589,6 @@ impl ThreadFixture {
             agent_id: agent_id.clone(),
             project_id: Some(project_id.clone()),
             owner_user_id: Some(user_id.clone()),
-            mission_id: None,
         };
         thread_service
             .ensure_thread(EnsureThreadRequest {

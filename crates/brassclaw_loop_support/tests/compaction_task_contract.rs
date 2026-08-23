@@ -221,7 +221,6 @@ async fn compaction_task_rejects_resolved_thread_scope_mismatch() {
         agent_id: AgentId::new("agent-wrong").unwrap(),
         project_id: Some(ProjectId::new("project-wrong").unwrap()),
         owner_user_id: Some(UserId::new("user-wrong").unwrap()),
-        mission_id: None,
     };
     let port = fixture.port_with_inference(
         Arc::new(CapturingInference::new("summary")),
@@ -535,7 +534,6 @@ impl CompactionFixture {
             agent_id: AgentId::new(format!("agent-compaction-{label}")).unwrap(),
             project_id: Some(ProjectId::new(format!("project-compaction-{label}")).unwrap()),
             owner_user_id: Some(UserId::new(format!("user-compaction-{label}")).unwrap()),
-            mission_id: None,
         };
         let thread_id = ThreadId::new(format!("thread-compaction-{label}")).unwrap();
         threads

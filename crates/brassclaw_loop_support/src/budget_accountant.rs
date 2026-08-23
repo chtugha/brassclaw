@@ -420,7 +420,6 @@ impl GovernorBackedAccountant {
             user_id,
             agent_id: context.scope.agent_id.clone(),
             project_id: context.scope.project_id.clone(),
-            mission_id: None,
             thread_id: Some(context.scope.thread_id.clone()),
             invocation_id: InvocationId::new(),
         }

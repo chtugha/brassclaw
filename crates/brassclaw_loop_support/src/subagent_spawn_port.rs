@@ -619,7 +619,6 @@ impl SubagentSpawnCapabilityPort {
             agent_id,
             project_id: self.run_context.scope.project_id.clone(),
             owner_user_id: Some(owner_user_id.clone()),
-            mission_id: None,
         };
         let child_run_id = TurnRunId::new();
         let tree_root = parent_record

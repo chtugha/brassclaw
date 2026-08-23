@@ -126,8 +126,7 @@ async fn capability_spawn_process_host_hides_cross_scope_status_and_output() {
     });
     let scope = context.resource_scope.clone();
     let wrong_user_scope = scope_for_user_with_invocation("other-user", context.invocation_id);
-    let wrong_project_scope =
-        scope_with_project_mission_thread(&scope, "other-project", "other-mission", "other-thread");
+    let wrong_project_scope = scope_with_project_thread(&scope, "other-project", "other-thread");
 
     let spawned = host
         .spawn_json(CapabilitySpawnRequest {
@@ -315,15 +314,9 @@ fn scope_for_user_with_invocation(user: &str, invocation_id: InvocationId) -> Re
     ResourceScope::local_default(UserId::new(user).unwrap(), invocation_id).unwrap()
 }
 
-fn scope_with_project_mission_thread(
-    scope: &ResourceScope,
-    project: &str,
-    mission: &str,
-    thread: &str,
-) -> ResourceScope {
+fn scope_with_project_thread(scope: &ResourceScope, project: &str, thread: &str) -> ResourceScope {
     let mut scope = scope.clone();
     scope.project_id = Some(ProjectId::new(project).unwrap());
-    scope.mission_id = Some(MissionId::new(mission).unwrap());
     scope.thread_id = Some(ThreadId::new(thread).unwrap());
     scope
 }

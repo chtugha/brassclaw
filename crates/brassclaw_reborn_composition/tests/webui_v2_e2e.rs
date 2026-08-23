@@ -287,7 +287,6 @@ fn webui_extension_setup_scope(extension_id: &str) -> AuthProductScope {
         user_id: UserId::new(USER).expect("user"),
         agent_id: Some(AgentId::new(AGENT).expect("agent")),
         project_id: None,
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::from_uuid(uuid::Uuid::new_v5(
             &uuid::Uuid::NAMESPACE_OID,

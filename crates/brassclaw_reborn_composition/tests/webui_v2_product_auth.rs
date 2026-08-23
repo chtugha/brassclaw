@@ -1314,7 +1314,6 @@ async fn extension_oauth_start_attaches_update_binding_for_package_extension() {
             user_id: UserId::new(USER).expect("user id"),
             agent_id: Some(AgentId::new(AGENT).expect("agent id")),
             project_id: Some(ProjectId::new(PROJECT).expect("project id")),
-            mission_id: None,
             thread_id: None,
             invocation_id,
         },

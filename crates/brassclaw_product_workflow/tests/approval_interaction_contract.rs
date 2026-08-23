@@ -415,7 +415,6 @@ fn resource_scope(actor: &TurnActor) -> ResourceScope {
         user_id: actor.user_id.clone(),
         agent_id: None,
         project_id: None,
-        mission_id: None,
         thread_id: Some(ThreadId::new("thread-alpha").expect("thread")),
         invocation_id: InvocationId::new(),
     }

@@ -130,7 +130,6 @@ fn setup_scope(
             user_id: caller.user_id.clone(),
             agent_id: caller.agent_id.clone(),
             project_id: caller.project_id.clone(),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::from_uuid(Uuid::new_v5(
                 &Uuid::NAMESPACE_OID,

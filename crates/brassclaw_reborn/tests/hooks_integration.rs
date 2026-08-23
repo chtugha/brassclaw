@@ -714,7 +714,6 @@ impl Fixture {
             agent_id: agent_id.clone(),
             project_id: Some(project_id.clone()),
             owner_user_id: Some(user_id.clone()),
-            mission_id: None,
         };
         thread_service
             .ensure_thread(EnsureThreadRequest {
@@ -840,7 +839,6 @@ fn runtime_scope(fixture: &Fixture) -> ResourceScope {
         user_id: fixture.actor_id.clone(),
         agent_id: fixture.context.scope.agent_id.clone(),
         project_id: fixture.context.scope.project_id.clone(),
-        mission_id: None,
         thread_id: Some(fixture.context.thread_id.clone()),
         invocation_id: InvocationId::new(),
     }
@@ -1249,7 +1247,6 @@ async fn event_subscription_event_during_continuous_drain_is_live() {
     let log_for_sub: Arc<dyn DurableEventLog> = Arc::clone(&log) as Arc<dyn DurableEventLog>;
     let read_scope = ReadScope {
         project_id: fixture.context.scope.project_id.clone(),
-        mission_id: None,
         thread_id: Some(fixture.context.thread_id.clone()),
         process_id: None,
     };

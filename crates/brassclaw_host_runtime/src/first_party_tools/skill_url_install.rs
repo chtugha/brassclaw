@@ -252,7 +252,6 @@ mod tests {
             user_id: UserId::new("user1").unwrap(),
             agent_id: None,
             project_id: None,
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }

@@ -166,7 +166,6 @@ impl AuthFlowOwnerScope {
             && resource.user_id == self.user_id
             && resource.agent_id == self.agent_id
             && resource.project_id == self.project_id
-            && resource.mission_id.is_none()
             && resource.thread_id.as_ref() == Some(&self.thread_id)
     }
 }

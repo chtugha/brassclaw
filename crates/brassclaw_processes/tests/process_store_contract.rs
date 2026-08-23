@@ -2631,9 +2631,6 @@ fn stored_process_owner_root(scope: &ResourceScope) -> String {
     if let Some(project_id) = &scope.project_id {
         base = format!("{base}/projects/{}", project_id.as_str());
     }
-    if let Some(mission_id) = &scope.mission_id {
-        base = format!("{base}/missions/{}", mission_id.as_str());
-    }
     if let Some(thread_id) = &scope.thread_id {
         base = format!("{base}/threads/{}", thread_id.as_str());
     }
@@ -2710,10 +2707,6 @@ fn alias_relative_owner_root(scope: &ResourceScope) -> String {
         base.push_str("/projects/");
         base.push_str(project_id.as_str());
     }
-    if let Some(mission_id) = &scope.mission_id {
-        base.push_str("/missions/");
-        base.push_str(mission_id.as_str());
-    }
     if let Some(thread_id) = &scope.thread_id {
         base.push_str("/threads/");
         base.push_str(thread_id.as_str());
@@ -2759,7 +2752,6 @@ fn sample_scope(invocation_id: InvocationId, tenant: &str, user: &str) -> Resour
         user_id: UserId::new(user).unwrap(),
         agent_id: None,
         project_id: Some(ProjectId::new("project1").unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id,
     }

@@ -78,7 +78,6 @@ fn push_request(scope: &TurnScope, kind: OutboundPushKind) -> PushCandidatesForU
         ),
         read_scope: ReadScope {
             project_id: scope.project_id.clone(),
-            mission_id: None,
             thread_id: Some(scope.thread_id.clone()),
             process_id: None,
         },
@@ -293,7 +292,6 @@ fn projection_scope_for(tenant: &str, user: &str, thread: &str) -> ProjectionSco
         ),
         read_scope: ReadScope {
             project_id: Some(ProjectId::new("project-a").unwrap()),
-            mission_id: None,
             thread_id: Some(thread_id),
             process_id: None,
         },

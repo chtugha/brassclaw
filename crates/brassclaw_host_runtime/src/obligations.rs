@@ -237,7 +237,6 @@ struct RuntimeSecretInjectionKey {
     user_id: String,
     agent_id: Option<String>,
     project_id: Option<String>,
-    mission_id: Option<String>,
     thread_id: Option<String>,
     invocation_id: String,
     capability_id: String,
@@ -251,7 +250,6 @@ impl RuntimeSecretInjectionKey {
             user_id: scope.user_id.as_str().to_string(),
             agent_id: scope.agent_id.as_ref().map(|id| id.as_str().to_string()),
             project_id: scope.project_id.as_ref().map(|id| id.as_str().to_string()),
-            mission_id: scope.mission_id.as_ref().map(|id| id.as_str().to_string()),
             thread_id: scope.thread_id.as_ref().map(|id| id.as_str().to_string()),
             invocation_id: scope.invocation_id.to_string(),
             capability_id: capability_id.as_str().to_string(),
@@ -264,7 +262,6 @@ impl RuntimeSecretInjectionKey {
             && self.user_id == scope.user_id
             && self.agent_id == scope.agent_id
             && self.project_id == scope.project_id
-            && self.mission_id == scope.mission_id
             && self.thread_id == scope.thread_id
             && self.invocation_id == scope.invocation_id
             && self.capability_id == scope.capability_id
@@ -277,7 +274,6 @@ struct RuntimeSecretInjectionScopeKey {
     user_id: String,
     agent_id: Option<String>,
     project_id: Option<String>,
-    mission_id: Option<String>,
     thread_id: Option<String>,
     invocation_id: String,
     capability_id: String,
@@ -290,7 +286,6 @@ impl RuntimeSecretInjectionScopeKey {
             user_id: scope.user_id.as_str().to_string(),
             agent_id: scope.agent_id.as_ref().map(|id| id.as_str().to_string()),
             project_id: scope.project_id.as_ref().map(|id| id.as_str().to_string()),
-            mission_id: scope.mission_id.as_ref().map(|id| id.as_str().to_string()),
             thread_id: scope.thread_id.as_ref().map(|id| id.as_str().to_string()),
             invocation_id: scope.invocation_id.to_string(),
             capability_id: capability_id.as_str().to_string(),
@@ -375,7 +370,6 @@ struct NetworkPolicyKey {
     user_id: String,
     agent_id: Option<String>,
     project_id: Option<String>,
-    mission_id: Option<String>,
     thread_id: Option<String>,
     invocation_id: String,
     capability_id: String,
@@ -388,7 +382,6 @@ impl NetworkPolicyKey {
             user_id: scope.user_id.as_str().to_string(),
             agent_id: scope.agent_id.as_ref().map(|id| id.as_str().to_string()),
             project_id: scope.project_id.as_ref().map(|id| id.as_str().to_string()),
-            mission_id: scope.mission_id.as_ref().map(|id| id.as_str().to_string()),
             thread_id: scope.thread_id.as_ref().map(|id| id.as_str().to_string()),
             invocation_id: scope.invocation_id.to_string(),
             capability_id: capability_id.as_str().to_string(),
@@ -897,7 +890,6 @@ struct ProcessObligationHandoffKey {
     user_id: String,
     agent_id: Option<String>,
     project_id: Option<String>,
-    mission_id: Option<String>,
     thread_id: Option<String>,
     invocation_id: String,
     capability_id: String,
@@ -910,7 +902,6 @@ impl ProcessObligationHandoffKey {
             user_id: scope.user_id.as_str().to_string(),
             agent_id: scope.agent_id.as_ref().map(|id| id.as_str().to_string()),
             project_id: scope.project_id.as_ref().map(|id| id.as_str().to_string()),
-            mission_id: scope.mission_id.as_ref().map(|id| id.as_str().to_string()),
             thread_id: scope.thread_id.as_ref().map(|id| id.as_str().to_string()),
             invocation_id: scope.invocation_id.to_string(),
             capability_id: capability_id.as_str().to_string(),
@@ -924,7 +915,6 @@ struct ProcessObligationProcessKey {
     user_id: String,
     agent_id: Option<String>,
     project_id: Option<String>,
-    mission_id: Option<String>,
     thread_id: Option<String>,
     process_id: ProcessId,
 }
@@ -936,7 +926,6 @@ impl ProcessObligationProcessKey {
             user_id: scope.user_id.as_str().to_string(),
             agent_id: scope.agent_id.as_ref().map(|id| id.as_str().to_string()),
             project_id: scope.project_id.as_ref().map(|id| id.as_str().to_string()),
-            mission_id: scope.mission_id.as_ref().map(|id| id.as_str().to_string()),
             thread_id: scope.thread_id.as_ref().map(|id| id.as_str().to_string()),
             process_id,
         }
@@ -2065,7 +2054,6 @@ fn audit_before_record(request: &CapabilityObligationRequest<'_>) -> AuditEnvelo
         user_id: request.context.user_id.clone(),
         agent_id: request.context.agent_id.clone(),
         project_id: request.context.project_id.clone(),
-        mission_id: request.context.mission_id.clone(),
         thread_id: request.context.thread_id.clone(),
         invocation_id: request.context.invocation_id,
         process_id: request.context.process_id,
@@ -2102,7 +2090,6 @@ fn audit_after_record(
         user_id: request.context.user_id.clone(),
         agent_id: request.context.agent_id.clone(),
         project_id: request.context.project_id.clone(),
-        mission_id: request.context.mission_id.clone(),
         thread_id: request.context.thread_id.clone(),
         invocation_id: request.context.invocation_id,
         process_id: request.context.process_id,
@@ -2574,7 +2561,6 @@ mod tests {
             user_id: UserId::new("user1").unwrap(),
             agent_id: Some(AgentId::new(agent_id).unwrap()),
             project_id: Some(ProjectId::new("project1").unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id: InvocationId::new(),
         }
@@ -2587,7 +2573,6 @@ mod tests {
             user_id: UserId::new("user1").unwrap(),
             agent_id: Some(AgentId::new("agent-a").unwrap()),
             project_id: Some(ProjectId::new("project1").unwrap()),
-            mission_id: None,
             thread_id: None,
             invocation_id,
         };
@@ -2600,7 +2585,6 @@ mod tests {
             user_id: resource_scope.user_id.clone(),
             agent_id: resource_scope.agent_id.clone(),
             project_id: resource_scope.project_id.clone(),
-            mission_id: resource_scope.mission_id.clone(),
             thread_id: resource_scope.thread_id.clone(),
             extension_id: ExtensionId::new("caller").unwrap(),
             runtime: RuntimeKind::Mcp,

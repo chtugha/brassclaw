@@ -7,8 +7,8 @@
 use async_trait::async_trait;
 use brassclaw_filesystem::FilesystemError;
 use brassclaw_host_api::{
-    AgentId, CapabilityId, CapabilitySet, ExtensionId, HostApiError, InvocationId, MissionId,
-    MountView, ProcessId, ProjectId, ResourceEstimate, ResourceReservation, ResourceReservationId,
+    AgentId, CapabilityId, CapabilitySet, ExtensionId, HostApiError, InvocationId, MountView,
+    ProcessId, ProjectId, ResourceEstimate, ResourceReservation, ResourceReservationId,
     ResourceScope, RuntimeKind, TenantId, ThreadId, UserId, VirtualPath,
 };
 use brassclaw_resources::ResourceError;
@@ -326,7 +326,6 @@ pub(crate) struct ProcessKey {
     user_id: UserId,
     agent_id: Option<AgentId>,
     project_id: Option<ProjectId>,
-    mission_id: Option<MissionId>,
     thread_id: Option<ThreadId>,
     process_id: ProcessId,
 }
@@ -338,7 +337,6 @@ impl ProcessKey {
             user_id: scope.user_id.clone(),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: scope.mission_id.clone(),
             thread_id: scope.thread_id.clone(),
             process_id,
         }
@@ -365,7 +363,6 @@ pub(crate) fn same_scope_owner(left: &ResourceScope, right: &ResourceScope) -> b
         && left.user_id == right.user_id
         && left.agent_id == right.agent_id
         && left.project_id == right.project_id
-        && left.mission_id == right.mission_id
         && left.thread_id == right.thread_id
 }
 

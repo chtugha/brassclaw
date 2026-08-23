@@ -128,7 +128,6 @@ fn fake_thread_history(owner: &WebUiAuthenticatedCaller, thread_id: &str) -> Thr
         agent_id: owner.agent_id.clone().expect("test caller has agent"),
         project_id: owner.project_id.clone(),
         owner_user_id: Some(owner.user_id.clone()),
-        mission_id: None,
     };
     ThreadHistory {
         thread: SessionThreadRecord {
@@ -165,7 +164,6 @@ fn thread_scope_for(caller: &WebUiAuthenticatedCaller) -> ThreadScope {
         agent_id: caller.agent_id.clone().expect("agent id"),
         project_id: caller.project_id.clone(),
         owner_user_id: Some(caller.user_id.clone()),
-        mission_id: None,
     }
 }
 

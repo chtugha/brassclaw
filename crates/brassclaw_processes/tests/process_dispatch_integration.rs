@@ -230,7 +230,6 @@ async fn process_services_failed_lifecycle_projection_sanitizes_error_and_filter
             &EventStreamKey::from_scope(&scope),
             &ReadScope {
                 project_id: scope.project_id.clone(),
-                mission_id: scope.mission_id.clone(),
                 thread_id: scope.thread_id.clone(),
                 process_id: Some(sibling_process_id),
             },
@@ -535,7 +534,6 @@ fn sample_scope(invocation_id: InvocationId, tenant: &str, user: &str) -> Resour
         user_id: UserId::new(user).unwrap(),
         agent_id: Some(AgentId::new("agent-a").unwrap()),
         project_id: Some(ProjectId::new("project-a").unwrap()),
-        mission_id: Some(MissionId::new("mission-a").unwrap()),
         thread_id: Some(ThreadId::new("thread-a").unwrap()),
         invocation_id,
     }

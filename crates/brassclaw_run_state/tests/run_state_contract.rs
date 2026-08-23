@@ -821,7 +821,6 @@ async fn filesystem_run_state_store_isolates_two_tenants_with_same_user_project_
         user_id: UserId::new("alice").unwrap(),
         agent_id: None,
         project_id: Some(ProjectId::new("project-1").unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id,
     };
@@ -1126,7 +1125,6 @@ fn sample_scope(invocation_id: InvocationId, tenant: &str, user: &str) -> Resour
         user_id: UserId::new(user).unwrap(),
         agent_id: None,
         project_id: Some(ProjectId::new("project1").unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id,
     }

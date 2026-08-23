@@ -508,7 +508,6 @@ async fn user_message_resolves_binding_persists_message_and_submits_turn() {
                 agent_id: binding.agent_id.clone().expect("agent id"),
                 project_id: binding.project_id.clone(),
                 owner_user_id: binding.subject_user_id.clone(),
-                mission_id: None,
             },
             thread_id: binding.thread_id.clone(),
         })
@@ -565,7 +564,6 @@ async fn shared_user_message_submits_subject_owned_turn_scope() {
                 agent_id: binding.agent_id.clone().expect("agent id"),
                 project_id: binding.project_id.clone(),
                 owner_user_id: binding.subject_user_id.clone(),
-                mission_id: None,
             },
             thread_id: binding.thread_id.clone(),
         })
@@ -638,7 +636,6 @@ async fn user_message_no_profile_uses_product_live_runtime_and_persists_reply() 
         agent_id: binding.agent_id.clone().expect("agent id"),
         project_id: binding.project_id.clone(),
         owner_user_id: binding.subject_user_id.clone(),
-        mission_id: None,
     };
     let model_route_resolver = Arc::new(
         StaticModelRouteResolver::new(ModelRoutePolicy::new(
@@ -816,7 +813,6 @@ async fn user_message_no_profile_can_cancel_product_live_run_from_product_path()
         agent_id: binding.agent_id.clone().expect("agent id"),
         project_id: binding.project_id.clone(),
         owner_user_id: binding.subject_user_id.clone(),
-        mission_id: None,
     };
     let model_route_resolver = Arc::new(
         StaticModelRouteResolver::new(ModelRoutePolicy::new(
@@ -1007,7 +1003,6 @@ async fn product_live_runtime_rejects_unretained_cancellation_factory() {
         agent_id: binding.agent_id.clone().expect("agent id"),
         project_id: binding.project_id.clone(),
         owner_user_id: binding.subject_user_id.clone(),
-        mission_id: None,
     };
     let model_route_resolver = Arc::new(
         StaticModelRouteResolver::new(ModelRoutePolicy::new(
@@ -1108,7 +1103,6 @@ async fn busy_thread_persists_second_message_as_deferred() {
                 agent_id: binding.agent_id.clone().expect("agent id"),
                 project_id: binding.project_id.clone(),
                 owner_user_id: binding.subject_user_id.clone(),
-                mission_id: None,
             },
             thread_id: binding.thread_id.clone(),
         })
@@ -1170,7 +1164,6 @@ async fn retry_validates_live_binding_before_accepted_message_replay() {
                 agent_id: binding.agent_id.clone().expect("agent id"),
                 project_id: binding.project_id.clone(),
                 owner_user_id: binding.subject_user_id.clone(),
-                mission_id: None,
             },
             thread_id: binding.thread_id.clone(),
         })
@@ -1232,7 +1225,6 @@ async fn replay_lookup_is_namespaced_by_installation() {
                 agent_id: binding.agent_id.clone().expect("agent id"),
                 project_id: binding.project_id.clone(),
                 owner_user_id: binding.subject_user_id.clone(),
-                mission_id: None,
             },
             thread_id: binding.thread_id.clone(),
         })
@@ -1277,7 +1269,6 @@ async fn deferred_busy_retry_resubmits_existing_message() {
                 agent_id: binding.agent_id.clone().expect("agent id"),
                 project_id: binding.project_id.clone(),
                 owner_user_id: binding.subject_user_id.clone(),
-                mission_id: None,
             },
             thread_id: binding.thread_id.clone(),
         })

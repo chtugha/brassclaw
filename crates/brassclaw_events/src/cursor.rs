@@ -1,6 +1,5 @@
 use brassclaw_host_api::{
-    AgentId, AuditEnvelope, MissionId, ProcessId, ProjectId, ResourceScope, TenantId, ThreadId,
-    UserId,
+    AgentId, AuditEnvelope, ProcessId, ProjectId, ResourceScope, TenantId, ThreadId, UserId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -82,7 +81,7 @@ impl EventStreamKey {
 ///
 /// `EventStreamKey` partitions cursors by `(tenant, user, agent)` per the
 /// durable-log path contract. Within a single stream, multiple
-/// projects/missions/threads/processes can co-exist; a project-scoped
+/// projects/threads/processes can co-exist; a project-scoped
 /// consumer must still see only its own project's events. `ReadScope`
 /// carries the deeper-scope dimensions and is enforced by the durable-log
 /// implementation, not by the caller.
@@ -99,8 +98,6 @@ impl EventStreamKey {
 pub struct ReadScope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<ProjectId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mission_id: Option<MissionId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<ThreadId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -121,7 +118,6 @@ impl ReadScope {
     /// record rather than inside the scope.
     pub fn matches_event(&self, event: &RuntimeEvent) -> bool {
         matches_optional(self.project_id.as_ref(), event.scope.project_id.as_ref())
-            && matches_optional(self.mission_id.as_ref(), event.scope.mission_id.as_ref())
             && matches_optional(self.thread_id.as_ref(), event.scope.thread_id.as_ref())
             && matches_optional(self.process_id.as_ref(), event.process_id.as_ref())
     }
@@ -130,7 +126,6 @@ impl ReadScope {
     /// top-level field on the audit envelope.
     pub fn matches_audit(&self, record: &AuditEnvelope) -> bool {
         matches_optional(self.project_id.as_ref(), record.project_id.as_ref())
-            && matches_optional(self.mission_id.as_ref(), record.mission_id.as_ref())
             && matches_optional(self.thread_id.as_ref(), record.thread_id.as_ref())
             && matches_optional(self.process_id.as_ref(), record.process_id.as_ref())
     }

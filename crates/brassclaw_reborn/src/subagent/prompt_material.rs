@@ -279,7 +279,6 @@ fn thread_scope_for_run(run_context: &LoopRunContext) -> Result<ThreadScope, Age
             .actor
             .as_ref()
             .map(|actor| actor.user_id.clone()),
-        mission_id: None,
     })
 }
 

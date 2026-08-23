@@ -371,7 +371,6 @@ async fn thread_checkpoint_evidence_accepts_result_refs_with_durable_reply_ref()
         agent_id: turn_scope.agent_id.clone().expect("agent id"),
         project_id: None,
         owner_user_id: None,
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {
@@ -456,7 +455,6 @@ async fn completion_evidence_reads_thread_under_the_run_caller_owner() {
         agent_id: turn_scope.agent_id.clone().expect("agent id"),
         project_id: None,
         owner_user_id: Some(caller.clone()),
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {
@@ -539,7 +537,6 @@ async fn thread_checkpoint_evidence_rejects_missing_result_ref_records() {
         agent_id: turn_scope.agent_id.clone().expect("agent id"),
         project_id: None,
         owner_user_id: None,
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {
@@ -588,7 +585,6 @@ async fn thread_checkpoint_evidence_accepts_result_only_completion_with_durable_
         agent_id: turn_scope.agent_id.clone().expect("agent id"),
         project_id: None,
         owner_user_id: None,
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {
@@ -652,7 +648,6 @@ async fn thread_checkpoint_evidence_rejects_tool_result_message_as_reply_ref() {
         agent_id: turn_scope.agent_id.clone().expect("agent id"),
         project_id: None,
         owner_user_id: None,
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {
@@ -711,7 +706,6 @@ async fn thread_checkpoint_evidence_isolates_same_result_ref_across_runs() {
         agent_id: turn_scope.agent_id.clone().expect("agent id"),
         project_id: None,
         owner_user_id: None,
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {
@@ -781,7 +775,6 @@ async fn thread_checkpoint_evidence_rejects_wrong_run_and_malformed_result_ref_r
         agent_id: turn_scope.agent_id.clone().expect("agent id"),
         project_id: None,
         owner_user_id: None,
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {
@@ -921,7 +914,6 @@ async fn thread_checkpoint_evidence_rejects_stored_thread_scope_mismatch() {
         agent_id: AgentId::new("agent-stored").expect("valid"),
         project_id: None,
         owner_user_id: None,
-        mission_id: None,
     };
     thread_service
         .ensure_thread(EnsureThreadRequest {

@@ -1651,7 +1651,6 @@ fn grant_principal_matches_visible_context(
         Principal::User(id) => id == &context.user_id,
         Principal::Agent(id) => context.agent_id.as_ref() == Some(id),
         Principal::Project(id) => context.project_id.as_ref() == Some(id),
-        Principal::Mission(id) => context.mission_id.as_ref() == Some(id),
         Principal::Thread(id) => context.thread_id.as_ref() == Some(id),
         Principal::Extension(id) => id == loop_driver_extension,
         Principal::HostRuntime | Principal::System(_) => false,

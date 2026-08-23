@@ -230,7 +230,6 @@ where
             user_id: owner.user_id.clone(),
             agent_id: owner.agent_id.clone(),
             project_id: owner.project_id.clone(),
-            mission_id: None,
             thread_id: Some(owner.thread_id.clone()),
             invocation_id: brassclaw_host_api::InvocationId::new(),
         };
@@ -395,7 +394,6 @@ where
             user_id: owner.user_id.clone(),
             agent_id: owner.agent_id.clone(),
             project_id: owner.project_id.clone(),
-            mission_id: owner.mission_id.clone(),
             thread_id: owner.thread_id.clone(),
             invocation_id: brassclaw_host_api::InvocationId::new(),
         };

@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Action, AgentId, ApprovalRequest, AuditEventId, CapabilityId, CorrelationId, DenyReason,
-    EffectKind, ExecutionContext, ExtensionId, InvocationId, MissionId, NetworkMethod, Principal,
-    ProcessId, ProjectId, SecretUseMode, TenantId, ThreadId, Timestamp, UserId,
+    EffectKind, ExecutionContext, ExtensionId, InvocationId, NetworkMethod, Principal, ProcessId,
+    ProjectId, SecretUseMode, TenantId, ThreadId, Timestamp, UserId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,7 +27,6 @@ pub struct AuditEnvelope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<AgentId>,
     pub project_id: Option<ProjectId>,
-    pub mission_id: Option<MissionId>,
     pub thread_id: Option<ThreadId>,
     pub invocation_id: InvocationId,
     pub process_id: Option<ProcessId>,
@@ -57,7 +56,6 @@ impl AuditEnvelope {
             user_id: ctx.user_id.clone(),
             agent_id: ctx.agent_id.clone(),
             project_id: ctx.project_id.clone(),
-            mission_id: ctx.mission_id.clone(),
             thread_id: ctx.thread_id.clone(),
             invocation_id: ctx.invocation_id,
             process_id: ctx.process_id,
@@ -88,7 +86,6 @@ impl AuditEnvelope {
             user_id: scope.user_id.clone(),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: scope.mission_id.clone(),
             thread_id: scope.thread_id.clone(),
             invocation_id: scope.invocation_id,
             process_id: None,

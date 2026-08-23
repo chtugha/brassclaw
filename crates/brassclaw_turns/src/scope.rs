@@ -102,7 +102,6 @@ impl TurnScope {
         });
         scope.agent_id = self.agent_id.clone();
         scope.project_id = self.project_id.clone();
-        scope.mission_id = None;
         scope.thread_id = Some(self.thread_id.clone());
         scope
     }

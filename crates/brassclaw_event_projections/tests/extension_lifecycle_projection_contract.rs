@@ -142,7 +142,6 @@ fn extension_lifecycle_audit(event: ExtensionLifecycleEvent) -> AuditEnvelope {
         user_id: UserId::new("alice").unwrap(),
         agent_id: Some(AgentId::new("agent-a").unwrap()),
         project_id: Some(ProjectId::new("project-a").unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
         process_id: None,
@@ -186,7 +185,6 @@ fn extension_resource_scope() -> ResourceScope {
         user_id: UserId::new("alice").unwrap(),
         agent_id: Some(AgentId::new("agent-a").unwrap()),
         project_id: Some(ProjectId::new("project-a").unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     }

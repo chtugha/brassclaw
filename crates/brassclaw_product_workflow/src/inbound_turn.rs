@@ -712,7 +712,6 @@ fn thread_scope_from_binding(
         agent_id,
         project_id: binding.project_id.clone(),
         owner_user_id: binding.subject_user_id.clone(),
-        mission_id: None,
     })
 }
 
@@ -921,7 +920,6 @@ mod tests {
                 agent_id: AgentId::new("agent:alpha").unwrap(),
                 project_id: None,
                 owner_user_id: Some(subject_user_id.clone()),
-                mission_id: None,
             },
             source_binding_id: "src:alpha".to_string(),
             submit_idempotency_key: "turn-key".to_string(),
@@ -981,7 +979,6 @@ mod tests {
                 agent_id: AgentId::new("agent:alpha").unwrap(),
                 project_id: None,
                 owner_user_id: Some(user_id()),
-                mission_id: None,
             },
             thread_id: thread_id(),
             message_id,

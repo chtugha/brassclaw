@@ -95,7 +95,6 @@ impl RebornServicesApi for StubServices {
                     agent_id: AgentId::new("agent.fake").expect("agent"),
                     project_id: Some(ProjectId::new("project.fake").expect("project")),
                     owner_user_id: Some(UserId::new("alice@example.com").expect("user")),
-                    mission_id: None,
                 },
                 created_by_actor_id: "alice@example.com".to_string(),
                 title: None,

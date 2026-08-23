@@ -3,8 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use brassclaw_events::{DurableEventLog, EventError, RuntimeEvent};
 use brassclaw_host_api::{
-    AgentId, CapabilityId, InvocationId, MissionId, ProjectId, ResourceScope, TenantId, ThreadId,
-    UserId,
+    AgentId, CapabilityId, InvocationId, ProjectId, ResourceScope, TenantId, ThreadId, UserId,
 };
 use brassclaw_threads::ThreadScope;
 use brassclaw_turns::{
@@ -23,14 +22,13 @@ const HOOK_CAPABILITY_ID: &str = "loop.hook";
 /// Scope authority bound into the sink at construction time.
 ///
 /// Building this from a canonical thread scope prevents callers from stitching
-/// runtime events together from an unrelated user or mission scope.
+/// runtime events together from an unrelated user scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DurableLoopHostMilestoneScope {
     tenant_id: TenantId,
     user_id: UserId,
     agent_id: Option<AgentId>,
     project_id: Option<ProjectId>,
-    mission_id: Option<MissionId>,
     thread_id: Option<ThreadId>,
     run_id: Option<TurnRunId>,
 }
@@ -41,14 +39,12 @@ impl DurableLoopHostMilestoneScope {
         user_id: UserId,
         agent_id: Option<AgentId>,
         project_id: Option<ProjectId>,
-        mission_id: Option<MissionId>,
     ) -> Self {
         Self {
             tenant_id,
             user_id,
             agent_id,
             project_id,
-            mission_id,
             thread_id: None,
             run_id: None,
         }
@@ -66,7 +62,6 @@ impl DurableLoopHostMilestoneScope {
             user_id,
             agent_id: Some(thread_scope.agent_id.clone()),
             project_id: thread_scope.project_id.clone(),
-            mission_id: thread_scope.mission_id.clone(),
             thread_id: None,
             run_id: None,
         })
@@ -119,7 +114,6 @@ impl DurableLoopHostMilestoneScope {
             user_id: self.user_id.clone(),
             agent_id: self.agent_id.clone(),
             project_id: self.project_id.clone(),
-            mission_id: self.mission_id.clone(),
             thread_id: Some(milestone.scope.thread_id.clone()),
             invocation_id: InvocationId::from_uuid(milestone.run_id.as_uuid()),
         })
@@ -393,7 +387,6 @@ mod tests {
             agent_id: AgentId::new("agent-hook-projection").unwrap(),
             project_id: Some(ProjectId::new("project-hook-projection").unwrap()),
             owner_user_id: Some(UserId::new("user-hook-projection").unwrap()),
-            mission_id: None,
         }
     }
 

@@ -7,8 +7,7 @@ use brassclaw_event_projections::{
 use brassclaw_events::InMemoryDurableAuditLog;
 use brassclaw_events::{AuditSink, DurableAuditSink};
 use brassclaw_host_api::{
-    AgentId, CorrelationId, InvocationId, MissionId, ProjectId, ResourceScope, TenantId, ThreadId,
-    UserId,
+    AgentId, CorrelationId, InvocationId, ProjectId, ResourceScope, TenantId, ThreadId, UserId,
 };
 use brassclaw_memory::{
     InMemoryMemoryDocumentRepository, MemoryBackend, MemoryContext, MemoryDocumentPath,
@@ -195,7 +194,6 @@ fn memory_resource_scope(scope: &MemoryDocumentScope) -> ResourceScope {
         project_id: scope
             .project_id()
             .map(|project| ProjectId::new(project).unwrap()),
-        mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
     }
@@ -207,7 +205,6 @@ fn thread_resource_scope() -> ResourceScope {
         user_id: UserId::new("alice").unwrap(),
         agent_id: Some(AgentId::new("agent-a").unwrap()),
         project_id: Some(ProjectId::new("project-a").unwrap()),
-        mission_id: Some(MissionId::new("mission-a").unwrap()),
         thread_id: Some(ThreadId::new("thread-a").unwrap()),
         invocation_id: InvocationId::new(),
     }

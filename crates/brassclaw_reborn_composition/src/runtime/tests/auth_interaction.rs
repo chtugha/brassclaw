@@ -290,7 +290,6 @@ fn auth_scope_for_turn(scope: &TurnScope, actor: &TurnActor) -> AuthProductScope
                 .unwrap_or_else(|| actor.user_id.clone()),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: None,
             thread_id: Some(scope.thread_id.clone()),
             invocation_id: InvocationId::new(),
         },

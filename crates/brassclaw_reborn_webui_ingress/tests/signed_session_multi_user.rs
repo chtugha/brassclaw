@@ -83,7 +83,6 @@ impl RebornServicesApi for RecordingServices {
                     agent_id: AgentId::new("agent.fake").expect("agent"),
                     project_id: Some(ProjectId::new("project.fake").expect("project")),
                     owner_user_id: Some(owner),
-                    mission_id: None,
                 },
                 created_by_actor_id: "actor".to_string(),
                 title: None,

@@ -49,7 +49,6 @@ pub(super) struct CodingReadScopeKey {
     user_id: String,
     agent_id: Option<String>,
     project_id: Option<String>,
-    mission_id: Option<String>,
     thread_id: Option<String>,
 }
 
@@ -65,11 +64,6 @@ pub(super) fn read_scope_key(request: &CodingCapabilityRequest<'_>) -> CodingRea
         project_id: request
             .scope
             .project_id
-            .as_ref()
-            .map(|value| value.as_str().to_string()),
-        mission_id: request
-            .scope
-            .mission_id
             .as_ref()
             .map(|value| value.as_str().to_string()),
         thread_id: request

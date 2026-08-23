@@ -51,8 +51,8 @@ use fs2::FileExt;
 
 use brassclaw_host_api::ReservationStatus;
 use brassclaw_host_api::{
-    AgentId, MissionId, ProjectId, ResourceEstimate, ResourceReservationId, ResourceScope,
-    ResourceUsage, TenantId, ThreadId, UserId,
+    AgentId, ProjectId, ResourceEstimate, ResourceReservationId, ResourceScope, ResourceUsage,
+    TenantId, ThreadId, UserId,
 };
 pub use brassclaw_host_api::{ResourceReceipt, ResourceReservation};
 use rust_decimal::Decimal;
@@ -138,17 +138,10 @@ pub enum ResourceAccount {
         project_id: Option<ProjectId>,
         agent_id: AgentId,
     },
-    Mission {
-        tenant_id: TenantId,
-        user_id: UserId,
-        project_id: Option<ProjectId>,
-        mission_id: MissionId,
-    },
     Thread {
         tenant_id: TenantId,
         user_id: UserId,
         project_id: Option<ProjectId>,
-        mission_id: Option<MissionId>,
         thread_id: ThreadId,
     },
 }
@@ -184,32 +177,16 @@ impl ResourceAccount {
         }
     }
 
-    pub fn mission(
-        tenant_id: TenantId,
-        user_id: UserId,
-        project_id: Option<ProjectId>,
-        mission_id: MissionId,
-    ) -> Self {
-        Self::Mission {
-            tenant_id,
-            user_id,
-            project_id,
-            mission_id,
-        }
-    }
-
     pub fn thread(
         tenant_id: TenantId,
         user_id: UserId,
         project_id: Option<ProjectId>,
-        mission_id: Option<MissionId>,
         thread_id: ThreadId,
     ) -> Self {
         Self::Thread {
             tenant_id,
             user_id,
             project_id,
-            mission_id,
             thread_id,
         }
     }
@@ -219,7 +196,7 @@ impl ResourceAccount {
     ///
     /// A reservation succeeds only if every account returned by this cascade
     /// remains within its limit. Deeper accounts do not override shallower
-    /// accounts; tenant, user, project, agent, mission, and thread limits all
+    /// accounts; tenant, user, project, agent, and thread limits all
     /// apply when present.
     pub fn cascade(scope: &ResourceScope) -> Vec<Self> {
         let mut accounts = vec![
@@ -244,21 +221,11 @@ impl ResourceAccount {
             ));
         }
 
-        if let Some(mission_id) = &scope.mission_id {
-            accounts.push(Self::mission(
-                scope.tenant_id.clone(),
-                scope.user_id.clone(),
-                scope.project_id.clone(),
-                mission_id.clone(),
-            ));
-        }
-
         if let Some(thread_id) = &scope.thread_id {
             accounts.push(Self::thread(
                 scope.tenant_id.clone(),
                 scope.user_id.clone(),
                 scope.project_id.clone(),
-                scope.mission_id.clone(),
                 thread_id.clone(),
             ));
         }
@@ -302,32 +269,17 @@ impl std::fmt::Display for ResourceAccount {
                 project_id.as_ref().map(|p| p.as_str()).unwrap_or("_"),
                 agent_id.as_str()
             ),
-            Self::Mission {
-                tenant_id,
-                user_id,
-                project_id,
-                mission_id,
-            } => write!(
-                f,
-                "tenant/{}/user/{}/project/{}/mission/{}",
-                tenant_id.as_str(),
-                user_id.as_str(),
-                project_id.as_ref().map(|p| p.as_str()).unwrap_or("_"),
-                mission_id.as_str()
-            ),
             Self::Thread {
                 tenant_id,
                 user_id,
                 project_id,
-                mission_id,
                 thread_id,
             } => write!(
                 f,
-                "tenant/{}/user/{}/project/{}/mission/{}/thread/{}",
+                "tenant/{}/user/{}/project/{}/thread/{}",
                 tenant_id.as_str(),
                 user_id.as_str(),
                 project_id.as_ref().map(|p| p.as_str()).unwrap_or("_"),
-                mission_id.as_ref().map(|m| m.as_str()).unwrap_or("_"),
                 thread_id.as_str()
             ),
         }
@@ -1311,8 +1263,6 @@ struct StrictResourceScope {
     agent_id: Option<AgentId>,
     #[serde(default)]
     project_id: Option<ProjectId>,
-    #[serde(default)]
-    mission_id: Option<MissionId>,
     #[serde(default)]
     thread_id: Option<ThreadId>,
     invocation_id: brassclaw_host_api::InvocationId,

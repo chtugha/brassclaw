@@ -25,7 +25,7 @@ use brassclaw_filesystem::{
 };
 use brassclaw_host_api::{
     AgentId, ApprovalRequest, ApprovalRequestId, CapabilityId, HostApiError, InvocationId,
-    MissionId, ProjectId, ResourceScope, ScopedPath, TenantId, ThreadId, UserId,
+    ProjectId, ResourceScope, ScopedPath, TenantId, ThreadId, UserId,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -84,7 +84,6 @@ struct RunStateKey {
     user_id: UserId,
     agent_id: Option<AgentId>,
     project_id: Option<ProjectId>,
-    mission_id: Option<MissionId>,
     thread_id: Option<ThreadId>,
     invocation_id: InvocationId,
 }
@@ -96,7 +95,6 @@ impl RunStateKey {
             user_id: scope.user_id.clone(),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: scope.mission_id.clone(),
             thread_id: scope.thread_id.clone(),
             invocation_id,
         }
@@ -109,7 +107,6 @@ struct ApprovalKey {
     user_id: UserId,
     agent_id: Option<AgentId>,
     project_id: Option<ProjectId>,
-    mission_id: Option<MissionId>,
     thread_id: Option<ThreadId>,
     request_id: ApprovalRequestId,
 }
@@ -121,7 +118,6 @@ impl ApprovalKey {
             user_id: scope.user_id.clone(),
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
-            mission_id: scope.mission_id.clone(),
             thread_id: scope.thread_id.clone(),
             request_id,
         }
@@ -1057,10 +1053,6 @@ fn scope_owner_alias_string(prefix: &'static str, scope: &ResourceScope) -> Stri
         base.push_str("/projects/");
         base.push_str(project_id.as_str());
     }
-    if let Some(mission_id) = &scope.mission_id {
-        base.push_str("/missions/");
-        base.push_str(mission_id.as_str());
-    }
     if let Some(thread_id) = &scope.thread_id {
         base.push_str("/threads/");
         base.push_str(thread_id.as_str());
@@ -1136,7 +1128,6 @@ fn same_scope_owner(left: &ResourceScope, right: &ResourceScope) -> bool {
         && left.user_id == right.user_id
         && left.agent_id == right.agent_id
         && left.project_id == right.project_id
-        && left.mission_id == right.mission_id
         && left.thread_id == right.thread_id
 }
 
