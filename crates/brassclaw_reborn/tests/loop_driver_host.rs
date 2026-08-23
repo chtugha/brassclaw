@@ -202,6 +202,7 @@ async fn text_only_host_factory_builds_complete_agent_loop_driver_host() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -319,6 +320,7 @@ async fn text_only_host_factory_sanitizes_gateway_error_summaries() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -377,6 +379,7 @@ async fn text_only_host_factory_invokes_model_budget_accountant() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -678,6 +681,7 @@ async fn progress_port_prompt_bundle_built_does_not_double_emit() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -984,6 +988,7 @@ async fn text_only_host_factory_includes_safety_context_in_prompt_bundle() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1036,6 +1041,7 @@ async fn text_only_host_factory_uses_explicit_local_noop_safety_context() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1531,6 +1537,7 @@ async fn text_only_host_e2e_keeps_persisted_model_route_through_full_flow() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -2634,6 +2641,7 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -2808,6 +2816,7 @@ async fn text_only_host_factory_threads_model_route_snapshot_to_gateway() {
                     max_messages: Some(8),
                     inline_messages: Vec::new(),
                     capability_view: None,
+                    recipe_hint: None,
                 })
                 .await
                 .unwrap()
@@ -3072,6 +3081,7 @@ async fn text_only_host_e2e_flow_persists_checkpoint_mapping_in_turn_state_store
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -3165,6 +3175,7 @@ async fn text_only_host_prompt_accepts_empty_surface_version() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -3186,6 +3197,7 @@ async fn text_only_host_prompt_rejects_stale_surface_version() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -3207,6 +3219,7 @@ async fn text_only_host_prompt_rejects_codeact_mode_and_zero_budget() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -3221,6 +3234,7 @@ async fn text_only_host_prompt_rejects_codeact_mode_and_zero_budget() {
             max_messages: Some(0),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -3244,6 +3258,7 @@ async fn text_only_host_prompt_materializes_inline_messages() {
                 role: LoopInlineMessageRole::User,
                 safe_body: LoopSafeSummary::new("safe inline nudge").unwrap(),
             }],
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -3282,6 +3297,7 @@ async fn text_only_host_prompt_rejects_foreign_context_and_checkpoint_refs() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -3296,6 +3312,7 @@ async fn text_only_host_prompt_rejects_foreign_context_and_checkpoint_refs() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -3316,6 +3333,7 @@ async fn text_only_host_prompt_rejects_foreign_context_and_checkpoint_refs() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -3393,6 +3411,7 @@ async fn text_only_host_factory_threads_identity_source_to_prompt_and_model() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -3457,6 +3476,7 @@ async fn text_only_host_factory_excludes_personal_identity_when_profile_excludes
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -4012,6 +4032,7 @@ async fn text_only_host_skill_context_does_not_expand_capability_surface() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -4080,6 +4101,7 @@ async fn text_only_host_prompt_bundle_includes_surface_metadata_and_still_stream
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -4979,6 +5001,7 @@ async fn text_only_host_prompt_accepts_refetched_surface_version() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -6222,6 +6245,7 @@ impl AgentLoopDriver for TextOnlyFinalReplyDriver {
                 max_messages: Some(8),
                 inline_messages: Vec::new(),
                 capability_view: None,
+                recipe_hint: None,
             })
             .await
             .map_err(driver_host_error)?;

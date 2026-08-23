@@ -479,8 +479,50 @@ Mark this subplan Zenflow substep Completed.
   regressions).
 - H.4 — Done. Spawned the nested subplan `./docs/agents-v3/subplan_problem_stepH4_of_saved_plan_to_v3.md` (Zenflow nested subplan step `fa9fb137`) for `recipe_id` surfacing + the engine→composition Tier-0 outcome-recording bridge. H4.1–H4.7 implemented one-by-one (`b84a6197`→`edc0ab95`): `RecipeTierZeroStarted`/`Succeeded`/`Failed` `EventKind` variants; `handle_emit_event` dispatch arms; `TurnRoutingSignals.recipe_id`+`recipe_name` surfaced end-to-end into the pkr dict; `default.py` tier_zero branch emits the events + the success `tier_zero_outcome` extra stamp; `TierZeroOutcome`+`OrchestratorResult.tier_zero_outcome`+`build_tier_zero_outcome`; composition `RecipeOutcomeListener` (event→`record_recipe_outcome` projection, spy-tested). H4.8 final-verification spawned its OWN nested subplan `./docs/agents-v3/subplan_problem_stepH4_8_of_saved_plan_to_v3.md` (Zenflow substep `d48d5809`) to fix a pre-existing Phase-G.1 test regression (`skill_codeact_persists_active_skill_provenance` red since `e7c2ce31` — `ThreadManager` did not plumb a pg_pool into `ExecutionLoop`); S1–S4 done (`701f4194`, `b01129ef`+`5426cce0`, `ad07906a`, `0f78d80d`) — `ThreadManager::with_pg_pool` plumbing + test migrated to testcontainer-pg + `skills-db` + skip-if-no-docker. Verified: fmt clean; engine clippy `-D warnings` clean both configs; full default `cargo test` GREEN; full `--features skills-db` `cargo test` GREEN. One outside-H4.8 blockage remains (user's uncommitted `basic_prompt_store` WIP blocks the full-workspace `cargo clippy --all ... -D warnings` gate — documented in the H4.8 subplan §7, not H4.8's). Zenflow `fa9fb137` + `d48d5809` marked Completed.
 - H.5 — Obsolete/Skipped (O1–O5 done; see `subplan_problem_stepH5_obsolescence_of_saved_plan_to_v3.md`). Model A dormant/never-built; superseded by H.6–H.13 (Model B/C).
-- H.6 — Pending.
-- H.7 — Pending.
+- H.6 — Done. Added `crates/brassclaw_turns/src/run_profile/orchestrator_lookup.rs`
+  with the two DTOs the plan requires — `PriorKnowledgeBundle` (`orchestrator_content:
+  String`, `matched_component_ids: Vec<String>`, `override_prompt_creation: bool`) +
+  `TierZeroReply` (`text: String`, `matched_component_ids: Vec<String>`) — both
+  `#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]`, turns-native (no
+  engine types), with field docs + a "Reused by Model B/C (H.5 O4)" module-doc note.
+  Registered `pub mod orchestrator_lookup;` in `mod.rs` + re-exported the two DTOs.
+  Followed the H4 precedent (DTOs in a dedicated `*_lookup.rs`, NOT `host.rs`) over the
+  plan-literal `host.rs` placement (Q-H6-1). Verified: clippy `doc_lazy_continuation`
+  fix (module-doc leading `+` read as a list marker); fmt clean; clippy clean; 131
+  tests GREEN (+2 serde round-trip). Committed `9b460442` + pushed.
+- H.7 — Done. (1) `orchestrator_lookup.rs`: added `#[async_trait] pub trait
+  OrchestratorLookup: Send + Sync` with `async fn run_step_zero(.., recipe_hint:
+  Option<&serde_json::Value>) -> Option<PriorKnowledgeBundle>` + `async fn
+  run_tier_zero(.., recipe_hint: &serde_json::Value, recipe_rust_context:
+  &serde_json::Value) -> Option<TierZeroReply>` (returns `Option`, degrade-gracefully —
+  no error enum, mirroring `RecipeTierZeroFailed`→Tier-2) + trait tests (`StubOrchestrator`
+  impl, `StubOrchestratorHost` exposing it, `no_orchestrator_returns_none`, compile-time
+  supertrait-reachability proof). (2) `host.rs`: added `pub trait LoopOrchestratorPort:
+  Send + Sync { fn orchestrator_lookup(&self) -> Option<&dyn OrchestratorLookup>; }`
+  (accessor port, Q-H6-1 H4-precedent) + `pub struct NoOrchestrator; impl
+  LoopOrchestratorPort for NoOrchestrator` returning `None` (mirror `NoRetrieval`) +
+  added `+ LoopOrchestratorPort` as the **15th supertrait** to BOTH the
+  `AgentLoopDriverHost` declaration AND the blanket `impl<T> AgentLoopDriverHost for T
+  where ...` where-clause. (3) `LoopPromptBundleRequest`: added `#[serde(default,
+  skip_serializing_if = "Option::is_none")] pub recipe_hint: Option<serde_json::Value>`
+  + **dropped `Eq`** from the derive (kept `PartialEq` — `serde_json::Value` is not
+  `Eq`). (4) `mod.rs`: re-exported `LoopOrchestratorPort`, `NoOrchestrator`,
+  `OrchestratorLookup`. (5) Added `recipe_hint: None,` to **all 74**
+  `LoopPromptBundleRequest { ... }` construction literals across 14 files (robust
+  brace-matching Python script — inserts before the matching close brace, fixing the
+  prior off-by-one; +7 sites the original bulk-edit missed in `prompt.rs` +
+  `planning_context.rs` + `thread_loop_support_contract.rs` + `agent_loop_host_contract.rs`).
+  (6) Added `LoopOrchestratorPort` impls to all 7 `AgentLoopDriverHost` implementors
+  (forced by the 15th supertrait, blanket-impl complete): `RebornLoopDriverHost`
+  (production — new `orchestrator_lookup` field + `with_orchestrator_lookup` builder on
+  the factory + host-build clone + impl, mirroring H4 `retrieval_lookup`; H.12 wires
+  the composition engine-backed impl) + `MockHost` (field+impl) + `ResumePayloadHost`
+  (delegate to inner) + `StubHost`/`ForbiddenResumeHost`/`RecordingAgentLoopHost`/
+  `MockAgentLoopDriverHost` (None impls). The `MockHost` builder is deferred to H.13
+  (would be dead-code until tests use it). Verified: fmt clean (incl. the 2 user-WIP
+  `loop_driver_host.rs` files — hunk-filtered at staging); clippy clean across turns,
+  agent_loop, hooks, loop_support, reborn, composition; tests GREEN (turns 131 /
+  agent_loop 355 / reborn 440 / loop_support 2 / hooks).
 - H.8 — Pending.
 - H.9 — Pending.
 - H.10 — Pending.

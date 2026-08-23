@@ -60,15 +60,15 @@ pub use host::{
     LoopInputAckToken, LoopInputBatch, LoopInputCursor, LoopInputCursorToken, LoopInputPort,
     LoopInterceptorPort, LoopInterruptKind, LoopModelCapabilityView, LoopModelMessage,
     LoopModelPort, LoopModelRequest, LoopModelResponse, LoopModelRouteSnapshot, LoopModelUsage,
-    LoopProcessRef, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
+    LoopOrchestratorPort, LoopProcessRef, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
     LoopPromptBundleAuthority, LoopPromptBundleGrant, LoopPromptBundleRef, LoopPromptBundleRequest,
     LoopPromptPort, LoopRecipePort, LoopRetrievalPort, LoopRunContext, LoopRunInfoPort,
-    LoopSafeSummary, LoopTranscriptPort, ModelStreamChunk, NoInterceptor, NoRecipeLookup,
-    NoRetrieval, ParentLoopOutput, ProcessHandleSummary, PromptMode, ProviderToolCall,
-    ProviderToolCallCapabilityIds, ProviderToolCallReference, ProviderToolCallReplay,
-    ProviderToolDefinition, StageCheckpointPayloadRequest, UpdateAssistantDraft,
-    VisibleCapabilityRequest, VisibleCapabilitySurface, sanitize_model_visible_text,
-    validate_model_route_component_value,
+    LoopSafeSummary, LoopTranscriptPort, ModelStreamChunk, NoInterceptor, NoOrchestrator,
+    NoRecipeLookup, NoRetrieval, ParentLoopOutput, ProcessHandleSummary, PromptMode,
+    ProviderToolCall, ProviderToolCallCapabilityIds, ProviderToolCallReference,
+    ProviderToolCallReplay, ProviderToolDefinition, StageCheckpointPayloadRequest,
+    UpdateAssistantDraft, VisibleCapabilityRequest, VisibleCapabilitySurface,
+    sanitize_model_visible_text, validate_model_route_component_value,
 };
 pub use instruction_bundle::{
     InMemoryInstructionMaterializationStore, InstructionBundle, InstructionBundleBuilder,
@@ -98,7 +98,7 @@ pub use model_observation::{
     ToolObservationStatus, ToolRecoveryObservation,
 };
 pub use model_work::{ModelWorkKind, ModelWorkOutcome, ModelWorkRequest, ModelWorkUsage};
-pub use orchestrator_lookup::{PriorKnowledgeBundle, TierZeroReply};
+pub use orchestrator_lookup::{OrchestratorLookup, PriorKnowledgeBundle, TierZeroReply};
 pub use policy::{
     CancellationPolicy, CheckpointPolicy, PersonalContextAuthority, PrivilegedRunProfileDimension,
     RedactedRunProfileProvenance, RedactedRunProfileSource, ResourceBudgetPolicy,

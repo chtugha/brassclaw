@@ -283,6 +283,7 @@ impl ContextStrategy for DefaultContextStrategy {
                 max_messages: Some(max_messages.max(1)),
                 inline_messages,
                 capability_view: None,
+                recipe_hint: None,
             },
             emitted_admission_control: loop_control.emitted_admission_control,
             emitted_repeated_call_warning: loop_control.emitted_repeated_call_warning,

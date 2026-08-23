@@ -959,6 +959,13 @@ where
     /// (the sole crate depending on `brassclaw_engine`), mirroring
     /// `recipe_lookup` / `RecipeLookup`.
     retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
+    /// Orchestrator bridge for Tier-0/Tier-1 dispatch (v3 Phase H.7). When
+    /// `Some`, `RecipeStage`/`TierZeroExecutionStage` call `run_step_zero`/
+    /// `run_tier_zero` (engine `pub` fns extracted in H.8); when `None`, Tier 0
+    /// falls back to Tier 2 and Tier-1 step-0 runs the legacy fetch. The
+    /// engine-backed `OrchestratorLookup` impl is supplied by composition (the
+    /// sole crate depending on `brassclaw_engine`), mirroring `retrieval_lookup`.
+    orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>>,
     /// Raw accepted-message text resolver (v3 Phase E.0 / plan §H3). When
     /// `Some`, `LoopContextPort::resolve_message_text` returns the unsanitized
     /// user text so `RecipeStage` can run intent-driven retrieval without the
@@ -1052,6 +1059,7 @@ where
             driver_requirements: HashMap::new(),
             recipe_lookup: None,
             retrieval_lookup: None,
+            orchestrator_lookup: None,
             message_text_resolver: None,
             interceptor_store: Arc::new(NoopInterceptorStore),
             #[cfg(feature = "root-llm-provider")]
@@ -1385,6 +1393,21 @@ where
         lookup: Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>,
     ) -> Self {
         self.retrieval_lookup = Some(lookup);
+        self
+    }
+
+    /// Install the orchestrator bridge for Tier-0/Tier-1 dispatch (v3 Phase
+    /// H.7). When set, `RecipeStage`/`TierZeroExecutionStage` call
+    /// `run_step_zero`/`run_tier_zero` (delegating to the engine `pub` fns
+    /// extracted in H.8). When unset, Tier 0 falls back to Tier 2 and Tier-1
+    /// step-0 runs the legacy fetch (pre-H.7 behavior). Mirrors
+    /// `with_retrieval_lookup`: the engine-backed `OrchestratorLookup` impl is
+    /// supplied by composition.
+    pub fn with_orchestrator_lookup(
+        mut self,
+        lookup: Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>,
+    ) -> Self {
+        self.orchestrator_lookup = Some(lookup);
         self
     }
 
@@ -1776,6 +1799,7 @@ where
             cancellation,
             recipe_lookup: self.recipe_lookup.clone(),
             retrieval_lookup: self.retrieval_lookup.clone(),
+            orchestrator_lookup: self.orchestrator_lookup.clone(),
             message_text_resolver: self.message_text_resolver.clone(),
             interceptor_store: Arc::clone(&self.interceptor_store),
             #[cfg(feature = "root-llm-provider")]
@@ -1853,6 +1877,7 @@ pub struct RebornLoopDriverHost {
     cancellation: Arc<dyn LoopCancellationPort>,
     recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
     retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
+    orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>>,
     message_text_resolver: Option<Arc<dyn brassclaw_turns::run_profile::MessageTextResolver>>,
     interceptor_store: Arc<dyn InterceptorStore>,
     /// Proposal sink for Sempai-proposed component updates and intent examples.
@@ -1916,6 +1941,18 @@ impl brassclaw_turns::run_profile::LoopRetrievalPort for RebornLoopDriverHost {
         // engine-backed `RetrievalLookup` impl lives in composition). When
         // not wired, `RecipeStage` falls through to the LLM (Tier 2).
         self.retrieval_lookup.as_deref()
+    }
+}
+
+impl brassclaw_turns::run_profile::LoopOrchestratorPort for RebornLoopDriverHost {
+    fn orchestrator_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::OrchestratorLookup> {
+        // Orchestrator bridge (v3 Phase H.7) — opt-in. The composition layer
+        // wires this through `RebornLoopDriverHostFactory::with_orchestrator_lookup`,
+        // keeping the reborn crate free of brassclaw_engine deps (the engine-backed
+        // `OrchestratorLookup` impl lives in composition, delegating to the H.8
+        // `pub` fns). When not wired, Tier 0 falls back to Tier 2 and Tier-1
+        // step-0 runs the legacy fetch.
+        self.orchestrator_lookup.as_deref()
     }
 }
 

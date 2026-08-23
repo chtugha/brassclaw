@@ -77,6 +77,7 @@ impl AgentLoopDriver for TextOnlyModelReplyDriver {
                 max_messages: Some(context_limit_hint(self.config.context_limit)),
                 inline_messages: Vec::new(),
                 capability_view: None,
+                recipe_hint: None,
             })
             .await
             .map_err(|error| map_host_error("prompt", error))?;

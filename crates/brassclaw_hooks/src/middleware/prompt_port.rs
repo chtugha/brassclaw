@@ -490,6 +490,7 @@ mod tests {
             max_messages: Some(16),
             inline_messages: vec![],
             capability_view: None,
+            recipe_hint: None,
         }
     }
 

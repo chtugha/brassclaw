@@ -17,8 +17,8 @@ use brassclaw_turns::{
         LoopContextBundle, LoopContextRequest, LoopDriverId, LoopInputAck, LoopInputAckToken,
         LoopInputBatch, LoopInputCursor, LoopInputCursorToken, LoopModelMessage, LoopModelRequest,
         LoopModelResponse, LoopPromptBundle, LoopPromptBundleRef, LoopPromptBundleRequest,
-        LoopRunContext, ModelProfileId, ModelStreamChunk, ParentLoopOutput, PromptMode,
-        ProviderToolCallReplay, RedactedRunProfileProvenance, ResolvedRunProfile,
+        LoopRunContext, ModelProfileId, ModelStreamChunk, OrchestratorLookup, ParentLoopOutput,
+        PromptMode, ProviderToolCallReplay, RedactedRunProfileProvenance, ResolvedRunProfile,
         ResourceBudgetPolicy, ResourceBudgetTier, RetrievalLookup, RetrievalLookupError,
         RetrievalTurnResult, RunClassId, RunProfileFingerprint, RuntimeProfileConstraints,
         SchedulingClass, StageCheckpointPayloadRequest, SteeringPolicy, VisibleCapabilityRequest,
@@ -88,6 +88,11 @@ pub(super) struct MockHost {
     /// fall-through). Tests install a `StubRetrievalLookup` to exercise
     /// `RecipeStage::process`'s `fetch_for_turn` call.
     retrieval_lookup: Option<Arc<dyn RetrievalLookup>>,
+    /// Optional wired `OrchestratorLookup` exposed via `LoopOrchestratorPort`
+    /// (v3 plan §H7). `None` (default) → `orchestrator_lookup()` returns `None`
+    /// (Tier-2 fall-through). Tests install a stub to exercise Tier-0/Tier-1
+    /// dispatch.
+    orchestrator_lookup: Option<Arc<dyn OrchestratorLookup>>,
 }
 
 impl MockHost {
@@ -128,6 +133,7 @@ impl MockHost {
             recorded_message_refs: Arc::new(Mutex::new(Vec::new())),
             recorded_resolve_contexts: Arc::new(Mutex::new(Vec::new())),
             retrieval_lookup: None,
+            orchestrator_lookup: None,
         }
     }
 
@@ -389,6 +395,7 @@ impl ContextStrategy for NoInlineContextStrategy {
                 max_messages: Some(16),
                 inline_messages: Vec::new(),
                 capability_view: None,
+                recipe_hint: None,
             },
             emitted_admission_control: false,
             emitted_repeated_call_warning: false,
@@ -827,6 +834,12 @@ impl brassclaw_turns::run_profile::LoopRetrievalPort for MockHost {
         // `Arc<dyn RetrievalLookup>: Deref<Target = dyn RetrievalLookup>`, so
         // `Option::as_deref` yields `Option<&dyn RetrievalLookup>` directly.
         self.retrieval_lookup.as_deref()
+    }
+}
+
+impl brassclaw_turns::run_profile::LoopOrchestratorPort for MockHost {
+    fn orchestrator_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::OrchestratorLookup> {
+        self.orchestrator_lookup.as_deref()
     }
 }
 

@@ -963,6 +963,7 @@ async fn prompt_and_model_ports_materialize_trusted_identity_content() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1338,6 +1339,7 @@ async fn prompt_and_model_ports_send_selected_skill_context_to_gateway() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1428,6 +1430,7 @@ async fn prompt_and_model_ports_resolve_skill_refs_after_prompt_sorting() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1530,6 +1533,7 @@ async fn prompt_and_model_ports_resolve_instruction_memory_and_identity_refs() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1645,6 +1649,7 @@ async fn prompt_port_records_installed_skill_trust_metadata_without_prompt_paylo
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1704,6 +1709,7 @@ async fn prompt_port_records_multiple_active_skill_metadata_in_prompt_order() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1768,6 +1774,7 @@ async fn prompt_and_model_ports_keep_duplicate_skill_names_distinct() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1836,6 +1843,7 @@ async fn model_port_rejects_skill_context_refs_when_source_changes_after_prompt_
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -2776,6 +2784,7 @@ async fn prompt_port_builds_bundle_with_tool_result_reference_context() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();

@@ -822,6 +822,14 @@ mod tests {
         }
     }
 
+    impl brassclaw_turns::run_profile::LoopOrchestratorPort for ResumePayloadHost {
+        fn orchestrator_lookup(
+            &self,
+        ) -> Option<&dyn brassclaw_turns::run_profile::OrchestratorLookup> {
+            self.inner.orchestrator_lookup()
+        }
+    }
+
     #[async_trait::async_trait]
     impl brassclaw_turns::run_profile::LoopInterceptorPort for ResumePayloadHost {
         async fn on_prompt_assembled(

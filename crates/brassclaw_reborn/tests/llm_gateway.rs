@@ -2323,6 +2323,7 @@ async fn production_loop_request_with_safety(
             max_messages: Some(16),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .expect("test prompt bundle should build");

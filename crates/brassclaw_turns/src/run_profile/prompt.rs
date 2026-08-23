@@ -363,6 +363,7 @@ mod tests {
                     role: LoopInlineMessageRole::User,
                     safe_body: LoopSafeSummary::new("safe inline nudge").unwrap(),
                 }],
+                recipe_hint: None,
             })
             .await
             .unwrap();
@@ -439,6 +440,7 @@ mod tests {
                 max_messages: Some(8),
                 capability_view: None,
                 inline_messages: vec![],
+                recipe_hint: None,
             })
             .await
             .expect("bundle should succeed for summary-only identity message");
@@ -492,6 +494,7 @@ mod tests {
                 max_messages: Some(8),
                 capability_view: None,
                 inline_messages: vec![],
+                recipe_hint: None,
             })
             .await
             .expect("bundle should succeed for summary-only body message");
@@ -544,6 +547,7 @@ mod tests {
                 max_messages: Some(8),
                 capability_view: None,
                 inline_messages: vec![],
+                recipe_hint: None,
             })
             .await
             .expect("bundle should preserve compaction metadata");

@@ -1008,7 +1008,7 @@ pub struct LoopInlineMessage {
 /// The optional cursor and checkpoint refs are run-scoped and are validated by
 /// host ports before context is loaded. `max_messages` is a host budget hint;
 /// zero is rejected and oversized values may be clamped by the implementation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoopPromptBundleRequest {
     pub mode: PromptMode,
     pub context_cursor: Option<LoopInputCursor>,
@@ -1019,6 +1019,14 @@ pub struct LoopPromptBundleRequest {
     pub max_messages: Option<u32>,
     #[serde(default)]
     pub inline_messages: Vec<LoopInlineMessage>,
+    /// Stashed orchestrator-channel items (serialized `orchestrator_items` from
+    /// [`crate::run_profile::RetrievalTurnResult`]) for Tier-1 step-0
+    /// prior-knowledge assembly. Read by the composition
+    /// `LoopPromptPort::build_prompt_bundle` (v3 Phase H.12) to prepend the
+    /// assembled `orchestrator_content` to the prompt. `None` on Tier-2 turns
+    /// and for hosts without an orchestrator bridge. (v3 Phase H.7.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe_hint: Option<serde_json::Value>,
 }
 
 /// Prompt bundle returned to a driver.
@@ -2141,6 +2149,31 @@ impl LoopRetrievalPort for NoRetrieval {
     }
 }
 
+/// Bridge from agent-loop stages to the engine orchestrator (v3 Phase H.7).
+///
+/// Opt-in port mirroring [`LoopRetrievalPort`] / [`LoopRecipePort`]: the
+/// accessor returns a [`crate::run_profile::OrchestratorLookup`] trait object
+/// whose `run_step_zero` (Tier-1 prior-knowledge assembly) + `run_tier_zero`
+/// (Tier-0 no-LLM channel) methods are the engine bridge. Implemented only by
+/// composition (the sole crate depending on both `brassclaw_engine` and the
+/// agent-loop stack), which delegates to the engine `pub` fns extracted in v3
+/// Phase H.8. Hosts without an orchestrator bridge inherit [`NoOrchestrator`]
+/// and the accessor returns `None` — Tier 0 then falls back to Tier 2 (no
+/// short-circuit) and Tier 1 step-0 runs the legacy in-orchestrator fetch.
+pub trait LoopOrchestratorPort: Send + Sync {
+    /// Returns `None` if no orchestrator bridge is wired into this host.
+    fn orchestrator_lookup(&self) -> Option<&dyn crate::run_profile::OrchestratorLookup>;
+}
+
+/// Default no-op implementation so hosts without an orchestrator bridge still
+/// satisfy the trait bound.
+pub struct NoOrchestrator;
+impl LoopOrchestratorPort for NoOrchestrator {
+    fn orchestrator_lookup(&self) -> Option<&dyn crate::run_profile::OrchestratorLookup> {
+        None
+    }
+}
+
 /// Result returned by [`LoopInterceptorPort::on_prompt_assembled`].
 ///
 /// The `packet_id` is the stable forensic-packet identifier the executor
@@ -2246,6 +2279,7 @@ pub trait AgentLoopDriverHost:
     + LoopRecipePort
     + LoopRetrievalPort
     + LoopInterceptorPort
+    + LoopOrchestratorPort
     + Send
     + Sync
 {
@@ -2266,6 +2300,7 @@ impl<T> AgentLoopDriverHost for T where
         + LoopRecipePort
         + LoopRetrievalPort
         + LoopInterceptorPort
+        + LoopOrchestratorPort
         + Send
         + Sync
 {

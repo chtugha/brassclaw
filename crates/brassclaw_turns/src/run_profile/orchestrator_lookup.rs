@@ -24,9 +24,15 @@
 //! v3 Phase H.5 O3 (Model A is dormant/never-built — production turns run on the
 //! agent loop, not the engine Python runtime).
 //!
-//! This module currently defines only the two DTOs the H.6 plan item requires
-//! ([`PriorKnowledgeBundle`] + [`TierZeroReply`]); the `OrchestratorLookup` trait
-//! + `NoOrchestrator` default port impl are added in v3 Phase H.7.
+//! This module defines the two DTOs the H.6 plan item requires
+//! ([`PriorKnowledgeBundle`] + [`TierZeroReply`]) plus the [`OrchestratorLookup`]
+//! trait (v3 Phase H.7). The `LoopOrchestratorPort` accessor + `NoOrchestrator`
+//! default port impl live in [`crate::run_profile::host`] alongside the other
+//! ports (mirroring `LoopRetrievalPort` / `NoRetrieval`).
+
+use async_trait::async_trait;
+
+use crate::run_profile::LoopRunContext;
 
 /// Returned by `LoopOrchestratorPort::run_step_zero` (v3 Phase H.7). Carries the
 /// formatted prior-knowledge bundle that `PromptStage` / the composition
@@ -65,9 +71,57 @@ pub struct TierZeroReply {
     pub matched_component_ids: Vec<String>,
 }
 
+/// Bridge from agent-loop stages to the engine orchestrator (v3 Phase H.7).
+///
+/// All methods are `async` — the backing engine fns
+/// (`assemble_prior_knowledge_with_hint` / `execute_tier_zero_channel`,
+/// extracted in v3 Phase H.8) drive the Monty VM and must not be driven via
+/// `block_on()` inside a running Tokio runtime (deadlock risk on single-threaded
+/// or work-stealing executors). Mirrors [`crate::run_profile::RetrievalLookup`].
+///
+/// Returns `None` (not `Err`) when there is nothing to assemble or no Tier-0
+/// channel to run — the caller degrades to Tier 2 (Tier-0) or skips the
+/// prior-knowledge prepend (Tier-1). Hard engine failures are logged inside the
+/// composition impl and surfaced as `None` so a recipe-channel failure never
+/// aborts the turn (degrade-gracefully, mirroring the engine
+/// `RecipeTierZeroFailed` → Tier-2 degradation).
+///
+/// The composition layer is the sole implementor (it depends on both
+/// `brassclaw_engine` and the agent-loop stack). Production hosts hold an
+/// `Option<Arc<dyn OrchestratorLookup>>` threaded in via a builder; hosts
+/// without an orchestrator bridge inherit [`crate::run_profile::NoOrchestrator`]
+/// (the `LoopOrchestratorPort` accessor returns `None`).
+#[async_trait]
+pub trait OrchestratorLookup: Send + Sync {
+    /// Tier 1: run Python step-0 prior-knowledge assembly. Reads the stashed
+    /// `recipe_hint` (one-shot consume — `None` means no stash / already
+    /// consumed) and returns the formatted prior-knowledge bundle that
+    /// `PromptStage` / `build_prompt_bundle` injects into the LLM prompt. Does
+    /// NOT call the LLM. `None` when no orchestrator bridge is wired or assembly
+    /// produced nothing.
+    async fn run_step_zero(
+        &self,
+        context: &LoopRunContext,
+        recipe_hint: Option<&serde_json::Value>,
+    ) -> Option<PriorKnowledgeBundle>;
+
+    /// Tier 0: run the orchestrator channel (skills + PythonCode) with NO LLM.
+    /// Consumes the stashed `recipe_hint` (orchestrator_items) +
+    /// `recipe_rust_context` and returns the reply text for
+    /// `AssistantReplyStage`. `None` when no orchestrator bridge is wired or the
+    /// channel produced no reply — `RecipeStage` then falls back to Tier 2.
+    async fn run_tier_zero(
+        &self,
+        context: &LoopRunContext,
+        recipe_hint: &serde_json::Value,
+        recipe_rust_context: &serde_json::Value,
+    ) -> Option<TierZeroReply>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::run_profile::{AgentLoopDriverHost, LoopOrchestratorPort, NoOrchestrator};
 
     #[test]
     fn prior_knowledge_bundle_serde_round_trip() {
@@ -96,5 +150,78 @@ mod tests {
         let decoded: TierZeroReply = serde_json::from_str(&encoded).expect("deserialize");
         assert_eq!(decoded.text, reply.text);
         assert_eq!(decoded.matched_component_ids, reply.matched_component_ids);
+    }
+
+    #[test]
+    fn no_orchestrator_returns_none() {
+        assert!(NoOrchestrator.orchestrator_lookup().is_none());
+    }
+
+    // Compile-time proof that `LoopOrchestratorPort` is a supertrait of
+    // `AgentLoopDriverHost`: the accessor is reachable on any driver host
+    // without importing the port trait separately.
+    fn _orchestrator_port_reachable_via_driver_host<H>(host: &H)
+    where
+        H: AgentLoopDriverHost + ?Sized,
+    {
+        let _ = host.orchestrator_lookup();
+    }
+
+    // Stub `OrchestratorLookup` returning fixed bundle/reply payloads, plus a
+    // minimal host exposing it. Test doubles for the port-wiring contract; the
+    // production impl lives in composition (v3 Phase H.12).
+    struct StubOrchestrator;
+
+    #[async_trait]
+    impl OrchestratorLookup for StubOrchestrator {
+        async fn run_step_zero(
+            &self,
+            _context: &LoopRunContext,
+            recipe_hint: Option<&serde_json::Value>,
+        ) -> Option<PriorKnowledgeBundle> {
+            Some(PriorKnowledgeBundle {
+                orchestrator_content: "## [skill: greet]\nbody\n".to_string(),
+                matched_component_ids: recipe_hint
+                    .and_then(|v| v.get("matched_component_ids"))
+                    .and_then(|v| v.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                override_prompt_creation: false,
+            })
+        }
+
+        async fn run_tier_zero(
+            &self,
+            _context: &LoopRunContext,
+            _recipe_hint: &serde_json::Value,
+            _recipe_rust_context: &serde_json::Value,
+        ) -> Option<TierZeroReply> {
+            Some(TierZeroReply {
+                text: "FINAL(stub tier-zero reply)".to_string(),
+                matched_component_ids: vec!["04-001".to_string()],
+            })
+        }
+    }
+
+    struct StubOrchestratorHost {
+        lookup: StubOrchestrator,
+    }
+
+    impl LoopOrchestratorPort for StubOrchestratorHost {
+        fn orchestrator_lookup(&self) -> Option<&dyn OrchestratorLookup> {
+            Some(&self.lookup)
+        }
+    }
+
+    #[test]
+    fn stub_host_exposes_orchestrator_lookup() {
+        let host = StubOrchestratorHost {
+            lookup: StubOrchestrator,
+        };
+        assert!(host.orchestrator_lookup().is_some());
     }
 }

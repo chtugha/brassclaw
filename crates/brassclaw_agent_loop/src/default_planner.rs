@@ -313,6 +313,7 @@ mod tests {
                         max_messages: Some(7),
                         inline_messages: Vec::new(),
                         capability_view: None,
+                        recipe_hint: None,
                     },
                     emitted_admission_control: false,
                     emitted_repeated_call_warning: false,

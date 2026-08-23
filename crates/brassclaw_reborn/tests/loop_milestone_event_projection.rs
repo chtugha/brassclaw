@@ -289,6 +289,7 @@ async fn drive_model_reply_milestones_and_assert_projection(
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -365,6 +366,7 @@ async fn drive_model_reply_milestones_and_assert_projection(
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();

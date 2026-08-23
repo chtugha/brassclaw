@@ -618,6 +618,7 @@ async fn instruction_bundle_builder_allows_tool_result_reference_context_message
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1002,6 +1003,7 @@ async fn loop_prompt_port_builds_text_only_bundle_from_context_refs() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1067,6 +1069,7 @@ async fn loop_prompt_port_filters_visible_surface_by_capability_view() {
             capability_view: Some(LoopModelCapabilityView {
                 visible_capability_ids: vec![CapabilityId::new("demo.echo").unwrap()],
             }),
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1148,6 +1151,7 @@ async fn loop_prompt_port_uses_current_surface_version_lookup_each_build() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1164,6 +1168,7 @@ async fn loop_prompt_port_uses_current_surface_version_lookup_each_build() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1240,6 +1245,7 @@ async fn loop_prompt_port_materializes_instruction_snippets_as_system_refs() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1279,6 +1285,7 @@ async fn loop_prompt_port_preserves_mid_conversation_system_message_order() {
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1326,6 +1333,7 @@ async fn loop_prompt_port_keeps_identity_before_skill_snippets_and_records_skill
             max_messages: Some(8),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1393,6 +1401,7 @@ async fn loop_prompt_port_rejects_unsupported_prompt_mode() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1422,6 +1431,7 @@ async fn loop_prompt_port_rejects_malformed_same_run_checkpoint_ref() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1456,6 +1466,7 @@ async fn loop_prompt_port_rejects_cross_run_checkpoint_ref() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1488,6 +1499,7 @@ async fn loop_prompt_port_rejects_cross_run_context_cursor() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1518,6 +1530,7 @@ async fn loop_prompt_port_rejects_checkpoint_state_ref_until_supported() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1545,6 +1558,7 @@ async fn loop_prompt_port_rejects_unvalidated_surface_version() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1573,6 +1587,7 @@ async fn loop_prompt_port_rejects_stale_surface_version() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1603,6 +1618,7 @@ async fn loop_prompt_port_rejects_unstored_synthetic_instruction_refs() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1652,6 +1668,7 @@ async fn loop_prompt_port_materializes_memory_surface_and_safety_as_host_owned_r
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1697,6 +1714,7 @@ async fn loop_prompt_port_rejects_zero_message_limit() {
             max_messages: Some(0),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap_err();
@@ -1724,6 +1742,7 @@ async fn loop_prompt_port_clamps_default_and_requested_message_limits() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1746,6 +1765,7 @@ async fn loop_prompt_port_clamps_default_and_requested_message_limits() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1767,6 +1787,7 @@ async fn loop_prompt_port_clamps_default_and_requested_message_limits() {
             max_messages: Some(u32::MAX),
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -1805,6 +1826,7 @@ async fn loop_prompt_bundle_public_serialization_hides_raw_content() {
             max_messages: None,
             inline_messages: Vec::new(),
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .unwrap();
@@ -2096,6 +2118,7 @@ impl AgentLoopDriver for ReplyDriver {
                 max_messages: Some(8),
                 inline_messages: Vec::new(),
                 capability_view: None,
+                recipe_hint: None,
             })
             .await
             .map_err(driver_error)?;
@@ -2722,6 +2745,12 @@ impl LoopRecipePort for RecordingAgentLoopHost {
 
 impl brassclaw_turns::run_profile::LoopRetrievalPort for RecordingAgentLoopHost {
     fn retrieval_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RetrievalLookup> {
+        None
+    }
+}
+
+impl brassclaw_turns::run_profile::LoopOrchestratorPort for RecordingAgentLoopHost {
+    fn orchestrator_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::OrchestratorLookup> {
         None
     }
 }

@@ -2840,6 +2840,7 @@ async fn after_model_fires_exactly_once_at_durable_boundary() {
             max_messages: Some(8),
             inline_messages: vec![],
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .expect("build_prompt_bundle succeeds before stream_model");
@@ -3548,6 +3549,7 @@ async fn before_prompt_hook_message_is_resolvable_via_factory_wiring() {
             max_messages: Some(8),
             inline_messages: vec![],
             capability_view: None,
+            recipe_hint: None,
         })
         .await
         .expect(
