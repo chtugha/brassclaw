@@ -208,7 +208,24 @@ mission footprint is done (§3.1): two distinct surfaces (engine mission system 
   remove `recipe_store.rs:1104` mission test usage + `lib.rs:141` test usage. Resolve every
   dangling reference. Verify: fmt + `cargo clippy -p brassclaw_engine -p
   brassclaw_reborn_composition --all-targets -- -D warnings` (both configs) + `cargo test`
-  (both configs). Commit + push.
+  (both configs). Commit + push. ✅ **DONE** (commit `cd413643`, pushed). Verified across
+  **3** configs (default + skills-db + migrate-from-libsql), not just 2: fmt clean; clippy
+  `-p brassclaw_reborn_config -p brassclaw_engine -p brassclaw_reborn_composition
+  --all-targets -- -D warnings` clean; `cargo test` GREEN (10 ok batches, 0 failed).
+  Scope expanded mid-step per user decision: also removed the dead `mission_per_tick_usd`
+  budget config category (BudgetDefaults + BudgetSection field, MISSION_PER_TICK_USD_ENV
+  const + re-export, DB-kv + migration load/serialize paths across brassclaw_reborn_config
+  + brassclaw_reborn_composition) — it funded the deleted mission cron and had zero
+  enforcement consumers. Added `rejects_removed_budget_mission_per_tick_usd_field` regression
+  test (deny_unknown_fields convention). **Breaking change:** config files still setting
+  `[budget].mission_per_tick_usd` are now rejected by `deny_unknown_fields` (DB-kv path
+  stays backward-compatible — unknown keys ignored); same convention as prior `[tokens]`
+  field removals. Stale prose referencing deleted mission runtime/functions (`mission_list`,
+  `resume_paused_missions_for_credential`, `process_mission_outcome_and_notify`, mission
+  cron / #3133 ghost-fire) cleaned from engine comments; `ThreadType::Mission` variant +
+  planner arm kept as dormant API per D1; `ValidTimezone` re-home to `brassclaw_common`
+  per D2. Only the user's separate `basic_prompt_store` WIP (`system_bundle_source` field in
+  `DefaultPlannedRuntimeParts`) blocks root-package parity tests — pre-existing, not O2.2.
 
   **O2.3 — Purge `brassclaw_host_api::MissionId` (full cross-crate).** Remove the
   `MissionId` type from `brassclaw_host_api/src/ids.rs`; remove the `Mission(MissionId)`
