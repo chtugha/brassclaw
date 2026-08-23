@@ -15,6 +15,22 @@
 > grep "^EXIT:" /tmp/<name>.log   # non-empty = finished
 > ```
 
+> **Mandatory:** Every `cargo build`/`test`/`clippy`/`check` **must** set
+> `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` (NVMe) — never build in-place on the
+> slow external repo drive. **Before** compiling, check free space on that volume and clean
+> it if it is too full:
+>
+> ```bash
+> df -h /Users/ollama/brassclaw-target          # check before every compile
+> # If Avail < 15 GB or Capacity > 90%, clean first:
+> CARGO_TARGET_DIR=/Users/ollama/brassclaw-target cargo clean
+> # Then run the actual command with the target dir set:
+> CARGO_TARGET_DIR=/Users/ollama/brassclaw-target cargo <build|test|clippy|check> ...
+> ```
+>
+> The NVMe target dir accumulates multi-GB artifacts and can fill the 228 GB volume
+> mid-build, starving/corrupting the run — the space check + clean is mandatory, not optional.
+
 ```bash
 cargo fmt                                                              # format
 cargo clippy --all --benches --tests --examples --all-features         # lint (zero warnings)
