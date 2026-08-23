@@ -214,4 +214,61 @@ gitignored → local-only, not committed.
 
 ## 6. DONE record
 
-(filled in on completion)
+✅ **DONE** (commit `9c780fd7`, pushed `d418b784..9c780fd7 main -> main`). G1–G12 all
+executed one-by-one:
+
+- **G1** `git rm -r crates/brassclaw_gateway/` (whole crate staged for deletion).
+- **G2** root `Cargo.toml`: removed both duplicate `"crates/brassclaw_gateway"` members
+  entries + the unused `brassclaw_gateway = { path = ... }` `[workspace.dependencies]` line.
+- **G3** `release-plz.toml`: removed the `[[package]] name = "brassclaw_gateway"` block.
+- **G4** `brassclaw_architecture/tests/reborn_dependency_boundaries.rs`: removed all 13
+  `"brassclaw_gateway",` forbidden-list entries.
+- **G5** `brassclaw_product_adapters/tests/product_adapter_contract.rs`: removed the 1
+  `FORBIDDEN_DEPENDENCIES` entry.
+- **G6** `git rm scripts/check-i18n-parity.sh` (gateway-only).
+- **G7** `scripts/pre-commit-safety.sh`: removed the i18n-parity block + gateway-JS-syntax
+  block + `GATEWAY_APP_JS_TMP` var + trap ref + comment refs; `bash -n` clean. Check #7
+  (v1 root `src/` web-gateway) left intact (out of scope).
+- **G8** `git rm tests/e2e/scenarios/test_widget_customization.py`; removed the
+  customization scenarios (former lines 633–771) from `tests/e2e/mock_llm.py`;
+  `python3 -m py_compile` clean.
+- **G9** `.github/workflows/code_style.yml`: deleted the `gateway-js-syntax` job + its 2
+  aggregator refs (`needs:` + result loop). `gateway-boundaries` job left intact (out of
+  scope — see §4).
+- **G10** doc updates: `crates/AGENTS.md` (table row + UI-presentation line),
+  `crates/README.md` (table row + UI line), `crates/brassclaw_webui_v2/CLAUDE.md`
+  (forbidden-deps prose), `crates/brassclaw_product_workflow/CLAUDE.md` (Must-NOT-depends
+  prose), `docs/brassclaw-architecture.md` (`### brassclaw_gateway` section + tree entry).
+  Historical archives left untouched: `CHANGELOG.md`,
+  `docs/plans/2026-03-22-crate-extraction-and-cleanup.md`,
+  `docs/plans/2026-05-22-reborn-budgets-followups.md`,
+  `docs/superpowers/specs/2026-04-23-projects-tab-control-room-design.md`.
+- **G11** verified on a clean selectively-staged index (user's concurrent prefix-cache WIP
+  stashed via `git stash --keep-index --include-untracked`):
+  `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target cargo metadata --no-deps` → 62
+  packages, gateway absent OK; `cargo check --workspace --all-targets` clean (1m17s, exit
+  0, no E0063); `cargo clippy -p brassclaw_architecture -p brassclaw_product_adapters
+  --all-targets -- -D warnings` clean; `cargo test -p brassclaw_architecture -p
+  brassclaw_product_adapters` GREEN (29 + 137 = 166 passed, 0 failed); `py_compile
+  tests/e2e/mock_llm.py` clean; `bash -n scripts/pre-commit-safety.sh` clean. Final
+  `git grep brassclaw_gateway` → only historical archive docs + the 2 H.5 subplan docs +
+  `Cargo.lock` (regenerated, gateway entry removed) + one tracked historical Zenflow
+  task artifact (`docs/../.zenflow/tasks/a-different-agent-started-the-tr-a9ee/
+  TESTING_STATUS_AND_BLOCKERS.md` — a different task's testing-status record mentioning
+  `cargo run -p brassclaw_gateway`; left as historical task record, not current
+  architecture).
+- **G12** selective-staged via Python hunk-filter for `saved_plan_to_v3.md` (only the
+  subplan-ref hunk committed; the user's K.1 WIP hunk in that file left unstaged) +
+  `git add` of all 12 full-file edits + the subplan doc + `Cargo.lock`; committed
+  `9c780fd7` (84 files, +234/−32384); pushed to `origin/main`; user WIP restored cleanly
+  via `git stash pop` (no conflicts; both `saved_plan_to_v3.md` hunks coexist — mine
+  committed, user's unstaged).
+
+**Surfaced follow-ups (needs separate user design decision — NOT decided here, see §4):**
+1. `gateway-boundaries` CI job + `scripts/check_gateway_boundaries.py` — dead since Phase 6
+   removed `src/channels/web/platform/` (v1 root `src/` web-gateway, NOT the
+   `brassclaw_gateway` crate). Separate Phase-6-cleanup decision.
+2. `brassclaw_tui` — crate dir exists + declared as a workspace dep (`Cargo.toml:157`,
+   `optional = true`) but is NOT in the `members` list; referenced in `crates/AGENTS.md`,
+   `crates/README.md`, `release-plz.toml`, forbidden-lists. Separate
+   register-vs-deregister anomaly.
