@@ -269,6 +269,41 @@ mission footprint is done (§3.1): two distinct surfaces (engine mission system 
   reborn, dormant, deleted in v3 H.5 obsolescence cleanup). Leave historical plan docs
   (`docs/plans/2026-03-24-missions.md`, `docs/plans/2026-04-11-defi-portfolio-keeper.md`)
   as archives. Verify: fmt + clippy clean (both configs). Commit + push.
+  ✅ **DONE** (commit `ee6fb6f8`, pushed `df5a4010..ee6fb6f8 main -> main`). Scope
+  expanded beyond the literal "delete one test file" to the full mission footprint
+  surfaced in the e2e layer + the dead `MissionThreadSpawned` AppEvent variant:
+  deleted `test_mission_gmail_3133.py` + `test_mission_gmail_draft_3133.json`;
+  removed the dead `mission_gmail_live_server`/`mission_gmail_live_page` conftest
+  fixtures; removed the dead `_normalize_mission_list_result` no-op +
+  `_MISSION_LIST_RE` regex + call site from `live_llm_proxy.py` + stale "mission"
+  comment refs; removed dead `mission_id` fields from the two `plan_update` mock
+  payloads in `mock_llm.py` + fixed the gmail-mocks comment; removed the dead
+  `MissionThreadSpawned` `AppEvent` variant (def + `as_kind` rename arm + test arm
+  in `brassclaw_common/src/event.rs`) — no Rust emitter, no frontend handler (grep
+  confirmed); removed the now-orphaned `mission_thread_spawned` `debug-panel.js`
+  handler + the 3 orphaned `debug.activityMissionSpawned` i18n keys (en/zh-CN/ko);
+  removed the `.sweepfix/codebase.toml` entry for the deleted test (file is
+  gitignored, local-only). Recorded missions as REMOVED in v3 H.5 in
+  `crates/brassclaw_engine/CLAUDE.md` + `AGENTS.md`, `docs/brassclaw-architecture.md`,
+  `docs/internal/engine-v2-architecture.md` (focused removal banners + corrected
+  current-architecture statements; historical detail retained as context).
+  `ThreadType::Mission` retained as dormant API per O2.2 D1. Verified: `cargo fmt
+  --check` clean; `python3 -m py_compile` clean on the 3 edited e2e files;
+  `cargo check` + `clippy` `-p brassclaw_common --all-targets -- -D warnings` clean
+  (variant removal compiles); `cargo test -p brassclaw_common` 88 passed 0 failed.
+  Committed from a selectively-staged index that excludes the user's concurrent
+  prefix-cache WIP. **Surfaced follow-up (needs user design decision):**
+  `brassclaw_gateway` (legacy v1 debug-panel UI; a workspace member with NO
+  dependents — not compiled into the `brassclaw` binary, only by `--workspace`
+  checks) still carries a full dead Missions Tab UI: `missions.css`, mission widget
+  refs in `widget.rs`, and ~150 mission i18n keys across en/zh-CN/ko (`tab.missions`,
+  `missions.*`, `missions.summary.*`, etc.) — dead since the mission backend was
+  removed in O2.2/O2.3. This is a large pre-existing dead surface; per task rules it
+  needs a subplan + a user design decision (purge only the mission surface vs delete
+  the whole legacy `brassclaw_gateway` crate vs defer). Raised with the user; NOT
+  decided unilaterally. Also flagged (not touched): `crates/brassclaw_gateway` is
+  listed TWICE in the root `Cargo.toml` workspace `members` (line 3) — a separate
+  pre-existing anomaly.
 
 **O3 — Delete Model A Python `tier_zero` (H.3) from `default.py` + Model-A step-0 tests.**
 Remove the H.3 `default.py` step-0 `tier_zero` early-return branch + the `recipe_tier_zero_*`
