@@ -48,6 +48,7 @@ export const SETTINGS_SUB_ROUTES = [
   { id: "validation-queue", labelKey: "settings.validationQueue", icon: "shield" },
   { id: "reliability", labelKey: "settings.reliability", icon: "pulse" },
   { id: "interceptor", labelKey: "settings.interceptor", icon: "spark" },
+  { id: "prefix",      labelKey: "settings.prefix",      icon: "layers" },
   { id: "safety", labelKey: "settings.safety", icon: "shield" },
   // { id: "tokens", labelKey: "settings.tokens", icon: "bolt" },
   // Removed: global token settings are superseded by per-provider token

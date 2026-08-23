@@ -24,15 +24,16 @@ use brassclaw_product_workflow::{
     LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
     MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse, MontyVmStatusResponse,
     NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult,
-    OutcomeKind, ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
-    RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
-    RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
-    RebornExtensionRegistryResponse, RebornInstallSkillRequest, RebornListAutomationsResponse,
-    RebornListCapabilitiesResponse, RebornListSkillsResponse, RebornListThreadsResponse,
-    RebornResolveGateResponse, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
-    RebornServicesErrorKind, RebornSetupExtensionResponse, RebornSkillInstallResult,
-    RebornSkillRemoveResult, RebornStreamEventsRequest, RebornSubmitTurnResponse,
-    RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
+    OutcomeKind, PrefixListResponse, PrefixRegenerateResponse, ProductWorkflowError,
+    ProjectionCursor, RebornCancelRunResponse, RebornConnectableChannelListResponse,
+    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
+    RebornExtensionActionResponse, RebornExtensionListResponse, RebornExtensionRegistryResponse,
+    RebornInstallSkillRequest, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
+    RebornListSkillsResponse, RebornListThreadsResponse, RebornResolveGateResponse,
+    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
+    RebornSetupExtensionResponse, RebornSkillInstallResult, RebornSkillRemoveResult,
+    RebornStreamEventsRequest, RebornSubmitTurnResponse, RebornTimelineRequest,
+    RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
     RecordOutcomeRequest, RecordOutcomeResponse, SetActiveLlmRequest, SettingsListResponse,
     ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
@@ -1358,31 +1359,45 @@ pub async fn update_interceptor_config(
     Ok(Json(response))
 }
 
-/// `POST /api/webchat/v2/interceptor/reassemble`
+/// `GET /api/webchat/v2/prefixes`
 ///
-/// Reassemble the static base prompt (Part A) from validated components
-/// using direct SQL to individual component tables.  Rate-limited to 1/min.
-pub async fn reassemble_interceptor(
+/// List named prefix-cache entries for the caller's scope.
+pub async fn list_prefixes(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-) -> Result<Json<InterceptorConfigSnapshot>, WebUiV2HttpError> {
+) -> Result<Json<PrefixListResponse>, WebUiV2HttpError> {
+    let user_id = caller.user_id.to_string();
+    let project_id = caller
+        .project_id
+        .as_ref()
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| "default".to_string());
     let response = state
         .services()
-        .reassemble_interceptor_base_prompt(caller)
+        .list_interceptor_prefixes(caller, &user_id, &project_id)
         .await?;
     Ok(Json(response))
 }
 
-/// `POST /api/webchat/v2/interceptor/prewarm`
+/// `POST /api/webchat/v2/prefixes/{name}/regenerate`
 ///
-/// Send the current base prompt to the Sempai provider to warm its KV cache.
-/// Requires the base prompt to have been assembled first.
-/// Rate-limited to 1/min.
-pub async fn prewarm_interceptor(
+/// Assemble the named prefix bundle, optionally pre-warm the Sempai gateway,
+/// and record the result.  Rate-limited to 1/min per caller.
+pub async fn regenerate_prefix(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-) -> Result<Json<InterceptorConfigSnapshot>, WebUiV2HttpError> {
-    let response = state.services().prewarm_interceptor(caller).await?;
+    Path(name): Path<String>,
+) -> Result<Json<PrefixRegenerateResponse>, WebUiV2HttpError> {
+    let user_id = caller.user_id.to_string();
+    let project_id = caller
+        .project_id
+        .as_ref()
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| "default".to_string());
+    let response = state
+        .services()
+        .regenerate_interceptor_prefix(caller, &name, &user_id, &project_id)
+        .await?;
     Ok(Json(response))
 }
 

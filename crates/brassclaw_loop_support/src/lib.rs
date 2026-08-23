@@ -84,6 +84,22 @@ pub use skill_context::{
     HostSkillContextBuildError, HostSkillContextCandidate, HostSkillContextSource,
     build_skill_run_snapshot,
 };
+
+/// Source for the pre-assembled Kohai/Sempai prefix-cache bundle (§K.1.5).
+///
+/// Implementations return the full bundle text for a given `(user_id,
+/// project_id)` scope.  When the bundle is unavailable (stale, not yet
+/// assembled, or DB error) the implementation must return a compact fallback
+/// string — it must never return an error.
+///
+/// The bundle is injected as instruction snippet #0 in
+/// `ThreadBackedLoopContextPort::load_loop_context` so it becomes the first
+/// item after PRIORITY 1 (identity) and before the skill snippets.
+#[async_trait]
+pub trait SystemBundleSource: Send + Sync {
+    async fn get_system_bundle(&self, user_id: &str, project_id: &str) -> String;
+}
+
 pub use subagent_prompt_port::{
     DEFAULT_SUBAGENT_GOAL_MAX_BYTES, SubagentLoopPromptPort, SubagentPromptComposer,
     SubagentPromptGoal, SubagentPromptLimits, SubagentPromptMaterial, SubagentPromptMaterialSource,
@@ -192,6 +208,9 @@ where
     identity_budget: IdentityBudget,
     identity_candidates: Arc<IdentityCandidateCache>,
     milestone_sink: Option<Arc<dyn LoopHostMilestoneSink>>,
+    /// Optional prefix-cache bundle source (§K.1.5).
+    /// When `Some`, the bundle text is prepended as instruction snippet #0.
+    system_bundle_source: Option<Arc<dyn SystemBundleSource>>,
 }
 
 struct IdentityCandidateCache {
@@ -257,6 +276,7 @@ where
             identity_budget: IdentityBudget::default(),
             identity_candidates: Arc::new(IdentityCandidateCache::new()),
             milestone_sink: None,
+            system_bundle_source: None,
         }
     }
 
@@ -280,6 +300,11 @@ where
 
     pub fn with_milestone_sink(mut self, sink: Arc<dyn LoopHostMilestoneSink>) -> Self {
         self.milestone_sink = Some(sink);
+        self
+    }
+
+    pub fn with_system_bundle_source(mut self, source: Arc<dyn SystemBundleSource>) -> Self {
+        self.system_bundle_source = Some(source);
         self
     }
 }
@@ -315,12 +340,41 @@ where
             .await
             .map_err(context_read_error)?;
 
-        let instruction_snippets = match self.skill_context_source.as_deref() {
+        // Prefix bundle (§K.1.5): prepend as snippet #0 so KV cache reuse
+        // is maximised — stable content sits before per-turn skill snippets.
+        let mut instruction_snippets = if let Some(source) = self.system_bundle_source.as_deref() {
+            let user_id = self
+                .run_context
+                .actor
+                .as_ref()
+                .map(|a| a.user_id.as_str())
+                .unwrap_or("_system");
+            let project_id = self
+                .run_context
+                .scope
+                .project_id
+                .as_ref()
+                .map(|p| p.as_str())
+                .unwrap_or("_default");
+            let bundle = source.get_system_bundle(user_id, project_id).await;
+            vec![brassclaw_turns::run_profile::LoopContextSnippet {
+                snippet_ref: "prefix:bundle:v1".to_string(),
+                model_content: bundle.clone(),
+                safe_summary: "Prefix cache bundle (operator-assembled)".to_string(),
+                metadata: None,
+            }]
+        } else {
+            Vec::new()
+        };
+
+        // Skill snippets follow the prefix bundle.
+        let skill_snippets = match self.skill_context_source.as_deref() {
             Some(source) => {
                 skill_context::build_skill_instruction_snippets(source, &self.run_context).await?
             }
             None => Vec::new(),
         };
+        instruction_snippets.extend(skill_snippets);
         let identity_messages = match self.identity_context_source.as_deref() {
             Some(source) => {
                 let mode = request.mode;

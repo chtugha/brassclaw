@@ -338,6 +338,23 @@ on `RecipeTierZeroStarted`/`Succeeded`/`Failed` `EventKind` variants
 reused by Model B/C (the agent-loop `LoopOrchestratorPort` + the engine pub fns extracted
 in H.8), not Model A. No behavior change. Verify: fmt + clippy clean (both configs).
 Commit + push.
+  ✅ **DONE** (commit `8ebdb19b`, pushed `c55863ca..8ebdb19b main -> main`). Re-documented
+  the 3 O4-listed pieces + 4 stale Model-A/default.py references in `orchestrator.rs`
+  (`TierZeroOutcome` + `build_tier_zero_outcome` doc; the `handle_emit_event`
+  `recipe_tier_zero_*` dispatch comment; the pkr `SplitResult` producer comment; 2 H.4
+  test comments) to attribute the emitter to the Model B/C agent-loop Tier-0 path. **O3
+  fallout cleanup (test-infra only, no production behavior change):** the
+  `run_python_step0` step-0 test helper had a `code_step_result` param + a
+  `__execute_code_step__` host-handler arm that existed solely to support the H.3
+  tier_zero tests removed in O3; step-0 never reaches `__execute_code_step__` (action
+  path uses `__execute_action__`; CodeAct is later steps), so they were dead. Removed the
+  param + arm + 6 call-site args. The dedicated H.2 harness `run_python_tier0_channel`
+  (own `step_results` queue) is unaffected. Verified on a clean selectively-staged index
+  (user WIP stashed): `cargo fmt --check` clean; `cargo clippy -p brassclaw_engine
+  --all-targets` (default + `--features skills-db`) clean; `cargo clippy -p
+  brassclaw_reborn_composition --all-targets` clean; `cargo test -p brassclaw_engine`
+  GREEN (default 599, skills-db 610, 0 failed); `cargo test -p
+  brassclaw_reborn_composition --lib` GREEN (629, 0 failed).
 
 **O5 — Mark H.5 skipped/obsolete.** Record in `saved_plan_to_v3.md` (H.5 item) + the Phase
 H subplan doc (`subplan_problem_stepH_of_saved_plan_to_v3.md` H.5 entry) + the Zenflow
@@ -364,5 +381,5 @@ H.8 — NOT in this subplan.
 - O2.4 — Done (commit `ee6fb6f8` + doc `d418b784`); + the `brassclaw_gateway` crate
   deletion follow-up Done (commits `9c780fd7` + doc `8e9593ed`).
 - O3 — Done (commit `110b3a6c`).
-- O4 — Pending.
+- O4 — Done (commit `8ebdb19b`).
 - O5 — Pending.

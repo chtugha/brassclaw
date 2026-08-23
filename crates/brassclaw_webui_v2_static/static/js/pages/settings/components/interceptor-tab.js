@@ -17,10 +17,7 @@ export function InterceptorTab({ searchQuery = "" }) {
     loadError,
     isMutating,
     mutationError,
-    actionStatus,
     handleUpdate,
-    handleReassemble,
-    handlePrewarm,
   } = useInterceptor();
 
   if (isLoading) {
@@ -52,21 +49,12 @@ export function InterceptorTab({ searchQuery = "" }) {
         onUpdate=${handleUpdate}
         t=${t}
       />
-
-      <${ControlCard}
-        config=${config}
-        isMutating=${isMutating}
-        actionStatus=${actionStatus}
-        onReassemble=${handleReassemble}
-        onPrewarm=${handlePrewarm}
-        t=${t}
-      />
     </div>
   `;
 }
 
 // ---------------------------------------------------------------------------
-// StatusCard — mode, connection, last-assembled, pre-warm timestamp.
+// StatusCard — mode and connection badge only.
 // ---------------------------------------------------------------------------
 
 function StatusCard({ config, t }) {
@@ -92,34 +80,6 @@ function StatusCard({ config, t }) {
             <${Badge} tone=${modeTone} label=${config.sempai_connected ? t("interceptor.connected") : t("interceptor.disconnected")} size="sm" />
           </div>
         </div>
-        <div className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-3">
-          <div className="text-xs text-[var(--v2-text-muted)]">${t("interceptor.basePromptLabel")}</div>
-          <div className="mt-1 text-sm text-[var(--v2-text-strong)]">
-            ${config.base_prompt_assembled_at
-              ? html`
-                  <span>${new Date(config.base_prompt_assembled_at).toLocaleString()}</span>
-                  ${config.base_prompt_size_chars != null &&
-                    html`<span className="ml-2 text-xs text-[var(--v2-text-muted)]">(${config.base_prompt_size_chars} ${t("interceptor.chars")})</span>`}
-                `
-              : html`<span className="text-[var(--v2-text-muted)]">${t("interceptor.neverAssembled")}</span>`}
-          </div>
-          ${config.components_since_rebuild != null && config.components_since_rebuild > 0 &&
-            html`
-              <div className="mt-2 flex items-center gap-1 text-xs text-amber-400">
-                <${Badge} tone="warning" label=${t("interceptor.componentsBadge", { count: config.components_since_rebuild })} size="sm" />
-                <span>${t("interceptor.componentsBadgeHint")}</span>
-              </div>
-            `}
-        </div>
-        ${config.prewarm_last_at &&
-          html`
-            <div className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-3">
-              <div className="text-xs text-[var(--v2-text-muted)]">${t("interceptor.prewarmLastAt")}</div>
-              <div className="mt-1 text-sm text-[var(--v2-text-strong)]">
-                ${new Date(config.prewarm_last_at).toLocaleString()}
-              </div>
-            </div>
-          `}
       </div>
     <//>
   `;
@@ -133,7 +93,7 @@ function PersonaCard({ config, isMutating, onUpdate, t }) {
   const [draft, setDraft] = React.useState(config ? config.persona : "");
   const [saved, setSaved] = React.useState(false);
 
-  // Sync draft if config changes from the outside (e.g., after reassemble).
+  // Sync draft if config changes from the outside.
   React.useEffect(() => {
     if (config) setDraft(config.persona);
   }, [config]);
@@ -176,64 +136,6 @@ function PersonaCard({ config, isMutating, onUpdate, t }) {
 }
 
 // ---------------------------------------------------------------------------
-// ControlCard — Reassemble and Pre-warm action buttons.
-// ---------------------------------------------------------------------------
-
-function ControlCard({ config, isMutating, actionStatus, onReassemble, onPrewarm, t }) {
-  return html`
-    <${Card} padding="none" className="p-4 sm:p-5">
-      <h3 className="mb-1 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
-        ${t("interceptor.actionsTitle")}
-      </h3>
-      <p className="mb-4 text-xs text-[var(--v2-text-muted)]">${t("interceptor.actionsDesc")}</p>
-      <div className="flex flex-wrap gap-3">
-
-        <div className="flex flex-col gap-1">
-          <${Button}
-            variant="secondary"
-            size="sm"
-            disabled=${isMutating}
-            onClick=${onReassemble}
-          >
-            ${isMutating && actionStatus.reassemble === ""
-              ? t("interceptor.reassembling")
-              : t("interceptor.reassemble")}
-          <//>
-          <p className="max-w-xs text-xs text-[var(--v2-text-muted)]">
-            ${t("interceptor.reassembleDesc")}
-          </p>
-          ${actionStatus.reassemble === "ok" &&
-            html`<span className="text-xs text-emerald-400">${t("interceptor.reassembleOk")}</span>`}
-          ${actionStatus.reassemble === "error" &&
-            html`<span className="text-xs text-red-400">${t("interceptor.reassembleError")}</span>`}
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <${Button}
-            variant="secondary"
-            size="sm"
-            disabled=${isMutating || !config?.base_prompt_assembled_at}
-            onClick=${onPrewarm}
-          >
-            ${isMutating && actionStatus.prewarm === ""
-              ? t("interceptor.prewarming")
-              : t("interceptor.prewarm")}
-          <//>
-          <p className="max-w-xs text-xs text-[var(--v2-text-muted)]">
-            ${t("interceptor.prewarmDesc")}
-          </p>
-          ${actionStatus.prewarm === "ok" &&
-            html`<span className="text-xs text-emerald-400">${t("interceptor.prewarmOk")}</span>`}
-          ${actionStatus.prewarm === "error" &&
-            html`<span className="text-xs text-red-400">${t("interceptor.prewarmError")}</span>`}
-        </div>
-
-      </div>
-    <//>
-  `;
-}
-
-// ---------------------------------------------------------------------------
 // Loading skeleton.
 // ---------------------------------------------------------------------------
 
@@ -253,23 +155,12 @@ function InterceptorSkeleton() {
             <${Skeleton} className="h-3 w-16" />
             <${Skeleton} className="mt-2 h-6 w-28" />
           </div>
-          <div className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] p-4">
-            <${Skeleton} className="h-3 w-16" />
-            <${Skeleton} className="mt-2 h-6 w-40" />
-          </div>
         </div>
       <//>
       <${Card} padding="none" className="p-4 sm:p-5">
         <${Skeleton} className="mb-4 h-3 w-20" />
         <${Skeleton} className="h-32 w-full" />
         <${Skeleton} className="mt-2 h-8 w-16" />
-      <//>
-      <${Card} padding="none" className="p-4 sm:p-5">
-        <${Skeleton} className="mb-4 h-3 w-20" />
-        <div className="flex gap-3">
-          <${Skeleton} className="h-9 w-28" />
-          <${Skeleton} className="h-9 w-24" />
-        </div>
       <//>
     </div>
   `;

@@ -7049,7 +7049,119 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 
 ### Phase K — BasicPromptStore + Prefix Tab + MCP Translation + Cleanup
 
-**Status:** [ ] Pending
+**Status:** [~] K.1 PARTIALLY COMPLETE — see implementation notes below. K.2, K.3 Pending.
+
+> ---
+> ### ⚠️ K.1 IMPLEMENTATION STATUS (do NOT overwrite these decisions)
+>
+> K.1 was implemented by a separate agent prior to Phase H completing. The implementation
+> diverges from the plan in several places that were deliberate decisions. Read these notes
+> before touching any K.1 file.
+>
+> #### What is DONE (as of this writing) — do not re-implement, do not overwrite:
+>
+> **K.1.1 — Migration:** Implemented as **`V063__reborn_basic_prompt_store.sql`** (not V056).
+> The migration number diverged because V055–V062 were already assigned when K.1 was
+> implemented. The schema matches the corrected DDL (all scope columns `TEXT NOT NULL DEFAULT ''`).
+> **Additionally V063 also carries the `V056` fold-ins:** the `brassclaw_forensic_packets`
+> `component_uuid UUID` column (§0.23.7) and the `reborn_monty_vm_settings` validation-improve
+> columns (§0.23.8: `validation_idle_threshold_minutes`, `validation_improve_start_hour`,
+> `validation_improve_enabled`). File: `crates/brassclaw_pg/migrations/V063__reborn_basic_prompt_store.sql`.
+>
+> **K.1.2 — `PgBasicPromptStore`:** Implemented in
+> `crates/brassclaw_reborn_composition/src/pg_basic_prompt_store.rs`. Gated
+> `#[cfg(feature = "postgres")]`. Has `get_for_scope`, `store`, `mark_stale`,
+> `record_prewarm`, `delete`. `SystemBundleSource` trait is defined in
+> `brassclaw_loop_support/src/lib.rs`; `PgBasicPromptStore` implements it in composition.
+> `DefaultPlannedRuntimeParts` in `crates/brassclaw_reborn/src/runtime.rs` carries a
+> `system_bundle_source: Option<Arc<dyn SystemBundleSource>>` field wired at composition
+> time from `crates/brassclaw_reborn_composition/src/runtime.rs`.
+>
+> **K.1.3 — Routes:** ✅ FIXED — routes match the plan.
+> - `WEBUI_V2_PATTERN_LIST_PREFIXES = "/api/webchat/v2/prefixes"`
+> - `WEBUI_V2_PATTERN_REGENERATE_PREFIX = "/api/webchat/v2/prefixes/{name}/regenerate"`
+> - Note: curly-brace `{name}` Axum v0.8 syntax (NOT colon `:name` syntax — this was a bug
+>   that was caught and fixed; do NOT revert to `:name`).
+> - `WEBUI_V2_ROUTE_EXPORT_SKILL` / `WEBUI_V2_PATTERN_EXPORT_SKILL` constants are declared
+>   in `descriptors.rs` but the route, handler, and service method are **NOT yet wired**
+>   (K.1.7 is pending — see below).
+> - Files modified: `crates/brassclaw_webui_v2/src/descriptors.rs`,
+>   `crates/brassclaw_webui_v2/src/handlers.rs`, `crates/brassclaw_webui_v2/src/router.rs`,
+>   `crates/brassclaw_webui_v2/src/lib.rs`.
+>
+> **K.1.3 — DTOs:** Implemented in
+> `crates/brassclaw_product_workflow/src/reborn_services/interceptor_config.rs`.
+> Matches the plan: `PrefixListResponse { prefixes: Vec<PrefixEntry> }`.
+> `PrefixEntry` fields: `name`, `fingerprint: Option<String>`, `assembled_at: Option<String>`,
+> `prewarm_last_at: Option<String>`, `is_stale: bool`. Field `bundle_size_chars` from the plan
+> is **not implemented** — add it if needed. `PrefixRegenerateResponse` has
+> `prewarm_last_at: Option<String>` (not required as per plan's `String`).
+>
+> **K.1.4 — `regenerate_prefix` service method:** Implemented in
+> `crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`.
+> Old `reassemble_base_prompt` and `prewarm` methods removed. Rate-limit fields consolidated
+> into single `regenerate_rate_limit`. `KEY_BASE_PROMPT` / `KEY_BASE_PROMPT_ASSEMBLED_AT` /
+> `KEY_PREWARM_LAST_AT` config key constants removed. `pg_basic_prompt_store` field added.
+> `mark_stale` wired in `crates/brassclaw_reborn_composition/src/validation_queue.rs` after Q2.
+>
+> **K.1.5 — Sempai-Kohai injection:** Implemented via `SystemBundleSource` trait in
+> `brassclaw_loop_support/src/lib.rs`. Kohai: bundle injected as instruction snippet #0 in
+> `ThreadBackedLoopContextPort::load_loop_context` at Priority 2. Sempai: bundle prepended
+> as Part A System message [0] in `run_sempai_review()` in
+> `crates/brassclaw_reborn/src/loop_driver_host.rs` (before Part B persona System message [1]).
+> `TextOnlyLoopHost` and `RebornLoopDriverHost` both carry a `system_bundle_source` field.
+>
+> **K.1.6 — WebUI SPA:** COMPLETE. All files modified:
+> - `settings-schema.js` — `prefix` tab added after `interceptor`
+> - `app/routes.js` — `prefix` route added after `interceptor`
+> - `settings-api.js` — `fetchPrefixes()` / `regeneratePrefix(name)` added; old
+>   `reassembleInterceptor()` / `prewarmInterceptor()` removed. Routes match the plan:
+>   `/api/webchat/v2/prefixes` and `/api/webchat/v2/prefixes/{name}/regenerate`.
+> - `useInterceptor.js` — `handleReassemble`, `handlePrewarm`, `actionStatus` removed
+> - `interceptor-tab.js` — `ControlCard` removed; `StatusCard` trimmed to mode+badge only
+> - `settings-page.js` — `PrefixTab` import and `prefix` tabContent entry added
+> - `hooks/usePrefixes.js` — NEW file. API: `{ entries, isLoading, loadError, regenerating,
+>   regenerateError, handleRegenerate, reload }`. **Note:** plan says `{ prefixes, refetch }`;
+>   actual hook uses `entries` and `reload` (and exposes more state). Update the hook if the
+>   plan's API shape is required.
+> - `components/prefix-tab.js` — NEW file. Renders list with name, stale badge, fingerprint,
+>   assembled_at, Regenerate button. Uses `usePrefixes` hook.
+> - `i18n/en.js` — `"settings.prefix": "Prefix Cache"` added after `"settings.interceptor"`;
+>   `prefix.*` key block added. Other language packs: English fallback is automatic
+>   (`packs["en"]` fallback in `i18n.js:31`); no changes needed to other packs.
+>
+> **K.1.7 — SKILL.md on-demand export:** **NOT YET IMPLEMENTED.** The plan specifies:
+> - Route: `GET /api/webchat/v2/skills/{id}/export` with descriptor `WEBUI_V2_ROUTE_EXPORT_SKILL`
+> - Handler: `export_skill(...)` in `handlers.rs`
+> - Service method: `export_skill_as_skill_md` on `RebornServicesApi` (default returns 501)
+> - WebUI: "Download SKILL.md" button on skill detail page
+> - `WebUiV2HttpError::internal(msg)` constructor (does not yet exist)
+> The constants `WEBUI_V2_ROUTE_EXPORT_SKILL` and `WEBUI_V2_PATTERN_EXPORT_SKILL` are
+> declared in `descriptors.rs` but the descriptor function, route wiring, handler, and
+> service method are all absent. K.1.7 must be implemented as a separate step.
+>
+> **K.1.8 — Tests:** Contract tests in `webui_v2_handlers_contract.rs` and
+> `webui_v2_descriptors_contract.rs` have been updated (stubs added for `list_prefix_entries`,
+> `regenerate_prefix`; old `reassemble_interceptor_base_prompt` / `prewarm_interceptor` stubs
+> removed). `export_skill_as_skill_md` stub is **not yet added** (depends on K.1.7).
+> The descriptor contract test uses the correct patterns (`/api/webchat/v2/prefixes` and
+> `/api/webchat/v2/prefixes/{name}/regenerate`) — matching the plan.
+>
+> #### Key divergences to reconcile before declaring K.1 fully done:
+>
+> 1. **Route path prefix:** ✅ FIXED — routes are now `/api/webchat/v2/prefixes` matching the plan.
+>    `list_prefixes_descriptor` `AllowedEffectPath` also corrected to `ProjectionOnly`.
+> 2. **`PrefixListResponse` field name:** ✅ MATCHES PLAN — field is `prefixes`.
+>    `usePrefixes.js` reads `data.prefixes` (was `data.entries`, now fixed).
+> 3. **`PrefixEntry` missing `bundle_size_chars` field.** Add if needed.
+>    `prewarm_last_at` is present. `PrefixRegenerateResponse.prewarm_last_at` is `Option<String>`
+>    vs plan's `String` — safe relaxation (None when no gateway is wired).
+> 4. **`usePrefixes` hook API:** Plan specifies `{ prefixes, isLoading, loadError, refetch }`;
+>    implementation exposes `{ entries, isLoading, loadError, regenerating, regenerateError,
+>    handleRegenerate, reload }`. The richer API is a superset — `prefix-tab.js` uses it.
+>    No action required unless the plan's API must be matched exactly for another consumer.
+> 5. **K.1.7 SKILL.md export:** Not implemented. Implement separately.
+> ---
 
 > **§0.23.6 + §0.23.7 + §0.23.8 fold-in:** Phase K also absorbs three §0.23 items:
 > (1) **Sempai auto-creates all component types** — generalise `SempaiReviewOutcome`

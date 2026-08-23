@@ -1034,11 +1034,7 @@ impl RebornServicesApi for StubServices {
         Ok(InterceptorConfigSnapshot {
             sempai_connected: false,
             mode: "routing".to_string(),
-            base_prompt_assembled_at: None,
-            base_prompt_size_chars: None,
             persona: String::new(),
-            prewarm_last_at: None,
-            components_since_rebuild: None,
         })
     }
 
@@ -1050,41 +1046,31 @@ impl RebornServicesApi for StubServices {
         Ok(InterceptorConfigSnapshot {
             sempai_connected: false,
             mode: "routing".to_string(),
-            base_prompt_assembled_at: None,
-            base_prompt_size_chars: None,
             persona: String::new(),
-            prewarm_last_at: None,
-            components_since_rebuild: None,
         })
     }
 
-    async fn reassemble_interceptor_base_prompt(
+    async fn list_interceptor_prefixes(
         &self,
         _caller: WebUiAuthenticatedCaller,
-    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
-        Ok(InterceptorConfigSnapshot {
-            sempai_connected: false,
-            mode: "routing".to_string(),
-            base_prompt_assembled_at: Some("2024-01-01T00:00:00Z".to_string()),
-            base_prompt_size_chars: Some(0),
-            persona: String::new(),
-            prewarm_last_at: None,
-            components_since_rebuild: Some(0),
-        })
+        _user_id: &str,
+        _project_id: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixListResponse, RebornServicesError> {
+        Ok(brassclaw_product_workflow::PrefixListResponse { prefixes: vec![] })
     }
 
-    async fn prewarm_interceptor(
+    async fn regenerate_interceptor_prefix(
         &self,
         _caller: WebUiAuthenticatedCaller,
-    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
-        Ok(InterceptorConfigSnapshot {
-            sempai_connected: false,
-            mode: "routing".to_string(),
-            base_prompt_assembled_at: None,
-            base_prompt_size_chars: None,
-            persona: String::new(),
-            prewarm_last_at: Some("2024-01-01T00:00:00Z".to_string()),
-            components_since_rebuild: None,
+        _name: &str,
+        _user_id: &str,
+        _project_id: &str,
+    ) -> Result<brassclaw_product_workflow::PrefixRegenerateResponse, RebornServicesError> {
+        Ok(brassclaw_product_workflow::PrefixRegenerateResponse {
+            name: "base-prompt".to_string(),
+            fingerprint: String::new(),
+            assembled_at: "2024-01-01T00:00:00Z".to_string(),
+            prewarm_last_at: None,
         })
     }
 }

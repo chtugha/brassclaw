@@ -316,6 +316,8 @@ impl ProductLiveAgentLoopHarness {
             interceptor_mode: None,
             #[cfg(feature = "root-llm-provider")]
             proposal_sink: None,
+            #[cfg(feature = "root-llm-provider")]
+            system_bundle_source: None,
         })
         .expect("product-live planned AgentLoop harness should build");
 
