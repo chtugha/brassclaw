@@ -523,7 +523,15 @@ Mark this subplan Zenflow substep Completed.
   `loop_driver_host.rs` files — hunk-filtered at staging); clippy clean across turns,
   agent_loop, hooks, loop_support, reborn, composition; tests GREEN (turns 131 /
   agent_loop 355 / reborn 440 / loop_support 2 / hooks).
-- H.8 — Pending.
+- H.8 — In progress. Nested subplan `subplan_problem_stepH8_of_saved_plan_to_v3.md` written +
+  registered as Zenflow substep `a6e37ad9-d87d-4211-8bd0-5f9b937743b1` (after the Phase H step).
+  5 design decisions locked by the user: Q1=delete dormant Model A PK path; Q2=reduced 9-field
+  `PkrAssemblyResult`; Gap3=complete `execute_tier_zero_channel` signature with `llm`+`event_tx`
+  + implement fully (port `_parse_orchestrator_channel_steps` to Rust, run PythonCode steps via
+  `execute_code`); `recipe_hint`=Option C (serialized `Vec<ComponentItem>`); cleanup=full (delete
+  `run_python_step0`+6 G.8 tests, re-home assertions as Rust unit tests on the new fn). Internal
+  substeps H8.1–H8.6 tracked in the subplan doc §5. Doc-only commit pending; implementation
+  H8.1–H8.6 not yet started.
 - H.9 — Pending.
 - H.10 — Pending.
 - H.11 — Pending.

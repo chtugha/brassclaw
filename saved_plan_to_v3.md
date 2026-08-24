@@ -5775,6 +5775,18 @@ So a third host port is required — the **only** crate that can bridge the two 
 - `crates/brassclaw_reborn_composition/src/...` — implement `LoopOrchestratorPort` by
   delegating to two **new `pub` library functions** in `brassclaw_engine`. See the "Files to
   modify" entry below for their exact signatures.
+  > **Nested subplan — see `docs/agents-v3/subplan_problem_stepH8_of_saved_plan_to_v3.md`.**
+  > H.8 extracts the two `pub` fns below AND (per user Q1=delete) deletes the dormant Model A
+  > prior-knowledge path (`handle_assemble_prior_knowledge` + the `__assemble_prior_knowledge__`
+  > dispatch arm + the `default.py` step-0 PK block + six now-dead helpers). Design locked:
+  > Q2=reduced 9-field `PkrAssemblyResult` (routing from `RetrievalTurnResult`, not this struct);
+  > Gap3=`execute_tier_zero_channel` signature completed with `llm`+`event_tx` (runs each
+  > PythonCode step via `execute_code`, porting `_parse_orchestrator_channel_steps` to Rust);
+  > `recipe_hint`=Option C (serialized `Vec<ComponentItem>`; Some=format+override-detect+
+  > routing-defaults-false; None=fresh `fetch_for_turn`+full arm logic); full test cleanup
+  > (delete `run_python_step0`+its 6 G.8 tests, re-home assertions as Rust unit tests). Internal
+  > substeps H8.1–H8.6 tracked in the subplan doc §5 + the Zenflow H.8 substep.
+  >
   > **⚠️ FIND-NEW-PASS12-01 + FIND-NEW-PASS12-02 — CRITICAL: the composition host CANNOT call
   > `handle_assemble_prior_knowledge` or `execute_recipe_orchestrator_channel` directly.**
   >
