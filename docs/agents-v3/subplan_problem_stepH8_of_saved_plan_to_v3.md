@@ -190,7 +190,36 @@ fn — behavior moves with the code to its new Rust home, nothing silenced).
   (default + `--features skills-db`); `cargo test -p brassclaw_engine` GREEN
   (599 default / 610 skills-db); staged-only state re-verified clean. Committed
   `6884fea0`, pushed to `origin/main`.
-- H8.3 — Pending.
+- H8.3 — Done. Implemented `pub async fn execute_tier_zero_channel`
+  (locked Gap3 signature, 9 args, `#[allow(clippy::too_many_arguments)]` per the
+  5x existing orchestrator.rs precedent) in `orchestrator.rs`: parses
+  `orchestrator_content` via the Rust port `parse_orchestrator_channel_steps`
+  → `Vec<OrchestratorChannelStep> {kind, name, body}` (the port of Python
+  `_parse_orchestrator_channel_steps`; `EngineError::InvalidInput` on malformed
+  heading / missing `: ` separator); only `kind == "PythonCode"` steps run via
+  `execute_code` with a FRESH `ThreadExecutionContext` per step,
+  `persisted_state = {}`, `capability_policies = &[]` (ISOLATION invariant);
+  first failure (`failure.is_some()` / `need_approval.is_some()` gate pause /
+  `execute_code` `Err`) or parse failure or empty step list or non-PythonCode
+  step → `empty_tier_zero_channel_result()` degrade (mirrors Python
+  `outcome:"error"` → Tier-2). All-success → reply text from the last step via
+  `extract_tier_zero_reply_text` (`final_answer` → `return_value` stringified
+  → `stdout` → `""`; JSON `null` return = no return value). Step events
+  broadcast via `event_tx` (mirror `handle_execute_code_step`); `thread: &Thread`
+  so events NOT pushed to `thread.events` (agent-loop owns its state). Two
+  forced-by-signature points documented prominently: (1) `matched_component_ids`
+  returned empty — locked signature has no identity arg + `orchestrator_content`
+  is prose names (not UUIDs); composition H.12 supplies
+  `TierZeroReply.matched_component_ids` from stashed `recipe_hint`; (2)
+  `rust_context` reserved (`_rust_context`, unused) for the future ToolSkill-
+  binding pre-load (plan TIER0-GAP step 1); not consumed in the per-step loop
+  (ISOLATION + Python reference `__execute_code_step__(body, {})` passes no
+  rust_context); wired when `recipe_rust_context` gains a producer (H.9/H.10).
+  Re-exported `execute_tier_zero_channel` from `executor/mod.rs` (plan §5877).
+  Verified: `cargo check` + `cargo clippy --all-targets -- -D warnings` clean
+  both configs (default + `--features skills-db`); `cargo test -p
+  brassclaw_engine` GREEN (599 default / 610 skills-db); staged-only state
+  re-verified clean. Committed `b55e9102`, pushed to `origin/main`.
 - H8.4 — Pending.
 - H8.5 — Pending.
 - H8.6 — Pending.
