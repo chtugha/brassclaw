@@ -3413,6 +3413,262 @@ fn empty_pkr_assembly_result() -> PkrAssemblyResult {
     }
 }
 
+/// A parsed orchestrator-channel step (v3 Phase H8.3) — the Rust port of the
+/// Python `_parse_orchestrator_channel_steps` (default.py) `{kind, name, body}`
+/// dict. Produced by [`parse_orchestrator_channel_steps`] and consumed by
+/// [`execute_tier_zero_channel`].
+#[derive(Debug, Clone, PartialEq)]
+struct OrchestratorChannelStep {
+    /// The `StepContextSpec` category label from the `## [Label: name]` heading
+    /// (Skill / PythonCode / …). Only `PythonCode` steps are executable at
+    /// Tier 0 (FIND-P9-02 Q1).
+    kind: String,
+    /// The component name from the heading.
+    name: String,
+    /// The `effective_content` body (`""` for a heading-only block).
+    body: String,
+}
+
+/// Parse the orchestrator-channel prior-knowledge prose block format (v3 Phase
+/// H8.3) — the Rust port of Python `_parse_orchestrator_channel_steps`
+/// (default.py). [`format_orchestrator_content`] emits each `ComponentItem` as
+/// a heading line `## [{Heading}: {name}]` optionally followed by its
+/// `effective_content` body; consecutive blocks are separated by a blank line
+/// (`\n\n`). Class 13 (ToolSkill) + class 11 are skipped by the formatter, so
+/// they never appear here. A heading-only block (empty body) is just the
+/// heading line with no body.
+///
+/// Returns `Ok(vec![])` for an empty input. Returns
+/// [`EngineError::InvalidInput`] on a block whose first line is not a
+/// `## [Label: name]` heading or is missing the `: ` separator;
+/// [`execute_tier_zero_channel`] converts this to an empty
+/// [`TierZeroChannelResult`] degrade (mirroring the Python `outcome:"error"`
+/// → Tier-2 degradation).
+fn parse_orchestrator_channel_steps(
+    content: &str,
+) -> Result<Vec<OrchestratorChannelStep>, EngineError> {
+    if content.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut steps = Vec::new();
+    for block in content.split("\n\n") {
+        if block.is_empty() {
+            continue;
+        }
+        let mut lines = block.split('\n');
+        // `block` is non-empty here (empty blocks were skipped), so
+        // `block.split('\n')` always yields at least one element.
+        let first = lines.next().unwrap_or("");
+        if !first.starts_with("## [") || !first.ends_with(']') {
+            return Err(EngineError::InvalidInput {
+                reason: format!(
+                    "orchestrator channel step missing '## [Label: name]' heading: {first}"
+                ),
+            });
+        }
+        // `first` starts with `## [` (ASCII, 4 bytes) and ends with `]`
+        // (ASCII), so byte-slicing at `4` and `len-1` is char-boundary safe.
+        let inner = &first[4..first.len() - 1];
+        let Some((kind, name)) = inner.split_once(": ") else {
+            return Err(EngineError::InvalidInput {
+                reason: format!(
+                    "orchestrator channel step heading missing ': ' separator: {first}"
+                ),
+            });
+        };
+        let body = lines.collect::<Vec<_>>().join("\n");
+        steps.push(OrchestratorChannelStep {
+            kind: kind.to_string(),
+            name: name.to_string(),
+            body,
+        });
+    }
+    Ok(steps)
+}
+
+/// Run the Tier-0 orchestrator channel (PythonCode bodies + tool calls) with
+/// NO LLM (v3 Phase H8.3 / plan §0.23 Gap3). The Rust embodiment of the Python
+/// `execute_recipe_orchestrator_channel` (default.py) — both implement the
+/// same logic, one in Python (Model A engine path), one in Rust (Model B/C
+/// `LoopOrchestratorPort` bridge, H.12).
+///
+/// Flow (mirrors the Python reference):
+/// 1. Parse `orchestrator_content` into steps via
+///    [`parse_orchestrator_channel_steps`]. A parse failure (malformed heading
+///    / missing `: ` separator) → empty [`TierZeroChannelResult`] degrade
+///    (Python `outcome:"error"`).
+/// 2. Only `kind == "PythonCode"` steps are executable at Tier 0 (FIND-P9-02
+///    Q1: Tier-0 recipes are PythonCode-only; Skill bodies are LLM prose).
+///    Any non-PythonCode step, or an empty step list, → empty degrade.
+/// 3. Each PythonCode step runs via [`execute_code`] with a FRESH
+///    [`ThreadExecutionContext`] per step and `persisted_state = {}`
+///    (ISOLATION INVARIANT: no variables are shared between steps; each step
+///    sees only the IBS-baked-in literals from `{{vars.slot0}}` substitution,
+///    §0.20.3 — there is NO runtime `vars` dict). `capability_policies = &[]`.
+/// 4. A step fails when [`execute_code`] returns `Err` OR its result has
+///    `failure.is_some()` (internal error) OR `need_approval.is_some()` (a
+///    tool call paused on an approval gate — per Q-H4 the channel signal is
+///    binary success/error, so a gate pause degrades to empty; the Tier-2 LLM
+///    path owns full gate handling, so the user's request still proceeds). On
+///    first failure → empty degrade.
+/// 5. All-success → reply text from the LAST step (Q-H4 / Q-H5result):
+///    `final_answer` (from `FINAL("...")`) → else `return_value` stringified
+///    → else captured `stdout` → else `""`.
+///
+/// **`matched_component_ids` is returned empty** — the locked Gap3 signature
+/// (user-locked) carries no component-identity arg, and `orchestrator_content`
+/// is the prose `## [Label: name]` block (component NAMES, not UUIDs); the
+/// `rust_context` arg carries pre-loaded ToolSkill bindings (plan §5854), not
+/// orchestrator-channel identity. The composition `OrchestratorLookup::
+/// run_tier_zero` impl (H.12) supplies `TierZeroReply.matched_component_ids`
+/// from the stashed `recipe_hint` (`Vec<ComponentItem>` with real UUIDs).
+///
+/// **`rust_context` is reserved** for the future ToolSkill-binding pre-load
+/// (plan TIER0-GAP step 1: "applies the stashed `recipe_rust_context` to the
+/// Rust execution context"). It is intentionally NOT consumed in the per-step
+/// loop — the ISOLATION invariant requires fresh `{}` per step, and the
+/// Python reference `__execute_code_step__(body, {})` passes no rust_context
+/// either. The pre-load mechanism is wired when `recipe_rust_context` gains a
+/// producer (H.9/H.10); until then the arg is accepted and unused.
+///
+/// Step events (`result.events`) are broadcast via `event_tx` (mirroring
+/// `handle_execute_code_step`). `thread` is taken by shared reference (locked
+/// signature) so events are NOT pushed to `thread.events` (unlike the Monty
+/// handler) — the agent-loop owns its own state; the `event_tx` broadcast is
+/// the trace/observer surface.
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_tier_zero_channel(
+    thread: &Thread,
+    orchestrator_content: &str,
+    _rust_context: &serde_json::Value,
+    effects: &Arc<dyn EffectExecutor>,
+    leases: &Arc<LeaseManager>,
+    policy: &Arc<PolicyEngine>,
+    gate_controller: &Arc<dyn crate::gate::GateController>,
+    llm: &Arc<dyn LlmBackend>,
+    event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
+) -> Result<TierZeroChannelResult, EngineError> {
+    let steps = match parse_orchestrator_channel_steps(orchestrator_content) {
+        Ok(s) => s,
+        Err(e) => {
+            debug!("execute_tier_zero_channel: parse failed: {e}");
+            return Ok(empty_tier_zero_channel_result());
+        }
+    };
+    if steps.is_empty() {
+        debug!("execute_tier_zero_channel: no orchestrator channel steps to execute");
+        return Ok(empty_tier_zero_channel_result());
+    }
+
+    let mut last_result: Option<crate::executor::scripting::CodeExecutionResult> = None;
+    for step in &steps {
+        if step.kind != "PythonCode" {
+            debug!(
+                "execute_tier_zero_channel: tier-0 channel step is not PythonCode: {}",
+                step.kind
+            );
+            return Ok(empty_tier_zero_channel_result());
+        }
+        let exec_ctx =
+            thread_execution_context(thread, StepId::new(), None, gate_controller.clone());
+        let fresh_state = serde_json::json!({});
+        match Box::pin(execute_code(
+            &step.body,
+            thread,
+            llm,
+            effects,
+            leases,
+            policy,
+            &exec_ctx,
+            &[],
+            &fresh_state,
+        ))
+        .await
+        {
+            Ok(result) => {
+                // Broadcast in-execution events to the trace/observer channel
+                // (mirror handle_execute_code_step). `thread` is immutable
+                // here, so — unlike the Monty handler — events are NOT pushed
+                // to `thread.events`; the agent-loop owns its own state.
+                for event_kind in &result.events {
+                    let event = ThreadEvent::new(thread.id, event_kind.clone());
+                    if let Some(tx) = event_tx {
+                        let _ = tx.send(event);
+                    }
+                }
+                if result.failure.is_some() {
+                    debug!(
+                        "execute_tier_zero_channel: step '{}' failed; degrading to Tier 2",
+                        step.name
+                    );
+                    return Ok(empty_tier_zero_channel_result());
+                }
+                if result.need_approval.is_some() {
+                    debug!(
+                        "execute_tier_zero_channel: step '{}' paused on approval gate; degrading to Tier 2",
+                        step.name
+                    );
+                    return Ok(empty_tier_zero_channel_result());
+                }
+                last_result = Some(result);
+            }
+            Err(e) => {
+                debug!(
+                    "execute_tier_zero_channel: step '{}' raised: {e}; degrading to Tier 2",
+                    step.name
+                );
+                return Ok(empty_tier_zero_channel_result());
+            }
+        }
+    }
+
+    let reply_text = last_result
+        .as_ref()
+        .map(extract_tier_zero_reply_text)
+        .unwrap_or_default();
+    Ok(TierZeroChannelResult {
+        formatted_output: reply_text,
+        matched_component_ids: Vec::new(),
+    })
+}
+
+/// Extract the Tier-0 reply text from the last step's
+/// [`crate::executor::scripting::CodeExecutionResult`] (Q-H4 / Q-H5result):
+/// `final_answer` (from `FINAL("...")`) → else `return_value` stringified →
+/// else captured `stdout` → else `""`. A JSON `null` return value (Python
+/// `None`) is treated as "no return value" so `stdout` is considered next,
+/// matching the Python `if rv is not None` branch.
+fn extract_tier_zero_reply_text(
+    result: &crate::executor::scripting::CodeExecutionResult,
+) -> String {
+    if let Some(ref ans) = result.final_answer {
+        return ans.clone();
+    }
+    if !result.return_value.is_null() {
+        if let Some(s) = result.return_value.as_str() {
+            return s.to_string();
+        }
+        return result.return_value.to_string();
+    }
+    if !result.stdout.is_empty() {
+        return result.stdout.clone();
+    }
+    String::new()
+}
+
+/// Empty / degrade-graceful [`TierZeroChannelResult`] — no reply text, no
+/// matched ids. Returned on parse failure, empty step list, a non-PythonCode
+/// step, or the first step failure / approval-gate pause; the composition
+/// `OrchestratorLookup::run_tier_zero` (H.12) surfaces this as `None` so
+/// `RecipeStage` falls back to Tier 2 (a Tier-0 failure degrades to a normal
+/// LLM call so the user still gets a reply).
+fn empty_tier_zero_channel_result() -> TierZeroChannelResult {
+    TierZeroChannelResult {
+        formatted_output: String::new(),
+        matched_component_ids: Vec::new(),
+    }
+}
+
 /// Extract the skill-class (class 1–3) ids from `items` and fetch their
 /// active-skill provenance from `reborn_skills` (Q-G3). Returns `[]` when the
 /// pool is absent (non-skills-db config / tests) or no skill-class items are

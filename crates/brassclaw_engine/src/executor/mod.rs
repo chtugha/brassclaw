@@ -20,5 +20,6 @@ pub mod trace;
 pub use loop_engine::ExecutionLoop;
 pub use orchestrator::{
     PkrAssemblyResult, TierZeroChannelResult, assemble_prior_knowledge_with_hint,
+    execute_tier_zero_channel,
 };
 pub use scripting::validate_python_syntax;
