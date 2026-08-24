@@ -3222,6 +3222,197 @@ pub struct TierZeroChannelResult {
     pub matched_component_ids: Vec<String>,
 }
 
+/// Pure-Rust Tier-1 prior-knowledge assembly (v3 Phase H8.2). Replaces the
+/// dormant Model A `__assemble_prior_knowledge__` Monty handler with a direct
+/// library call for the composition `OrchestratorLookup::run_step_zero` bridge
+/// (H.7 / H.12).
+///
+/// **`recipe_hint` shape = Option C** (user lock): `Some(v)` → `v` is a
+/// serialized `Vec<ComponentItem>` stashed by `RecipeStage` (the
+/// orchestrator-channel items from `RetrievalTurnResult`); the fn assembles
+/// them with NO second `fetch_for_turn`. `None` → no stash, so the fn performs
+/// a fresh `retrieval_source.fetch_for_turn(...)` and runs the full
+/// `FetchForTurnResult` arm logic.
+///
+/// **Routing is NOT returned here** (user Q2 lock) — the Tier-0/Tier-1
+/// decision for Model B/C comes from `RetrievalTurnResult` (H.4), surfaced on
+/// `LoopExecutionState.last_retrieval_result`. `RecipeStage` routes
+/// action-short-circuit / disambiguation / Tier-0 cases away from
+/// `run_step_zero` (Tier 1) before this fn is called, so the
+/// `action_*` / `disambiguation` / `tier_zero` fields on the result are
+/// vestigial on the Some-branch (defaulted false); the None-branch still
+/// populates them faithfully from the `FetchForTurnResult` arms so the struct
+/// stays a faithful projection of the retrieval outcome.
+pub async fn assemble_prior_knowledge_with_hint(
+    thread: &Thread,
+    goal: &str,
+    token_budget: usize,
+    sender_class_code: &str,
+    retrieval_source: Option<&Arc<dyn RetrievalSource>>,
+    recipe_hint: Option<serde_json::Value>,
+) -> Result<PkrAssemblyResult, EngineError> {
+    // Some-branch: assemble the stashed orchestrator_items (Tier-1, no re-fetch).
+    if let Some(hint) = recipe_hint {
+        let items: Vec<crate::memory::ComponentItem> =
+            serde_json::from_value(hint).map_err(|e| EngineError::InvalidInput {
+                reason: format!(
+                    "assemble_prior_knowledge_with_hint: recipe_hint deserialize failed: {e}"
+                ),
+            })?;
+        return Ok(assemble_pkr_from_items(&items));
+    }
+
+    // None-branch: fresh fetch_for_turn + full arm logic.
+    let Some(source) = retrieval_source else {
+        return Ok(empty_pkr_assembly_result());
+    };
+    let scope = ComponentScope {
+        tenant_id: thread.tenant_id.clone(),
+        user_id: thread.user_id.clone(),
+        agent_id: thread.agent_id.clone(),
+        project_id: thread.project_id.to_string(),
+    };
+    match source
+        .fetch_for_turn(&scope, goal, token_budget, sender_class_code)
+        .await
+    {
+        Ok(fetch) => Ok(assemble_pkr_from_fetch(fetch)),
+        Err(e) => {
+            debug!("assemble_prior_knowledge_with_hint: fetch_for_turn failed: {e}");
+            Ok(empty_pkr_assembly_result())
+        }
+    }
+}
+
+/// Assemble a [`PkrAssemblyResult`] from a slice of orchestrator-channel
+/// [`ComponentItem`]s — the Some-branch of
+/// [`assemble_prior_knowledge_with_hint`] AND the `Components` arm of
+/// [`assemble_pkr_from_fetch`]. Shared so both branches emit identical
+/// `orchestrator_content` for the same items.
+///
+/// Solution Override (§3.13): exactly one item with `override_prompt_creation`
+/// → verbatim body + `override_prompt_creation = true`. Otherwise the normal
+/// prose `## [Heading: name]\n<body>` block via [`format_orchestrator_content`]
+/// and the full id list. Routing fields default to the non-short-circuit /
+/// non-disambiguation / Tier-1 shape (the Tier-0/Tier-1 decision is upstream,
+/// carried on `RetrievalTurnResult`).
+fn assemble_pkr_from_items(items: &[crate::memory::ComponentItem]) -> PkrAssemblyResult {
+    let override_items: Vec<_> = items
+        .iter()
+        .filter(|item| item.override_prompt_creation)
+        .collect();
+    if override_items.len() == 1 {
+        let item = override_items[0];
+        return PkrAssemblyResult {
+            orchestrator_content: item.effective_content.clone(),
+            matched_component_ids: vec![item.id.to_string()],
+            override_prompt_creation: true,
+            action_short_circuit: false,
+            action_component_id: None,
+            action_name: None,
+            disambiguation: false,
+            candidates: Vec::new(),
+            tier_zero: false,
+        };
+    }
+    PkrAssemblyResult {
+        orchestrator_content: format_orchestrator_content(items),
+        matched_component_ids: items.iter().map(|item| item.id.to_string()).collect(),
+        override_prompt_creation: false,
+        action_short_circuit: false,
+        action_component_id: None,
+        action_name: None,
+        disambiguation: false,
+        candidates: Vec::new(),
+        tier_zero: false,
+    }
+}
+
+/// Project a [`crate::memory::retrieval_source::FetchForTurnResult`] (fresh
+/// `fetch_for_turn`) into a [`PkrAssemblyResult`] — the None-branch of
+/// [`assemble_prior_knowledge_with_hint`]. Faithful to the retired Model A
+/// `handle_assemble_prior_knowledge` arm logic (H8.4 deletes the handler; this
+/// preserves the behaviour for the no-stash path and for direct unit-test
+/// coverage of every `FetchForTurnResult` arm).
+fn assemble_pkr_from_fetch(
+    result: crate::memory::retrieval_source::FetchForTurnResult,
+) -> PkrAssemblyResult {
+    use crate::memory::retrieval_source::FetchForTurnResult;
+
+    match result {
+        FetchForTurnResult::Components(items) => assemble_pkr_from_items(&items),
+        FetchForTurnResult::Disambiguation(candidates) => {
+            let candidates_json: Vec<serde_json::Value> = candidates
+                .iter()
+                .map(|c| {
+                    serde_json::json!({
+                        "component_id": c.component_id.to_string(),
+                        "component_class_code": c.component_class_code,
+                        "class_label": c.class_label,
+                        "score": c.score,
+                    })
+                })
+                .collect();
+            PkrAssemblyResult {
+                orchestrator_content: String::new(),
+                matched_component_ids: Vec::new(),
+                override_prompt_creation: false,
+                action_short_circuit: false,
+                action_component_id: None,
+                action_name: None,
+                disambiguation: true,
+                candidates: candidates_json,
+                tier_zero: false,
+            }
+        }
+        FetchForTurnResult::ActionShortCircuit { component_id, name } => PkrAssemblyResult {
+            orchestrator_content: String::new(),
+            matched_component_ids: vec![component_id.to_string()],
+            override_prompt_creation: false,
+            action_short_circuit: true,
+            action_component_id: Some(component_id.to_string()),
+            action_name: Some(name),
+            disambiguation: false,
+            candidates: Vec::new(),
+            tier_zero: false,
+        },
+        FetchForTurnResult::SplitResult {
+            orchestrator_items,
+            routing,
+            ..
+        } => PkrAssemblyResult {
+            orchestrator_content: format_orchestrator_content(&orchestrator_items),
+            matched_component_ids: routing.matched_component_ids,
+            override_prompt_creation: routing.override_prompt_creation,
+            action_short_circuit: false,
+            action_component_id: None,
+            action_name: None,
+            disambiguation: false,
+            candidates: Vec::new(),
+            tier_zero: !routing.llm_call_required,
+        },
+    }
+}
+
+/// Empty / degrade-graceful [`PkrAssemblyResult`] — no prior knowledge, no
+/// routing signals. Returned when there is no `retrieval_source` (None-branch)
+/// or `fetch_for_turn` errors; the caller (composition
+/// `OrchestratorLookup::run_step_zero`) surfaces this as a no-op bundle so the
+/// Tier-1 turn proceeds without a prior-knowledge prepend (degrade to Tier 2).
+fn empty_pkr_assembly_result() -> PkrAssemblyResult {
+    PkrAssemblyResult {
+        orchestrator_content: String::new(),
+        matched_component_ids: Vec::new(),
+        override_prompt_creation: false,
+        action_short_circuit: false,
+        action_component_id: None,
+        action_name: None,
+        disambiguation: false,
+        candidates: Vec::new(),
+        tier_zero: false,
+    }
+}
+
 /// Extract the skill-class (class 1–3) ids from `items` and fetch their
 /// active-skill provenance from `reborn_skills` (Q-G3). Returns `[]` when the
 /// pool is absent (non-skills-db config / tests) or no skill-class items are
