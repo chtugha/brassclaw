@@ -18,4 +18,5 @@ pub(crate) mod thread_context;
 pub mod trace;
 
 pub use loop_engine::ExecutionLoop;
+pub use orchestrator::{PkrAssemblyResult, TierZeroChannelResult};
 pub use scripting::validate_python_syntax;

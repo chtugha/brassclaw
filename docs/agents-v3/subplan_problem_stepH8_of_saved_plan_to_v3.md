@@ -164,7 +164,13 @@ fn — behavior moves with the code to its new Rust home, nothing silenced).
 
 ## 5. Status tracker
 
-- H8.1 — Pending.
+- H8.1 — Done. Added `PkrAssemblyResult` (9-field) + `TierZeroChannelResult`
+  (2-field) `pub struct`s to `orchestrator.rs` in a dedicated Phase-H.8 section
+  (after `format_orchestrator_content`), both `#[derive(Debug, Clone, PartialEq)]`,
+  with field-level docs recording the Q2 vestigial-routing note. Re-exported both
+  from `executor/mod.rs` (`pub use orchestrator::{PkrAssemblyResult,
+  TierZeroChannelResult};`). No logic. Verified: `cargo check -p brassclaw_engine`
+  clean both configs (default + `--features skills-db`); `cargo fmt` clean.
 - H8.2 — Pending.
 - H8.3 — Pending.
 - H8.4 — Pending.

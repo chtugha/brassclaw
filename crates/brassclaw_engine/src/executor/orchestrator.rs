@@ -3140,6 +3140,88 @@ fn format_orchestrator_content(items: &[crate::memory::ComponentItem]) -> String
         .join("\n\n")
 }
 
+// ── Phase H.8 — extracted `pub` orchestrator fns for Model B/C ────────────
+//
+// The Phase-H agent-loop `RecipeStage` consumes prior knowledge + Tier-0
+// channels via the composition `OrchestratorLookup` bridge (H.7). That bridge
+// cannot call the private Monty handler `handle_assemble_prior_knowledge` or
+// the Python `execute_recipe_orchestrator_channel` (FIND-NEW-PASS12-01/02), so
+// H.8 extracts two `pub async fn`s (`assemble_prior_knowledge_with_hint` +
+// `execute_tier_zero_channel`) returning these two `pub struct`s. The dormant
+// Model A handler is deleted in H8.4 (user Q1=delete); these types back the
+// Model B/C path only.
+
+/// Result of Tier-1 prior-knowledge assembly
+/// (`assemble_prior_knowledge_with_hint`, H8.2).
+///
+/// The **9-field reduced shape** (user Q2=reduced, plan-literal). The
+/// `orchestrator_content` is the prose `## [Heading: name]\n<body>` block
+/// produced by [`format_orchestrator_content`]; `matched_component_ids` is the
+/// UUID identity set; `override_prompt_creation` flags the Solution-Override
+/// path (§3.13 — exactly one override item → verbatim body).
+///
+/// **Routing is NOT carried here** (user Q2 lock): the Tier-0/Tier-1 routing
+/// decision for Model B/C comes from `RetrievalTurnResult` (H.4 —
+/// `tier0_eligible` / `llm_call_required` / `routing_meta.variant`), surfaced
+/// on `LoopExecutionState.last_retrieval_result`, NOT from this struct. The
+/// `action_short_circuit` / `action_component_id` / `action_name` /
+/// `disambiguation` / `candidates` / `tier_zero` fields are therefore
+/// **vestigial under Q2** — kept because the plan-literal 9 fields were locked.
+/// The `None`-branch of `assemble_prior_knowledge_with_hint` (fresh
+/// `fetch_for_turn`) populates them from the `FetchForTurnResult` arms so the
+/// struct stays a faithful projection of the retrieval outcome; the
+/// `Some`-branch (assemble stashed `Vec<ComponentItem>`) defaults them to the
+/// non-short-circuit / non-disambiguation shape (Tier-1 assemble-only).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PkrAssemblyResult {
+    /// The assembled prose `## [Heading: name]\n<body>` block (LLM-facing prior
+    /// knowledge). Empty for `ActionShortCircuit` / `Disambiguation`.
+    pub orchestrator_content: String,
+    /// UUIDs of matched components (the orchestrator-channel identity set, or
+    /// the single override / action id).
+    pub matched_component_ids: Vec<String>,
+    /// `true` for the Solution-Override path (§3.13) — `orchestrator_content`
+    /// is the verbatim override body and replaces the normal prompt assembly.
+    pub override_prompt_creation: bool,
+    /// `true` when an Action (class 16) intent match short-circuited (no LLM
+    /// prior knowledge). Vestigial under Q2 (routes via `RetrievalTurnResult`).
+    pub action_short_circuit: bool,
+    /// The short-circuited Action component id. `None` unless
+    /// `action_short_circuit`. Vestigial under Q2.
+    pub action_component_id: Option<String>,
+    /// The short-circuited Action name. `None` unless `action_short_circuit`.
+    /// Vestigial under Q2.
+    pub action_name: Option<String>,
+    /// `true` when multiple near-equal intent candidates require a user
+    /// disambiguation prompt (§3.12 Q11). Vestigial under Q2.
+    pub disambiguation: bool,
+    /// Disambiguation candidate descriptors (`component_id` / `class_code` /
+    /// `class_label` / `score`). Empty unless `disambiguation`. Vestigial.
+    pub candidates: Vec<serde_json::Value>,
+    /// `true` when the matched Recipe declared a Tier-0 (no-LLM) channel.
+    /// Vestigial under Q2 (routes via `RetrievalTurnResult.tier0_eligible`).
+    pub tier_zero: bool,
+}
+
+/// Result of Tier-0 no-LLM orchestrator-channel execution
+/// (`execute_tier_zero_channel`, H8.3).
+///
+/// `formatted_output` is the reply text extracted from the last successful
+/// PythonCode step (`final_answer` → `return_value` stringified → `stdout` →
+/// `""`, mirroring the Python `execute_recipe_orchestrator_channel` reference).
+/// `matched_component_ids` carries the orchestrator-channel UUIDs for Wilson
+/// scoring (`record_recipe_outcome`). A channel parse failure, a
+/// non-PythonCode step, or any step failure (incl. an approval-gate pause)
+/// degrades to an empty result so the caller falls back to Tier 2 — matching
+/// the Python `{outcome:"error"}` → Tier-2 degradation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TierZeroChannelResult {
+    /// The reply text to emit as the assistant reply (Tier-0, no LLM call).
+    pub formatted_output: String,
+    /// UUIDs of the orchestrator-channel components that produced this reply.
+    pub matched_component_ids: Vec<String>,
+}
+
 /// Extract the skill-class (class 1–3) ids from `items` and fetch their
 /// active-skill provenance from `reborn_skills` (Q-G3). Returns `[]` when the
 /// pool is absent (non-skills-db config / tests) or no skill-class items are
