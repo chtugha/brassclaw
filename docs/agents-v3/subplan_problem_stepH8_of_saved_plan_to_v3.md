@@ -171,7 +171,25 @@ fn — behavior moves with the code to its new Rust home, nothing silenced).
   from `executor/mod.rs` (`pub use orchestrator::{PkrAssemblyResult,
   TierZeroChannelResult};`). No logic. Verified: `cargo check -p brassclaw_engine`
   clean both configs (default + `--features skills-db`); `cargo fmt` clean.
-- H8.2 — Pending.
+- H8.2 — Done. Implemented `pub async fn assemble_prior_knowledge_with_hint`
+  (Option C, user lock) in `orchestrator.rs`: Some-branch deserializes
+  `Vec<ComponentItem>` from `recipe_hint` (map_err → `EngineError::InvalidInput`
+  on deser fail) → `assemble_pkr_from_items`; None-branch builds `ComponentScope`
+  from `thread` (tenant_id/user_id/agent_id/project_id) → `source.fetch_for_turn`
+  → `assemble_pkr_from_fetch`, with no-source / fetch-error →
+  `empty_pkr_assembly_result()` (degrade). Three helpers: `assemble_pkr_from_items`
+  (Solution Override detect — exactly 1 `override_prompt_creation` item → verbatim
+  body + override=true; else `format_orchestrator_content` + full id list, routing
+  fields default false), `assemble_pkr_from_fetch` (faithful projection of every
+  `FetchForTurnResult` arm: Components / Disambiguation / ActionShortCircuit /
+  SplitResult with `tier_zero = !routing.llm_call_required`), and
+  `empty_pkr_assembly_result` (all-empty / all-false). Re-exported
+  `assemble_prior_knowledge_with_hint` from `executor/mod.rs` (plan §5877) so
+  `brassclaw_reborn_composition` can import it. No unwrap/expect. Verified:
+  `cargo check` + `cargo clippy --all-targets -- -D warnings` clean both configs
+  (default + `--features skills-db`); `cargo test -p brassclaw_engine` GREEN
+  (599 default / 610 skills-db); staged-only state re-verified clean. Committed
+  `6884fea0`, pushed to `origin/main`.
 - H8.3 — Pending.
 - H8.4 — Pending.
 - H8.5 — Pending.
