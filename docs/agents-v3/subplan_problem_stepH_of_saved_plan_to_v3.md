@@ -542,7 +542,43 @@ Mark this subplan Zenflow substep Completed.
   --workspace --all-targets -- -D warnings` GREEN; engine tests GREEN both configs (590 default
   / 601 skills-db). The H8.2/H8.3 `pub` fns are re-exported from `executor/mod.rs` for H.12 to
   consume. **Phase H.8 complete; H.9 is next.**
-- H.9 — Pending.
+- H.9 — Done. `state.rs` (`brassclaw_agent_loop`): replaced the E.0 interim
+  `last_retrieval_result: Option<RetrievalTurnResult>` field with the plan-literal
+  split — `#[serde(default)] pub recipe_hint: Option<serde_json::Value>` (the
+  `orchestrator_items`) + `#[serde(default)] pub recipe_rust_context:
+  Vec<serde_json::Value>` (the `rust_items` array). **Q-H9-1 = clean-migrate**
+  (remove `last_retrieval_result`, do NOT keep it alongside — it was E.0's
+  temporary intermediate, and the plan target-state lists only `last_user_text` /
+  `recipe_hint` / `recipe_rust_context`); **Q-H9-2 = `Vec<serde_json::Value>`**
+  for `recipe_rust_context` (plan code-block line 5993 + SEC-02 `vec![]` shorthand
+  win over the prose "typed as `serde_json::Value`" — accepted the lossy
+  `as_array().cloned().unwrap_or_default()` at produce + `Value::Array(vec.clone())`
+  conversion at the H.11/H.12 consume). `initial_for_run` sets `None` / `Vec::new()`;
+  dropped the now-unused `RetrievalTurnResult` import; updated the `Eq`-not-derived
+  doc comment to reference `recipe_hint` / `recipe_rust_context`. `executor/recipe.rs`:
+  `RecipeStage::process` clears `recipe_hint` / `recipe_rust_context` at the TOP of
+  every call (SEC-02 — stale-stash replay guard for checkpoint-resumed turns) before
+  the lookup/user_text guard; on `Ok(Some(result))` stashes `recipe_hint =
+  Some(result.orchestrator_items.clone())` + `recipe_rust_context =
+  result.rust_items.as_array().cloned().unwrap_or_default()` (mirroring the H.7
+  `OrchestratorLookup` trait's `serde_json::Value` consume shape). The routing booleans
+  (`tier0_eligible` / `llm_call_required`) are NOT stashed — H.10 branches on them
+  inline. `Ok(None)` / `Err` leave the stash empty (SEC-02 clear already ran). Still
+  returns `RecipeStep::Continue` (H.9 is producer-only; consumer dispatch is H.10).
+  Module doc E.0 → H.9. `executor/tests.rs`: migrated the 5 `RecipeStage` integration
+  assertions (success case asserts the exact plan-literal split derived from
+  `expected`; the 4 fall-through cases assert `recipe_hint.is_none()` +
+  `recipe_rust_context.is_empty()`); migrated the `state.rs` round-trip test to
+  `last_user_text_and_recipe_hint_and_recipe_rust_context_round_trip_through_json`.
+  Doc-comment-only updates in `orchestrator.rs` (`brassclaw_engine`) +
+  `retrieval_lookup.rs` (`brassclaw_turns`) — the routing notes + field docs now
+  reference `recipe_hint` / `recipe_rust_context` (H.9) + inline `RecipeStage`
+  branching (H.10) instead of the removed `last_retrieval_result`. Verified:
+  `cargo clippy -p brassclaw_agent_loop --all-targets -- -D warnings` GREEN;
+  `cargo test -p brassclaw_agent_loop` full suite GREEN (6 migrated recipe tests
+  confirmed: 5 `recipe_stage_*` + the state round-trip); `cargo clippy -p
+  brassclaw_engine -- -D warnings` GREEN. Committed+pushed `2cd8eaec`. **H.10 is
+  next.**
 - H.10 — Pending.
 - H.11 — Pending.
 - H.12 — Pending.
