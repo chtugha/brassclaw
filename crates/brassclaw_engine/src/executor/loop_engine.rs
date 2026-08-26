@@ -130,8 +130,11 @@ pub struct ExecutionLoop {
     /// from `reborn_skills` instead of MemoryDoc filesystem discovery.
     #[cfg(feature = "skills-db")]
     pg_pool: Option<std::sync::Arc<brassclaw_pg::PgPool>>,
-    /// Phase 5 retrieval source (PostgresSource or RamSource) for
-    /// `__assemble_prior_knowledge__`. Falls back to legacy `retrieval` when None.
+    /// Phase 5 retrieval source (PostgresSource or RamSource). v3 Phase H8.4
+    /// deleted the `__assemble_prior_knowledge__` dispatch arm that consumed
+    /// this; the field stays plumbed through the dormant Model A dispatch fn
+    /// until the final post-H.8 cleanup removes that fn entirely. The live
+    /// Model B/C path consumes retrieval via `RetrievalTurnResult` (H.4).
     retrieval_source: Option<Arc<dyn crate::memory::RetrievalSource>>,
     /// DB-backed max wall-clock budget override for the Monty orchestrator VM.
     /// `Some` overrides `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` (Step 9.3).
@@ -215,7 +218,9 @@ impl ExecutionLoop {
         self
     }
 
-    /// Set the Phase 5 retrieval source for `__assemble_prior_knowledge__`.
+    /// Set the Phase 5 retrieval source. v3 Phase H8.4 retired the
+    /// `__assemble_prior_knowledge__` consumer; see the `retrieval_source` field
+    /// doc for the current dormant-plumbing status.
     pub fn with_retrieval_source(
         mut self,
         source: Arc<dyn crate::memory::RetrievalSource>,

@@ -204,13 +204,13 @@ pub type DependencyExpr = Vec<DependencyNode>;
 // ---------------------------------------------------------------------------
 
 /// Derived content type for orchestrator-channel steps (§0.5). Inferred from
-/// the component's `class_code` in `handle_assemble_prior_knowledge` at fetch
-/// time — never stored, never set by authors.
+/// the component's `class_code` in `assemble_prior_knowledge_with_hint` at
+/// fetch time — never stored, never set by authors.
 ///
 /// v3 Phase F.5 (Q-F7-1 / Q-F7-2): extended beyond the plan's 6
 /// orchestrator-channel variants to cover **every** component class, because
-/// the `Components` broad-scan arm of `handle_assemble_prior_knowledge` returns
-/// all retrieved classes and the prose formatter (`format_orchestrator_content`)
+/// the `Components` broad-scan arm of `assemble_pkr_from_fetch` returns all
+/// retrieved classes and the prose formatter (`format_orchestrator_content`)
 /// must label each. `Annotation` is plan-faithful (a `type:"text"` step — never
 /// produced from a `ComponentItem`). Class 13 (ToolSkill) and class 11
 /// (reserved) map to `None` via [`StepContextSpec::from_class_code`] — they are

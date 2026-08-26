@@ -5787,6 +5787,19 @@ So a third host port is required — the **only** crate that can bridge the two 
   > (delete `run_python_step0`+its 6 G.8 tests, re-home assertions as Rust unit tests). Internal
   > substeps H8.1–H8.6 tracked in the subplan doc §5 + the Zenflow H.8 substep.
   >
+  > **Nested substep H8.4a — `active_skills` provenance mechanism obsolescence — see
+  > `docs/agents-v3/subplan_problem_stepH8_4_active_skills_obsolescence_of_saved_plan_to_v3.md`.**
+  > H8.4's deletion of the step-0 PK call site made the entire `active_skills` /
+  > `ActiveSkillProvenance` / `__set_active_skills__` / `handle_set_active_skills` /
+  > `_set_active_skills_from_matched_ids` / thread.rs metadata key /
+  > `fetch_skill_provenance_by_ids` / `mission_skill_repair.md` / docker test
+  > `skill_codeact_persists_active_skill_provenance` dormant, and Model B/C never re-wired it.
+  > User decision Q-active_skills=B (obsolete, superseded by the orchestrated Sempai validation
+  > system): delete them all (D1–D15 + DC1–DC2 in the subplan). Deferred cascades (documented,
+  > NOT deleted): the `SkillActivated` pub event variant in `brassclaw_common` (serialization-
+  > breaking) + the `test_skill_oauth_flow.py` e2e assertion (separate OAuth scenario). Ships in
+  > the H8.4 commit. Run H8.4a before finalizing H8.4.
+  >
   > **⚠️ FIND-NEW-PASS12-01 + FIND-NEW-PASS12-02 — CRITICAL: the composition host CANNOT call
   > `handle_assemble_prior_knowledge` or `execute_recipe_orchestrator_channel` directly.**
   >

@@ -220,6 +220,44 @@ fn — behavior moves with the code to its new Rust home, nothing silenced).
   both configs (default + `--features skills-db`); `cargo test -p
   brassclaw_engine` GREEN (599 default / 610 skills-db); staged-only state
   re-verified clean. Committed `b55e9102`, pushed to `origin/main`.
-- H8.4 — Pending.
+- H8.4 — Done. Deleted the dormant Model A prior-knowledge path:
+  `handle_assemble_prior_knowledge` + the `__assemble_prior_knowledge__`
+  dispatch arm + `assemble_from_component_items` + `assemble_component_strings`
+  + `skill_provenance_for_items` + `format_prior_knowledge_for_llm` +
+  `doc_type_class_code` + `CLASS_CODE_*` consts (orchestrator.rs 9922→8566,
+  −1356). Removed the `default.py` step-0 PK block (`pkr = __assemble_prior_
+  knowledge__(...)` + the `if isinstance(pkr, dict):` branches +
+  `_set_active_skills_from_matched_ids` line). Rewrote `phase_f7` tests #1–#5/#7
+  to call `assemble_prior_knowledge_with_hint` and assert on `PkrAssemblyResult`
+  fields; repurposed+renamed #2. Updated doc comments referencing the retired
+  symbols in 8 files (orchestrator.rs module doc, loop_engine.rs
+  `retrieval_source` field+builder docs, instruction_builder.rs, manager.rs,
+  retrieval_source.rs, db_skill_loader.rs, thread.rs, lib.rs). Verified:
+  `cargo check` + `cargo clippy -p brassclaw_engine --all-targets -- -D
+  warnings` clean both configs (default + `--features skills-db`); `cargo test
+  -p brassclaw_engine` GREEN (587 default / 598 skills-db, 0 failed). H8.4a
+  nested substep folded into this commit (see below).
+- H8.4a — Done (nested; see
+  `subplan_problem_stepH8_4_active_skills_obsolescence_of_saved_plan_to_v3.md`).
+  User decision Q-active_skills=B (obsolete, superseded by the orchestrated
+  Sempai validation system): deleted the entire dormant `active_skills`
+  provenance mechanism — D1 `__set_active_skills__` dispatch arm, D2
+  `skill_activated` event match arm, D3 `handle_set_active_skills` fn
+  (orchestrator.rs 8566→8526, −40); D5 `ActiveSkillProvenance` struct + D6
+  `ACTIVE_SKILLS_METADATA_KEY` const + D7 `set_active_skills`/`active_skills`
+  fns + D8 roundtrip test (thread.rs 702→641, −61); D10 `fetch_skill_provenance_
+  by_ids` fn (db_skill_loader.rs 442→360, −82); D12 `_set_active_skills_from_
+  matched_ids` helper (default.py 1670→1637, −33); D14 `pg_rig` module + D15
+  `skill_codeact_persists_active_skill_provenance` docker test
+  (engine_v2_skill_codeact.rs 1213→1003, −210); D13 `mission_skill_repair.md`
+  prompt (rm). Surgical edits D4/D9/D11 (imports + re-exports) + DC1/DC2
+  (retrieval_source.rs doc comments → orchestrator-channel identity set).
+  Two orphaned-`DocId`-import cascades fixed (thread.rs top-level + test-module).
+  Deferred cascades DOCUMENTED not deleted: `SkillActivated` pub event variant
+  in `brassclaw_common` (serialization-breaking) + `test_skill_oauth_flow.py`
+  e2e assertion (separate OAuth scenario). Verified: `cargo clippy
+  --all-targets` clean both configs; `cargo test` GREEN (586 default / 597
+  skills-db, 0 failed — the 1 deleted docker-gated test that skipped locally is
+  gone as expected). Committed with H8.4.
 - H8.5 — Pending.
 - H8.6 — Pending.

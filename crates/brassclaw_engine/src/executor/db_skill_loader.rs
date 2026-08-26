@@ -95,87 +95,6 @@ mod inner {
         Ok(rows.iter().map(row_to_json).collect())
     }
 
-    /// Fetch the active-skill provenance (`doc_id`, `name`, `version`) for a set
-    /// of skill UUIDs from `reborn_skills`, scoped + SEC-01-validated, and
-    /// render them into the `ActiveSkillProvenance`-shaped JSON list that the
-    /// Python `_set_active_skills_from_matched_ids` helper passes to
-    /// `__set_active_skills__` (Q-G3).
-    ///
-    /// This replaces the old `__list_skills__()` + `select_skills()` round-trip:
-    /// the prior-knowledge assembler already matched the orchestrator-channel
-    /// skill-class ids (class 1–3); this helper only re-fetches the provenance
-    /// fields those ids need. It also fixes the latent
-    /// `ActiveSkillProvenance.version` (`u32`) vs `DbSkillRow.version`
-    /// (`String`, e.g. `"1.0.0"`) mismatch that made the old skills-db
-    /// `__set_active_skills__` path silently fail deserialization — the major
-    /// version is parsed to a `u32` here (default 1 on parse failure).
-    ///
-    /// `reborn_skills` has no `code_snippets` column (V027), so `snippet_names`
-    /// is always `[]` (matches the legacy `select_skills` default).
-    ///
-    /// The returned list is ordered by `(class_code, prompt_uid)` for
-    /// deterministic provenance. Unknown / non-skill ids are silently dropped
-    /// by the `id = ANY($1)` + validation gate.
-    pub async fn fetch_skill_provenance_by_ids(
-        pool: &PgPool,
-        scope: &SkillScope,
-        skill_ids: &[uuid::Uuid],
-    ) -> Result<Vec<serde_json::Value>, DbSkillStoreError> {
-        use brassclaw_pg::PgError;
-
-        if skill_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let ids: Vec<uuid::Uuid> = skill_ids.to_vec();
-        let client = pool.get().await.map_err(PgError::from)?;
-
-        let rows = client
-            .query(
-                "SELECT id::text, name, version
-                 FROM reborn_skills
-                 WHERE id = ANY($1)
-                   AND tenant_id  = $2
-                   AND user_id    = $3
-                   AND agent_id   = $4
-                   AND project_id = $5
-                   AND validation_status = 'validated'
-                   AND '05:validator' != ALL(consumer_tags)
-                 ORDER BY class_code, prompt_uid",
-                &[
-                    &ids,
-                    &scope.tenant_id,
-                    &scope.user_id,
-                    &scope.agent_id,
-                    &scope.project_id,
-                ],
-            )
-            .await
-            .map_err(PgError::from)?;
-
-        let provenance: Vec<serde_json::Value> = rows
-            .iter()
-            .map(|row| {
-                let id_str: &str = row.get(0);
-                let name: &str = row.get(1);
-                let version_str: &str = row.get(2);
-                let major = version_str
-                    .split('.')
-                    .next()
-                    .and_then(|s| s.parse::<u32>().ok())
-                    .unwrap_or(1);
-                serde_json::json!({
-                    "doc_id": id_str,
-                    "name": name,
-                    "version": major,
-                    "snippet_names": [],
-                    "force_activated": false,
-                })
-            })
-            .collect();
-        Ok(provenance)
-    }
-
     // -----------------------------------------------------------------------
     // Row → JSON conversion
     // -----------------------------------------------------------------------
@@ -436,6 +355,6 @@ mod inner {
 
 #[cfg(feature = "skills-db")]
 pub use inner::{
-    fetch_llm_skills_as_json, fetch_monty_skills_as_json, fetch_skill_provenance_by_ids,
-    render_skills_block, scope_from_thread_ids,
+    fetch_llm_skills_as_json, fetch_monty_skills_as_json, render_skills_block,
+    scope_from_thread_ids,
 };

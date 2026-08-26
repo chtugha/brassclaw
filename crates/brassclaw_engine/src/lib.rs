@@ -57,9 +57,7 @@ pub use types::step::{
     ActionCall, ActionResult, CodeExecutionFailure, ExecutionTier, LlmResponse, Step, StepId,
     StepStatus, TokenUsage,
 };
-pub use types::thread::{
-    ActiveSkillProvenance, Thread, ThreadConfig, ThreadId, ThreadState, ThreadType,
-};
+pub use types::thread::{Thread, ThreadConfig, ThreadId, ThreadState, ThreadType};
 
 // ── Re-exports: traits ──────────────────────────────────────
 

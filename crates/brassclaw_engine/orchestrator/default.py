@@ -989,38 +989,6 @@ def handle_disambiguation(candidates, state):
     )
 
 
-def _set_active_skills_from_matched_ids(matched_component_ids, state, active_skills):
-    """Persist active-skill provenance from the matched orchestrator-channel
-    ids (v3 Phase G.4 / Q-G3).
-
-    Replaces the old `__list_skills__()` + `select_skills()` round-trip: the
-    prior-knowledge assembler already matched the skill-class ids (class 1–3)
-    and Rust emitted their provenance as `pkr["active_skills"]` (each
-    `{doc_id, name, version, snippet_names, force_activated}`, `version`
-    already a u32 — fixes the latent `ActiveSkillProvenance.version`
-    String→u32 silent-fail). This helper forwards that payload to
-    `__set_active_skills__`, emits the `skill_activated` event, and records
-    the matched ids in state.
-
-    3-arg signature (minor deviation from the plan's 2-arg form, justified by
-    Q-G3 putting `active_skills` in pkr): `matched_component_ids` is the pkr
-    matched-identity set; `active_skills` is the provenance list.
-
-    Monty-safe: no f-strings, no list-comp-with-if — explicit for-loop +
-    `.append()` + `",".join(...)` (established patterns, default.py:1088).
-    """
-    if active_skills:
-        __set_active_skills__(active_skills)
-        skill_names = []
-        for s in active_skills:
-            skill_names.append(s.get("name", "?"))
-        __emit_event__("skill_activated", skill_names=",".join(skill_names))
-    # Always record the matched ids + reset snippet names. reborn_skills has no
-    # code_snippets column (§1 finding 7), so snippet_names is always [].
-    state["active_skill_ids"] = matched_component_ids
-    state["skill_snippet_names"] = []
-
-
 def _parse_orchestrator_channel_steps(orchestrator_content):
     """Parse the orchestrator-channel prior-knowledge prose block format
     (v3 Phase H.1) back into a list of step dicts for Tier-0 dispatch.
@@ -1244,63 +1212,17 @@ def run_loop(context, goal, actions, state, config):
             __transition_to__("completed", "cost budget exhausted")
             return complete_result(state, "completed", "Cost budget exhausted.")
 
-        # 3. Prior-knowledge assembly + skill registration on first step.
-        # __assemble_prior_knowledge__ (Phase 8 Step 8.1, §3.13/§3.14):
-        #   - Returns both raw `content` (Rust-internal only) and
-        #     `formatted_content` (LLM-readable JSON sent to working_messages).
-        #   - KV-cache discipline: `formatted_content` is deterministic
-        #     (same components → same JSON → same tokens → cache hits on the
-        #     stable prefix). Raw `content` is never sent to the LLM.
-        # Skills are assembled into the stable system-prompt prefix by Rust
-        # (InstructionBundleBuilder priority 2). The orchestrator registers
-        # which skills are active for tracking and event emission only.
+        # 3. First-step setup. v3 Phase H8.4 removed the Model A
+        # `__assemble_prior_knowledge__` prior-knowledge assembly + the
+        # action-short-circuit / disambiguation / override / orchestrator_content
+        # branches + the `_set_active_skills_from_matched_ids` registration —
+        # replaced by the `pub` `assemble_prior_knowledge_with_hint` library call
+        # on the Model B/C agent-loop path (RecipeStage / OrchestratorLookup).
+        # Volatile-context injection is currently a no-op (Phase 5.2b wires it);
+        # the call site is positioned so the stable KV-cache prefix is reusable
+        # across turns.
         if step == 0:
-            # ── Prior-knowledge assembly (§0.9 v3 flow, Phase G.5) ───
-            # Single __assemble_prior_knowledge__ call; the Rust assembler
-            # (Phase F) surfaces action_short_circuit / disambiguation /
-            # override / orchestrator_content / active_skills in the pkr dict.
-            # (The `tier_zero` key is still surfaced by Rust for the Model B/C
-            # Tier-0 path; the Python Model A early-return branch that read it
-            # was removed in v3 Phase H.5 O3.)
-            token_budget = config.get("prior_knowledge_token_budget", 100000) if isinstance(config, dict) else 100000
-            pkr = __assemble_prior_knowledge__(goal, token_budget, "02")
-            active_skills = []
-            matched_ids = []
-            if isinstance(pkr, dict):
-                matched_ids = pkr.get("matched_component_ids", [])
-                active_skills = pkr.get("active_skills", [])
-                if pkr.get("action_short_circuit"):
-                    __emit_event__("action_started", action_name=pkr.get("action_name", ""))
-                    __transition_to__("running", "action execution")
-                    action_doc = __fetch_component__(pkr.get("action_component_id", ""), 16)
-                    if isinstance(action_doc, dict):
-                        action_result = execute_action_procedure(action_doc, goal, state)
-                        if action_result.get("outcome") == "fall_back_to_tier2":
-                            __emit_event__("action_unresolved", action_name=pkr.get("action_name", ""))
-                            __transition_to__("prompting", "action unresolved -> tier-2")
-                            # fall through to Tier-2: the elif override/orchestrator_content
-                            # branches below are skipped (this if-branch was taken), so
-                            # __llm_complete__ runs with un-augmented working_messages.
-                        else:
-                            __transition_to__("completed", "action completed")
-                            return action_result
-                    else:
-                        __emit_event__("action_unresolved", action_name=pkr.get("action_name", ""))
-                        __transition_to__("prompting", "action not fetched -> tier-2")
-                        # fall through to Tier-2 (un-augmented __llm_complete__).
-                elif pkr.get("disambiguation"):
-                    return handle_disambiguation(pkr.get("candidates", []), state)
-                elif pkr.get("override_prompt_creation"):
-                    working_messages = [{"role": "User",
-                                          "content": pkr.get("orchestrator_content", pkr.get("formatted_content", ""))}]
-                elif pkr.get("orchestrator_content"):
-                    insert_as_user_message_at_n_minus_1(working_messages, pkr["orchestrator_content"])
-            # Outside `if isinstance(pkr, dict):` — always run (baseline preserved
-            # when pkr is not a dict, e.g. legacy non-dict return). Volatile-context
-            # injection is currently a no-op (Phase 5.2b wires it); the call site
-            # is positioned so the stable KV-cache prefix is reusable across turns.
             insert_volatile_context_at_n_minus_1(working_messages)
-            _set_active_skills_from_matched_ids(matched_ids, state, active_skills)
 
         # 3.4 Post-assembly reduction pipeline.
         # If the assembled prompt is over budget, fetch the per-user/user

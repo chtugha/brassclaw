@@ -111,7 +111,8 @@ pub struct TurnRoutingSignals {
     /// prompt-assembly path (§3.13 Solution Override).
     pub override_prompt_creation: bool,
     /// Orchestrator-channel UUIDs (the `orchestrator_items` ids) serialized as
-    /// strings — the `_set_active_skills` identity set for the turn.
+    /// strings — the orchestrator-channel identity set for the turn (Wilson
+    /// scoring / `record_recipe_outcome`).
     pub matched_component_ids: Vec<String>,
     /// Human-readable label for the matched variant — the matched
     /// `RecipeVariant.variant_key` (no `label` field exists in the data model;
@@ -265,7 +266,7 @@ pub trait RetrievalSource: Send + Sync {
 /// Keyword-retrieval source.
 ///
 /// Wraps the legacy `Store`-based `RetrievalEngine` and maps `MemoryDoc` rows
-/// to `ComponentItem` using the `doc_type_class_code` table from `orchestrator.rs`.
+/// to `ComponentItem` using the `doc_type_to_class_code` table below.
 /// In production the `Store` is `PgMemoryDocStore` (postgres-backed), so this is
 /// keyword-retrieval **over postgres** — not a postgres-less backend. The static
 /// filesystem fallback-content file (`BRASSCLAW_FALLBACK_CONTENT_FILE`) that
@@ -937,8 +938,8 @@ impl PostgresSource {
         }
 
         // 11. Routing signals + SplitResult. matched_component_ids are the
-        //     orchestrator-channel UUIDs (the `_set_active_skills` identity
-        //     set for the turn).
+        //     orchestrator-channel UUIDs (the orchestrator-channel identity
+        //     set for the turn — Wilson scoring / record_recipe_outcome).
         let matched_component_ids: Vec<String> = orchestrator_items
             .iter()
             .map(|i| i.id.to_string())
@@ -1402,7 +1403,7 @@ pub async fn lookup_component_class(
     Ok(row.map(|r| r.get::<_, i32>(0)))
 }
 
-/// Map a `DocType` to its class code (mirrors `doc_type_class_code` in orchestrator.rs).
+/// Map a `DocType` to its class code.
 ///
 /// This is the authoritative table for DocType → class_code mapping in the
 /// DB-less retrieval path.

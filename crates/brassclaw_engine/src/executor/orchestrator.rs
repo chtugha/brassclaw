@@ -15,7 +15,8 @@
 //! - `__save_checkpoint__` — persist thread state
 //! - `__transition_to__` — change thread state (validated)
 //! - `__retrieve_docs__` — query memory docs
-//! - `__assemble_prior_knowledge__` — two-surface PKC assembly (§3.13/§3.14)
+//! - `__assemble_prior_knowledge__` — retired (v3 Phase H8.4); replaced by the
+//!   `pub` `assemble_prior_knowledge_with_hint` library call (§3.13/§3.14)
 //! - `__check_budget__` — remaining tokens/time/USD
 //! - `__get_actions__` — available tool definitions
 
@@ -49,7 +50,7 @@ use crate::types::message::ThreadMessage;
 use crate::types::project::ProjectId;
 use crate::types::shared_owner_id;
 use crate::types::step::{ActionCall, StepId, TokenUsage};
-use crate::types::thread::{ActiveSkillProvenance, Thread, ThreadState};
+use crate::types::thread::{Thread, ThreadState};
 
 /// The compiled-in default orchestrator (v0).
 pub(crate) const DEFAULT_ORCHESTRATOR: &str = include_str!("../../orchestrator/default.py");
@@ -531,7 +532,7 @@ pub async fn execute_orchestrator(
     gate_controller: &Arc<dyn crate::gate::GateController>,
     persisted_state: &serde_json::Value,
     #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
-    retrieval_source: Option<&Arc<dyn RetrievalSource>>,
+    _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
     max_duration_override: Option<std::time::Duration>,
 ) -> Result<OrchestratorResult, EngineError> {
     let mut total_tokens = TokenUsage::default();
@@ -757,9 +758,6 @@ pub async fn execute_orchestrator(
                     // skill selector's pattern-based scoring.
                     "__regex_match__" => handle_regex_match(args),
 
-                    // __set_active_skills__(skills)
-                    "__set_active_skills__" => handle_set_active_skills(args, thread),
-
                     // __validate_component__(title, content, doc_type, metadata)
                     // Intercepts self-improvement memory_write calls for protected
                     // components (orchestrator:main, prompt:codeact_preamble).
@@ -767,34 +765,6 @@ pub async fn execute_orchestrator(
                     // of writing directly. Spec §3.5 / §3.6.
                     "__validate_component__" => {
                         handle_validate_component(args, thread, store).await
-                    }
-
-                    // __assemble_prior_knowledge__(goal, token_budget, sender_class_code)
-                    // Returns {orchestrator_content, formatted_content, content,
-                    // override_prompt_creation, matched_component_ids,
-                    // action_short_circuit, disambiguation, ...routing}. v3 Phase F
-                    // (§3.13/§3.14 + §0.9):
-                    //   orchestrator_content — LLM-facing prose StepContextSpec-headed
-                    //                          block (`## [Skill: name]\n<body>`)
-                    //   formatted_content   — alias of orchestrator_content (v3 Phase
-                    //                          F.5 / FINDING F: was JSON, now prose)
-                    //   content             — raw PKC text (Rust dispatch + KV fingerprint)
-                    //   override_prompt_creation — bool; true → use formatted_content
-                    //                              as the complete prompt base
-                    //   matched_component_ids    — list of UUID strings
-                    // Phase 5: retrieval_source is the real backend (PostgresSource or
-                    // RamSource). Falls back to legacy retrieve_context when None (the
-                    // legacy path still emits JSON formatted_content until Phase K).
-                    "__assemble_prior_knowledge__" => {
-                        handle_assemble_prior_knowledge(
-                            args,
-                            thread,
-                            retrieval,
-                            retrieval_source,
-                            #[cfg(feature = "skills-db")]
-                            pg_pool,
-                        )
-                        .await
                     }
 
                     // __fetch_component__(uuid, class_code) -> dict | None
@@ -2495,15 +2465,6 @@ fn handle_emit_event(
                 params_summary: None,
             }
         }
-        "skill_activated" => {
-            let names_str = extract_string_kwarg(kwargs, "skill_names").unwrap_or_default();
-            let skill_names: Vec<String> = names_str
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            EventKind::SkillActivated { skill_names }
-        }
         "budget_warning" => {
             let field = extract_string_kwarg(kwargs, "field").unwrap_or_default();
             let value = extract_i64_kwarg(kwargs, "value").unwrap_or(0);
@@ -2687,242 +2648,6 @@ async fn handle_retrieve_docs(
             ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
         }
     }
-}
-
-/// Handle `__assemble_prior_knowledge__(goal, token_budget, sender_class_code)`.
-///
-/// Phase 8 Step 8.1 / Phase 5 Step 6.1 (§3.13/§3.14 — two-surface PKC design):
-/// Returns `{orchestrator_content, formatted_content, content,
-/// override_prompt_creation, matched_component_ids, action_short_circuit,
-/// disambiguation, ...routing}` to Python. The Python orchestrator uses
-/// `orchestrator_content` (alias `formatted_content`) for `working_messages`;
-/// `content` (raw PKC) is reserved for Rust dispatch and KV-cache
-/// fingerprinting. v3 Phase F.5 / FINDING F: in the v3 `SplitResult` and
-/// `Components` arms `orchestrator_content` / `formatted_content` are a **prose**
-/// StepContextSpec-headed block (was a JSON object); the legacy
-/// `retrieve_context` fallback still emits JSON `formatted_content` until
-/// Phase K.
-///
-/// Priority:
-/// 1. `retrieval_source` (Phase 5/6.7 path) — `PostgresSource` (intent-driven)
-///    or `RamSource` (keyword fallback).
-/// 2. Legacy `retrieval` (`RetrievalEngine::retrieve_context`) — MemoryDoc path.
-/// 3. Empty result — no retrieval available.
-///
-/// Intent-driven path (Step 6.7):
-/// - `PostgresSource::fetch_for_turn` tries `resolve_intent` first.
-/// - On unique match: returns specific component(s) from the matched table.
-/// - On disambiguation: returns a structured `{disambiguation, candidates}`
-///   result so the Python orchestrator can surface the UX message (§3.12 Q11).
-/// - On no-match: falls back to the full UNION ALL keyword scan.
-async fn handle_assemble_prior_knowledge(
-    args: &[MontyObject],
-    thread: &Thread,
-    retrieval: Option<&RetrievalEngine>,
-    retrieval_source: Option<&Arc<dyn RetrievalSource>>,
-    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
-) -> ExtFunctionResult {
-    use crate::memory::retrieval_source::FetchForTurnResult;
-
-    let goal = args.first().map(monty_to_string).unwrap_or_default();
-    let token_budget = args
-        .get(1)
-        .and_then(|v| match v {
-            MontyObject::Int(i) => Some(*i as usize),
-            _ => None,
-        })
-        .unwrap_or(100_000);
-    let sender_class_code = args
-        .get(2)
-        .map(monty_to_string)
-        .unwrap_or_else(|| "02".to_string());
-
-    // Phase 5/6.7 path: use the RetrievalSource backend (intent-driven).
-    if let Some(source) = retrieval_source {
-        // Build the retrieval scope from the thread's real identity. v3 Phase F
-        // (Q-F2 / FIND-P8-01): `Thread` now carries `tenant_id` + `agent_id`
-        // (added F.1); the subagent child inherits the parent's (F.2) and engine
-        // spawn-created threads keep the empty `#[serde(default)]` (the engine
-        // has no `brassclaw_turns` identity source — Q-F5 -> A). The LIVE
-        // retrieval path sources tenant from `LoopRunContext.scope.tenant_id`
-        // (F.4); this dormant engine handler reads `thread.tenant_id` /
-        // `thread.agent_id` so it is correct if re-activated.
-        let scope = ComponentScope {
-            tenant_id: thread.tenant_id.clone(),
-            user_id: thread.user_id.clone(),
-            agent_id: thread.agent_id.clone(),
-            project_id: thread.project_id.to_string(),
-        };
-
-        match source
-            .fetch_for_turn(&scope, &goal, token_budget, &sender_class_code)
-            .await
-        {
-            Ok(FetchForTurnResult::Components(items)) => {
-                #[cfg(feature = "skills-db")]
-                let active_skills = skill_provenance_for_items(pg_pool, &scope, &items).await;
-                #[cfg(not(feature = "skills-db"))]
-                let active_skills: Vec<serde_json::Value> = Vec::new();
-                return assemble_from_component_items(&items, active_skills);
-            }
-            Ok(FetchForTurnResult::Disambiguation(candidates)) => {
-                // Surface disambiguation result to Python (§3.12 Q11).
-                // Python orchestrator checks `result.disambiguation` and emits
-                // a chat message with clickable buttons for the user.
-                let candidates_json: Vec<serde_json::Value> = candidates
-                    .iter()
-                    .map(|c| {
-                        serde_json::json!({
-                            "component_id": c.component_id.to_string(),
-                            "component_class_code": c.component_class_code,
-                            "class_label": c.class_label,
-                            "score": c.score,
-                        })
-                    })
-                    .collect();
-                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                    "content": "",
-                    "formatted_content": "",
-                    "override_prompt_creation": false,
-                    "matched_component_ids": [],
-                    "disambiguation": true,
-                    "candidates": candidates_json,
-                    "active_skills": [],
-                })));
-            }
-            Ok(FetchForTurnResult::ActionShortCircuit { component_id, name }) => {
-                // An Action (class 16) intent match short-circuits — there is no
-                // prior knowledge to assemble for an LLM call because the action
-                // executes directly (no LLM). Surface the short-circuit to the
-                // Python orchestrator so the dormant engine path can route it;
-                // the LIVE Tier-0 dispatch is the Phase-H agent-loop `RecipeStage`
-                // (via the composition `PgRetrievalLookup` bridge). `name` comes
-                // from `IntentResolution::Match.component_name` (FIND-P5-06), so
-                // no second DB fetch happened to get here.
-                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                    "orchestrator_content": "",
-                    "content": "",
-                    "formatted_content": "",
-                    "override_prompt_creation": false,
-                    "matched_component_ids": [component_id.to_string()],
-                    "action_short_circuit": true,
-                    "action_component_id": component_id.to_string(),
-                    "action_name": name,
-                    "active_skills": [],
-                })));
-            }
-            Ok(FetchForTurnResult::SplitResult {
-                rust_items,
-                orchestrator_items,
-                routing,
-                ..
-            }) => {
-                // A Recipe (class 21) intent match with a `step_link`: the IBS
-                // split the steps into a Rust-only channel (`rust_items`, for
-                // Tier-0 deterministic dispatch) and an orchestrator channel
-                // (`orchestrator_items`, the LLM-facing prior knowledge). This
-                // dormant engine assembler emits the full §0.9 routing dict
-                // (Q-F1): `orchestrator_content` (the formatted orchestrator
-                // channel) with `formatted_content` as an alias, `tier_zero`
-                // (= `!routing.llm_call_required` — the dormant-path equivalent
-                // of `RetrievalTurnResult.tier0_eligible`, Q-F4), the
-                // `rust_items` serialized (informational — the Python side
-                // never applies them directly; the live `RecipeStage` does,
-                // §0.9 note), `matched_component_ids` from `routing` (the
-                // orchestrator-channel identity set), and the routing context
-                // (incl. `recipe_id` — the matched Recipe UUID, surfaced in
-                // v3 Phase H4.4 so the Model B/C agent-loop Tier-0 path can
-                // stamp it onto `recipe_tier_zero_*` events in H4.5; the
-                // Model A `default.py` step-0 reader was removed in v3 Phase
-                // H.5 O3).
-                // The LIVE Tier-0/Tier-1 dispatch is the Phase-H agent-loop
-                // consumer (via the composition `PgRetrievalLookup` bridge);
-                // this path is dormant but plan-faithful if re-activated.
-                // v3 Phase F.5 (FINDING F): `orchestrator_content` is the prose
-                // StepContextSpec-headed block (`## [Skill: name]\n<body>`),
-                // NOT the legacy JSON object; `formatted_content` is an alias.
-                let orchestrator_content = format_orchestrator_content(&orchestrator_items);
-                #[cfg(feature = "skills-db")]
-                let active_skills =
-                    skill_provenance_for_items(pg_pool, &scope, &orchestrator_items).await;
-                #[cfg(not(feature = "skills-db"))]
-                let active_skills: Vec<serde_json::Value> = Vec::new();
-                let rust_items_json: Vec<serde_json::Value> = rust_items
-                    .iter()
-                    .map(|item| {
-                        serde_json::json!({
-                            "id": item.id.to_string(),
-                            "class_code": item.class_code,
-                            "name": item.name,
-                            "content": item.effective_content,
-                        })
-                    })
-                    .collect();
-                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                    "orchestrator_content": orchestrator_content,
-                    "formatted_content": orchestrator_content,
-                    "action_short_circuit": false,
-                    "disambiguation": false,
-                    "tier_zero": !routing.llm_call_required,
-                    "override_prompt_creation": routing.override_prompt_creation,
-                    "matched_component_ids": routing.matched_component_ids,
-                    "active_skills": active_skills,
-                    "rust_items": rust_items_json,
-                    "variant_label": routing.variant_label,
-                    "step_link": routing.step_link,
-                    "recipe_id": routing.recipe_id,
-                    "recipe_name": routing.recipe_name,
-                    "wilson_lower": routing.wilson_lower,
-                    "llm_call_required": routing.llm_call_required,
-                    "tier0_eligible": routing.tier0_eligible,
-                })));
-            }
-            Err(e) => {
-                debug!("assemble_prior_knowledge: RetrievalSource failed: {e}");
-                // Fall through to legacy path.
-            }
-        }
-    }
-
-    // Legacy fallback: MemoryDoc-based RetrievalEngine.
-    // Maximum number of docs to retrieve in the legacy path.
-    const LEGACY_MAX_DOCS: usize = 20;
-
-    let components = if let Some(r) = retrieval {
-        match r
-            .retrieve_context(thread.project_id, &thread.user_id, &goal, LEGACY_MAX_DOCS)
-            .await
-        {
-            Ok(docs) => docs,
-            Err(e) => {
-                debug!("assemble_prior_knowledge: retrieval failed: {e}");
-                vec![]
-            }
-        }
-    } else {
-        vec![]
-    };
-
-    // Collect matched component UUIDs (raw PKC dispatch identity).
-    let matched_ids: Vec<String> = components.iter().map(|d| d.id.0.to_string()).collect();
-
-    // Build the formatted LLM-readable JSON from the retrieved components.
-    let formatted = format_prior_knowledge_for_llm(&components, &matched_ids);
-
-    // Raw content: plain-text concatenation for Rust dispatch + KV-cache
-    // fingerprinting. Never sent to the LLM.
-    let raw_content: String = components
-        .iter()
-        .map(|d| format!("[{:?}] {}\n{}", d.doc_type, d.title, d.content))
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-        "content": raw_content,
-        "formatted_content": formatted,
-        "override_prompt_creation": false,
-        "matched_component_ids": matched_ids,
-    })))
 }
 
 /// Handle `__fetch_component__(uuid, class_code)` (v3 Phase F.6 / Q-F3).
@@ -3121,9 +2846,11 @@ fn step_context_label(class_code: i32) -> Option<&'static str> {
 /// `effective_content` emits a heading-only block (e.g. a Recipe with no body —
 /// plan line 758). This is the v3 shape of `orchestrator_content` and
 /// `formatted_content` (FINDING F: `formatted_content` transitions from a
-/// JSON-encoded object to this prose string). Shared by the `SplitResult` arm
-/// and the `Components` broad-scan arm of `handle_assemble_prior_knowledge` so
-/// both emit identical `orchestrator_content` for the same items.
+/// JSON-encoded object to this prose string). Shared by
+/// [`assemble_pkr_from_fetch`] (the `SplitResult` arm) and
+/// [`assemble_pkr_from_items`] (the `Components` arm + the `recipe_hint`
+/// Some-branch) so all three emit identical `orchestrator_content` for the
+/// same items.
 fn format_orchestrator_content(items: &[crate::memory::ComponentItem]) -> String {
     items
         .iter()
@@ -3669,233 +3396,6 @@ fn empty_tier_zero_channel_result() -> TierZeroChannelResult {
     }
 }
 
-/// Extract the skill-class (class 1–3) ids from `items` and fetch their
-/// active-skill provenance from `reborn_skills` (Q-G3). Returns `[]` when the
-/// pool is absent (non-skills-db config / tests) or no skill-class items are
-/// present. A DB error degrades to `[]` (logged at `debug!`) rather than
-/// failing the whole prior-knowledge assembly.
-#[cfg(feature = "skills-db")]
-async fn skill_provenance_for_items(
-    pg_pool: Option<&brassclaw_pg::PgPool>,
-    scope: &crate::memory::ComponentScope,
-    items: &[crate::memory::ComponentItem],
-) -> Vec<serde_json::Value> {
-    use crate::executor::db_skill_loader::{fetch_skill_provenance_by_ids, scope_from_thread_ids};
-
-    let Some(pool) = pg_pool else {
-        return Vec::new();
-    };
-    let skill_ids: Vec<uuid::Uuid> = items
-        .iter()
-        .filter(|item| (1..=3).contains(&item.class_code))
-        .map(|item| item.id)
-        .collect();
-    if skill_ids.is_empty() {
-        return Vec::new();
-    }
-    let skill_scope = scope_from_thread_ids(
-        &scope.tenant_id,
-        &scope.user_id,
-        &scope.agent_id,
-        &scope.project_id,
-    );
-    match fetch_skill_provenance_by_ids(pool, &skill_scope, &skill_ids).await {
-        Ok(provenance) => provenance,
-        Err(e) => {
-            debug!("assemble_prior_knowledge: skill provenance fetch failed: {e}");
-            Vec::new()
-        }
-    }
-}
-
-/// Build the PKC result from a vec of [`ComponentItem`]s (Phase 5 path).
-///
-/// Checks if any component requests Solution Override (§3.13). If exactly
-/// one Override component exists, returns it verbatim. Otherwise assembles
-/// the normal multi-component prose block (v3 Phase F.5: `orchestrator_content`
-/// and `formatted_content` are now the prose StepContextSpec-headed block per
-/// FINDING F; the legacy JSON shape is retired from this arm).
-///
-/// v3 Phase G (Q-G3): `active_skills` is the `ActiveSkillProvenance`-shaped
-/// list the Python `_set_active_skills_from_matched_ids` helper forwards to
-/// `__set_active_skills__`. It is computed by the caller from the skill-class
-/// (class 1–3) ids in `items` via `skill_provenance_for_items` and emitted in
-/// both the Override and the Normal-assembly dicts.
-fn assemble_from_component_items(
-    items: &[crate::memory::ComponentItem],
-    active_skills: Vec<serde_json::Value>,
-) -> ExtFunctionResult {
-    let active_skills_val = serde_json::Value::Array(active_skills);
-    // Solution Override: single component with override_prompt_creation = true.
-    // §3.13 — the override body IS the whole user message, so it is emitted
-    // verbatim (no StepContextSpec heading). v3 Phase F.5 (FINDING F):
-    // `orchestrator_content` / `formatted_content` carry the verbatim body
-    // (a degenerate prose block) with `formatted_content` as an alias.
-    let override_items: Vec<_> = items
-        .iter()
-        .filter(|item| item.override_prompt_creation)
-        .collect();
-    if override_items.len() == 1 {
-        let item = override_items[0];
-        let matched_ids = vec![item.id.to_string()];
-        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-            "orchestrator_content": item.effective_content,
-            "formatted_content": item.effective_content,
-            "content": item.effective_content,
-            "override_prompt_creation": true,
-            "matched_component_ids": matched_ids,
-            "action_short_circuit": false,
-            "disambiguation": false,
-            "active_skills": active_skills_val,
-        })));
-    }
-
-    // Normal multi-component path. v3 Phase F.5 (FINDING F): `orchestrator_content`
-    // is the prose StepContextSpec-headed block (`## [Skill: name]\n<body>` …),
-    // `formatted_content` is an alias, and `content` is the raw plain-text
-    // concatenation (Rust dispatch fingerprinting). All retrieved classes are
-    // labelled (Q-F7-1); class 13 ToolSkill / class 11 reserved are skipped by
-    // the formatter (§0.9 invariant — never in `orchestrator_content`).
-    let (raw_content, matched_ids) = assemble_component_strings(items);
-    let orchestrator_content = format_orchestrator_content(items);
-    ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-        "orchestrator_content": orchestrator_content,
-        "formatted_content": orchestrator_content,
-        "content": raw_content,
-        "override_prompt_creation": false,
-        "matched_component_ids": matched_ids,
-        "action_short_circuit": false,
-        "active_skills": active_skills_val,
-        "disambiguation": false,
-    })))
-}
-
-/// Assemble the raw plain-text concatenation (`content`) and the matched
-/// component id list from a slice of [`ComponentItem`]s (no Solution Override
-/// short-circuit). Used by [`assemble_from_component_items`] (the `Components`
-/// arm). v3 Phase F.5 (FINDING F): the LLM-readable prose `orchestrator_content`
-/// is now produced separately by [`format_orchestrator_content`]; the legacy
-/// JSON `formatted` blob (`{"prior_knowledge":[...],"matched_components":[...]}`)
-/// was retired, so this helper returns only the raw `content` (Rust dispatch
-/// fingerprinting) + the id list.
-fn assemble_component_strings(items: &[crate::memory::ComponentItem]) -> (String, Vec<String>) {
-    let matched_ids: Vec<String> = items.iter().map(|item| item.id.to_string()).collect();
-
-    // Raw content for Rust dispatch fingerprinting.
-    let raw_content: String = items
-        .iter()
-        .map(|item| {
-            format!(
-                "[class:{} {}] {}\n{}",
-                item.class_code,
-                crate::memory::intent_system::class_label(item.class_code),
-                item.name,
-                item.effective_content
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    (raw_content, matched_ids)
-}
-
-/// Map a `DocType` to its `(class_code, label)` pair.
-///
-// Class codes for DocType — authoritative table in spec §4 / `intent_system::class_label`.
-const CLASS_CODE_SKILL: i32 = 3;
-const CLASS_CODE_SPEC: i32 = 12;
-const CLASS_CODE_TOOL_SKILL: i32 = 13;
-const CLASS_CODE_PLAN: i32 = 14;
-const CLASS_CODE_SUMMARY: i32 = 15;
-const CLASS_CODE_LESSON: i32 = 18;
-const CLASS_CODE_ISSUE: i32 = 19;
-const CLASS_CODE_NOTE: i32 = 20;
-const CLASS_CODE_RECIPE: i32 = 21;
-
-/// `MemoryDoc` carries `DocType` rather than a raw integer, so this function
-/// bridges the two representations when building LLM-readable JSON.
-fn doc_type_class_code(doc_type: crate::types::memory::DocType) -> (i32, &'static str) {
-    use crate::types::memory::DocType;
-    match doc_type {
-        DocType::Spec => (CLASS_CODE_SPEC, "spec"),
-        DocType::ToolSkill => (CLASS_CODE_TOOL_SKILL, "tool_skill"),
-        DocType::Plan => (CLASS_CODE_PLAN, "plan"),
-        DocType::Summary => (CLASS_CODE_SUMMARY, "summary"),
-        DocType::Lesson => (CLASS_CODE_LESSON, "lesson"),
-        DocType::Issue => (CLASS_CODE_ISSUE, "issue"),
-        DocType::Note => (CLASS_CODE_NOTE, "note"),
-        DocType::Skill => (CLASS_CODE_SKILL, "skill_llm"),
-        DocType::Recipe => (CLASS_CODE_RECIPE, "recipe"),
-    }
-}
-
-/// Build a deterministic LLM-readable JSON string from a set of retrieved
-/// memory components.
-///
-/// Phase 8 Step 8.1 / Phase 6.1 — two-surface PKC design (§3.13/§3.14):
-/// - Schema is fixed: `{prior_knowledge: [...], matched_components: [...]}`.
-/// - Each entry carries `class`, `class_code`, `name`, and `content`.
-/// - Fields absent on a doc (empty string ≙ absent) are omitted to keep the
-///   token sequence stable across turns (no `null` tokens in the stream).
-/// - Entries are emitted in the order supplied by the caller (Phase 5 will
-///   guarantee `(class_code asc, prompt_uid asc)` ordering at the DB layer).
-/// - `matched_components` is populated with the stringified `DocId` UUIDs of
-///   the supplied docs; callers that already hold UUIDs should pass them via
-///   `handle_assemble_prior_knowledge` which sets the field directly.
-///
-/// Schema stability → same components → same JSON → same token sequence →
-/// KV-cache prefix reuse across turns.
-pub(crate) fn format_prior_knowledge_for_llm(
-    docs: &[crate::types::memory::MemoryDoc],
-    matched_ids: &[String],
-) -> String {
-    let entries: Vec<serde_json::Value> = docs
-        .iter()
-        .map(|d| {
-            let (class_code, class_label) = doc_type_class_code(d.doc_type);
-            // Build the entry with only non-empty fields so that NULL/absent
-            // DB columns never inject extra tokens into the stream.
-            let mut entry = serde_json::Map::new();
-            entry.insert(
-                "class".into(),
-                serde_json::Value::String(class_label.to_string()),
-            );
-            entry.insert(
-                "class_code".into(),
-                serde_json::Value::Number(class_code.into()),
-            );
-            entry.insert("name".into(), serde_json::Value::String(d.title.clone()));
-            if !d.content.is_empty() {
-                entry.insert(
-                    "content".into(),
-                    serde_json::Value::String(d.content.clone()),
-                );
-            }
-            // Surface `description` from metadata if the component carries one.
-            if let Some(desc) = d
-                .metadata
-                .get("description")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-            {
-                entry.insert(
-                    "description".into(),
-                    serde_json::Value::String(desc.to_string()),
-                );
-            }
-            serde_json::Value::Object(entry)
-        })
-        .collect();
-
-    match serde_json::to_string(&serde_json::json!({
-        "prior_knowledge": entries,
-        "matched_components": matched_ids,
-    })) {
-        Ok(s) => s,
-        Err(_) => String::from(r#"{"prior_knowledge":[],"matched_components":[]}"#),
-    }
-}
-
 /// Handle `__check_budget__()`.
 fn handle_check_budget(thread: &Thread) -> ExtFunctionResult {
     let tokens_remaining = thread
@@ -4370,31 +3870,6 @@ fn handle_regex_match(args: &[MontyObject]) -> ExtFunctionResult {
         }
     };
     ExtFunctionResult::Return(MontyObject::Bool(matched))
-}
-
-/// Handle `__set_active_skills__(skills)`.
-///
-/// Persists the selected skill provenance onto the thread so post-run learning
-/// flows can reason about the exact skill versions and snippets that were active.
-fn handle_set_active_skills(args: &[MontyObject], thread: &mut Thread) -> ExtFunctionResult {
-    let skills_json = args
-        .first()
-        .map(monty_to_json)
-        .unwrap_or_else(|| serde_json::json!([]));
-
-    let skills = match serde_json::from_value::<Vec<ActiveSkillProvenance>>(skills_json) {
-        Ok(skills) => skills,
-        Err(e) => {
-            debug!("__set_active_skills__: invalid payload: {e}");
-            return ExtFunctionResult::Return(MontyObject::None);
-        }
-    };
-
-    if let Err(e) = thread.set_active_skills(&skills) {
-        debug!("__set_active_skills__: failed to persist active skills: {e}");
-    }
-
-    ExtFunctionResult::Return(MontyObject::None)
 }
 
 /// Handle `__validate_component__(title, content, doc_type, metadata)`.
@@ -5390,221 +4865,6 @@ mod tests {
         }
     }
 
-    // ── Phase G.8 — step-0 `run_loop` harness ───────────────────────
-    //
-    // Drives the full `run_loop` step-0 path through the Monty VM with the
-    // §0.9 v3 single `__assemble_prior_knowledge__` call (G.5), mocking every
-    // host function step-0 can reach. `max_iterations = 1` + `step_count = 0`
-    // so exactly one iteration (step 0) runs — enough to exercise the
-    // action_short_circuit / disambiguation / override / orchestrator_content
-    // branches and the Tier-2 fall-through to `__llm_complete__`.
-    //
-    // Returns the `run_loop` outcome dict (the `FINAL()` argument) plus a
-    // recording of every host-function call so tests can assert dispatch +
-    // injection behaviour. Sibling of `run_python_final`; uses the same
-    // `LoadGlobalCallable` property that makes undefined `__*__` *calls* yield
-    // `RunProgress::FunctionCall` (not `NameLookup`).
-
-    /// Recorded host-function activity from a step-0 `run_loop` run.
-    #[derive(Default, Debug)]
-    struct Step0Recording {
-        /// `__emit_event__(name, **kwargs)` calls: `(name, kwargs_json)`.
-        events: Vec<(String, serde_json::Value)>,
-        /// `__transition_to__(state, reason)` calls.
-        transitions: Vec<(String, String)>,
-        /// `__set_active_skills__(skills)` payload (`None` if never called).
-        set_active_skills: Option<serde_json::Value>,
-        /// `__fetch_component__(id, class_code)` calls.
-        fetch_component_calls: Vec<(String, i64)>,
-        /// `__resolve_component_by_name__(name, class_code)` calls.
-        resolve_by_name_calls: Vec<(String, i64)>,
-        /// True iff `__llm_complete__` was reached (Tier-2 fall-through).
-        llm_complete_called: bool,
-        /// `working_messages` passed to `__llm_complete__`.
-        llm_complete_messages: Option<serde_json::Value>,
-        /// True iff the legacy `__get_actions__` shim was reached.
-        get_actions_called: bool,
-        /// True iff the legacy `__list_skills__` shim was reached (must stay
-        /// false in the §0.9 v3 step-0 — G.5 removed that round-trip).
-        list_skills_called: bool,
-        /// True iff the legacy `__retrieve_docs__` shim was reached (must stay
-        /// false in the §0.9 v3 step-0 — G.5 removed that shim).
-        retrieve_docs_called: bool,
-    }
-
-    /// Convert Monty kwargs `[(key, value)]` into a JSON object.
-    fn kwargs_to_json(kwargs: &[(MontyObject, MontyObject)]) -> serde_json::Value {
-        let mut map = serde_json::Map::new();
-        for (k, v) in kwargs {
-            let key = match k {
-                MontyObject::String(s) => s.clone(),
-                other => format!("{other:?}"),
-            };
-            map.insert(key, monty_to_json(v));
-        }
-        serde_json::Value::Object(map)
-    }
-
-    /// Read the class-code argument (`args[1]`) as `i64`, defaulting to 0.
-    fn class_code_arg(args: &[MontyObject]) -> i64 {
-        match args.get(1) {
-            Some(MontyObject::Int(i)) => *i,
-            _ => 0,
-        }
-    }
-
-    /// Run `run_loop([], "goal", [], {}, {"max_iterations":1,"step_count":0})`
-    /// through Monty with mocked step-0 host functions. `pkr` is returned by
-    /// `__assemble_prior_knowledge__`; `fetch_doc` / `resolve_doc` are returned
-    /// by `__fetch_component__` / `__resolve_component_by_name__` (`None` →
-    /// Monty `None`). Returns the `run_loop` outcome dict + the call recording.
-    fn run_python_step0(
-        pkr: serde_json::Value,
-        fetch_doc: Option<serde_json::Value>,
-        resolve_doc: Option<serde_json::Value>,
-    ) -> (serde_json::Value, Step0Recording) {
-        // default.py ends with its own entry point
-        //   `result = run_loop(context, goal, actions, state, config); FINAL(result)`
-        // so we inject those five globals by name (mirroring
-        // `build_orchestrator_inputs`) instead of appending a second call.
-        // `max_iterations = 1` + `step_count = 0` so exactly step-0 runs.
-        let input_names: Vec<String> = vec![
-            "context".into(),
-            "goal".into(),
-            "actions".into(),
-            "state".into(),
-            "config".into(),
-        ];
-        let input_values = vec![
-            json_to_monty(&serde_json::json!([])),
-            json_to_monty(&serde_json::json!("goal")),
-            json_to_monty(&serde_json::json!([])),
-            json_to_monty(&serde_json::json!({})),
-            json_to_monty(&serde_json::json!({"max_iterations": 1, "step_count": 0})),
-        ];
-        let runner = MontyRun::new(DEFAULT_ORCHESTRATOR.to_string(), "test.py", input_names)
-            .expect("Failed to parse orchestrator step-0");
-        let mut stdout = String::new();
-        let tracker =
-            LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
-        let mut rec = Step0Recording::default();
-
-        let mut progress = runner
-            .start(
-                input_values,
-                tracker,
-                PrintWriter::CollectString(&mut stdout),
-            )
-            .expect("Failed to start orchestrator step-0");
-
-        loop {
-            match progress {
-                RunProgress::Complete(obj) => return (monty_to_json(&obj), rec),
-                RunProgress::FunctionCall(call) => {
-                    if call.function_name == "FINAL" {
-                        let val = call.args.first().cloned().unwrap_or(MontyObject::None);
-                        let _ = call.resume(
-                            ExtFunctionResult::Return(MontyObject::None),
-                            PrintWriter::CollectString(&mut stdout),
-                        );
-                        return (monty_to_json(&val), rec);
-                    }
-                    let ext_result = match call.function_name.as_str() {
-                        "__check_signals__" => ExtFunctionResult::Return(MontyObject::None),
-                        "__check_budget__" => {
-                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                                "tokens_remaining": 100000,
-                                "time_remaining_ms": 1000000,
-                                "usd_remaining": 100,
-                            })))
-                        }
-                        "__assemble_prior_knowledge__" => {
-                            ExtFunctionResult::Return(json_to_monty(&pkr))
-                        }
-                        "__fetch_component__" => {
-                            let id = call.args.first().map(monty_to_string).unwrap_or_default();
-                            rec.fetch_component_calls
-                                .push((id, class_code_arg(&call.args)));
-                            match &fetch_doc {
-                                Some(doc) => ExtFunctionResult::Return(json_to_monty(doc)),
-                                None => ExtFunctionResult::Return(MontyObject::None),
-                            }
-                        }
-                        "__resolve_component_by_name__" => {
-                            let name = call.args.first().map(monty_to_string).unwrap_or_default();
-                            rec.resolve_by_name_calls
-                                .push((name, class_code_arg(&call.args)));
-                            match &resolve_doc {
-                                Some(doc) => ExtFunctionResult::Return(json_to_monty(doc)),
-                                None => ExtFunctionResult::Return(MontyObject::None),
-                            }
-                        }
-                        "__emit_event__" => {
-                            let name = call.args.first().map(monty_to_string).unwrap_or_default();
-                            rec.events.push((name, kwargs_to_json(&call.kwargs)));
-                            ExtFunctionResult::Return(MontyObject::None)
-                        }
-                        "__transition_to__" => {
-                            let state = call.args.first().map(monty_to_string).unwrap_or_default();
-                            let reason = call.args.get(1).map(monty_to_string).unwrap_or_default();
-                            rec.transitions.push((state, reason));
-                            ExtFunctionResult::Return(MontyObject::None)
-                        }
-                        "__set_active_skills__" => {
-                            rec.set_active_skills = call.args.first().map(monty_to_json);
-                            ExtFunctionResult::Return(MontyObject::None)
-                        }
-                        "__llm_complete__" => {
-                            rec.llm_complete_called = true;
-                            rec.llm_complete_messages = call.args.first().map(monty_to_json);
-                            // Terminal text response carrying FINAL() so run_loop
-                            // returns `complete_result(state, "completed", "done")`
-                            // immediately, avoiding the obligation/__get_actions__
-                            // branch.
-                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                                "type": "text",
-                                "content": "FINAL(done)",
-                                "usage": {"input_tokens": 1, "output_tokens": 1},
-                            })))
-                        }
-                        "__get_actions__" => {
-                            rec.get_actions_called = true;
-                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
-                        }
-                        "__list_skills__" => {
-                            rec.list_skills_called = true;
-                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
-                        }
-                        "__retrieve_docs__" => {
-                            rec.retrieve_docs_called = true;
-                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
-                        }
-                        "__execute_action__" => ExtFunctionResult::Return(json_to_monty(
-                            &serde_json::json!({"output": "mocked_action_output"}),
-                        )),
-                        "__get_reduction_rules__" => {
-                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
-                        }
-                        _ => ExtFunctionResult::Return(MontyObject::None),
-                    };
-                    progress = call
-                        .resume(ext_result, PrintWriter::CollectString(&mut stdout))
-                        .expect("step-0 host function resume failed");
-                }
-                RunProgress::NameLookup(lookup) => {
-                    let name = lookup.name.clone();
-                    progress = lookup
-                        .resume(
-                            NameLookupResult::Undefined,
-                            PrintWriter::CollectString(&mut stdout),
-                        )
-                        .unwrap_or_else(|e| panic!("step-0 NameError '{name}': {e}"));
-                }
-                _ => panic!("Unexpected RunProgress variant in step-0 test"),
-            }
-        }
-    }
-
     // ── __regex_match__ host function reachability ───────────────
 
     #[test]
@@ -5652,371 +4912,6 @@ mod tests {
                 panic!("select_skills should pick ceo-setup for curly-quoted input, got: {other:?}")
             }
         }
-    }
-
-    // ── Phase G.8 — §0.9 v3 step-0 dispatch unit tests ───────────────
-    //
-    // Each test drives `run_loop` step-0 through Monty via `run_python_step0`
-    // with a preset prior-knowledge result (the dict `__assemble_prior_knowledge__`
-    // returns) and asserts the §0.9 v3 routing + injection behaviour added in
-    // G.5/G.6. `max_iterations = 1` so only step-0 runs.
-
-    /// True iff `messages` (the captured `working_messages`) contains a User
-    /// message whose `content` equals `expected`.
-    fn working_messages_has_user(messages: &serde_json::Value, expected: &str) -> bool {
-        messages.as_array().is_some_and(|arr| {
-            arr.iter().any(|m| {
-                m.get("role").and_then(|r| r.as_str()) == Some("User")
-                    && m.get("content").and_then(|c| c.as_str()) == Some(expected)
-            })
-        })
-    }
-
-    #[test]
-    fn step0_orchestrator_content_injected_and_legacy_shims_not_called() {
-        // Upgraded pkr: orchestrator_content set, no short-circuit / disambig /
-        // override → Normal Assembly injects the prose at N-1 and falls through
-        // to Tier-2 __llm_complete__.
-        let pkr = serde_json::json!({
-            "orchestrator_content": "PK PROSE BLOCK",
-            "matched_component_ids": [],
-            "active_skills": []
-        });
-        let (outcome, rec) = run_python_step0(pkr, None, None);
-
-        assert!(
-            rec.llm_complete_called,
-            "Normal Assembly must fall through to Tier-2 __llm_complete__"
-        );
-        let msgs = rec
-            .llm_complete_messages
-            .as_ref()
-            .expect("working_messages captured at __llm_complete__");
-        assert!(
-            working_messages_has_user(msgs, "PK PROSE BLOCK"),
-            "orchestrator_content must be injected at N-1, got: {msgs}"
-        );
-        // §0.9 v3 (G.5): the legacy __list_skills__ + __retrieve_docs__ shims
-        // were removed from step-0 — the single __assemble_prior_knowledge__
-        // call replaces them.
-        assert!(
-            !rec.list_skills_called,
-            "__list_skills__ must NOT be called in the v3 step-0"
-        );
-        assert!(
-            !rec.retrieve_docs_called,
-            "__retrieve_docs__ must NOT be called in the v3 step-0"
-        );
-        assert_eq!(
-            outcome.get("outcome").and_then(|o| o.as_str()),
-            Some("completed")
-        );
-    }
-
-    #[test]
-    fn step0_action_short_circuit_executes_procedure_without_llm() {
-        // action_short_circuit + __fetch_component__ returns a doc WITH the
-        // executable `steps` (Q-G-STUB1) → execute_action_procedure runs the
-        // real procedure, run_loop returns the action result directly, NO
-        // __llm_complete__.
-        let pkr = serde_json::json!({
-            "action_short_circuit": true,
-            "action_component_id": "act-uuid",
-            "action_name": "do-thing",
-            "matched_component_ids": ["act-uuid"],
-            "active_skills": []
-        });
-        let fetch_doc = serde_json::json!({
-            "id": "act-uuid",
-            "class_code": 16,
-            "name": "do-thing",
-            "steps": [{"type": "return", "value": "done"}],
-            "allowed_tools": []
-        });
-        let (outcome, rec) = run_python_step0(pkr, Some(fetch_doc), None);
-
-        assert_eq!(
-            rec.fetch_component_calls,
-            vec![("act-uuid".to_string(), 16)],
-            "action doc fetched by UUID + class 16"
-        );
-        assert!(
-            !rec.llm_complete_called,
-            "action short-circuit must NOT call __llm_complete__"
-        );
-        assert_eq!(
-            outcome.get("outcome").and_then(|o| o.as_str()),
-            Some("completed")
-        );
-        assert_eq!(
-            outcome.get("response").and_then(|r| r.as_str()),
-            Some("done"),
-            "the action's return value becomes the turn result"
-        );
-        assert!(
-            rec.transitions.iter().any(|(s, _)| s == "running"),
-            "transition to running before action execution"
-        );
-        assert!(
-            rec.transitions.iter().any(|(s, _)| s == "completed"),
-            "transition to completed after action execution"
-        );
-        let started = rec.events.iter().find(|(n, _)| n == "action_started");
-        assert!(started.is_some(), "action_started event must be emitted");
-        assert_eq!(
-            started
-                .and_then(|(_, kw)| kw.get("action_name"))
-                .and_then(|v| v.as_str()),
-            Some("do-thing")
-        );
-        assert!(
-            rec.events.iter().all(|(n, _)| n != "action_unresolved"),
-            "a fetched action must not emit action_unresolved"
-        );
-        // run_loop returns inside the action branch — before
-        // _set_active_skills_from_matched_ids runs.
-        assert!(
-            rec.set_active_skills.is_none(),
-            "active-skill registration is skipped when the action short-circuits"
-        );
-    }
-
-    #[test]
-    fn step0_action_short_circuit_no_doc_falls_back_to_tier2() {
-        // action_short_circuit + __fetch_component__ returns None →
-        // action_unresolved event + transition to prompting + fall through to
-        // Tier-2 __llm_complete__ (un-augmented working_messages).
-        let pkr = serde_json::json!({
-            "action_short_circuit": true,
-            "action_component_id": "act-uuid",
-            "action_name": "do-thing",
-            "matched_component_ids": ["act-uuid"],
-            "active_skills": []
-        });
-        let (outcome, rec) = run_python_step0(pkr, None, None);
-
-        assert_eq!(
-            rec.fetch_component_calls,
-            vec![("act-uuid".to_string(), 16)]
-        );
-        assert!(
-            rec.llm_complete_called,
-            "an unresolved action must fall through to Tier-2 __llm_complete__"
-        );
-        let unresolved = rec.events.iter().find(|(n, _)| n == "action_unresolved");
-        assert!(
-            unresolved.is_some(),
-            "action_unresolved event must be emitted when fetch returns None"
-        );
-        assert_eq!(
-            unresolved
-                .and_then(|(_, kw)| kw.get("action_name"))
-                .and_then(|v| v.as_str()),
-            Some("do-thing")
-        );
-        assert!(
-            rec.transitions.iter().any(|(s, _)| s == "prompting"),
-            "must transition to prompting before the Tier-2 fall-through"
-        );
-        assert_eq!(
-            outcome.get("outcome").and_then(|o| o.as_str()),
-            Some("completed")
-        );
-    }
-
-    #[test]
-    fn step0_disambiguation_surfaces_candidates_without_llm() {
-        // disambiguation: true → handle_disambiguation runs (emits
-        // disambiguation_required, transitions to disambiguation, returns
-        // outcome "disambiguation" with the candidate list). NO __llm_complete__.
-        let candidates = serde_json::json!([
-            {"component_id": "c1", "component_class_code": 12, "class_label": "Tool: foo", "score": 0.9},
-            {"component_id": "c2", "component_class_code": 16, "class_label": "Action: bar", "score": 0.8}
-        ]);
-        let pkr = serde_json::json!({
-            "disambiguation": true,
-            "candidates": candidates,
-            "matched_component_ids": [],
-            "active_skills": []
-        });
-        let (outcome, rec) = run_python_step0(pkr, None, None);
-
-        assert!(
-            !rec.llm_complete_called,
-            "disambiguation must NOT call __llm_complete__"
-        );
-        assert_eq!(
-            outcome.get("outcome").and_then(|o| o.as_str()),
-            Some("disambiguation")
-        );
-        let req = rec
-            .events
-            .iter()
-            .find(|(n, _)| n == "disambiguation_required");
-        assert!(
-            req.is_some(),
-            "disambiguation_required event must be emitted"
-        );
-        assert_eq!(
-            req.and_then(|(_, kw)| kw.get("candidates")),
-            Some(&candidates),
-            "the candidate list is forwarded on the event for WebUI choice buttons"
-        );
-        assert!(
-            rec.transitions.iter().any(|(s, _)| s == "disambiguation"),
-            "must transition to the disambiguation state"
-        );
-        // complete_result(extra={"candidates": ...}) flattens candidates to a
-        // top-level key (default.py:657) so the WebUI can render the choices.
-        assert_eq!(
-            outcome.get("candidates"),
-            Some(&candidates),
-            "candidates must be carried on the outcome for the choice UI"
-        );
-        let response = outcome
-            .get("response")
-            .and_then(|r| r.as_str())
-            .unwrap_or_default();
-        assert!(
-            response.contains("Tool: foo"),
-            "response must list candidate 1, got: {response}"
-        );
-        assert!(
-            response.contains("Action: bar"),
-            "response must list candidate 2, got: {response}"
-        );
-    }
-
-    #[test]
-    fn step0_no_match_forwards_active_skills_and_records_matched_ids() {
-        // No-match broad-scan pkr: orchestrator_content set + active_skills
-        // populated → orchestrator_content injected + _set_active_skills_from_
-        // matched_ids forwards the provenance to __set_active_skills__ and
-        // records the matched ids in state.
-        let pkr = serde_json::json!({
-            "orchestrator_content": "BROAD SCAN PROSE",
-            "matched_component_ids": ["c1", "c2"],
-            "active_skills": [{"name": "skillX"}]
-        });
-        let (outcome, rec) = run_python_step0(pkr, None, None);
-
-        assert!(
-            rec.llm_complete_called,
-            "no-match must fall through to Tier-2 __llm_complete__"
-        );
-        let msgs = rec
-            .llm_complete_messages
-            .as_ref()
-            .expect("working_messages captured at __llm_complete__");
-        assert!(
-            working_messages_has_user(msgs, "BROAD SCAN PROSE"),
-            "orchestrator_content must be injected at N-1, got: {msgs}"
-        );
-        let set_skills = rec
-            .set_active_skills
-            .as_ref()
-            .expect("__set_active_skills__ must be called when pkr carries active_skills");
-        assert_eq!(
-            set_skills.as_array().map(|a| a.len()),
-            Some(1),
-            "the single active skill is forwarded: {set_skills}"
-        );
-        assert_eq!(
-            set_skills
-                .as_array()
-                .and_then(|a| a.first())
-                .and_then(|s| s.get("name"))
-                .and_then(|n| n.as_str()),
-            Some("skillX")
-        );
-        // _set_active_skills_from_matched_ids records matched ids + resets
-        // snippet names in state (reborn_skills has no code_snippets column).
-        assert_eq!(
-            outcome
-                .pointer("/state/active_skill_ids")
-                .and_then(|v| v.as_array())
-                .map(|a| a.len()),
-            Some(2),
-            "state.active_skill_ids must record the matched_component_ids"
-        );
-        assert_eq!(
-            outcome
-                .pointer("/state/skill_snippet_names")
-                .and_then(|v| v.as_array())
-                .map(|a| a.len()),
-            Some(0),
-            "state.skill_snippet_names is always [] (no code_snippets column)"
-        );
-        assert_eq!(
-            outcome.get("outcome").and_then(|o| o.as_str()),
-            Some("completed")
-        );
-    }
-
-    #[test]
-    fn step0_action_tool_call_blocked_returns_error_outcome() {
-        // Regression for the str.format() fix
-        // (subplan_problem_stepG8_str_format): action_short_circuit + a fetched
-        // action doc whose single step is a tool_call to a tool NOT in
-        // allowed_tools → _execute_action_steps hits the SEC-07 block path
-        // (default.py line ~736, formerly a `.format()` call that crashed the
-        // Monty VM with AttributeError). execute_action_procedure converts the
-        // `{"error": ...}` to outcome "error"; run_loop returns it directly with
-        // NO __llm_complete__. The error string is now built with `+`
-        // concatenation, so it must reach Monty without crashing.
-        let pkr = serde_json::json!({
-            "action_short_circuit": true,
-            "action_component_id": "act-uuid",
-            "action_name": "do-thing",
-            "matched_component_ids": ["act-uuid"],
-            "active_skills": []
-        });
-        let fetch_doc = serde_json::json!({
-            "id": "act-uuid",
-            "class_code": 16,
-            "name": "do-thing",
-            "steps": [{"type": "tool_call", "tool": "blocked_tool", "params": {}}],
-            "allowed_tools": ["allowed_tool"]
-        });
-        let (outcome, rec) = run_python_step0(pkr, Some(fetch_doc), None);
-
-        assert!(
-            !rec.llm_complete_called,
-            "a blocked tool_call must NOT call __llm_complete__"
-        );
-        assert_eq!(
-            rec.fetch_component_calls,
-            vec![("act-uuid".to_string(), 16)],
-            "action doc fetched by UUID + class 16"
-        );
-        assert_eq!(
-            outcome.get("outcome").and_then(|o| o.as_str()),
-            Some("error"),
-            "a blocked tool_call yields an error outcome, got: {outcome}"
-        );
-        let error = outcome
-            .get("error")
-            .and_then(|e| e.as_str())
-            .expect("error message present on a blocked-tool outcome");
-        assert!(
-            error.contains("blocked_tool"),
-            "error must name the blocked tool, got: {error}"
-        );
-        assert!(
-            error.contains("SEC-07"),
-            "error must carry the SEC-07 marker, got: {error}"
-        );
-        assert!(
-            error.contains("not in allowed_tools"),
-            "error must explain the block reason, got: {error}"
-        );
-        // The block path returns before __execute_action__ is dispatched, so the
-        // outcome is "error" (not "completed" with the mocked action output) —
-        // proving the SEC-07 gate fired.
-        assert!(
-            outcome.get("response").is_none(),
-            "a blocked-tool error outcome carries no response"
-        );
     }
 
     #[tokio::test]
@@ -9157,227 +8052,15 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         assert_eq!(json["llm_audit_status"], serde_json::json!("not_required"));
     }
 
-    // ── format_prior_knowledge_for_llm (Phase 6.1 / Phase 8 Step 8.1) ────────
-
-    fn make_plan_doc(title: &str, content: &str) -> crate::types::memory::MemoryDoc {
-        use crate::types::memory::DocType;
-        use crate::types::project::ProjectId;
-        crate::types::memory::MemoryDoc::new(
-            ProjectId::new(),
-            "test-user",
-            DocType::Plan,
-            title,
-            content,
-        )
-    }
-
-    fn make_skill_doc(title: &str, content: &str) -> crate::types::memory::MemoryDoc {
-        use crate::types::memory::DocType;
-        use crate::types::project::ProjectId;
-        crate::types::memory::MemoryDoc::new(
-            ProjectId::new(),
-            "test-user",
-            DocType::Skill,
-            title,
-            content,
-        )
-    }
-
-    /// 6.1.5a — `format_prior_knowledge_for_llm` is deterministic: identical
-    /// input in identical order always produces byte-identical output.
-    #[test]
-    fn format_prior_knowledge_deterministic_identical_input() {
-        let doc = make_plan_doc("deploy-plan", "Step 1. Do the thing.");
-        let ids = vec![doc.id.0.to_string()];
-        let run1 = format_prior_knowledge_for_llm(std::slice::from_ref(&doc), &ids);
-        let run2 = format_prior_knowledge_for_llm(std::slice::from_ref(&doc), &ids);
-        assert_eq!(run1, run2, "same input must produce byte-identical JSON");
-    }
-
-    /// 6.1.5a (KV-cache stability) — two calls with the same set of components
-    /// produce byte-identical `formatted_content`.
-    #[test]
-    fn format_prior_knowledge_kv_cache_stable() {
-        let d1 = make_plan_doc("plan-alpha", "alpha content");
-        let d2 = make_skill_doc("skill-beta", "beta content");
-        let ids: Vec<String> = vec![d1.id.0.to_string(), d2.id.0.to_string()];
-        let first = format_prior_knowledge_for_llm(&[d1.clone(), d2.clone()], &ids);
-        let second = format_prior_knowledge_for_llm(&[d1, d2], &ids);
-        assert_eq!(
-            first, second,
-            "same component set must produce byte-identical formatted_content"
-        );
-    }
-
-    /// 6.1.5b — result is valid JSON and carries both `content` and
-    /// `formatted_content` keys; `formatted_content` is valid JSON itself.
-    #[test]
-    fn format_prior_knowledge_valid_json_and_schema() {
-        use crate::types::memory::DocType;
-        use crate::types::project::ProjectId;
-
-        // Mix of class types.
-        let mut plan_doc = make_plan_doc("deploy-to-kubernetes", "Step-by-step deployment");
-        // Add a description in metadata (optional field).
-        plan_doc.metadata = serde_json::json!({"description": "K8s deploy procedure"});
-
-        let skill_doc = crate::types::memory::MemoryDoc::new(
-            ProjectId::new(),
-            "test-user",
-            DocType::Skill,
-            "my-skill",
-            "skill body",
-        );
-        let recipe_doc = crate::types::memory::MemoryDoc::new(
-            ProjectId::new(),
-            "test-user",
-            DocType::Recipe,
-            "my-recipe",
-            "", // empty content — must be omitted from JSON
-        );
-
-        let ids: Vec<String> = vec![
-            plan_doc.id.0.to_string(),
-            skill_doc.id.0.to_string(),
-            recipe_doc.id.0.to_string(),
-        ];
-        let json_str = format_prior_knowledge_for_llm(&[plan_doc, skill_doc, recipe_doc], &ids);
-
-        // Must be parseable JSON.
-        let parsed: serde_json::Value =
-            serde_json::from_str(&json_str).expect("formatted_content must be valid JSON");
-
-        // Top-level keys.
-        assert!(
-            parsed
-                .get("prior_knowledge")
-                .and_then(|v| v.as_array())
-                .is_some()
-        );
-        assert!(
-            parsed
-                .get("matched_components")
-                .and_then(|v| v.as_array())
-                .is_some()
-        );
-
-        let entries = parsed["prior_knowledge"].as_array().unwrap();
-        assert_eq!(entries.len(), 3);
-
-        // Plan entry: must have class_code=14, class="plan", description present.
-        let plan_entry = &entries[0];
-        assert_eq!(plan_entry["class"], "plan");
-        assert_eq!(plan_entry["class_code"], 14);
-        assert_eq!(plan_entry["name"], "deploy-to-kubernetes");
-        assert_eq!(plan_entry["description"], "K8s deploy procedure");
-        assert!(
-            plan_entry.get("content").is_some(),
-            "non-empty content must appear"
-        );
-
-        // Skill entry: class_code=3.
-        assert_eq!(entries[1]["class_code"], 3);
-
-        // Recipe entry with empty content: `content` key must be absent.
-        let recipe_entry = &entries[2];
-        assert_eq!(recipe_entry["class"], "recipe");
-        assert!(
-            recipe_entry.get("content").is_none(),
-            "empty content must be omitted from JSON to keep token stream stable"
-        );
-
-        // matched_components = the three IDs passed in.
-        assert_eq!(parsed["matched_components"].as_array().unwrap().len(), 3);
-    }
-
-    /// 6.1.5d — volatile-injection stub is a no-op but callable from the
-    /// default.py path.  Verified through the Python step-0 code path: both
-    /// Override and Normal Assembly branches call insert_volatile_context_at_n_minus_1.
-    /// At the Rust unit-test level we verify that `handle_assemble_prior_knowledge`
-    /// returns a `formatted_content` that is non-empty for a non-empty doc set,
-    /// and that raw `content` is NOT equal to `formatted_content`.
-    #[tokio::test]
-    async fn assemble_prior_knowledge_returns_both_surfaces() {
-        // Empty retrieval path — no retrieval engine.
-        let thread = crate::types::thread::Thread::new(
-            "deploy kubernetes",
-            crate::types::thread::ThreadType::Foreground,
-            crate::types::project::ProjectId::new(),
-            "user",
-            crate::types::thread::ThreadConfig::default(),
-        );
-        let args = vec![
-            MontyObject::String("deploy kubernetes".into()),
-            MontyObject::Int(TEST_TOKEN_ALLOC_2K),
-            MontyObject::String("02".into()),
-        ];
-
-        let result = handle_assemble_prior_knowledge(
-            &args,
-            &thread,
-            None,
-            None,
-            #[cfg(feature = "skills-db")]
-            None,
-        )
-        .await;
-        let json = match result {
-            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
-            other => panic!("expected Return, got: {other:?}"),
-        };
-
-        // Both surfaces must be present.
-        assert!(json.get("content").is_some(), "content key required");
-        assert!(
-            json.get("formatted_content").is_some(),
-            "formatted_content key required"
-        );
-        assert!(json.get("override_prompt_creation").is_some());
-        assert!(json.get("matched_component_ids").is_some());
-
-        // formatted_content must itself be valid JSON.
-        let fc = json["formatted_content"]
-            .as_str()
-            .expect("formatted_content must be a string");
-        let _: serde_json::Value =
-            serde_json::from_str(fc).expect("formatted_content must be valid JSON");
-    }
-
-    /// 6.1.5e — regression: raw `content` (plain-text) must never be equal to
-    /// `formatted_content` (JSON string) for a non-empty component set, because
-    /// the two surfaces are structurally different by design.  An accidental
-    /// swap would be caught here.
-    #[test]
-    fn format_prior_knowledge_raw_and_formatted_are_structurally_distinct() {
-        let doc = make_plan_doc("test-plan", "the plan content");
-        let ids = vec![doc.id.0.to_string()];
-
-        let formatted = format_prior_knowledge_for_llm(std::slice::from_ref(&doc), &ids);
-        let raw = format!("[{:?}] {}\n{}", doc.doc_type, doc.title, doc.content);
-
-        // Formatted must be valid JSON; raw must not start with `{`.
-        assert!(
-            formatted.starts_with('{'),
-            "formatted_content must be a JSON object"
-        );
-        assert!(!raw.starts_with('{'), "raw content must not be JSON");
-        assert_ne!(formatted, raw, "raw and formatted surfaces must differ");
-
-        // Formatted must not contain the raw `[Plan]` prefix that Rust uses internally.
-        assert!(
-            !formatted.contains("[Plan]"),
-            "raw PKC Rust-internal format must not appear in formatted_content"
-        );
-    }
-
     // ── Phase F.7: RetrievalSource arm tests ────────────────────────────────
     //
     // The plan's Phase F test list (saved_plan_to_v3.md:5190–5198). These drive
-    // the dormant `handle_assemble_prior_knowledge` RetrievalSource path (the
-    // four `FetchForTurnResult` arms) through a mock `RetrievalSource` so the
-    // §0.9 routing dict + prose `orchestrator_content` (FINDING F) are verified
-    // without a live Postgres. Tests #8/#9 (DB-integration) live in
-    // `crates/brassclaw_reborn_composition/tests/fetch_component.rs`.
+    // `assemble_prior_knowledge_with_hint` (the H8.2 pub fn that replaced the
+    // dormant Model A `handle_assemble_prior_knowledge` handler) on the
+    // None-branch (fresh `fetch_for_turn`) through a mock `RetrievalSource` so
+    // the `PkrAssemblyResult` fields + prose `orchestrator_content` (FINDING F)
+    // are verified without a live Postgres. Tests #8/#9 (DB-integration) live
+    // in `crates/brassclaw_reborn_composition/tests/fetch_component.rs`.
 
     /// In-memory `RetrievalSource` for Phase F.7 tests. Captures the
     /// `ComponentScope` handed to `fetch_for_turn` (test #7) and returns a
@@ -9446,7 +8129,7 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         }
     }
 
-    /// Build a foreground `Thread` for `handle_assemble_prior_knowledge`.
+    /// Build a foreground `Thread` for `assemble_prior_knowledge_with_hint`.
     fn phase_f7_thread(goal: &str) -> Thread {
         crate::types::thread::Thread::new(
             goal,
@@ -9457,35 +8140,24 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         )
     }
 
-    /// Args for `__assemble_prior_knowledge__(goal, 2k, "02")`.
-    fn phase_f7_args(goal: &str) -> Vec<MontyObject> {
-        vec![
-            MontyObject::String(goal.into()),
-            MontyObject::Int(TEST_TOKEN_ALLOC_2K),
-            MontyObject::String("02".into()),
-        ]
-    }
-
-    /// Call `handle_assemble_prior_knowledge` with a `RetrievalSource` (no
-    /// legacy `RetrievalEngine`) and return the resulting JSON dict.
+    /// Call `assemble_prior_knowledge_with_hint` (the H8.2 pub fn that replaced
+    /// the dormant Model A `handle_assemble_prior_knowledge` Monty handler) with
+    /// a `RetrievalSource` and NO `recipe_hint` (None-branch → fresh
+    /// `fetch_for_turn`), returning the [`PkrAssemblyResult`].
     async fn phase_f7_assemble(
         src: Arc<dyn RetrievalSource>,
         thread: &Thread,
-    ) -> serde_json::Value {
-        let args = phase_f7_args(&thread.goal);
-        let result = handle_assemble_prior_knowledge(
-            &args,
+    ) -> PkrAssemblyResult {
+        assemble_prior_knowledge_with_hint(
             thread,
-            None,
+            &thread.goal,
+            TEST_TOKEN_ALLOC_2K as usize,
+            "02",
             Some(&src),
-            #[cfg(feature = "skills-db")]
             None,
         )
-        .await;
-        match result {
-            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
-            other => panic!("expected Return, got: {other:?}"),
-        }
+        .await
+        .expect("assemble_prior_knowledge_with_hint must succeed in unit tests")
     }
 
     /// A `SplitResult` with a Skill + PythonCode in the orchestrator channel
@@ -9524,11 +8196,9 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             Arc::new(Mutex::new(None)),
         ));
         let thread = phase_f7_thread("list files");
-        let json = phase_f7_assemble(src, &thread).await;
+        let result = phase_f7_assemble(src, &thread).await;
 
-        let oc = json["orchestrator_content"]
-            .as_str()
-            .expect("orchestrator_content must be a prose string");
+        let oc = &result.orchestrator_content;
 
         // Skill + PythonCode bodies present with Capitalized headings.
         assert!(oc.contains("## [Skill: ls]"), "missing Skill heading: {oc}");
@@ -9566,22 +8236,29 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         );
     }
 
-    /// Phase F.7 #2 — `SplitResult` `formatted_content` aliases
-    /// `orchestrator_content` (FINDING F: JSON object → prose string).
+    /// Phase F.7 #2 — `SplitResult` `orchestrator_content` is the prose
+    /// StepContextSpec-headed block (FINDING F: was a JSON object, now a prose
+    /// string). The reduced `PkrAssemblyResult` (Q2) no longer carries a
+    /// separate `formatted_content` alias, so this test asserts the invariant
+    /// #1 does not: `orchestrator_content` is prose (starts with `## [`) and
+    /// is NOT a JSON object (does not start with `{`).
     #[tokio::test]
-    async fn phase_f7_split_result_formatted_content_aliases_orchestrator_content() {
+    async fn phase_f7_split_result_orchestrator_content_is_prose_not_json() {
         let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
             phase_f7_split_result(),
             Arc::new(Mutex::new(None)),
         ));
         let thread = phase_f7_thread("list files");
-        let json = phase_f7_assemble(src, &thread).await;
+        let result = phase_f7_assemble(src, &thread).await;
 
-        let oc = json["orchestrator_content"].as_str().unwrap_or("");
-        let fc = json["formatted_content"].as_str().unwrap_or("");
-        assert_eq!(
-            oc, fc,
-            "formatted_content must alias orchestrator_content (FINDING F)"
+        let oc = &result.orchestrator_content;
+        assert!(
+            oc.starts_with("## ["),
+            "orchestrator_content must be a prose StepContextSpec block, got: {oc}"
+        );
+        assert!(
+            !oc.starts_with('{'),
+            "orchestrator_content must NOT be a JSON object (FINDING F), got: {oc}"
         );
     }
 
@@ -9591,29 +8268,31 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
     #[tokio::test]
     async fn phase_f7_action_short_circuit_emits_empty_orchestrator_content() {
         let component_id = uuid::Uuid::from_u128(42);
-        let result = FetchForTurnResult::ActionShortCircuit {
+        let fetch = FetchForTurnResult::ActionShortCircuit {
             component_id,
             name: "deploy".to_string(),
         };
         let src: Arc<dyn RetrievalSource> =
-            Arc::new(MockRetrievalSource::new(result, Arc::new(Mutex::new(None))));
+            Arc::new(MockRetrievalSource::new(fetch, Arc::new(Mutex::new(None))));
         let thread = phase_f7_thread("deploy now");
-        let json = phase_f7_assemble(src, &thread).await;
+        let result = phase_f7_assemble(src, &thread).await;
 
-        assert_eq!(
-            json["action_short_circuit"], true,
+        assert!(
+            result.action_short_circuit,
             "ActionShortCircuit must set action_short_circuit"
         );
         assert_eq!(
-            json["orchestrator_content"], "",
+            result.orchestrator_content, "",
             "ActionShortCircuit has no prior knowledge -> empty orchestrator_content"
         );
+        let cid = component_id.to_string();
         assert_eq!(
-            json["formatted_content"], "",
-            "ActionShortCircuit formatted_content is empty too"
+            result.action_component_id.as_deref(),
+            Some(cid.as_str()),
+            "ActionShortCircuit carries the action component id"
         );
-        assert_eq!(json["action_name"], "deploy");
-        assert_eq!(json["action_component_id"], component_id.to_string());
+        assert_eq!(result.action_name.as_deref(), Some("deploy"));
+        assert_eq!(result.matched_component_ids, vec![cid]);
     }
 
     /// Phase F.7 #4 — `Components` (no-match broad scan) `orchestrator_content`
@@ -9626,16 +8305,14 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         let spec = phase_f7_item(11, 12, "search-spec", "spec body text");
         let action = phase_f7_item(12, 16, "search-action", "action body text");
         let toolskill = phase_f7_item(13, 13, "search-tool", "hidden tool body");
-        let result = FetchForTurnResult::Components(vec![skill, spec, action, toolskill]);
+        let fetch = FetchForTurnResult::Components(vec![skill, spec, action, toolskill]);
 
         let src: Arc<dyn RetrievalSource> =
-            Arc::new(MockRetrievalSource::new(result, Arc::new(Mutex::new(None))));
+            Arc::new(MockRetrievalSource::new(fetch, Arc::new(Mutex::new(None))));
         let thread = phase_f7_thread("search files");
-        let json = phase_f7_assemble(src, &thread).await;
+        let result = phase_f7_assemble(src, &thread).await;
 
-        let oc = json["orchestrator_content"]
-            .as_str()
-            .expect("orchestrator_content required");
+        let oc = &result.orchestrator_content;
 
         // All emittable classes labelled with Capitalized headings + bodies.
         assert!(oc.contains("## [Skill: grep]"), "{oc}");
@@ -9650,18 +8327,16 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         assert!(!oc.contains("## [ToolSkill:"), "{oc}");
 
         // ...but its id is still in matched_component_ids (all items).
-        let matched = json["matched_component_ids"]
-            .as_array()
-            .expect("matched_component_ids array");
-        assert_eq!(matched.len(), 4, "all 4 item ids in matched_component_ids");
+        assert_eq!(
+            result.matched_component_ids.len(),
+            4,
+            "all 4 item ids in matched_component_ids"
+        );
 
         // Not a short-circuit / disambiguation.
-        assert_eq!(json["action_short_circuit"], false);
-        assert_eq!(json["disambiguation"], false);
-        assert_eq!(json["override_prompt_creation"], false);
-
-        // formatted_content aliases orchestrator_content.
-        assert_eq!(json["formatted_content"].as_str().unwrap_or(""), oc);
+        assert!(!result.action_short_circuit);
+        assert!(!result.disambiguation);
+        assert!(!result.override_prompt_creation);
     }
 
     /// Phase F.7 #5 — `Disambiguation` sets `disambiguation: true` and surfaces
@@ -9686,17 +8361,16 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
                 class_label: "recipe".to_string(),
             },
         ];
-        let result = FetchForTurnResult::Disambiguation(candidates);
+        let fetch = FetchForTurnResult::Disambiguation(candidates);
         let src: Arc<dyn RetrievalSource> =
-            Arc::new(MockRetrievalSource::new(result, Arc::new(Mutex::new(None))));
+            Arc::new(MockRetrievalSource::new(fetch, Arc::new(Mutex::new(None))));
         let thread = phase_f7_thread("ambiguous query");
-        let json = phase_f7_assemble(src, &thread).await;
+        let result = phase_f7_assemble(src, &thread).await;
 
-        assert_eq!(json["disambiguation"], true);
-        assert_eq!(json["content"], "");
-        assert_eq!(json["formatted_content"], "");
+        assert!(result.disambiguation);
+        assert_eq!(result.orchestrator_content, "");
 
-        let arr = json["candidates"].as_array().expect("candidates array");
+        let arr = &result.candidates;
         assert_eq!(arr.len(), 2, "two disambiguation candidates");
         assert_eq!(arr[0]["component_class_code"], 3);
         assert_eq!(arr[0]["class_label"], "skill_rusty");
@@ -9707,78 +8381,6 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         );
         assert_eq!(arr[1]["component_class_code"], 21);
         assert_eq!(arr[1]["class_label"], "recipe");
-    }
-
-    /// Phase G.1 (Q-G3) — every `handle_assemble_prior_knowledge` arm emits an
-    /// `active_skills` array. On the no-pool path (unit tests; non-skills-db or
-    /// no `pg_pool`) it is `[]`; the skills-db path populates it from
-    /// `fetch_skill_provenance_by_ids` (DB-integration, skipped here — no
-    /// docker). This guards the contract the Python
-    /// `_set_active_skills_from_matched_ids` helper relies on (pkr always
-    /// carries `active_skills`).
-    #[tokio::test]
-    async fn phase_g1_active_skills_emitted_in_every_arm() {
-        let empty_arr = |json: &serde_json::Value, arm: &str| {
-            let arr = json["active_skills"]
-                .as_array()
-                .unwrap_or_else(|| panic!("{arm} arm must emit an active_skills array"));
-            assert!(
-                arr.is_empty(),
-                "{arm} arm active_skills must be [] without a pool"
-            );
-        };
-
-        // SplitResult arm.
-        let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
-            phase_f7_split_result(),
-            Arc::new(Mutex::new(None)),
-        ));
-        empty_arr(
-            &phase_f7_assemble(src, &phase_f7_thread("list files")).await,
-            "SplitResult",
-        );
-
-        // Components arm (no-match broad scan).
-        let result = FetchForTurnResult::Components(vec![
-            phase_f7_item(10, 3, "grep", "search file contents"),
-            phase_f7_item(11, 12, "search-spec", "spec body text"),
-        ]);
-        let src: Arc<dyn RetrievalSource> =
-            Arc::new(MockRetrievalSource::new(result, Arc::new(Mutex::new(None))));
-        empty_arr(
-            &phase_f7_assemble(src, &phase_f7_thread("search files")).await,
-            "Components",
-        );
-
-        // ActionShortCircuit arm.
-        let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
-            FetchForTurnResult::ActionShortCircuit {
-                component_id: uuid::Uuid::from_u128(42),
-                name: "deploy".to_string(),
-            },
-            Arc::new(Mutex::new(None)),
-        ));
-        empty_arr(
-            &phase_f7_assemble(src, &phase_f7_thread("deploy now")).await,
-            "ActionShortCircuit",
-        );
-
-        // Disambiguation arm.
-        let src: Arc<dyn RetrievalSource> = Arc::new(MockRetrievalSource::new(
-            FetchForTurnResult::Disambiguation(vec![IntentCandidate {
-                row_id: uuid::Uuid::from_u128(100),
-                component_id: uuid::Uuid::from_u128(101),
-                component_class_code: 3,
-                input_class: 0,
-                score: 5,
-                class_label: "skill_rusty".to_string(),
-            }]),
-            Arc::new(Mutex::new(None)),
-        ));
-        empty_arr(
-            &phase_f7_assemble(src, &phase_f7_thread("ambiguous query")).await,
-            "Disambiguation",
-        );
     }
 
     /// Phase G.2 — `handle_resolve_component_by_name` returns `Value::Null`
@@ -9884,8 +8486,10 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
     }
 
     /// Phase F.7 #7 — the `ComponentScope` built by
-    /// `handle_assemble_prior_knowledge` carries the thread's `tenant_id` +
-    /// `agent_id` (the F.1 / F.3 fix), not the old `user_id` / `"default"` stub.
+    /// `assemble_prior_knowledge_with_hint` (the H8.2 pub fn that replaced the
+    /// dormant Model A `handle_assemble_prior_knowledge` handler) carries the
+    /// thread's `tenant_id` + `agent_id` (the F.1 / F.3 fix), not the old
+    /// `user_id` / `"default"` stub.
     #[tokio::test]
     async fn phase_f7_assemble_scope_uses_thread_tenant_and_agent() {
         let captured: Arc<Mutex<Option<ComponentScope>>> = Arc::new(Mutex::new(None));
