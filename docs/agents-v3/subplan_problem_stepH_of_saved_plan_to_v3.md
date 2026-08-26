@@ -523,15 +523,25 @@ Mark this subplan Zenflow substep Completed.
   `loop_driver_host.rs` files — hunk-filtered at staging); clippy clean across turns,
   agent_loop, hooks, loop_support, reborn, composition; tests GREEN (turns 131 /
   agent_loop 355 / reborn 440 / loop_support 2 / hooks).
-- H.8 — In progress. Nested subplan `subplan_problem_stepH8_of_saved_plan_to_v3.md` written +
-  registered as Zenflow substep `a6e37ad9-d87d-4211-8bd0-5f9b937743b1` (after the Phase H step).
-  5 design decisions locked by the user: Q1=delete dormant Model A PK path; Q2=reduced 9-field
-  `PkrAssemblyResult`; Gap3=complete `execute_tier_zero_channel` signature with `llm`+`event_tx`
-  + implement fully (port `_parse_orchestrator_channel_steps` to Rust, run PythonCode steps via
-  `execute_code`); `recipe_hint`=Option C (serialized `Vec<ComponentItem>`); cleanup=full (delete
-  `run_python_step0`+6 G.8 tests, re-home assertions as Rust unit tests on the new fn). Internal
-  substeps H8.1–H8.6 tracked in the subplan doc §5. Doc-only commit pending; implementation
-  H8.1–H8.6 not yet started.
+- H.8 — Done. Nested subplan `subplan_problem_stepH8_of_saved_plan_to_v3.md` (Zenflow nested
+  substep `e7fd874b-cc3a-4dd8-a5eb-8fb3f86d301a`, now Completed). 5 design decisions locked by
+  the user: Q1=**delete** the dormant Model A PK path (NOT the subplan §4 H.8 line's
+  "refactor `handle_assemble_prior_knowledge` to delegate" — deletion supersedes that wording);
+  Q2=reduced 9-field `PkrAssemblyResult`; Gap3=complete `execute_tier_zero_channel` signature
+  with `llm`+`event_tx` + implement fully (port `_parse_orchestrator_channel_steps` to Rust, run
+  PythonCode steps via `execute_code`); `recipe_hint`=Option C (serialized `Vec<ComponentItem>`);
+  cleanup=full. Internal substeps H8.1–H8.6 all Done (subplan §5): H8.1 `74f54c6b` (structs),
+  H8.2 `6884fea0` (`assemble_prior_knowledge_with_hint`), H8.3 `b55e9102`
+  (`execute_tier_zero_channel`), H8.4+H8.4a `53d38fdc` (delete dormant Model A PK path +
+  obsolete `active_skills` provenance — nested subplan
+  `subplan_problem_stepH8_4_active_skills_obsolescence_of_saved_plan_to_v3.md`), H8.5 `d80f05e4`
+  (4 additive G.8 re-home unit tests + `FailingRetrievalSource`), H8.6 `b49c4195` (workspace
+  verify-only; the harness `system_bundle_source` gap was completed in the working tree and left
+  uncommitted for the user's prefix-cache WIP — on `origin/main` `DefaultPlannedRuntimeParts`
+  does not yet have that field). Workspace `cargo check --all-targets` + `cargo clippy
+  --workspace --all-targets -- -D warnings` GREEN; engine tests GREEN both configs (590 default
+  / 601 skills-db). The H8.2/H8.3 `pub` fns are re-exported from `executor/mod.rs` for H.12 to
+  consume. **Phase H.8 complete; H.9 is next.**
 - H.9 — Pending.
 - H.10 — Pending.
 - H.11 — Pending.
