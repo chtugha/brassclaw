@@ -19,7 +19,7 @@ pub use slots::{
 
 use brassclaw_turns::{
     LoopGateRef, LoopMessageRef, LoopResultRef,
-    run_profile::{CapabilitySurfaceVersion, LoopInputCursor, LoopRunContext, RetrievalTurnResult},
+    run_profile::{CapabilitySurfaceVersion, LoopInputCursor, LoopRunContext},
 };
 
 use crate::content_cache::ContentCacheState;
@@ -44,11 +44,12 @@ pub const CHECKPOINT_SCHEMA_VERSION: u64 = 1;
 /// — so a family's future growth in either dimension can't accidentally mix
 /// concerns through a shared struct.
 ///
-/// `Eq` is intentionally not derived: `last_retrieval_result` carries a
-/// `RetrievalTurnResult` whose `rust_items`/`orchestrator_items`/`routing_meta`
-/// are `serde_json::Value` (no `Eq`, since JSON numbers admit NaN). `PartialEq`
-/// is retained for `assert_eq!` in tests; no consumer requires `Eq` (the state
-/// is held behind `Mutex`/checkpoint bytes, never used as a map key).
+/// `Eq` is intentionally not derived: `recipe_hint` carries an
+/// `Option<serde_json::Value>` and `recipe_rust_context` carries a
+/// `Vec<serde_json::Value>` (no `Eq`, since JSON numbers admit NaN).
+/// `PartialEq` is retained for `assert_eq!` in tests; no consumer requires
+/// `Eq` (the state is held behind `Mutex`/checkpoint bytes, never used as a
+/// map key).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LoopExecutionState {
     // executor-universal
@@ -113,14 +114,25 @@ pub struct LoopExecutionState {
     /// host does not wire a `MessageTextResolver` (Tier-2 fall-through).
     #[serde(default)]
     pub last_user_text: Option<String>,
-    /// Intent-driven retrieval result for the current turn (v3 Phase E.0 /
-    /// plan §H4). Populated by `RecipeStage::process` from
-    /// `RetrievalLookup::fetch_for_turn` and durably stashed here for the
-    /// Phase-H Tier-0/Tier-1 consumer (which migrates this into the plan's
-    /// `recipe_hint`/`recipe_rust_context` split). Conservative routing
-    /// booleans until Phase E's `SplitResult`.
+    /// Stashed orchestrator_items hint from a Tier-1 SplitResult (v3 Phase H.9
+    /// / plan §H4). Populated by `RecipeStage::process` from
+    /// `RetrievalLookup::fetch_for_turn`'s
+    /// `RetrievalTurnResult.orchestrator_items` and durably stashed here for
+    /// the Phase-H Tier-0/Tier-1 consumer (`OrchestratorLookup::run_step_zero`
+    /// / `run_tier_zero`, plan §H7/H.12). Cleared at the top of each
+    /// `RecipeStage::process` (SEC-02 — stale-stash replay guard) and one-shot
+    /// consumed by the orchestrator bridge.
     #[serde(default)]
-    pub last_retrieval_result: Option<RetrievalTurnResult>,
+    pub recipe_hint: Option<serde_json::Value>,
+    /// Stashed rust_items from a Tier-1 SplitResult (v3 Phase H.9 / plan §H4).
+    /// Populated by `RecipeStage::process` from
+    /// `RetrievalTurnResult.rust_items` (a JSON array, split into the
+    /// plan-literal `Vec<serde_json::Value>` here) and applied to the Rust
+    /// execution context before the Python scripting engine starts each turn.
+    /// Cleared at the top of each `RecipeStage::process` (SEC-02) and one-shot
+    /// consumed by the orchestrator bridge.
+    #[serde(default)]
+    pub recipe_rust_context: Vec<serde_json::Value>,
 }
 
 impl LoopExecutionState {
@@ -158,7 +170,8 @@ impl LoopExecutionState {
             content_cache: ContentCacheState::default(),
             spawn_subagent_hint: None,
             last_user_text: None,
-            last_retrieval_result: None,
+            recipe_hint: None,
+            recipe_rust_context: Vec::new(),
         }
     }
 
@@ -469,31 +482,28 @@ mod tests {
     }
 
     #[test]
-    fn last_user_text_and_last_retrieval_result_round_trip_through_json() {
-        // v3 plan §H3 / §H4: the raw user text and the intent-driven retrieval
-        // result are durably stashed on `LoopExecutionState` so a checkpoint can
-        // carry them to the Phase-H Tier-0/Tier-1 consumer. Both must survive a
-        // serde round-trip (the checkpoint persistence path).
+    fn last_user_text_and_recipe_hint_and_recipe_rust_context_round_trip_through_json() {
+        // v3 plan §H3 / §H4 / §H9: the raw user text, the stashed orchestrator
+        // hint, and the stashed rust context are durably stashed on
+        // `LoopExecutionState` so a checkpoint can carry them to the Phase-H
+        // Tier-0/Tier-1 consumer. All three must survive a serde round-trip
+        // (the checkpoint persistence path).
         let context = test_run_context();
         let mut state = LoopExecutionState::initial_for_run(&context);
         state.last_user_text = Some("please review this PR".to_string());
-        state.last_retrieval_result = Some(RetrievalTurnResult {
-            tier0_eligible: false,
-            llm_call_required: true,
-            rust_items: json!([{ "id": "02-001", "kind": "tool_skill" }]),
-            orchestrator_items: json!([{ "id": "04-001", "kind": "python_code" }]),
-            routing_meta: json!({ "variant": "components", "count": 2 }),
-            instruction: json!(null),
-        });
+        state.recipe_hint = Some(json!([{ "id": "04-001", "kind": "python_code" }]));
+        state.recipe_rust_context = vec![json!({ "id": "02-001", "kind": "tool_skill" })];
 
         let value = serde_json::to_value(&state).unwrap();
         let object = value.as_object().expect("state serializes as object");
         assert!(object.contains_key("last_user_text"));
-        assert!(object.contains_key("last_retrieval_result"));
+        assert!(object.contains_key("recipe_hint"));
+        assert!(object.contains_key("recipe_rust_context"));
         let restored: LoopExecutionState = serde_json::from_value(value).unwrap();
 
         assert_eq!(restored.last_user_text, state.last_user_text);
-        assert_eq!(restored.last_retrieval_result, state.last_retrieval_result);
+        assert_eq!(restored.recipe_hint, state.recipe_hint);
+        assert_eq!(restored.recipe_rust_context, state.recipe_rust_context);
     }
 
     #[test]

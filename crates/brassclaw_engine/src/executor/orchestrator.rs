@@ -2889,8 +2889,10 @@ fn format_orchestrator_content(items: &[crate::memory::ComponentItem]) -> String
 ///
 /// **Routing is NOT carried here** (user Q2 lock): the Tier-0/Tier-1 routing
 /// decision for Model B/C comes from `RetrievalTurnResult` (H.4 —
-/// `tier0_eligible` / `llm_call_required` / `routing_meta.variant`), surfaced
-/// on `LoopExecutionState.last_retrieval_result`, NOT from this struct. The
+/// `tier0_eligible` / `llm_call_required` / `routing_meta.variant`), branched
+/// on inline in `RecipeStage::process` (Phase H.10), NOT from this struct. The
+/// matched `orchestrator_items` / `rust_items` are stashed on
+/// `LoopExecutionState.recipe_hint` / `recipe_rust_context` (H.9). The
 /// `action_short_circuit` / `action_component_id` / `action_name` /
 /// `disambiguation` / `candidates` / `tier_zero` fields are therefore
 /// **vestigial under Q2** — kept because the plan-literal 9 fields were locked.
@@ -2962,8 +2964,11 @@ pub struct TierZeroChannelResult {
 /// `FetchForTurnResult` arm logic.
 ///
 /// **Routing is NOT returned here** (user Q2 lock) — the Tier-0/Tier-1
-/// decision for Model B/C comes from `RetrievalTurnResult` (H.4), surfaced on
-/// `LoopExecutionState.last_retrieval_result`. `RecipeStage` routes
+/// decision for Model B/C comes from `RetrievalTurnResult` (H.4), branched on
+/// inline in `RecipeStage::process` (Phase H.10); the matched
+/// `orchestrator_items` / `rust_items` are stashed on
+/// `LoopExecutionState.recipe_hint` / `recipe_rust_context` (H.9).
+/// `RecipeStage` routes
 /// action-short-circuit / disambiguation / Tier-0 cases away from
 /// `run_step_zero` (Tier 1) before this fn is called, so the
 /// `action_*` / `disambiguation` / `tier_zero` fields on the result are

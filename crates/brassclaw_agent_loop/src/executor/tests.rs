@@ -2797,11 +2797,13 @@ async fn model_visible_provider_tool_failures_append_failure_tool_result_for_rep
 }
 
 // =========================================================================
-// RecipeStage — v3 Phase E.0 (plan §H4): the stage fires
+// RecipeStage — v3 Phase H.9 (plan §H4): the stage fires
 // `RetrievalLookup::fetch_for_turn` in a live turn when both a lookup is
-// wired and `last_user_text` is populated, stashes the result for the Phase H
-// consumer, and always returns `Continue` (Tier-2 fall-through — Tier-0/Tier-1
-// dispatch is Phase H). These tests run without Postgres (stub lookup).
+// wired and `last_user_text` is populated, stashes the plan-literal split
+// (`recipe_hint` = `orchestrator_items`, `recipe_rust_context` =
+// `rust_items`) for the Phase H consumer, and always returns `Continue`
+// (Tier-2 fall-through at H.9 — Tier-0/Tier-1 dispatch is H.10). These tests
+// run without Postgres (stub lookup).
 // =========================================================================
 
 #[tokio::test]
@@ -2837,8 +2839,15 @@ async fn recipe_stage_fires_fetch_for_turn_and_stashes_result() {
     let boxed = match step {
         RecipeStep::Continue { state } => state,
     };
-    // (b) result stashed for the Phase H consumer, exactly as returned.
-    assert_eq!(boxed.last_retrieval_result, Some(expected));
+    // (b) H.9: the plan-literal split is stashed for the Phase H consumer —
+    // `recipe_hint` = `orchestrator_items`, `recipe_rust_context` =
+    // `rust_items` split into `Vec<Value>` (exactly mirroring the production
+    // produce logic in `RecipeStage::process`).
+    assert_eq!(boxed.recipe_hint, Some(expected.orchestrator_items.clone()));
+    assert_eq!(
+        boxed.recipe_rust_context,
+        expected.rust_items.as_array().cloned().unwrap_or_default()
+    );
 
     // (a) fetch_for_turn called once with the raw user text + "02" + 4096,
     // forwarding the host's live run_context (captured verbatim, not
@@ -2872,8 +2881,12 @@ async fn recipe_stage_falls_through_when_no_retrieval_wired() {
         RecipeStep::Continue { state } => state,
     };
     assert!(
-        boxed.last_retrieval_result.is_none(),
+        boxed.recipe_hint.is_none(),
         "no retrieval wired → nothing stashed (Tier-2)"
+    );
+    assert!(
+        boxed.recipe_rust_context.is_empty(),
+        "no retrieval wired → no rust context stashed (Tier-2)"
     );
 }
 
@@ -2901,8 +2914,12 @@ async fn recipe_stage_falls_through_when_no_user_text() {
         RecipeStep::Continue { state } => state,
     };
     assert!(
-        boxed.last_retrieval_result.is_none(),
+        boxed.recipe_hint.is_none(),
         "no user text → retrieval not consulted (Tier-2)"
+    );
+    assert!(
+        boxed.recipe_rust_context.is_empty(),
+        "no user text → no rust context stashed (Tier-2)"
     );
     assert!(
         calls.lock().expect("lock").is_empty(),
@@ -2934,8 +2951,12 @@ async fn recipe_stage_soft_miss_leaves_no_stashed_result() {
         RecipeStep::Continue { state } => state,
     };
     assert!(
-        boxed.last_retrieval_result.is_none(),
+        boxed.recipe_hint.is_none(),
         "Ok(None) soft miss → nothing stashed (Tier-2)"
+    );
+    assert!(
+        boxed.recipe_rust_context.is_empty(),
+        "Ok(None) soft miss → no rust context stashed (Tier-2)"
     );
     assert_eq!(
         calls.lock().expect("lock").len(),
@@ -2970,8 +2991,12 @@ async fn recipe_stage_soft_fails_on_retrieval_error() {
         RecipeStep::Continue { state } => state,
     };
     assert!(
-        boxed.last_retrieval_result.is_none(),
+        boxed.recipe_hint.is_none(),
         "Err → soft-fail, nothing stashed (Tier-2)"
+    );
+    assert!(
+        boxed.recipe_rust_context.is_empty(),
+        "Err → soft-fail, no rust context stashed (Tier-2)"
     );
     assert_eq!(
         calls.lock().expect("lock").len(),

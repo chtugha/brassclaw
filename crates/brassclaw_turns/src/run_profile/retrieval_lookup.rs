@@ -46,9 +46,11 @@ use crate::run_profile::LoopRunContext;
 ///   (ToolSkills, PythonCode helpers). Applied to the Rust execution context
 ///   before Python starts. **E0-A: identical to `orchestrator_items` (unsplit);
 ///   Phase E's `SplitResult` performs the real rust/orchestrator split.**
+///   Stashed in `state.recipe_rust_context` (Phase H.9, split into the
+///   plan-literal `Vec<Value>`) for the orchestrator bridge.
 /// - `orchestrator_items`: serialized `Vec<ComponentItem>` for the orchestrator
-///   channel (Skills, PythonCode). Stashed in `state.last_retrieval_result`
-///   (E0-A) / `state.recipe_hint` (Phase H) for the Python step-0 handler.
+///   channel (Skills, PythonCode). Stashed in `state.recipe_hint` (Phase H.9)
+///   for the orchestrator bridge's `run_step_zero` / `run_tier_zero`.
 /// - `routing_meta`: routing metadata (variant label, matched component UUID
 ///   count, etc.) for telemetry and stash/unstash disambiguation.
 /// - `instruction`: the serialized compiled `BuildInstruction` (Phase E.4
