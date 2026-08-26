@@ -259,5 +259,41 @@ fn — behavior moves with the code to its new Rust home, nothing silenced).
   --all-targets` clean both configs; `cargo test` GREEN (586 default / 597
   skills-db, 0 failed — the 1 deleted docker-gated test that skipped locally is
   gone as expected). Committed with H8.4.
-- H8.5 — Pending.
+- H8.5 — Done. The H8.4 commit already deleted the obsolete tests
+  (`assemble_prior_knowledge_returns_both_surfaces`, `format_prior_knowledge_
+  raw_and_formatted_are_structurally_distinct`, the `format_prior_knowledge_
+  for_llm` test block, `phase_g1_active_skills_emitted_in_every_arm`), the
+  `run_python_step0` helper + its 6 G.8 `step0_*` tests, and the
+  `Step0Recording`/`kwargs_to_json`/`class_code_arg` helpers — AND rewrote
+  `phase_f7` #1–#5/#7 to call `assemble_prior_knowledge_with_hint` and assert
+  on `PkrAssemblyResult` fields (re-homing the routing assertions:
+  `action_short_circuit`, `disambiguation`, `orchestrator_content` prose
+  format, Components arm, SplitResult, retrieve_docs flat list, scope
+  tenant/agent). User decision Q-H8.5=A1: H8.5's additive work = fill only the
+  genuine gaps as new Rust unit tests on the H8.2/H8.3 fns (orchestrator.rs
+  `mod tests`, after the phase_f7 group): (1) `phase_h8_5_solution_override_
+  assembles_verbatim_single_item` — the `assemble_pkr_from_items` Solution
+  Override arm (exactly 1 `override_prompt_creation` item → verbatim
+  `effective_content` + `override_prompt_creation=true` + single-item identity
+  set), exercised via the `recipe_hint` Some-branch; (2) `phase_h8_5_split_
+  result_tier_zero_inverts_llm_call_required` — the `tier_zero` flag on the
+  SplitResult arm (`!routing.llm_call_required`), both polarities
+  (`llm_call_required=true⇒tier_zero=false`, `=false⇒tier_zero=true`) directly
+  on `assemble_pkr_from_fetch`; (3) `phase_h8_5_no_source_or_failing_source_
+  degrades_to_empty_pkr` — the None-branch degrade (`retrieval_source=None` +
+  a `FailingRetrievalSource` whose `fetch_for_turn` errors → both return
+  `empty_pkr_assembly_result()`); (4) `phase_h8_5_recipe_hint_some_branch_
+  assembles_stashed_items_without_refetch` — the Some-branch assembles stashed
+  items via `assemble_pkr_from_items` WITHOUT re-fetching (proven by passing a
+  `FailingRetrievalSource`: any re-fetch would degrade to empty). Added the
+  `FailingRetrievalSource` test helper. User decision Q-H8.5=B1: the G.8
+  "injection" assertions that `assemble_prior_knowledge_with_hint` structurally
+  cannot test (N-1 prompt injection, `__llm_complete__` fall-through,
+  action-procedure execution, events/transitions, outcome shaping) are
+  agent-loop/integration concerns for a FUTURE composition H.12 / agent-loop
+  integration-test tier and are NOT re-homed here; the "legacy-shims-not-called"
+  + "active_skills forwarded" ones are structurally moot (both deleted in
+  H8.4/H8.4a). Verified: `cargo clippy -p brassclaw_engine --all-targets --
+  -D warnings` clean both configs (default + `--features skills-db`); `cargo
+  test -p brassclaw_engine` GREEN (+4 tests vs H8.4a). Committed `53d38fdc`.
 - H8.6 — Pending.

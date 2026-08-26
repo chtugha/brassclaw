@@ -8523,4 +8523,242 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         assert_eq!(scope.user_id, "user");
         assert_eq!(scope.project_id, thread.project_id.to_string());
     }
+
+    // ── Phase H8.5: G.8 routing/injection re-home (gaps) ───────────────────
+    //
+    // The retired G.8 `step0_*` Python harness tested the full Model A step-0
+    // pipeline. H8.4 deleted it + rewrote phase_f7 #1–#5/#7 to call
+    // `assemble_prior_knowledge_with_hint` (re-homing the routing assertions:
+    // action_short_circuit, disambiguation, orchestrator_content prose format,
+    // Components arm, SplitResult). This block fills the remaining gaps (user
+    // decision Q-H8.5=A1) as additive Rust unit tests on the H8.2/H8.3 fns.
+    // The G.8 "injection" assertions that `assemble_prior_knowledge_with_hint`
+    // structurally cannot test (N-1 prompt injection, `__llm_complete__`
+    // fall-through, action-procedure execution, events/transitions, outcome
+    // shaping) are agent-loop/integration concerns for a future composition
+    // H.12 / agent-loop tier and are NOT re-homed here (user decision
+    // Q-H8.5=B1; the legacy-shims + active_skills ones are structurally moot —
+    // both deleted in H8.4/H8.4a).
+
+    /// `RetrievalSource` whose `fetch_for_turn` always errors — used to prove
+    /// the None-branch degrade path AND that the `recipe_hint` Some-branch
+    /// never re-fetches.
+    struct FailingRetrievalSource;
+
+    #[async_trait]
+    impl RetrievalSource for FailingRetrievalSource {
+        async fn fetch_for_consumer(
+            &self,
+            _scope: &ComponentScope,
+            _query: &str,
+            _token_budget: usize,
+            _consumer_tag: &str,
+        ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
+            Err(RetrievalSourceError::Db(
+                "test: forced fetch_for_consumer failure".to_string(),
+            ))
+        }
+
+        async fn fetch_for_turn(
+            &self,
+            _scope: &ComponentScope,
+            _query: &str,
+            _token_budget: usize,
+            _sender_class_code: &str,
+        ) -> Result<FetchForTurnResult, RetrievalSourceError> {
+            Err(RetrievalSourceError::Db(
+                "test: forced fetch_for_turn failure".to_string(),
+            ))
+        }
+    }
+
+    /// Phase H8.5 gap #1 — Solution Override (§3.13): a `recipe_hint` carrying
+    /// exactly one `override_prompt_creation` item is assembled verbatim. The
+    /// item's `effective_content` becomes `orchestrator_content` unchanged
+    /// (NOT prose-formatted), `override_prompt_creation` is flagged true, and
+    /// `matched_component_ids` is the single-item identity set. Re-homes the
+    /// override assertion from the retired G.8 `step0_*` Python harness onto
+    /// the H8.2 Some-branch / `assemble_pkr_from_items` override arm.
+    #[tokio::test]
+    async fn phase_h8_5_solution_override_assembles_verbatim_single_item() {
+        let thread = phase_f7_thread("do the thing");
+        let override_item = ComponentItem {
+            id: uuid::Uuid::from_u128(42),
+            class_code: 12,
+            prompt_uid: 42,
+            name: "override-solution".to_string(),
+            description: String::new(),
+            effective_content: "VERBATIM SOLUTION BODY — do exactly this.".to_string(),
+            override_prompt_creation: true,
+            steps: None,
+            allowed_tools: None,
+        };
+        let hint = serde_json::to_value(vec![override_item.clone()])
+            .expect("serialize override ComponentItem vec");
+        let result = assemble_prior_knowledge_with_hint(
+            &thread,
+            &thread.goal,
+            TEST_TOKEN_ALLOC_2K as usize,
+            "02",
+            None,
+            Some(hint),
+        )
+        .await
+        .expect("override Some-branch must succeed");
+
+        assert!(
+            result.override_prompt_creation,
+            "override flag must be true"
+        );
+        assert_eq!(
+            result.orchestrator_content, override_item.effective_content,
+            "override body must be verbatim, not prose-formatted"
+        );
+        assert_eq!(
+            result.matched_component_ids,
+            vec![override_item.id.to_string()],
+            "identity set is the single override item"
+        );
+        assert!(!result.action_short_circuit);
+        assert!(result.action_component_id.is_none());
+        assert!(result.action_name.is_none());
+        assert!(!result.disambiguation);
+        assert!(result.candidates.is_empty());
+        assert!(!result.tier_zero);
+    }
+
+    /// Phase H8.5 gap #2 — the `tier_zero` routing flag on the `SplitResult`
+    /// arm is `!routing.llm_call_required`. The retired G.8 harness never
+    /// asserted this; the rewritten phase_f7 `SplitResult` fixture uses
+    /// `llm_call_required: true` (→ `tier_zero: false`) but does not assert the
+    /// field. This test asserts both polarities directly on
+    /// `assemble_pkr_from_fetch`.
+    #[test]
+    fn phase_h8_5_split_result_tier_zero_inverts_llm_call_required() {
+        let skill = phase_f7_item(11, 3, "ls", "list files");
+
+        // llm_call_required = true ⇒ Tier-1 (tier_zero false).
+        let tier1 = assemble_pkr_from_fetch(FetchForTurnResult::SplitResult {
+            orchestrator_items: vec![skill.clone()],
+            routing: TurnRoutingSignals {
+                override_prompt_creation: false,
+                matched_component_ids: vec![skill.id.to_string()],
+                variant_label: "default".to_string(),
+                step_link: "recipe_ls#step1".to_string(),
+                llm_call_required: true,
+                wilson_lower: 0.0,
+                tier0_eligible: true,
+                recipe_id: None,
+                recipe_name: "recipe_ls".to_string(),
+            },
+            rust_items: Vec::new(),
+            instruction: None,
+        });
+        assert!(!tier1.tier_zero, "llm_call_required=true ⇒ tier_zero=false");
+
+        // llm_call_required = false ⇒ Tier-0 deterministic channel (tier_zero true).
+        let tier0 = assemble_pkr_from_fetch(FetchForTurnResult::SplitResult {
+            orchestrator_items: vec![skill.clone()],
+            routing: TurnRoutingSignals {
+                override_prompt_creation: false,
+                matched_component_ids: vec![skill.id.to_string()],
+                variant_label: "default".to_string(),
+                step_link: "recipe_ls#step1".to_string(),
+                llm_call_required: false,
+                wilson_lower: 0.0,
+                tier0_eligible: true,
+                recipe_id: None,
+                recipe_name: "recipe_ls".to_string(),
+            },
+            rust_items: Vec::new(),
+            instruction: None,
+        });
+        assert!(tier0.tier_zero, "llm_call_required=false ⇒ tier_zero=true");
+    }
+
+    /// Phase H8.5 gap #3 — the None-branch degrade: with no `retrieval_source`
+    /// OR a failing source, `assemble_prior_knowledge_with_hint` returns the
+    /// empty `PkrAssemblyResult` (no prior knowledge, no routing signals) so the
+    /// Tier-1 turn proceeds without a prior-knowledge prepend.
+    #[tokio::test]
+    async fn phase_h8_5_no_source_or_failing_source_degrades_to_empty_pkr() {
+        let thread = phase_f7_thread("anything");
+        let empty = empty_pkr_assembly_result();
+
+        // No retrieval_source ⇒ degrade.
+        let no_src = assemble_prior_knowledge_with_hint(
+            &thread,
+            &thread.goal,
+            TEST_TOKEN_ALLOC_2K as usize,
+            "02",
+            None,
+            None,
+        )
+        .await
+        .expect("None-branch with no source must succeed (degrade)");
+        assert_eq!(no_src, empty, "no-source must degrade to the empty PKR");
+
+        // Failing retrieval_source ⇒ degrade (fetch_for_turn Err is swallowed).
+        let failing: Arc<dyn RetrievalSource> = Arc::new(FailingRetrievalSource);
+        let bad_src = assemble_prior_knowledge_with_hint(
+            &thread,
+            &thread.goal,
+            TEST_TOKEN_ALLOC_2K as usize,
+            "02",
+            Some(&failing),
+            None,
+        )
+        .await
+        .expect("fetch_for_turn Err must degrade, not propagate");
+        assert_eq!(
+            bad_src, empty,
+            "failing source must degrade to the empty PKR"
+        );
+    }
+
+    /// Phase H8.5 gap #4 — the `recipe_hint` Some-branch assembles the stashed
+    /// orchestrator items WITHOUT re-fetching. Passing a `FailingRetrievalSource`
+    /// proves the Some-branch short-circuits before `fetch_for_turn`: any
+    /// re-fetch would error and degrade to empty, but the result carries the
+    /// stashed items' prose + identity set.
+    #[tokio::test]
+    async fn phase_h8_5_recipe_hint_some_branch_assembles_stashed_items_without_refetch() {
+        let thread = phase_f7_thread("list files");
+        let skill = phase_f7_item(7, 3, "ls", "list files in a directory");
+        let pycode = phase_f7_item(8, 22, "ls-handler", "print(result)");
+        let hint = serde_json::to_value(vec![skill.clone(), pycode.clone()])
+            .expect("serialize ComponentItem vec");
+
+        // Failing source: if the Some-branch re-fetched, this would degrade.
+        let src: Arc<dyn RetrievalSource> = Arc::new(FailingRetrievalSource);
+        let result = assemble_prior_knowledge_with_hint(
+            &thread,
+            &thread.goal,
+            TEST_TOKEN_ALLOC_2K as usize,
+            "02",
+            Some(&src),
+            Some(hint),
+        )
+        .await
+        .expect("Some-branch must succeed without re-fetch");
+
+        assert!(!result.override_prompt_creation);
+        assert!(!result.action_short_circuit);
+        assert!(!result.disambiguation);
+        assert!(result.candidates.is_empty());
+        assert!(!result.tier_zero, "Some-branch normal assembly is Tier-1");
+        assert_eq!(
+            result.matched_component_ids,
+            vec![skill.id.to_string(), pycode.id.to_string()],
+            "identity set is the full stashed item list"
+        );
+        let oc = &result.orchestrator_content;
+        assert!(oc.contains("## [Skill: ls]"), "prose Skill heading: {oc}");
+        assert!(oc.contains("list files in a directory"), "skill body: {oc}");
+        assert!(
+            oc.contains("## [PythonCode: ls-handler]"),
+            "prose PythonCode heading: {oc}"
+        );
+        assert!(oc.contains("print(result)"), "pythoncode body: {oc}");
+    }
 }
