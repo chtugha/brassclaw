@@ -296,4 +296,39 @@ fn — behavior moves with the code to its new Rust home, nothing silenced).
   H8.4/H8.4a). Verified: `cargo clippy -p brassclaw_engine --all-targets --
   -D warnings` clean both configs (default + `--features skills-db`); `cargo
   test -p brassclaw_engine` GREEN (+4 tests vs H8.4a). Committed `53d38fdc`.
-- H8.6 — Pending.
+- H8.6 — Done. Final verify + ship. `cargo check --workspace --all-targets`
+  GREEN: every library crate compiles clean — including
+  `brassclaw_reborn_composition` (which imports the H8.2/H8.3 re-exports
+  `assemble_prior_knowledge_with_hint` / `execute_tier_zero_channel` from
+  `executor/mod.rs`) and `brassclaw_engine`. So the H8.1–H8.5 re-exports +
+  deletions (`ActiveSkillProvenance` from `lib.rs`, `fetch_skill_provenance_
+  by_ids` from the `db_skill_loader` re-export, the retired Model A PK fns)
+  cause **zero** downstream breakage. `cargo clippy --workspace --all-targets
+  -- -D warnings` GREEN (whole workspace, incl. the user's prefix-cache WIP +
+  the harness completion below). `cargo clippy -p brassclaw_engine
+  --all-targets -- -D warnings` clean both configs (default + `--features
+  skills-db`); `cargo test -p brassclaw_engine` GREEN both configs (590
+  default / 601 skills-db, 0 failed). `cargo fmt` clean.
+  //
+  Harness completion (user decision Q-H8.6: "you fix the harness!", revising
+  the earlier C): the first workspace `--all-targets` check failed on ONE root
+  error — `error[E0063]: missing field 'system_bundle_source' in initializer
+  of DefaultPlannedRuntimeParts` at `tests/support/reborn/harness.rs:857`. This
+  was pre-existing, incomplete, **working-tree-only user prefix-cache WIP**
+  (`system_bundle_source` is not on HEAD): the user added the
+  `system_bundle_source: Option<Arc<dyn SystemBundleSource>>` field to
+  `DefaultPlannedRuntimeParts` across the stack and updated 8 test call sites
+  to set `system_bundle_source: None,`, but missed this harness. H.8 completed
+  that one spot — added `system_bundle_source: None,` after
+  `skill_context_source: None,` (mirroring the user's 8 other call sites). The
+  harness fix is **left UNCOMMITTED in the working tree**: on `origin/main`
+  `DefaultPlannedRuntimeParts` does NOT yet have the `system_bundle_source`
+  field (it is part of the user's uncommitted prefix-cache WIP), so committing
+  the harness fix alone would break main (referencing a non-existent field).
+  The user must commit the harness fix together with their prefix-cache WIP
+  (which defines the field). H.8 did NOT sweep the rest of the user's
+  prefix-cache WIP into a commit (the `001dbee7` lesson).
+  //
+  H8.1–H8.5 committed: `74f54c6b`, `6884fea0`, `b55e9102`, `53d38fdc`
+  (H8.4+H8.4a), `d80f05e4` (H8.5). H8.6 is verify-only (no H.8 code changes);
+  its subplan §5 update is committed separately. **Phase H.8 complete.**
