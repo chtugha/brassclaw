@@ -231,6 +231,18 @@ nested sub-subplan (never stub).
 
 ### H.12.2.2 — Composition: action registry (engine `action_name` → `CapabilityId`)
 
+> ✅ **DONE.** Added `pub(crate) trait TierZeroActionResolver: Send + Sync`
+> (the seam — `resolve(&self, action_name: &str) -> Result<CapabilityId,
+> EngineError>`) + `pub(crate) struct TierZeroActionRegistry` (the default
+> 1:1 impl: `CapabilityId::new(action_name)` pass-through, fail-closed →
+> `EngineError::Effect` on any invalid `<extension>.<capability>[.<sub>...]`
+> name) in `orchestrator_effect_executor.rs`. The executor (H.12.2.3) will
+> hold `Arc<dyn TierZeroActionResolver>` so a future non-1:1 resolver can be
+> swapped without touching the executor body. 6 registry tests (valid
+> 2-segment, valid namespaced, no-dot, empty-segment, empty, uppercase) +
+> the 4 factory tests pass in both configs; clippy clean default +
+> `--features skills-db`.
+
 In `orchestrator_effect_executor.rs`: a `TierZeroActionRegistry` (or a fn)
 that validates `action_name` via `CapabilityId::new(action_name)` (ids.rs:217)
 → returns the `CapabilityId`. First impl is a **validated 1:1 pass-through**

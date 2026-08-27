@@ -23,8 +23,8 @@
 
 use brassclaw_engine::{EngineError, ThreadExecutionContext};
 use brassclaw_host_api::{
-    AgentId, CapabilitySet, ExecutionContext, ExtensionId, MountView, ProjectId, RuntimeKind,
-    TenantId, ThreadId, TrustClass, UserId,
+    AgentId, CapabilityId, CapabilitySet, ExecutionContext, ExtensionId, MountView, ProjectId,
+    RuntimeKind, TenantId, ThreadId, TrustClass, UserId,
 };
 
 /// Composition-owned factory that builds a production host
@@ -127,6 +127,46 @@ impl TierZeroExecutionContextFactory {
     }
 }
 
+/// Seam that translates an engine `action_name` (the string the Monty VM
+/// passes to `EffectExecutor::execute_action`) into a validated host
+/// [`CapabilityId`] for `HostRuntime::invoke_capability`.
+///
+/// Today the mapping is 1:1 — the engine `action_name` *is* the capability id
+/// string (e.g. `shell.exec`, `github.issues.search`), so the default
+/// [`TierZeroActionRegistry`] just validates and forwards. The trait exists so
+/// a future non-1:1 resolver (alias maps, short-name expansion, capability
+/// re-prefixing) can be swapped in behind the `ProductionEffectExecutor`
+/// without touching the executor body — the executor holds an
+/// `Arc<dyn TierZeroActionResolver>`.
+pub(crate) trait TierZeroActionResolver: Send + Sync {
+    /// Resolve an engine `action_name` to a host [`CapabilityId`].
+    ///
+    /// Returns [`EngineError::Effect`] (→ Tier-2 degrade) on any invalid
+    /// name, mirroring the factory's fail-closed projection: an action name
+    /// that is not a valid `<extension>.<capability>[.<sub>...]` id is
+    /// malformed input, not a recoverable capability miss.
+    fn resolve(&self, action_name: &str) -> Result<CapabilityId, EngineError>;
+}
+
+/// Default 1:1 action resolver: validates the `action_name` as a
+/// [`CapabilityId`] and forwards it unchanged.
+#[derive(Clone, Default)]
+pub(crate) struct TierZeroActionRegistry;
+
+impl TierZeroActionRegistry {
+    pub(crate) const fn new() -> Self {
+        Self
+    }
+}
+
+impl TierZeroActionResolver for TierZeroActionRegistry {
+    fn resolve(&self, action_name: &str) -> Result<CapabilityId, EngineError> {
+        CapabilityId::new(action_name).map_err(|e| EngineError::Effect {
+            reason: format!("tier-zero action name is not a valid capability id: {e}"),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +260,47 @@ mod tests {
         let ctx = factory.build(&engine).unwrap();
         assert_eq!(ctx.project_id.as_ref(), Some(&expected_project));
         assert_eq!(ctx.thread_id.as_ref(), Some(&expected_thread));
+    }
+
+    fn registry() -> TierZeroActionRegistry {
+        TierZeroActionRegistry::new()
+    }
+
+    #[test]
+    fn registry_passes_through_a_valid_two_segment_capability_id() {
+        let resolved = registry().resolve("shell.exec").unwrap();
+        assert_eq!(resolved.as_str(), "shell.exec");
+    }
+
+    #[test]
+    fn registry_passes_through_a_valid_namespaced_capability_id() {
+        let resolved = registry().resolve("github.issues.search").unwrap();
+        assert_eq!(resolved.as_str(), "github.issues.search");
+    }
+
+    #[test]
+    fn registry_fails_closed_when_action_name_has_no_dot() {
+        let err = registry().resolve("exec").unwrap_err();
+        assert!(matches!(err, EngineError::Effect { .. }));
+    }
+
+    #[test]
+    fn registry_fails_closed_when_action_name_has_an_empty_segment() {
+        let err = registry().resolve("shell.").unwrap_err();
+        assert!(matches!(err, EngineError::Effect { .. }));
+    }
+
+    #[test]
+    fn registry_fails_closed_when_action_name_is_empty() {
+        let err = registry().resolve("").unwrap_err();
+        assert!(matches!(err, EngineError::Effect { .. }));
+    }
+
+    #[test]
+    fn registry_fails_closed_when_action_name_has_an_uppercase_segment() {
+        // validate_name_segment requires each segment to start with a
+        // lowercase ASCII letter or digit.
+        let err = registry().resolve("Shell.exec").unwrap_err();
+        assert!(matches!(err, EngineError::Effect { .. }));
     }
 }
