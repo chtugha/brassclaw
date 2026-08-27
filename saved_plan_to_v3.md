@@ -5591,6 +5591,28 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `execute_tier_zero_channel` into engine `pub` fns). The final cleanup
 > (delete the severed engine Python runtime wrapper + the H.1/H.2 Python fns)
 > is a later subplan opened after H.8. Phase H resumes at H.6.
+>
+> **H.12 spawned a nested subplan — activate the engine Monty VM for Tier-0 in
+> production.** Grounding H.12 (the composition `OrchestratorLookup` impl +
+> `build_prompt_bundle` reads `recipe_hint`) surfaced a blocking architectural
+> fact: the engine Monty-sandbox runtime that `execute_tier_zero_channel`
+> drives is **not live in production** — `ThreadManager`/`ExecutionLoop` are
+> test-only, and the engine traits `EffectExecutor` + `LlmBackend` have **no
+> production impl anywhere** in the workspace. So H.12 = activate the Monty VM
+> in the composition layer: build a production `EffectExecutor` adapter over
+> the wired capability dispatch, a Tier-0 `LlmBackend` guard, an engine
+> `TierZeroOrchestrator` facade, construct it in composition, wire the
+> `OrchestratorLookup` impl + a Thread loader, and add Tier-1 prompt injection.
+> User decisions (locked 2026-08-27): Q-H12-1 implement now (revert the earlier
+> defer); Q-H12-2 mechanism **A** (activate the Monty VM, rejected the
+> host_runtime Docker detour — "isn't any orchestrator instance a sandbox on
+> its own anyway?"); Q-H12-3 principle — every PythonVM calls tools via the
+> Rust execution layer (`__execute_action__`→`EffectExecutor`); the engine
+> formatter/parse fns are made `pub` (implementer decision). Full approach +
+> H.12.1–H.12.7 sequence + verification in
+> `./docs/agents-v3/subplan_problem_stepH12_of_saved_plan_to_v3.md`
+> (Zenflow nested substep under the Phase H subplan step `1a0a9eac`). Execute
+> H.12.1→H.12.7 one-by-one before resuming Phase H at H.13.
 
 **Status:** [ ] Pending
 
