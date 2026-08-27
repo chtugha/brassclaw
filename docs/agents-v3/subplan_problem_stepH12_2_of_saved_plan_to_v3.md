@@ -256,6 +256,37 @@ resolves the dispatch target safely.
 
 ### H.12.2.3 — Composition: `ProductionEffectExecutor` struct + `execute_action`
 
+> ✅ **DONE.** Implemented `pub(crate) struct ProductionEffectExecutor { runtime:
+> Arc<dyn HostRuntime>, context_factory: Arc<TierZeroExecutionContextFactory>,
+> action_resolver: Arc<dyn TierZeroActionResolver> }` + the real
+> `EffectExecutor::execute_action` body as an inherent `pub(crate) async fn
+> dispatch_action(...)` (the `impl EffectExecutor` block that delegates to it +
+> the `available_*` projections land in H.12.2.4, since the trait impl is atomic
+> and `available_actions`/`available_capabilities` are load-bearing for Tier 0 —
+> the engine builds the callable inventory from them at `orchestrator.rs:1289`).
+> Flow: `validate_lease` (fail-closed, does NOT consume — engine already
+> consumed via `find_and_consume` at `orchestrator.rs:1485`; checks `is_valid` +
+> `covers_action` + `thread_id.0` match) → `action_resolver.resolve` →
+> `context_factory.build` → `RuntimeCapabilityRequest::new(ctx, cap_id,
+> ResourceEstimate::default(), params, tier_zero_trust_decision())` →
+> `runtime.invoke_capability` → `map_host_runtime_error` (categorical safe
+> summary, raw `reason` discarded — mirrors `automation.rs::map_host_runtime_error`)
+> → `map_capability_outcome` per Q-H12-2-GATE = A: Completed → Ok(non-error),
+> SpawnedProcess → Ok(`{ "process": <uuid> }`), Failed → Ok(is_error with
+> `safe_failure_message(kind)` — raw `failure.message` discarded),
+> ApprovalRequired/AuthRequired/ResourceBlocked/Unknown →
+> `Err(EngineError::Effect)` (interim non-resumable → Tier-2 degrade, NOT
+> `GatePaused`). `call_id = engine_ctx.current_call_id.clone().unwrap_or_default()`.
+> `tier_zero_trust_decision` mirrors `automation.rs::trigger_trust_decision`
+> (UserTrusted, `DispatchCapability`-only, `TrustProvenance::Default`).
+> 14 dispatch tests via a `RecordingHostRuntime` mock capturing every
+> `invoke_capability` arg (tenant_id/user_id/project_id/thread_id/capability_id/
+> input/trust_decision): completed/failed/spawned/approval/auth/resource/unknown
+> outcome mapping, both `HostRuntimeError` variants, lease revoked/wrong-thread/
+> not-covering rejection (asserts host runtime NOT invoked), invalid action name
+> rejection, and engine-scope/input projection. 24 module tests pass (default +
+> `--features skills-db`); clippy clean both configs.
+
 `pub(crate) struct ProductionEffectExecutor { runtime: Arc<dyn HostRuntime>,
 context_factory: Arc<TierZeroExecutionContextFactory>, }` implementing
 `brassclaw_engine::traits::EffectExecutor`. `execute_action`:
