@@ -311,7 +311,8 @@ ask). SEC-02: clear `recipe_hint`/`recipe_rust_context` at the top of the next
 turn (one-shot consume semantics — `run_step_zero`/`run_tier_zero` consume them).
 
 **H.10 — `RecipeStep::TierZero` + `RecipeStage` consumer dispatch**
-(`recipe.rs`). Add the single `RecipeStep::TierZero { state }` variant (carrying
+(`recipe.rs`). ✅ DONE (commit `eecc6120`). Add the single
+`RecipeStep::TierZero { state }` variant (carrying
 `state` ONLY — no `instruction`; see re-think below). The `ActionExecuted`
 variant was DROPPED (Q-H10-1=C): `ActionShortCircuit` routes through the same
 `TierZero` path (composition `run_tier_zero` branches on `routing_meta.variant`
@@ -325,7 +326,8 @@ cases → `RecipeStep::Continue` (Tier-1 when `llm_call_required` with a stashed
 with an empty stash).
 
 **H.11 — `canonical.rs` `'turn` block restructure +
-`TierZeroExecutionStage`** (`canonical.rs` + new `executor/tier_zero.rs`). The
+`TierZeroExecutionStage`** (`canonical.rs` + new `executor/tier_zero.rs`). ✅
+DONE (commit `eecc6120`, combined with H.10 per the coupling decision). The
 whole recipe→LLM region is wrapped in `let completed: TurnCompletedStep = 'turn:
 { … };`. `RecipeStep::TierZero` calls `self.tier_zero.process(..)` (the new
 `TierZeroExecutionStage`); `TierZeroStep::Reply` acks the pending input directly
