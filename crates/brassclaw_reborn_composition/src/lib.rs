@@ -74,6 +74,7 @@ mod oauth_dcr;
 mod oauth_dcr_protocol;
 mod oauth_gate;
 mod oauth_provider_client;
+mod orchestrator_effect_executor;
 #[cfg(feature = "root-llm-provider")]
 pub mod pg_provider_repo;
 mod product_auth_durable;
@@ -95,6 +96,8 @@ mod fetch_cached_content;
 pub mod migration;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_auth_product_services;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_basic_prompt_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
 #[cfg(feature = "postgres")]
