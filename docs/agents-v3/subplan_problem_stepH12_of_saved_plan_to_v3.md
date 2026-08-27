@@ -90,7 +90,7 @@ prepended to the LLM prompt.
 
 ## Steps (one-by-one, commit+push each, `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` on every build; `df -h` the target first — `cargo clean` if Avail<15GB or >90%; selective-pathspec commit guard never staging user WIP)
 
-### H.12.1 — Engine: make the formatting/parse fns `pub`
+### H.12.1 — Engine: make the formatting/parse fns `pub` ✅ DONE (commit `7d97f25b`)
 
 `crates/brassclaw_engine/src/executor/orchestrator.rs`: change
 `fn format_orchestrator_content` → `pub fn`, `fn assemble_pkr_from_items` →
@@ -103,6 +103,22 @@ orchestrator.rs. **Result:** composition can format/parse the
 `orchestrator_content` prose from stashed items.
 
 ### H.12.2 — Composition: production `EffectExecutor` adapter
+
+> **H.12.2 spawned a nested subplan.** Grounding the production capability
+> dispatch (research subagent 2026-08-27) confirmed this is a genuine multi-step
+> build with 8 risk points: the adapter must bridge the engine
+> `EffectExecutor`/`CapabilityLease`/`ThreadExecutionContext` contract to the
+> production `HostRuntime::invoke_capability` + `visible_capabilities` façade,
+> build a composition-owned production `ExecutionContext` factory (the engine
+> ctx lacks tenant/agent/grants/mounts/trust), and add a validated
+> `action_name`→`CapabilityId` registry. **User decision Q-H12-2-GATE (locked):
+> choice A — interim non-resumable gates** (`ApprovalRequired`/`AuthRequired`/
+> `ResourceBlocked` → `Err(EngineError::Effect)` → Tier-2 degrade; full
+> resumable gate-bridging is a documented future phase, NOT stubbed). Full
+> grounding + H.12.2.1–H.12.2.7 sequence + verification in
+> `./subplan_problem_stepH12_2_of_saved_plan_to_v3.md` (Zenflow nested
+> sub-substep under the H.12 substep `d401cc45`). Execute H.12.2.1→H.12.2.7
+> one-by-one before resuming the H.12 subplan at H.12.3.
 
 New `crates/brassclaw_reborn_composition/src/orchestrator_effect_executor.rs`
 implementing `brassclaw_engine::traits::EffectExecutor` over the production
