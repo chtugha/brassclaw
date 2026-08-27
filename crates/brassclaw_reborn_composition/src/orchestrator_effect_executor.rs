@@ -21,17 +21,25 @@
 
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use brassclaw_engine::{ActionResult, CapabilityLease, EngineError, ThreadExecutionContext};
+use brassclaw_engine::types::capability::{
+    ActionDef, CapabilityStatus, CapabilitySummary, CapabilitySummaryKind, ModelToolSurface,
+};
+use brassclaw_engine::{
+    ActionResult, CapabilityLease, EffectExecutor, EngineError, ThreadExecutionContext,
+};
 use brassclaw_host_api::{
     AgentId, CapabilityId, CapabilitySet, EffectKind, ExecutionContext, ExtensionId, MountView,
-    ProjectId, ResourceEstimate, RuntimeKind, TenantId, ThreadId, TrustClass, UserId,
+    PermissionMode, ProjectId, ResourceEstimate, RuntimeKind, TenantId, ThreadId, TrustClass,
+    UserId,
 };
 use brassclaw_host_runtime::{
-    HostRuntime, HostRuntimeError, RuntimeCapabilityOutcome, RuntimeCapabilityRequest,
-    RuntimeFailureKind,
+    CapabilitySurfacePolicy, HostRuntime, HostRuntimeError, RuntimeCapabilityOutcome,
+    RuntimeCapabilityRequest, RuntimeFailureKind, SurfaceKind, VisibleCapability,
+    VisibleCapabilityAccess, VisibleCapabilityRequest, VisibleCapabilitySurface,
 };
 use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
 use serde_json::{Value, json};
@@ -180,28 +188,51 @@ impl TierZeroActionResolver for TierZeroActionRegistry {
 /// `__execute_action__` channel to `HostRuntime::invoke_capability`.
 ///
 /// Holds a long-lived `Arc<dyn HostRuntime>` plus the per-run
-/// [`TierZeroExecutionContextFactory`] and [`TierZeroActionResolver`] baked by
-/// `TierZeroEffectExecutorBuilder::build_for_run` (H.12.2.5). [`dispatch_action`]
-/// is the real engine `execute_action` body; the `impl EffectExecutor` block
-/// (H.12.2.4) delegates to it and adds the `available_*` projections.
+/// [`TierZeroExecutionContextFactory`], [`TierZeroActionResolver`], and
+/// visibility config (`surface_kind` / `provider_trust` / `visibility_policy`)
+/// baked by `TierZeroEffectExecutorBuilder::build_for_run` (H.12.2.5).
+/// [`dispatch_action`] is the real engine `execute_action` body; the
+/// `impl EffectExecutor` block (H.12.2.4) delegates to it and adds the
+/// `available_*` projections, which drive the visibility config through
+/// `HostRuntime::visible_capabilities`.
+///
+/// The visibility config is held per-run (Q-H12-2-SNAP = A): the extension
+/// surface — including `provider_trust` — is snapshotted once per
+/// `run_tier_zero` by the H.12.2.5 builder, not per action, so every
+/// `available_*` call within a run sees a coherent surface.
 ///
 /// `dead_code` is allowed module-wide until the adapter is wired in H.12.2.5.
 pub(crate) struct ProductionEffectExecutor {
     runtime: Arc<dyn HostRuntime>,
     context_factory: Arc<TierZeroExecutionContextFactory>,
     action_resolver: Arc<dyn TierZeroActionResolver>,
+    surface_kind: SurfaceKind,
+    provider_trust: BTreeMap<VisibleCapabilityProvider, TrustDecision>,
+    visibility_policy: CapabilitySurfacePolicy,
 }
+
+/// Key under which a capability provider's trust decision is held in the
+/// per-run visibility snapshot. This is a type alias for [`ExtensionId`]
+/// (the host-runtime `VisibleCapabilityRequest::provider_trust` is keyed by
+/// `ExtensionId`) kept to make the executor field self-documenting.
+pub(crate) type VisibleCapabilityProvider = ExtensionId;
 
 impl ProductionEffectExecutor {
     pub(crate) fn new(
         runtime: Arc<dyn HostRuntime>,
         context_factory: Arc<TierZeroExecutionContextFactory>,
         action_resolver: Arc<dyn TierZeroActionResolver>,
+        surface_kind: SurfaceKind,
+        provider_trust: BTreeMap<VisibleCapabilityProvider, TrustDecision>,
+        visibility_policy: CapabilitySurfacePolicy,
     ) -> Self {
         Self {
             runtime,
             context_factory,
             action_resolver,
+            surface_kind,
+            provider_trust,
+            visibility_policy,
         }
     }
 
@@ -244,6 +275,157 @@ impl ProductionEffectExecutor {
         let duration = started.elapsed();
 
         map_capability_outcome(outcome, action_name, engine_ctx, duration)
+    }
+}
+
+#[async_trait::async_trait]
+impl EffectExecutor for ProductionEffectExecutor {
+    async fn execute_action(
+        &self,
+        action_name: &str,
+        parameters: Value,
+        lease: &CapabilityLease,
+        context: &ThreadExecutionContext,
+    ) -> Result<ActionResult, EngineError> {
+        // Delegate to the real dispatch body implemented in H.12.2.3.
+        self.dispatch_action(action_name, parameters, lease, context)
+            .await
+    }
+
+    async fn available_actions(
+        &self,
+        leases: &[CapabilityLease],
+        context: &ThreadExecutionContext,
+    ) -> Result<Vec<ActionDef>, EngineError> {
+        let surface = self.visible_capability_surface(context).await?;
+        // The callable inventory is the leased subset of the visible surface:
+        // an action is callable now only if a valid lease covers its
+        // capability id for this thread. `find_lease_for_action` re-checks at
+        // execution time, so this filter only narrows what is advertised to
+        // the model — it is not an authority boundary.
+        Ok(surface
+            .capabilities
+            .into_iter()
+            .filter(|visible| lease_covers_action(leases, visible.descriptor.id.as_str()))
+            .map(project_action_def)
+            .collect())
+    }
+
+    async fn available_capabilities(
+        &self,
+        _leases: &[CapabilityLease],
+        context: &ThreadExecutionContext,
+    ) -> Result<Vec<CapabilitySummary>, EngineError> {
+        let surface = self.visible_capability_surface(context).await?;
+        // `CapabilitySummary` is the background/contextual surface
+        // (`types/capability.rs:295`): ready callable actions live in the
+        // action inventory; summaries cover visible capabilities regardless of
+        // whether the thread currently holds a lease, so the model can see
+        // askable/needs-setup capabilities it cannot yet call directly. No
+        // lease filter is applied here.
+        Ok(surface
+            .capabilities
+            .into_iter()
+            .map(project_capability_summary)
+            .collect())
+    }
+}
+
+impl ProductionEffectExecutor {
+    /// Build a `VisibleCapabilityRequest` from the per-run visibility config
+    /// together with an engine [`ThreadExecutionContext`] and fetch the
+    /// host-filtered [`VisibleCapabilitySurface`]. Shared by `available_actions`
+    /// and `available_capabilities`. Errors map to [`EngineError::Effect`] so
+    /// the Tier-0 channel degrades to Tier 2 rather than rendering a partial
+    /// inventory.
+    async fn visible_capability_surface(
+        &self,
+        context: &ThreadExecutionContext,
+    ) -> Result<VisibleCapabilitySurface, EngineError> {
+        let exec_ctx = self.context_factory.build(context)?;
+        let request = VisibleCapabilityRequest::new(exec_ctx, self.surface_kind.clone())
+            .with_policy(self.visibility_policy.clone())
+            .with_provider_trust(self.provider_trust.clone());
+        self.runtime
+            .visible_capabilities(request)
+            .await
+            .map_err(map_host_runtime_error)
+    }
+}
+
+/// True if any currently-active lease covers `action_name`. Mirrors the
+/// `validate_lease` authority check (valid + covers) minus the thread-id
+/// equality, because the leases passed to `available_actions` are already
+/// scoped to the executing thread by `LeaseManager::active_for_thread`
+/// (`orchestrator.rs:1287`).
+fn lease_covers_action(leases: &[CapabilityLease], action_name: &str) -> bool {
+    leases
+        .iter()
+        .any(|lease| lease.is_valid() && lease.covers_action(action_name))
+}
+
+/// Project a host [`VisibleCapability`] into an engine [`ActionDef`] for the
+/// Tier-0 callable inventory.
+///
+/// `effects` is intentionally empty (Q-H12-2-EFFECTS = A): the host runtime is
+/// the authoritative trust/grant/approval/policy layer for these
+/// capabilities, so the engine `PolicyEngine` acts as a passthrough
+/// (lease-validity + lease-coverage + `requires_approval` only). Emitting a
+/// lossy `EffectKind`→`EffectType` mapping here would feed the engine
+/// `PolicyEngine::evaluate` (`policy.rs:75`) and the gate tier classifier with
+/// a coarse projection that could cause false denials or miss a deny; the host
+/// re-authorizes on every `invoke_capability` regardless.
+///
+/// `requires_approval` is fail-safe: it is set when the host marks the
+/// capability askable (`VisibleCapabilityAccess::RequiresApproval`) OR when the
+/// descriptor's static default permission is `Ask`.
+fn project_action_def(visible: VisibleCapability) -> ActionDef {
+    let descriptor = visible.descriptor;
+    ActionDef {
+        name: descriptor.id.as_str().to_string(),
+        description: descriptor.description,
+        parameters_schema: descriptor.parameters_schema,
+        effects: Vec::new(),
+        requires_approval: matches!(visible.access, VisibleCapabilityAccess::RequiresApproval)
+            || descriptor.default_permission == PermissionMode::Ask,
+        model_tool_surface: ModelToolSurface::FullSchema,
+        discovery: None,
+    }
+}
+
+/// Project a host [`VisibleCapability`] into a background [`CapabilitySummary`].
+///
+/// `kind` follows the descriptor runtime: MCP-backed capabilities are
+/// extension providers, first-party/system capabilities are runtime
+/// backgrounds. `status` follows the host visibility access: `Available` →
+/// `Ready`, `RequiresApproval` → `ReadyScoped` (usable only through the
+/// approval route). `action_preview` surfaces the single callable capability
+/// id; the engine `ActionInventory` carries the full callable schema.
+fn project_capability_summary(visible: VisibleCapability) -> CapabilitySummary {
+    let descriptor = visible.descriptor;
+    let name = descriptor.id.as_str().to_string();
+    CapabilitySummary {
+        name: name.clone(),
+        display_name: None,
+        kind: capability_summary_kind(descriptor.runtime),
+        status: capability_status(visible.access),
+        description: Some(descriptor.description),
+        action_preview: vec![name],
+        routing_hint: None,
+    }
+}
+
+fn capability_summary_kind(runtime: RuntimeKind) -> CapabilitySummaryKind {
+    match runtime {
+        RuntimeKind::Mcp => CapabilitySummaryKind::Provider,
+        RuntimeKind::FirstParty | RuntimeKind::System => CapabilitySummaryKind::Runtime,
+    }
+}
+
+fn capability_status(access: VisibleCapabilityAccess) -> CapabilityStatus {
+    match access {
+        VisibleCapabilityAccess::Available => CapabilityStatus::Ready,
+        VisibleCapabilityAccess::RequiresApproval => CapabilityStatus::ReadyScoped,
     }
 }
 
@@ -392,11 +574,11 @@ mod tests {
     use brassclaw_engine::types::project::ProjectId as EngineProjectId;
     use brassclaw_engine::types::step::StepId;
     use brassclaw_engine::types::thread::{ThreadId as EngineThreadId, ThreadType};
-    use brassclaw_host_api::{ApprovalRequestId, ProcessId, ResourceUsage};
+    use brassclaw_host_api::{ApprovalRequestId, CapabilityDescriptor, ProcessId, ResourceUsage};
     use brassclaw_host_runtime::{
-        RuntimeApprovalGate, RuntimeAuthGate, RuntimeBlockedReason, RuntimeCapabilityCompleted,
-        RuntimeCapabilityFailure, RuntimeCapabilityUnknown, RuntimeGateId, RuntimeProcessHandle,
-        RuntimeResourceGate,
+        CapabilitySurfaceVersion, RuntimeApprovalGate, RuntimeAuthGate, RuntimeBlockedReason,
+        RuntimeCapabilityCompleted, RuntimeCapabilityFailure, RuntimeCapabilityUnknown,
+        RuntimeGateId, RuntimeProcessHandle, RuntimeResourceGate,
     };
     use chrono::Utc;
     use std::sync::Mutex;
@@ -639,6 +821,9 @@ mod tests {
             runtime,
             Arc::new(sample_factory()),
             Arc::new(TierZeroActionRegistry::new()),
+            SurfaceKind::new("agent_loop").expect("valid surface kind"),
+            BTreeMap::new(),
+            CapabilitySurfacePolicy::allow_all(),
         )
     }
 
@@ -987,5 +1172,421 @@ mod tests {
             captured.trust_decision.provenance,
             TrustProvenance::Default
         ));
+    }
+
+    // ── H.12.2.4: available_actions / available_capabilities projections ──
+
+    /// Host-runtime mock that serves a configured `visible_capabilities`
+    /// result and captures the request, so the per-run visibility config
+    /// projection can be asserted. All other trait methods are unreachable —
+    /// the visibility tests never invoke capabilities.
+    struct VisibilityHostRuntime {
+        surface: Mutex<Option<Result<VisibleCapabilitySurface, HostRuntimeError>>>,
+        captured_request: Mutex<Option<VisibleCapabilityRequest>>,
+    }
+
+    impl VisibilityHostRuntime {
+        fn with_surface(surface: VisibleCapabilitySurface) -> Self {
+            Self {
+                surface: Mutex::new(Some(Ok(surface))),
+                captured_request: Mutex::new(None),
+            }
+        }
+
+        fn with_error(error: HostRuntimeError) -> Self {
+            Self {
+                surface: Mutex::new(Some(Err(error))),
+                captured_request: Mutex::new(None),
+            }
+        }
+
+        fn captured_request(&self) -> VisibleCapabilityRequest {
+            self.captured_request
+                .lock()
+                .unwrap()
+                .clone()
+                .expect("visible_capabilities was not called")
+        }
+    }
+
+    #[async_trait]
+    impl HostRuntime for VisibilityHostRuntime {
+        async fn invoke_capability(
+            &self,
+            _request: RuntimeCapabilityRequest,
+        ) -> Result<RuntimeCapabilityOutcome, HostRuntimeError> {
+            unreachable!("invoke_capability is not used in tier-zero visibility tests")
+        }
+
+        async fn resume_capability(
+            &self,
+            _request: brassclaw_host_runtime::RuntimeCapabilityResumeRequest,
+        ) -> Result<RuntimeCapabilityOutcome, HostRuntimeError> {
+            unreachable!("resume_capability is not used in tier-zero visibility tests")
+        }
+
+        async fn visible_capabilities(
+            &self,
+            request: VisibleCapabilityRequest,
+        ) -> Result<VisibleCapabilitySurface, HostRuntimeError> {
+            *self.captured_request.lock().unwrap() = Some(request);
+            self.surface
+                .lock()
+                .unwrap()
+                .as_ref()
+                .expect("a visibility surface must be configured")
+                .clone()
+        }
+
+        async fn cancel_work(
+            &self,
+            _request: brassclaw_host_runtime::CancelRuntimeWorkRequest,
+        ) -> Result<brassclaw_host_runtime::CancelRuntimeWorkOutcome, HostRuntimeError> {
+            unreachable!("cancel_work is not used in tier-zero visibility tests")
+        }
+
+        async fn runtime_status(
+            &self,
+            _request: brassclaw_host_runtime::RuntimeStatusRequest,
+        ) -> Result<brassclaw_host_runtime::HostRuntimeStatus, HostRuntimeError> {
+            unreachable!("runtime_status is not used in tier-zero visibility tests")
+        }
+
+        async fn health(
+            &self,
+        ) -> Result<brassclaw_host_runtime::HostRuntimeHealth, HostRuntimeError> {
+            unreachable!("health is not used in tier-zero visibility tests")
+        }
+    }
+
+    fn visibility_executor(runtime: Arc<VisibilityHostRuntime>) -> ProductionEffectExecutor {
+        ProductionEffectExecutor::new(
+            runtime,
+            Arc::new(sample_factory()),
+            Arc::new(TierZeroActionRegistry::new()),
+            SurfaceKind::new("agent_loop").expect("valid surface kind"),
+            BTreeMap::new(),
+            CapabilitySurfacePolicy::allow_all(),
+        )
+    }
+
+    fn descriptor(
+        id: &str,
+        runtime: RuntimeKind,
+        permission: PermissionMode,
+    ) -> CapabilityDescriptor {
+        CapabilityDescriptor {
+            id: CapabilityId::new(id).expect("valid capability id"),
+            provider: ExtensionId::new("test").expect("valid extension id"),
+            runtime,
+            trust_ceiling: TrustClass::UserTrusted,
+            description: format!("description for {id}"),
+            parameters_schema: json!({"type": "object"}),
+            effects: Vec::new(),
+            default_permission: permission,
+            runtime_credentials: Vec::new(),
+            resource_profile: None,
+        }
+    }
+
+    fn visible_capability(
+        id: &str,
+        runtime: RuntimeKind,
+        permission: PermissionMode,
+        access: VisibleCapabilityAccess,
+    ) -> VisibleCapability {
+        VisibleCapability {
+            descriptor: descriptor(id, runtime, permission),
+            access,
+            estimated_resources: ResourceEstimate::default(),
+        }
+    }
+
+    fn surface(capabilities: Vec<VisibleCapability>) -> VisibleCapabilitySurface {
+        VisibleCapabilitySurface {
+            version: CapabilitySurfaceVersion::new("test-v1").expect("valid version"),
+            capabilities,
+        }
+    }
+
+    fn lease_for(thread_id: EngineThreadId, granted: GrantedActions) -> CapabilityLease {
+        CapabilityLease {
+            id: LeaseId::new(),
+            thread_id,
+            capability_name: "memory".into(),
+            granted_actions: granted,
+            granted_at: Utc::now(),
+            expires_at: None,
+            max_uses: None,
+            uses_remaining: None,
+            revoked: false,
+            revoked_reason: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn available_actions_projects_visible_descriptors_into_action_defs() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_surface(surface(vec![
+            visible_capability(
+                "memory.write",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+            visible_capability(
+                "github.issues.create",
+                RuntimeKind::Mcp,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+        ])));
+        let exec = visibility_executor(runtime);
+        let engine = engine_ctx("alice");
+        // Wildcard lease so both capabilities are callable.
+        let leases = vec![lease_for(engine.thread_id, GrantedActions::All)];
+        let actions = exec.available_actions(&leases, &engine).await.unwrap();
+        assert_eq!(actions.len(), 2);
+        let write = actions
+            .iter()
+            .find(|a| a.name == "memory.write")
+            .expect("memory.write action present");
+        assert_eq!(write.description, "description for memory.write");
+        assert_eq!(write.parameters_schema, json!({"type": "object"}));
+        // Q-H12-2-EFFECTS = A: empty effects.
+        assert!(write.effects.is_empty());
+        assert!(!write.requires_approval);
+        assert_eq!(write.model_tool_surface, ModelToolSurface::FullSchema);
+        assert!(write.discovery.is_none());
+        assert!(actions.iter().any(|a| a.name == "github.issues.create"));
+    }
+
+    #[tokio::test]
+    async fn available_actions_filters_to_leased_capabilities() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_surface(surface(vec![
+            visible_capability(
+                "memory.write",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+            visible_capability(
+                "memory.read",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+        ])));
+        let exec = visibility_executor(runtime);
+        let engine = engine_ctx("alice");
+        // Lease covers only memory.write; memory.read must be omitted.
+        let leases = vec![lease_for(
+            engine.thread_id,
+            GrantedActions::Specific(vec!["memory.write".into()]),
+        )];
+        let actions = exec.available_actions(&leases, &engine).await.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].name, "memory.write");
+    }
+
+    #[tokio::test]
+    async fn available_actions_omits_capabilities_with_no_lease() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_surface(surface(vec![
+            visible_capability(
+                "memory.write",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+        ])));
+        let exec = visibility_executor(runtime);
+        let engine = engine_ctx("alice");
+        // No leases at all -> empty callable inventory.
+        let actions = exec.available_actions(&[], &engine).await.unwrap();
+        assert!(actions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn available_actions_marks_askable_or_ask_permission_as_requires_approval() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_surface(surface(vec![
+            // Host marks askable.
+            visible_capability(
+                "shell.exec",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::RequiresApproval,
+            ),
+            // Static default permission is Ask.
+            visible_capability(
+                "github.issues.create",
+                RuntimeKind::Mcp,
+                PermissionMode::Ask,
+                VisibleCapabilityAccess::Available,
+            ),
+            // Plain allow + available -> no approval.
+            visible_capability(
+                "memory.read",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+        ])));
+        let exec = visibility_executor(runtime);
+        let engine = engine_ctx("alice");
+        let leases = vec![lease_for(engine.thread_id, GrantedActions::All)];
+        let actions = exec.available_actions(&leases, &engine).await.unwrap();
+        let by_name = |n: &str| {
+            actions
+                .iter()
+                .find(|a| a.name == n)
+                .expect("action present")
+        };
+        assert!(by_name("shell.exec").requires_approval);
+        assert!(by_name("github.issues.create").requires_approval);
+        assert!(!by_name("memory.read").requires_approval);
+    }
+
+    #[tokio::test]
+    async fn available_actions_maps_host_runtime_error_to_engine_error() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_error(
+            HostRuntimeError::unavailable("surface down"),
+        ));
+        let exec = visibility_executor(runtime);
+        let engine = engine_ctx("alice");
+        let leases = vec![lease_for(engine.thread_id, GrantedActions::All)];
+        let err = exec.available_actions(&leases, &engine).await.unwrap_err();
+        assert!(matches!(err, EngineError::Effect { .. }));
+    }
+
+    #[tokio::test]
+    async fn available_actions_passes_per_run_visibility_config_into_the_request() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_surface(surface(vec![
+            visible_capability(
+                "memory.write",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+        ])));
+        let exec = visibility_executor(runtime.clone());
+        let engine = engine_ctx("alice");
+        let leases = vec![lease_for(engine.thread_id, GrantedActions::All)];
+        exec.available_actions(&leases, &engine).await.unwrap();
+        let request = runtime.captured_request();
+        assert_eq!(request.surface_kind.as_str(), "agent_loop");
+        assert_eq!(request.policy, CapabilitySurfacePolicy::allow_all());
+        assert!(request.provider_trust.is_empty());
+        assert_eq!(
+            request.context.tenant_id,
+            TenantId::new("default-tenant").unwrap()
+        );
+        assert_eq!(request.context.user_id, UserId::new("alice").unwrap());
+    }
+
+    #[tokio::test]
+    async fn available_capabilities_projects_visible_descriptors_into_summaries() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_surface(surface(vec![
+            visible_capability(
+                "github.issues.create",
+                RuntimeKind::Mcp,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+            visible_capability(
+                "memory.write",
+                RuntimeKind::FirstParty,
+                PermissionMode::Ask,
+                VisibleCapabilityAccess::RequiresApproval,
+            ),
+        ])));
+        let exec = visibility_executor(runtime);
+        let engine = engine_ctx("alice");
+        let summaries = exec.available_capabilities(&[], &engine).await.unwrap();
+        assert_eq!(summaries.len(), 2);
+        let gh = summaries
+            .iter()
+            .find(|s| s.name == "github.issues.create")
+            .expect("github summary present");
+        assert_eq!(gh.kind, CapabilitySummaryKind::Provider);
+        assert_eq!(gh.status, CapabilityStatus::Ready);
+        assert_eq!(
+            gh.description.as_deref(),
+            Some("description for github.issues.create")
+        );
+        assert_eq!(gh.action_preview, vec!["github.issues.create"]);
+        let mem = summaries
+            .iter()
+            .find(|s| s.name == "memory.write")
+            .expect("memory summary present");
+        assert_eq!(mem.kind, CapabilitySummaryKind::Runtime);
+        assert_eq!(mem.status, CapabilityStatus::ReadyScoped);
+    }
+
+    #[tokio::test]
+    async fn available_capabilities_does_not_filter_by_lease() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_surface(surface(vec![
+            visible_capability(
+                "memory.write",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+            visible_capability(
+                "github.issues.create",
+                RuntimeKind::Mcp,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+        ])));
+        let exec = visibility_executor(runtime);
+        let engine = engine_ctx("alice");
+        // No leases, yet summaries still surface (background view).
+        let summaries = exec.available_capabilities(&[], &engine).await.unwrap();
+        assert_eq!(summaries.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn effect_executor_execute_action_delegates_to_dispatch_action() {
+        // RecordingHostRuntime serves invoke_capability; the trait
+        // execute_action must delegate to dispatch_action and reach it.
+        let runtime = Arc::new(RecordingHostRuntime::with_outcome(completed_outcome(
+            json!({"ok": true}),
+        )));
+        let exec = executor(runtime.clone());
+        let engine = engine_ctx("alice");
+        let result = EffectExecutor::execute_action(
+            &exec,
+            "memory.write",
+            json!({}),
+            &valid_lease(engine.thread_id),
+            &engine,
+        )
+        .await
+        .unwrap();
+        assert!(runtime.was_invoked());
+        assert!(!result.is_error);
+        assert_eq!(result.action_name, "memory.write");
+        assert_eq!(result.output, json!({"ok": true}));
+    }
+
+    #[tokio::test]
+    async fn available_action_inventory_wraps_available_actions_inline() {
+        let runtime = Arc::new(VisibilityHostRuntime::with_surface(surface(vec![
+            visible_capability(
+                "memory.write",
+                RuntimeKind::FirstParty,
+                PermissionMode::Allow,
+                VisibleCapabilityAccess::Available,
+            ),
+        ])));
+        let exec = visibility_executor(runtime);
+        let engine = engine_ctx("alice");
+        let leases = vec![lease_for(engine.thread_id, GrantedActions::All)];
+        let inventory = exec
+            .available_action_inventory(&leases, &engine)
+            .await
+            .unwrap();
+        assert_eq!(inventory.inline.len(), 1);
+        assert_eq!(inventory.inline[0].name, "memory.write");
+        assert!(inventory.discoverable.is_empty());
     }
 }

@@ -312,6 +312,47 @@ before writing the body.
 
 ### H.12.2.4 — Composition: `available_actions` + `available_capabilities`
 
+> ✅ **DONE.** Implemented `impl EffectExecutor for ProductionEffectExecutor` in
+> `orchestrator_effect_executor.rs`: `execute_action` delegates to
+> `dispatch_action` (H.12.2.3); `available_actions` / `available_capabilities`
+> share `visible_capability_surface(context)` which builds a
+> `VisibleCapabilityRequest` from the per-run config (`surface_kind` /
+> `provider_trust` / `visibility_policy` — 3 new fields on
+> `ProductionEffectExecutor`, baked by the H.12.2.5 builder, Q-H12-2-SNAP = A
+> per-run snapshot) + `context_factory.build(context)`, calls
+> `HostRuntime::visible_capabilities`, and maps `HostRuntimeError` →
+> `EngineError::Effect` (Tier-2 degrade). The request type is the host-runtime
+> `VisibleCapabilityRequest` (lib.rs:419), NOT composition's
+> `HostVisibleCapabilityRequest` (local_dev.rs:793) — confirmed distinct.
+> `available_actions` = the leased subset (filter via `lease_covers_action`:
+> `is_valid` + `covers_action`; the leases are already thread-scoped by
+> `active_for_thread`); each `VisibleCapability` → `ActionDef` { name =
+> descriptor.id.as_str(), description, parameters_schema, **effects = vec![]**
+> (Q-H12-2-EFFECTS = A — user-locked: the host runtime is the authoritative
+> trust/grant/approval/policy layer, so the engine `PolicyEngine` is a
+> passthrough; no lossy `EffectKind`→`EffectType` projection is emitted,
+> avoiding false denials/missed denies in `policy.rs:75` + the gate tier
+> classifier), requires_approval = fail-safe
+> (`VisibleCapabilityAccess::RequiresApproval` OR
+> `descriptor.default_permission == PermissionMode::Ask`), model_tool_surface
+> = `FullSchema`, discovery = `None` }. `available_capabilities` = **all**
+> visible capabilities (NO lease filter — `CapabilitySummary` is the
+> background/activatable surface per `types/capability.rs:295`): each →
+> `CapabilitySummary` { name, display_name = None, kind (`Mcp`→`Provider`,
+> `FirstParty`/`System`→`Runtime`), status (`Available`→`Ready`,
+> `RequiresApproval`→`ReadyScoped`), description = Some(..), action_preview =
+> vec![name], routing_hint = None }. The default `available_action_inventory`
+> trait impl wraps `available_actions` inline + empty `discoverable`.
+> 10 new tests via a `VisibilityHostRuntime` mock (serves a configured
+> `VisibleCapabilitySurface`, captures the request): projection correctness,
+> lease filtering (specific + no-lease), requires_approval (askable + Ask
+> permission + plain allow), HostRuntimeError→EngineError, per-run visibility
+> config passed into the request (surface_kind/policy/provider_trust/tenant/
+> user), capability-summary projection (kind/status/description/action_preview)
+> without lease filter, `execute_action` trait delegation to `dispatch_action`,
+> and `available_action_inventory` inline wrapping. 34 module tests pass
+> (default + `--features skills-db`); clippy clean both configs.
+
 `available_actions`: build a `VisibleCapabilityRequest` via the context_factory
 (ground the exact request type — `VisibleCapabilityRequest` (host_runtime
 lib.rs:419) vs `HostVisibleCapabilityRequest` (local_dev.rs:793); reconcile —
