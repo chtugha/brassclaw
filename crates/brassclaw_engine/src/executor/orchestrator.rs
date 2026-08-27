@@ -2851,7 +2851,7 @@ fn step_context_label(class_code: i32) -> Option<&'static str> {
 /// [`assemble_pkr_from_items`] (the `Components` arm + the `recipe_hint`
 /// Some-branch) so all three emit identical `orchestrator_content` for the
 /// same items.
-fn format_orchestrator_content(items: &[crate::memory::ComponentItem]) -> String {
+pub fn format_orchestrator_content(items: &[crate::memory::ComponentItem]) -> String {
     items
         .iter()
         .filter_map(|item| {
@@ -3028,7 +3028,7 @@ pub async fn assemble_prior_knowledge_with_hint(
 /// and the full id list. Routing fields default to the non-short-circuit /
 /// non-disambiguation / Tier-1 shape (the Tier-0/Tier-1 decision is upstream,
 /// carried on `RetrievalTurnResult`).
-fn assemble_pkr_from_items(items: &[crate::memory::ComponentItem]) -> PkrAssemblyResult {
+pub fn assemble_pkr_from_items(items: &[crate::memory::ComponentItem]) -> PkrAssemblyResult {
     let override_items: Vec<_> = items
         .iter()
         .filter(|item| item.override_prompt_creation)
@@ -3149,16 +3149,20 @@ fn empty_pkr_assembly_result() -> PkrAssemblyResult {
 /// Python `_parse_orchestrator_channel_steps` (default.py) `{kind, name, body}`
 /// dict. Produced by [`parse_orchestrator_channel_steps`] and consumed by
 /// [`execute_tier_zero_channel`].
+///
+/// `pub` so the composition `OrchestratorLookup` bridge (H.12) and Tier-0 tests
+/// can inspect a parsed channel without duplicating the private parse logic
+/// (formatter-visibility decision, locked 2026-08-27).
 #[derive(Debug, Clone, PartialEq)]
-struct OrchestratorChannelStep {
+pub struct OrchestratorChannelStep {
     /// The `StepContextSpec` category label from the `## [Label: name]` heading
     /// (Skill / PythonCode / …). Only `PythonCode` steps are executable at
     /// Tier 0 (FIND-P9-02 Q1).
-    kind: String,
+    pub kind: String,
     /// The component name from the heading.
-    name: String,
+    pub name: String,
     /// The `effective_content` body (`""` for a heading-only block).
-    body: String,
+    pub body: String,
 }
 
 /// Parse the orchestrator-channel prior-knowledge prose block format (v3 Phase
@@ -3176,7 +3180,7 @@ struct OrchestratorChannelStep {
 /// [`execute_tier_zero_channel`] converts this to an empty
 /// [`TierZeroChannelResult`] degrade (mirroring the Python `outcome:"error"`
 /// → Tier-2 degradation).
-fn parse_orchestrator_channel_steps(
+pub fn parse_orchestrator_channel_steps(
     content: &str,
 ) -> Result<Vec<OrchestratorChannelStep>, EngineError> {
     if content.is_empty() {
