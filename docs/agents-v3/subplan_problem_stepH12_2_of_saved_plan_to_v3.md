@@ -111,6 +111,51 @@ the engine context and `tenant_id`/`agent_id`/`extension_id`/`grants`/`mounts`/
 **Q-H12-2-GATE (production approval/auth/resource gates):** choice **A — interim
 non-resumable.** `RuntimeCapabilityOutcome::{ApprovalRequired,AuthRequired,
 ResourceBlocked}` → `Err(EngineError::Effect { reason: <safe summary> })` so
+
+> **Grounded correction to H.12.2.5 (locked 2026-08-27, decisions Q-H12-2-BUILD
+> + Q-H12-2-SNAP).** `loop_driver_execution_extension_id` **requires**
+> `&LoopRunContext` (reads `run_context.loop_driver_id`,
+> capability_port.rs:1542) — there is NO profile-level default `extension_id` at
+> `runtime.rs` build time, and `TurnScope.tenant_id`/`agent_id` are likewise
+> per-run (`brassclaw_turns::scope::TurnScope`). So the `EffectExecutor`
+> **cannot** be constructed once at `runtime.rs` build (the H.12.2.5 "like
+> `retrieval_lookup`" wording is superseded). Corrected design (Q-H12-2-BUILD =
+> **A**): `runtime.rs` builds a long-lived `TierZeroEffectExecutorBuilder`
+> (holds `Arc<dyn HostRuntime>` + `fallback_user_id` + `Arc<LocalDevCapabilityPolicy>`
+> + workspace/skill/memory_mounts + `LocalDevExtensionSurfaceSource`); the
+> composition `OrchestratorLookup::run_tier_zero` impl calls
+> `builder.build_for_run(run_context).await` per Tier-0 turn → a fresh
+> `Arc<dyn EffectExecutor>` carrying the per-run `extension_id`/`tenant_id`/
+> `agent_id` + a snapshotted extension surface — mirroring
+> `LocalDevLoopCapabilityPortFactory::create_capability_port`'s per-run
+> snapshot. Q-H12-2-SNAP = **A**: the extension surface is snapshotted once per
+> `run_tier_zero` and **held** in the per-run executor/factory (sync `build()`),
+> matching the local-dev precedent (NOT per-`__execute_action__`). Split to
+> keep crate boundaries clean with **no `pub(super)` widening**: the
+> `TierZeroExecutionContextFactory` + `ProductionEffectExecutor` live at crate
+> root (`orchestrator_effect_executor.rs`, only pub types); the
+> `TierZeroEffectExecutorBuilder` lives in `runtime/local_dev.rs` (where the
+> `pub(super)` surface + `pub(crate)` policy are visible) and returns the trait
+> object. Additional grounding: production `LoopCapabilityPort` **rejects**
+> `context.mounts != MountView::default()` as `Unauthorized`
+> (capability_port.rs:796) → the factory MUST pass `MountView::default()` to
+> `ExecutionContext::local_default` (mounts reach capabilities via the grant
+> constraints that `LocalDevCapabilityPolicy::builtin_grants` already bakes, not
+> via `context.mounts`). Engine→host_api id bridge: engine `ThreadId(pub Uuid)` /
+> `ProjectId(pub Uuid)` → `host_api::ThreadId::new(uuid.to_string())` /
+> `ProjectId::new(...)` (uuid strings satisfy `validate_scope_id`); engine
+> `user_id: String` → `UserId::new(...)` **fail-closed** on validation failure
+> (`EngineError::Effect` → Tier-2 degrade) — the engine context always carries
+> a `user_id` (`String`, not `Option`), so an invalid value is corruption, not a
+> missing user, and must NOT be misattributed to a fallback user. (`validate_scope_id`
+> only forbids empty / `>256B` / `.` / `..` / path separators `/` `\` / NUL-control
+> chars — uppercase + spaces are allowed, so realistic user ids pass.) The
+> factory therefore does not hold `fallback_user_id`; the local-dev
+> `fallback_user_id` covers the `Option<UserId>` missing-user case that the
+> engine `String` never presents.
+
+`RuntimeCapabilityOutcome::{ApprovalRequired,AuthRequired,
+ResourceBlocked}` → `Err(EngineError::Effect { reason: <safe summary> })` so
 `execute_tier_zero_channel` degrades to Tier-2 (empty
 `TierZeroChannelResult`); the LLM Tier-2 path owns full gate handling. Forced
 by Q-H12-2 (activate Monty VM) + `CancellingGateController` (no resumability) +
@@ -149,6 +194,16 @@ leases (is_valid + covers_action + thread_id match).
 ## Steps (one-by-one, commit+push each; `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` on every build; `df -h` target first — `cargo clean` if Avail<15GB or >90%; selective-pathspec commit guard never staging user WIP)
 
 ### H.12.2.1 — Composition: `TierZeroExecutionContextFactory` (production `ExecutionContext` builder)
+
+> ✅ **DONE (commit `2404b0e3`).** Implemented in
+> `crates/brassclaw_reborn_composition/src/orchestrator_effect_executor.rs`
+> (registered `mod orchestrator_effect_executor;` in `lib.rs`). Holds
+> `tenant_id` / `agent_id` / `extension_id` / `grants` (pre-resolved per-run by
+> the H.12.2.5 builder); `build(&ThreadExecutionContext) -> Result<ExecutionContext,
+> EngineError>` is sync, mirroring `local_dev_visible_capability_request`.
+> Engine→host_api id bridge + fail-closed user_id per the grounded correction
+> above. 4 unit tests pass (default + `--features skills-db`); clippy clean both
+> configs. `#![allow(dead_code)]` until wired in H.12.2.5.
 
 New `crates/brassclaw_reborn_composition/src/orchestrator_effect_executor.rs`
 (or a sibling `tier_zero_exec_context.rs`) — a composition-owned factory that
