@@ -61,9 +61,19 @@ pub(super) struct RecipeInput {
 }
 
 pub(super) enum RecipeStep {
-    /// Fall through to `prompt` (Tier 2): either no recipe matched or
-    /// the matched recipe is below the Wilson threshold.
+    /// Fall through to `prompt` (Tier 1/2): either no recipe matched, the
+    /// matched recipe is below the Wilson threshold, or the recipe requires
+    /// an LLM call (Tier 1 — `recipe_hint` stays stashed for `run_step_zero`).
     Continue { state: Box<LoopExecutionState> },
+    /// Tier 0 — deterministic orchestrator-channel execution with NO LLM. The
+    /// retrieval result crossed the Wilson lower-confidence threshold AND does
+    /// not require an LLM call, so the Phase-H consumer
+    /// (`TierZeroExecutionStage` → `LoopOrchestratorPort::run_tier_zero`) runs
+    /// the recipe's baked-in PythonCode orchestrator channel and emits the
+    /// reply text directly, skipping `PromptStage`/`ModelStage`. The stashed
+    /// `recipe_hint` (orchestrator_items) + `recipe_rust_context` are consumed
+    /// by `run_tier_zero`.
+    TierZero { state: Box<LoopExecutionState> },
 }
 
 #[async_trait]
@@ -106,6 +116,12 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
             });
         };
 
+        // H.10 (plan §H5): capture the routing booleans from a successful
+        // retrieval so the consumer dispatch below can branch on them.
+        // Defaults (`tier0_eligible = false`, `llm_call_required = true`)
+        // preserve the Tier-2 fall-through for soft-miss / error paths.
+        let mut tier0_eligible = false;
+        let mut llm_call_required = true;
         match lookup
             .fetch_for_turn(
                 ctx.host.run_context(),
@@ -135,6 +151,8 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
                 // split into the plan-literal `Vec<serde_json::Value>`
                 // (Q-H9-2: a non-array `rust_items` degrades to an empty vec —
                 // the retrieval source always emits an array).
+                tier0_eligible = result.tier0_eligible;
+                llm_call_required = result.llm_call_required;
                 state.recipe_hint = Some(result.orchestrator_items.clone());
                 state.recipe_rust_context =
                     result.rust_items.as_array().cloned().unwrap_or_default();
@@ -160,10 +178,28 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
             }
         }
 
-        // H.9: producer-only — Tier-0/Tier-1 consumer dispatch (branching on
-        // `tier0_eligible`/`llm_call_required`) is H.10's job.
-        Ok(RecipeStep::Continue {
-            state: Box::new(state),
-        })
+        // H.10 consumer dispatch. `tier0_eligible && !llm_call_required` →
+        // Tier 0 (deterministic orchestrator-channel execution, no LLM). All
+        // other cases → Continue: Tier 1 (`llm_call_required` with a stashed
+        // `recipe_hint` for `run_step_zero`) or Tier 2 (no match / soft-miss /
+        // error — empty stash).
+        //
+        // v3 architecture (re-think): the Python orchestrator is the SOLE
+        // execution authority — tools are invoked inside the Monty sandbox via
+        // `__execute_action__`, never directly from Rust by an LLM (no
+        // classical MCP). Tier-0 recipes bake the tool calls into their
+        // PythonCode, so `run_tier_zero` only needs the stashed `recipe_hint`
+        // + `recipe_rust_context`; no `instruction` carrying or Rust-channel
+        // executor fn is involved (the engine `execute_tier_zero_channel` runs
+        // the PythonCode as-is).
+        if tier0_eligible && !llm_call_required {
+            Ok(RecipeStep::TierZero {
+                state: Box::new(state),
+            })
+        } else {
+            Ok(RecipeStep::Continue {
+                state: Box::new(state),
+            })
+        }
     }
 }

@@ -1437,8 +1437,32 @@ list with no class_code awareness. It must not appear in v3 default.py at all.
 **Verified:** `recipe.rs` (85 lines, full file read) confirms the stage always returns
 `RecipeStep::Continue` with a structural debt comment: "user text is not yet accessible
 from `LoopExecutionState` at this pipeline position." The `RecipeStep` enum has exactly
-ONE variant: `Continue { state: Box<LoopExecutionState> }`. Phase H adds `TierZero` and
-`ActionExecuted`.
+ONE variant: `Continue { state: Box<LoopExecutionState> }`. Phase H adds `TierZero`.
+(The `ActionExecuted` variant originally planned was DROPPED — see the v3
+re-think note below; `ActionShortCircuit` routes through the same `TierZero`
+path with the composition `run_tier_zero` branching on `routing_meta.variant`
+internally.)
+
+> **v3 architecture re-think (H.10/H.11 implementation, supersedes the
+> `ActionExecuted` variant + the Q-H10-3 "C" cascade scope).** The Python
+> orchestrator (Monty sandbox) is the SOLE execution authority — an LLM is only
+> a Python-code-generating helper, never something that has Rust execute tools
+> on its own (no classical MCP). Tools are invoked ONLY via the orchestrator's
+> `__execute_action__` inside the sandbox. Consequently Tier-0 recipes bake the
+> tool calls into their PythonCode, and `execute_tier_zero_channel` runs that
+> PythonCode as-is — so NO new engine Rust-channel executor fn and NO
+> `instruction` carrying on `RecipeStep::TierZero { state }` are needed (the
+> `BuildInstruction`/`tool_bindings` Rust-channel dispatch originally scoped
+> under "C" is dead code for Tier-0 and is NOT implemented). H.11 uses a
+> `canonical.rs` `'turn` labeled block (NOT a `PostRecipeOutcome` type): on
+> `TierZero` the new `TierZeroExecutionStage` (`executor/tier_zero.rs`) calls
+> `run_tier_zero`; `Reply` `break 'turn`s straight into `AssistantReplyStage`
+> (acks the pending input directly, no `PromptStage`/`ModelStage`), `Degrade`
+> falls through to the existing LLM path. The Tier-1/Tier-2 re-architecture
+> (replace the agent-loop `CapabilityStage` LLM→direct-Rust-execution path with
+> an LLM-writes-Python→Orchestrator path) is a SEPARATE FUTURE PHASE, to be
+> planned separately — it is out of scope for Phase H, which delivers Tier-0
+> dispatch only.
 
 `LoopExecutionState` has no `last_user_text` field. Added in Phase H via `InputStage`.
 

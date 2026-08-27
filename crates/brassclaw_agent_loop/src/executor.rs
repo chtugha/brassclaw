@@ -19,6 +19,7 @@ mod pipeline;
 mod prompt;
 mod recipe;
 mod reply_admission;
+mod tier_zero;
 mod turn_stop;
 
 use assistant_reply::{AssistantReplyInput, AssistantReplyStage};
@@ -58,6 +59,7 @@ use pipeline::{DefaultExecutorPipeline, ExecutorStage, StageContext};
 use prompt::{PromptInput, PromptStage, PromptStep};
 use recipe::{RecipeInput, RecipeStage, RecipeStep};
 use reply_admission::{ReplyAdmissionInput, ReplyAdmissionStage, ReplyAdmissionStep};
+use tier_zero::{TierZeroExecutionStage, TierZeroInput, TierZeroStep};
 use turn_stop::{StopInput, StopObservationInput, StopObservationStep, StopStage, StopStep};
 
 use async_trait::async_trait;

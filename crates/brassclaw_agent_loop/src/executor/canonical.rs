@@ -12,8 +12,8 @@ use super::{
     DrainInput, ExecutorStage, ExitInput, InputStep, InterceptorPacketId, InterceptorPromptInput,
     ModelInput, ModelStep, PendingInputAck, PromptInput, PromptStep, RecipeInput, RecipeStep,
     ReplyAdmissionInput, ReplyAdmissionStep, StageContext, StopInput, StopObservationInput,
-    StopObservationStep, StopStep, TurnCompletedStep, UserFacingInputDrainMode,
-    notify_interceptor_kohai_response,
+    StopObservationStep, StopStep, TierZeroInput, TierZeroStep, TurnCompletedStep,
+    UserFacingInputDrainMode, notify_interceptor_kohai_response,
 };
 
 impl DefaultExecutorPipeline {
@@ -27,7 +27,7 @@ impl DefaultExecutorPipeline {
         let ctx = StageContext { planner, host };
         let mut pending_input_ack = PendingInputAck::default();
 
-        loop {
+        'outer: loop {
             state = match CheckpointStage.cancel_if_requested(ctx, state).await? {
                 CancelCheck::Continue(state) => *state,
                 CancelCheck::Exit(exit) => return Ok(exit),
@@ -86,181 +86,214 @@ impl DefaultExecutorPipeline {
                 InputStep::Exit(exit) => return Ok(exit),
             }
 
-            // Recipe-Skill-Tool (Phase 7) — observe the pending request
-            // before allocating tokens to a full prompt assembly. The
-            // current cut always returns `Continue`; Tier 0 / Tier 1
-            // selection arrives once the composition-side `RecipeLibrary`
-            // adapter is wired.
-            state = match self.recipe.process(ctx, RecipeInput { state }).await? {
-                RecipeStep::Continue { state: next } => *next,
-            };
-
-            let prompt = match self
-                .prompt
-                .process(
-                    ctx,
-                    PromptInput {
-                        state,
-                        pending_input_ack: std::mem::take(&mut pending_input_ack),
-                    },
-                )
-                .await?
-            {
-                PromptStep::Prepared(prompt) => *prompt,
-                PromptStep::Exit(exit) => return Ok(exit),
-            };
-            // Cache the message count before `prompt.messages` is moved.
-            let prompt_message_count = prompt.messages.len();
-
-            // Interceptor — capture the assembled prompt for Sempai telemetry.
-            // In routing state this is a complete no-op (host returns None).
-            let interceptor_out = self
-                .interceptor
-                .process(
-                    ctx,
-                    InterceptorPromptInput {
-                        state: prompt.state,
-                        messages: prompt.messages,
-                        capability_surface_version: prompt.surface.version.as_str().to_string(),
-                        visible_capability_count: prompt.surface.descriptors.len(),
-                    },
-                )
-                .await?;
-            let interceptor_packet_id = interceptor_out.packet_id;
-            state = interceptor_out.state;
-            let intercepted_messages = interceptor_out.messages;
-            let interceptor_adjusted_messages = interceptor_out.adjusted_messages;
-            pending_input_ack = prompt.pending_input_ack;
-
-            state = CheckpointStage
-                .process(
-                    ctx,
-                    CheckpointInput {
-                        state,
-                        kind: CheckpointKind::BeforeModel,
-                    },
-                )
-                .await?
-                .state;
-            if prompt.rendered_repeated_call_warning {
-                state.stop_state.mark_repeated_call_warning_rendered();
-                CheckpointStage
-                    .emit_progress(
-                        ctx,
-                        LoopProgressEvent::driver_note(
-                            LoopDriverNoteKind::Planning,
-                            "repeated capability call warning rendered",
-                        )
-                        .map_err(|_| {
-                            AgentLoopExecutorError::PlannerContract {
-                                detail: "repeated-call warning progress summary was invalid",
-                            }
-                        })?,
-                    )
-                    .await;
-            }
-            pending_input_ack.ack(host).await?;
-
-            let model_response = match self
-                .model
-                .process(
-                    ctx,
-                    ModelInput {
-                        state,
-                        messages: intercepted_messages,
-                        surface_version: prompt.surface.version.clone(),
-                        capability_view: prompt.capability_view,
-                        resolved_messages: interceptor_adjusted_messages,
-                    },
-                )
-                .await?
-            {
-                ModelStep::Response(next, response) => {
-                    state = *next;
-                    response
-                }
-                ModelStep::RetryIteration(next) => {
-                    // On retry we have no response — reset the packet id so the
-                    // interceptor doesn't attempt to close a packet that was
-                    // never opened for this iteration.
-                    let _ = InterceptorPacketId::default();
-                    state = *next;
-                    continue;
-                }
-                ModelStep::Exit(exit) => return Ok(exit),
-            };
-
-            // Interceptor — close the ForensicPacket with the Kohai response.
-            // In routing state (no packet_id) this is a no-op.
-            {
-                let response_text = model_response
-                    .chunks
-                    .iter()
-                    .map(|c| c.safe_text_delta.as_str())
-                    .collect::<String>();
-                notify_interceptor_kohai_response(
-                    ctx,
-                    &interceptor_packet_id,
-                    &response_text,
-                    model_response.usage,
-                )
-                .await;
-            }
-
-            // Capture provider-reported usage before the `match` consumes
-            // `model_response`. Only assistant-reply turns feed the
-            // diminishing-returns window (#3841 follow-up F1): a
-            // capability-batch turn produces tool calls, not output
-            // tokens, and would otherwise look like four "no progress"
-            // turns in a row. `None` is "unknown" and must NOT count as
-            // a zero-output turn against the detector.
-            let response_usage = model_response.usage;
-
-            // Update the context strategy's message-average EMA so future turns
-            // use real observed token densities rather than the compiled default.
-            if let Some(usage) = &response_usage
-                && usage.input_tokens > 0
-            {
-                ctx.planner
-                    .context()
-                    .notify_model_usage(usage.input_tokens, prompt_message_count);
-            }
-            let completed = match model_response.output {
-                ParentLoopOutput::AssistantReply(reply) => {
-                    match self
-                        .reply_admission
-                        .process(ctx, ReplyAdmissionInput { state, reply })
+            // Recipe-Skill-Tool (Phase 7 / v3 Phase H.10–H.11) — observe the
+            // pending request before allocating tokens to a full prompt
+            // assembly. H.10 branches the `RecipeStage` outcome: `TierZero`
+            // drives the orchestrator channel with no LLM and short-circuits
+            // straight to `AssistantReplyStage`; `Continue` falls through to
+            // the LLM path (Tier 1/2) below. The whole recipe→LLM region is a
+            // `'turn` block whose value is the `TurnCompletedStep` handed to
+            // the shared stop/exit tail.
+            let completed: TurnCompletedStep = 'turn: {
+                state = match self.recipe.process(ctx, RecipeInput { state }).await? {
+                    RecipeStep::Continue { state: next } => *next,
+                    RecipeStep::TierZero { state: next } => match self
+                        .tier_zero
+                        .process(ctx, TierZeroInput { state: *next })
                         .await?
                     {
-                        ReplyAdmissionStep::Accept { state, reply } => {
-                            self.assistant_reply
+                        TierZeroStep::Reply {
+                            state,
+                            reply,
+                            matched_component_ids: _,
+                        } => {
+                            // Tier-0 skips PromptStage/ModelStage, so the
+                            // pending input ack (never handed to PromptStage)
+                            // is acked directly here. A no-op when empty.
+                            pending_input_ack.ack(host).await?;
+                            break 'turn self
+                                .assistant_reply
                                 .process(
                                     ctx,
                                     AssistantReplyInput {
                                         state: *state,
                                         reply,
-                                        usage: response_usage,
+                                        usage: None,
                                     },
                                 )
-                                .await?
+                                .await?;
                         }
-                        ReplyAdmissionStep::Reject { state } => TurnCompletedStep::Continue {
+                        TierZeroStep::Degrade { state: degraded } => *degraded,
+                    },
+                };
+
+                let prompt = match self
+                    .prompt
+                    .process(
+                        ctx,
+                        PromptInput {
                             state,
-                            summary: crate::strategies::TurnSummary::reply_rejected(),
+                            pending_input_ack: std::mem::take(&mut pending_input_ack),
                         },
-                    }
-                }
-                ParentLoopOutput::CapabilityCalls(calls) => {
-                    self.capabilities
-                        .process(
+                    )
+                    .await?
+                {
+                    PromptStep::Prepared(prompt) => *prompt,
+                    PromptStep::Exit(exit) => return Ok(exit),
+                };
+                // Cache the message count before `prompt.messages` is moved.
+                let prompt_message_count = prompt.messages.len();
+
+                // Interceptor — capture the assembled prompt for Sempai telemetry.
+                // In routing state this is a complete no-op (host returns None).
+                let interceptor_out = self
+                    .interceptor
+                    .process(
+                        ctx,
+                        InterceptorPromptInput {
+                            state: prompt.state,
+                            messages: prompt.messages,
+                            capability_surface_version: prompt.surface.version.as_str().to_string(),
+                            visible_capability_count: prompt.surface.descriptors.len(),
+                        },
+                    )
+                    .await?;
+                let interceptor_packet_id = interceptor_out.packet_id;
+                state = interceptor_out.state;
+                let intercepted_messages = interceptor_out.messages;
+                let interceptor_adjusted_messages = interceptor_out.adjusted_messages;
+                pending_input_ack = prompt.pending_input_ack;
+
+                state = CheckpointStage
+                    .process(
+                        ctx,
+                        CheckpointInput {
+                            state,
+                            kind: CheckpointKind::BeforeModel,
+                        },
+                    )
+                    .await?
+                    .state;
+                if prompt.rendered_repeated_call_warning {
+                    state.stop_state.mark_repeated_call_warning_rendered();
+                    CheckpointStage
+                        .emit_progress(
                             ctx,
-                            CapabilityInput {
-                                state,
-                                surface: prompt.surface,
-                                calls,
-                            },
+                            LoopProgressEvent::driver_note(
+                                LoopDriverNoteKind::Planning,
+                                "repeated capability call warning rendered",
+                            )
+                            .map_err(|_| {
+                                AgentLoopExecutorError::PlannerContract {
+                                    detail: "repeated-call warning progress summary was invalid",
+                                }
+                            })?,
                         )
-                        .await?
+                        .await;
+                }
+                pending_input_ack.ack(host).await?;
+
+                let model_response = match self
+                    .model
+                    .process(
+                        ctx,
+                        ModelInput {
+                            state,
+                            messages: intercepted_messages,
+                            surface_version: prompt.surface.version.clone(),
+                            capability_view: prompt.capability_view,
+                            resolved_messages: interceptor_adjusted_messages,
+                        },
+                    )
+                    .await?
+                {
+                    ModelStep::Response(next, response) => {
+                        state = *next;
+                        response
+                    }
+                    ModelStep::RetryIteration(next) => {
+                        // On retry we have no response — reset the packet id so the
+                        // interceptor doesn't attempt to close a packet that was
+                        // never opened for this iteration.
+                        let _ = InterceptorPacketId::default();
+                        state = *next;
+                        continue 'outer;
+                    }
+                    ModelStep::Exit(exit) => return Ok(exit),
+                };
+
+                // Interceptor — close the ForensicPacket with the Kohai response.
+                // In routing state (no packet_id) this is a no-op.
+                {
+                    let response_text = model_response
+                        .chunks
+                        .iter()
+                        .map(|c| c.safe_text_delta.as_str())
+                        .collect::<String>();
+                    notify_interceptor_kohai_response(
+                        ctx,
+                        &interceptor_packet_id,
+                        &response_text,
+                        model_response.usage,
+                    )
+                    .await;
+                }
+
+                // Capture provider-reported usage before the `match` consumes
+                // `model_response`. Only assistant-reply turns feed the
+                // diminishing-returns window (#3841 follow-up F1): a
+                // capability-batch turn produces tool calls, not output
+                // tokens, and would otherwise look like four "no progress"
+                // turns in a row. `None` is "unknown" and must NOT count as
+                // a zero-output turn against the detector.
+                let response_usage = model_response.usage;
+
+                // Update the context strategy's message-average EMA so future turns
+                // use real observed token densities rather than the compiled default.
+                if let Some(usage) = &response_usage
+                    && usage.input_tokens > 0
+                {
+                    ctx.planner
+                        .context()
+                        .notify_model_usage(usage.input_tokens, prompt_message_count);
+                }
+                match model_response.output {
+                    ParentLoopOutput::AssistantReply(reply) => {
+                        match self
+                            .reply_admission
+                            .process(ctx, ReplyAdmissionInput { state, reply })
+                            .await?
+                        {
+                            ReplyAdmissionStep::Accept { state, reply } => {
+                                self.assistant_reply
+                                    .process(
+                                        ctx,
+                                        AssistantReplyInput {
+                                            state: *state,
+                                            reply,
+                                            usage: response_usage,
+                                        },
+                                    )
+                                    .await?
+                            }
+                            ReplyAdmissionStep::Reject { state } => TurnCompletedStep::Continue {
+                                state,
+                                summary: crate::strategies::TurnSummary::reply_rejected(),
+                            },
+                        }
+                    }
+                    ParentLoopOutput::CapabilityCalls(calls) => {
+                        self.capabilities
+                            .process(
+                                ctx,
+                                CapabilityInput {
+                                    state,
+                                    surface: prompt.surface,
+                                    calls,
+                                },
+                            )
+                            .await?
+                    }
                 }
             };
 

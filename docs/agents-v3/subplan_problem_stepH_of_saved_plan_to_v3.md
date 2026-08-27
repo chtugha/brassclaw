@@ -310,20 +310,51 @@ deleted) OR migrate cleanly per the plan-literal (decide during H.9; if unclear,
 ask). SEC-02: clear `recipe_hint`/`recipe_rust_context` at the top of the next
 turn (one-shot consume semantics — `run_step_zero`/`run_tier_zero` consume them).
 
-**H.10 — `RecipeStep::TierZero` / `RecipeStep::ActionExecuted` +
-`RecipeStage` consumer dispatch** (`recipe.rs`). Add the two variants (carrying
-`state`). `RecipeStage::process` branches: `tier0_eligible && !llm_call_required`
-→ `RecipeStep::TierZero` (consumes `recipe_hint` + `recipe_rust_context` for the
-Phase-H `LoopOrchestratorPort::run_tier_zero`); `llm_call_required` → `RecipeStep::Continue`
-(Tier-1; `recipe_hint` stays for `run_step_zero`); else `Continue` (Tier-2).
+**H.10 — `RecipeStep::TierZero` + `RecipeStage` consumer dispatch**
+(`recipe.rs`). Add the single `RecipeStep::TierZero { state }` variant (carrying
+`state` ONLY — no `instruction`; see re-think below). The `ActionExecuted`
+variant was DROPPED (Q-H10-1=C): `ActionShortCircuit` routes through the same
+`TierZero` path (composition `run_tier_zero` branches on `routing_meta.variant`
+internally). `RecipeStage::process` captures `tier0_eligible` /
+`llm_call_required` from a successful retrieval and branches:
+`tier0_eligible && !llm_call_required` → `RecipeStep::TierZero` (the
+`recipe_hint` + `recipe_rust_context` stash is consumed one-shot by
+`TierZeroExecutionStage` → `LoopOrchestratorPort::run_tier_zero`); all other
+cases → `RecipeStep::Continue` (Tier-1 when `llm_call_required` with a stashed
+`recipe_hint` for `run_step_zero`, or Tier-2 on no-match / soft-miss / error
+with an empty stash).
 
-**H.11 — `canonical.rs` `PostRecipeOutcome` restructuring +
-`TierZeroExecutionStage`** (`canonical.rs`). `PostRecipeOutcome` carries the
-`RecipeStep` outcome; `DefaultExecutorPipeline::execute_family` handles
-`RecipeStep::TierZero` by calling `ctx.host.run_tier_zero(..)` (via
-`LoopOrchestratorPort`) → `TierZeroReply` → `AssistantReplyStage` emits the text
-directly, no `PromptStage`/`ModelStage`. New `TierZeroExecutionStage` encapsulates
-the `run_tier_zero` call + reply handling.
+**H.11 — `canonical.rs` `'turn` block restructure +
+`TierZeroExecutionStage`** (`canonical.rs` + new `executor/tier_zero.rs`). The
+whole recipe→LLM region is wrapped in `let completed: TurnCompletedStep = 'turn:
+{ … };`. `RecipeStep::TierZero` calls `self.tier_zero.process(..)` (the new
+`TierZeroExecutionStage`); `TierZeroStep::Reply` acks the pending input directly
+(a no-op when empty — Tier-0 skips `PromptStage`) and `break 'turn` straight into
+`AssistantReplyStage` (no `PromptStage`/`ModelStage`); `TierZeroStep::Degrade`
+(no bridge / no reply) falls through to the existing LLM path (Tier 1/2)
+unchanged. `RecipeStep::Continue` also falls through to the LLM path. The LLM
+path's `match model_response.output` is the `'turn` block's tail expression. The
+outer `loop` is labeled `'outer` so the `ModelStage::RetryIteration` `continue`
+inside the labeled block is `continue 'outer` (E0695: an unlabeled `continue`
+through a labeled block needs a label). New `TierZeroExecutionStage`
+(`executor/tier_zero.rs`) encapsulates the `run_tier_zero` call + reply/degrade
+handling; wired into `DefaultExecutorPipeline` (derives `Default`) + the
+`executor.rs` mod re-exports.
+
+> **v3 architecture re-think (supersedes Q-H10-3=B / the "C" cascade scope).**
+> The Python orchestrator (Monty sandbox) is the SOLE execution authority — an
+> LLM is only a Python-code-generating helper, never something that has Rust
+> execute tools on its own (no classical MCP). Tools are invoked ONLY via the
+> orchestrator's `__execute_action__` inside the sandbox. Consequently Tier-0
+> recipes bake the tool calls into their PythonCode, and
+> `execute_tier_zero_channel` runs that PythonCode as-is — so NO new engine
+> Rust-channel executor fn and NO `instruction` carrying on `RecipeStep::TierZero`
+> are needed (the `BuildInstruction`/`tool_bindings` Rust-channel dispatch
+> originally scoped under "C" is dead code for Tier-0 and is NOT implemented).
+> The Tier-1/Tier-2 re-architecture (replace the agent-loop `CapabilityStage`
+> LLM→direct-Rust-execution path with an LLM-writes-Python→Orchestrator path) is a
+> SEPARATE FUTURE PHASE, to be planned separately — it is out of scope for Phase H,
+> which delivers Tier-0 dispatch only.
 
 **H.12 — composition `LoopOrchestratorPort` impl + `build_prompt_bundle` reads
 `recipe_hint`** (`brassclaw_reborn_composition`). `run_step_zero` → delegates to

@@ -2838,6 +2838,7 @@ async fn recipe_stage_fires_fetch_for_turn_and_stashes_result() {
     // (c) Tier-2 preserved.
     let boxed = match step {
         RecipeStep::Continue { state } => state,
+        RecipeStep::TierZero { .. } => panic!("expected Continue (Tier 2), got TierZero"),
     };
     // (b) H.9: the plan-literal split is stashed for the Phase H consumer —
     // `recipe_hint` = `orchestrator_items`, `recipe_rust_context` =
@@ -2879,6 +2880,7 @@ async fn recipe_stage_falls_through_when_no_retrieval_wired() {
 
     let boxed = match step {
         RecipeStep::Continue { state } => state,
+        RecipeStep::TierZero { .. } => panic!("expected Continue (Tier 2), got TierZero"),
     };
     assert!(
         boxed.recipe_hint.is_none(),
@@ -2912,6 +2914,7 @@ async fn recipe_stage_falls_through_when_no_user_text() {
 
     let boxed = match step {
         RecipeStep::Continue { state } => state,
+        RecipeStep::TierZero { .. } => panic!("expected Continue (Tier 2), got TierZero"),
     };
     assert!(
         boxed.recipe_hint.is_none(),
@@ -2949,6 +2952,7 @@ async fn recipe_stage_soft_miss_leaves_no_stashed_result() {
 
     let boxed = match step {
         RecipeStep::Continue { state } => state,
+        RecipeStep::TierZero { .. } => panic!("expected Continue (Tier 2), got TierZero"),
     };
     assert!(
         boxed.recipe_hint.is_none(),
@@ -2989,6 +2993,7 @@ async fn recipe_stage_soft_fails_on_retrieval_error() {
 
     let boxed = match step {
         RecipeStep::Continue { state } => state,
+        RecipeStep::TierZero { .. } => panic!("expected Continue (Tier 2), got TierZero"),
     };
     assert!(
         boxed.recipe_hint.is_none(),
