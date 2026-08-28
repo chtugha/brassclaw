@@ -197,11 +197,48 @@ for Tier-0, swap for a model-gateway adapter (out of H.12 scope).
 > deserialize-gate surfaces `InvalidInput` before delegating, with the per-run
 > executor accepted as a param); engine lib totals 590 default / 601 skills-db.
 >
-> **PART 2 (composition `runtime.rs` wiring) pending** — construct
-> `Arc<TierZeroOrchestrator>` via the builder and add
-> `orchestrator_runtime: Option<Arc<TierZeroOrchestrator>>` to
-> `DefaultPlannedRuntimeParts` (skills-db-gated). NOTE: composition `runtime.rs`
-> is user WIP — selective edits only, never sweep user WIP.
+> ✅ **PART 2 DONE (reborn run-profile plumbing).** User decision
+> **Q-H12-4-WIRING (locked = A)**: add a **required** field
+> `orchestrator_lookup: Option<Arc<dyn OrchestratorLookup>>` to
+> `DefaultPlannedRuntimeParts` (the `brassclaw_turns` trait object, NOT the
+> engine facade) + thread it in `build_default_planned_runtime` via
+> `host_factory.with_orchestrator_lookup(lookup)`, mirroring `retrieval_lookup`
+> exactly. **Deviation from the plan's wording (documented, not deleted):** the
+> plan said store `Arc<TierZeroOrchestrator>` (engine facade) on
+> `DefaultPlannedRuntimeParts`, but `brassclaw_reborn` does NOT depend on
+> `brassclaw_engine` and uses zero engine types; the `OrchestratorLookup` trait
+> + `with_orchestrator_lookup` plumbing ALREADY exist in `brassclaw_reborn`
+> (loop_driver_host.rs), and the trait doc mandates
+> `Option<Arc<dyn OrchestratorLookup>>`. So the plan's wording was obsolete
+> (the trait/plumbing were built after the plan was written) — the
+> architecturally-consistent field is the turns trait object. The engine facade
+> stays composition-owned and is wrapped by H.12.5's `PgOrchestratorLookup`.
+> Edits: `crates/brassclaw_reborn/src/runtime.rs` (import `OrchestratorLookup` +
+> field + threading); `orchestrator_lookup: None,` added at all **10**
+> `DefaultPlannedRuntimeParts` construction sites
+> (`brassclaw_reborn_composition/src/runtime.rs`,
+> `brassclaw_reborn_composition/tests/product_live_adapters.rs`,
+> `brassclaw_product_workflow/tests/support/planned_agent_loop.rs` + 3× in
+> `inbound_turn_contract.rs` + 4× in `brassclaw_reborn/tests/loop_driver_host.rs`).
+> **User-WIP coordination:** these 6 source files also carry the user's parallel
+> uncommitted `system_bundle_source` (§K.1.5) field addition; I selective-staged
+> ONLY my `orchestrator_lookup` hunks via `git apply --cached` of a filtered
+> patch — the user's `system_bundle_source` WIP stays unstaged in the working
+> tree. `PolicyEngine::new()` is used (the plan's "built from
+> `local_dev_capability_policy`" conflates the engine channel-internal policy
+> with the composition grant policy; `PolicyEngine` has no from-policy ctor, and
+> the composition `LocalDevCapabilityPolicy` already governs grants at the
+> per-run executor builder in H.12.2.5 — so the engine `PolicyEngine::new()`
+> default is correct). H.12.4 leaves `orchestrator_lookup: None` at every site
+> → `NoOrchestrator` → Tier-2 degrade; H.12.5 flips the composition site to
+> `Some(PgOrchestratorLookup::new(facade, thread_loader))` and constructs the
+> `Arc<TierZeroOrchestrator>` facade via the builder. Verified: fmt clean;
+> clippy clean — `brassclaw_reborn` (default + `root-llm-provider`),
+> `brassclaw_reborn_composition` (default + `skills-db`),
+> `brassclaw_product_workflow` (default) all `--all-targets -D warnings`;
+> `brassclaw_reborn` lib 239, `brassclaw_reborn_composition` lib 674 default /
+> 681 skills-db, `brassclaw_reborn` `loop_driver_host` integration 96 (all
+> pass). **H.12.4 COMPLETE.**
 
 1. `brassclaw_engine/src/executor/orchestrator.rs` (or a new
    `executor/tier_zero_orchestrator.rs`): `pub struct TierZeroOrchestrator {

@@ -694,6 +694,7 @@ async fn user_message_no_profile_uses_product_live_runtime_and_persists_reply() 
         turn_event_sink: None,
         recipe_lookup: None,
         retrieval_lookup: None,
+        orchestrator_lookup: None,
         message_text_resolver: None,
         interceptor_store: None,
         #[cfg(feature = "root-llm-provider")]
@@ -870,6 +871,7 @@ async fn user_message_no_profile_can_cancel_product_live_run_from_product_path()
         turn_event_sink: None,
         recipe_lookup: None,
         retrieval_lookup: None,
+        orchestrator_lookup: None,
         message_text_resolver: None,
         interceptor_store: None,
         #[cfg(feature = "root-llm-provider")]
@@ -1058,6 +1060,7 @@ async fn product_live_runtime_rejects_unretained_cancellation_factory() {
         turn_event_sink: None,
         recipe_lookup: None,
         retrieval_lookup: None,
+        orchestrator_lookup: None,
         message_text_resolver: None,
         interceptor_store: None,
         #[cfg(feature = "root-llm-provider")]

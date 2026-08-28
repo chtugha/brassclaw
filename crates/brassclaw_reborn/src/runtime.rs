@@ -27,7 +27,7 @@ use brassclaw_turns::{
     run_profile::{
         AgentLoopHostError, InstructionSafetyContext, LoopCapabilityPort, LoopHostMilestoneSink,
         LoopModelBudgetAccountant, LoopModelPolicyGuard, LoopRunContext, MessageTextResolver,
-        RecipeLookup, RetrievalLookup,
+        OrchestratorLookup, RecipeLookup, RetrievalLookup,
     },
     runner::TurnRunTransitionPort,
 };
@@ -164,6 +164,13 @@ where
     /// The engine-backed `RetrievalLookup` impl is supplied by composition
     /// (skills-db-gated), mirroring `recipe_lookup` / `RecipeLookup`.
     pub retrieval_lookup: Option<Arc<dyn RetrievalLookup>>,
+    /// Tier-0 orchestrator bridge (v3 plan §H12). When `Some`,
+    /// `RecipeStage`'s Tier-0/Tier-1 branches delegate to this
+    /// `OrchestratorLookup` (the composition `PgOrchestratorLookup` wrapping
+    /// the engine `TierZeroOrchestrator` facade); when `None`, the host
+    /// inherits `NoOrchestrator` and `RecipeStage` falls through to Tier 2.
+    /// Supplied by composition (skills-db-gated), mirroring `retrieval_lookup`.
+    pub orchestrator_lookup: Option<Arc<dyn OrchestratorLookup>>,
     /// Raw accepted-message text resolver (v3 Phase E.0 / plan §H3). When
     /// `Some`, `LoopContextPort::resolve_message_text` returns the unsanitized
     /// user text so `InputStage::drain` populates `state.last_user_text` and
@@ -594,6 +601,9 @@ where
     }
     if let Some(lookup) = parts.retrieval_lookup {
         host_factory = host_factory.with_retrieval_lookup(lookup);
+    }
+    if let Some(lookup) = parts.orchestrator_lookup {
+        host_factory = host_factory.with_orchestrator_lookup(lookup);
     }
     if let Some(resolver) = parts.message_text_resolver {
         host_factory = host_factory.with_message_text_resolver(resolver);

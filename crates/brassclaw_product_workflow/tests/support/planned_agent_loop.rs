@@ -308,6 +308,7 @@ impl ProductLiveAgentLoopHarness {
             turn_event_sink: None,
             recipe_lookup: None,
             retrieval_lookup: None,
+            orchestrator_lookup: None,
             message_text_resolver: None,
             interceptor_store: None,
             #[cfg(feature = "root-llm-provider")]

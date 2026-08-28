@@ -2675,6 +2675,7 @@ pub async fn build_reborn_runtime(
         hook_dispatcher_builder_factory,
         recipe_lookup,
         retrieval_lookup,
+        orchestrator_lookup: None,
         message_text_resolver,
         interceptor_store,
         #[cfg(feature = "root-llm-provider")]
