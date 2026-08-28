@@ -103,6 +103,7 @@ pub use types::conversation::{
 // ── Re-exports: executor ──────────────────────────────────────
 
 pub use executor::ExecutionLoop;
+pub use executor::TierZeroOrchestrator;
 
 // ── Re-exports: memory ────────────────────────────────────────
 

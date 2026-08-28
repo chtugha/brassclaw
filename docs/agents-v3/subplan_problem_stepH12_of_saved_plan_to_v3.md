@@ -173,6 +173,36 @@ for Tier-0, swap for a model-gateway adapter (out of H.12 scope).
 
 ### H.12.4 — Engine: pub `TierZeroOrchestrator` facade + composition construction
 
+> ✅ **PART 1 DONE (engine facade).** New engine module
+> `crates/brassclaw_engine/src/executor/tier_zero_orchestrator.rs` declares
+> `pub struct TierZeroOrchestrator` + `TierZeroOrchestratorBuilder`, re-exported
+> from `brassclaw_engine` (lib.rs) and `brassclaw_engine::executor`.
+>
+> **Revision vs. the original plan — Q-H12-4-EFFECTS-PARAM (locked = A):** the
+> facade does NOT hold `effects: Arc<dyn EffectExecutor>` as a static field.
+> H.12.2.5 (Q-H12-2-BUILD = A) builds the executor **per run** (bakes
+> tenant/agent/grants from the per-turn `LoopRunContext`); a long-lived
+> `Arc<TierZeroOrchestrator>` constructed once at wiring time cannot hold a
+> per-run executor without re-baking tenant/agent once at wiring — exactly what
+> Q-H12-2-BUILD=A avoided. So the struct holds only the long-lived bits
+> (`llm`, `leases`, `policy`, `gate_controller`, `event_tx`, `retrieval_source`);
+> `effects` is a **per-call parameter** of `run_tier_zero`:
+> `pub async fn run_tier_zero(&self, thread: &Thread, effects: &Arc<dyn EffectExecutor>, recipe_hint: &Value, recipe_rust_context: &Value) -> Result<TierZeroChannelResult, EngineError>`.
+> H.12.5 builds the executor via `TierZeroEffectExecutorBuilder::build_for_run`
+> per turn and passes it in. `assemble_prior_knowledge(..)` is unchanged (it
+> needs no executor). Builder requires only `llm`; the `effects()` setter is
+> removed. Verified: fmt + clippy clean (default + `skills-db`); 3 facade tests
+> pass both configs (`build_requires_llm`, `build_succeeds_with_llm_defaulting_the_rest`,
+> `run_tier_zero_rejects_malformed_recipe_hint` — the last proves the
+> deserialize-gate surfaces `InvalidInput` before delegating, with the per-run
+> executor accepted as a param); engine lib totals 590 default / 601 skills-db.
+>
+> **PART 2 (composition `runtime.rs` wiring) pending** — construct
+> `Arc<TierZeroOrchestrator>` via the builder and add
+> `orchestrator_runtime: Option<Arc<TierZeroOrchestrator>>` to
+> `DefaultPlannedRuntimeParts` (skills-db-gated). NOTE: composition `runtime.rs`
+> is user WIP — selective edits only, never sweep user WIP.
+
 1. `brassclaw_engine/src/executor/orchestrator.rs` (or a new
    `executor/tier_zero_orchestrator.rs`): `pub struct TierZeroOrchestrator {
    llm: Arc<dyn LlmBackend>, effects: Arc<dyn EffectExecutor>, leases:

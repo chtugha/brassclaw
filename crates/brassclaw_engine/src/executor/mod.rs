@@ -15,6 +15,7 @@ pub mod prompt;
 pub mod scripting;
 pub mod structured;
 pub(crate) mod thread_context;
+pub mod tier_zero_orchestrator;
 pub mod trace;
 
 pub use loop_engine::ExecutionLoop;
@@ -23,3 +24,4 @@ pub use orchestrator::{
     execute_tier_zero_channel,
 };
 pub use scripting::validate_python_syntax;
+pub use tier_zero_orchestrator::{TierZeroOrchestrator, TierZeroOrchestratorBuilder};
