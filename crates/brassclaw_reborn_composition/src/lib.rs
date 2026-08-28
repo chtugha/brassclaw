@@ -139,6 +139,7 @@ pub(crate) mod sempai_proposal_sink;
 mod skill_listing;
 #[cfg(feature = "test-support")]
 pub mod test_support;
+mod tier_zero_llm_guard;
 mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;

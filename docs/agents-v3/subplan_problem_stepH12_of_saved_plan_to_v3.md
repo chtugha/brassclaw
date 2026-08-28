@@ -147,6 +147,19 @@ the production Rust capability layer (honors Q-H12-3).
 
 ### H.12.3 — Composition: Tier-0 `LlmBackend` guard
 
+> ✅ **DONE.** New composition module `crates/brassclaw_reborn_composition/
+> src/tier_zero_llm_guard.rs` (declared `mod tier_zero_llm_guard;` in `lib.rs`)
+> implementing `brassclaw_engine::LlmBackend` for `pub(crate) struct
+> TierZeroLlmGuard` (unit, `Copy + Default`): `complete(..)` →
+> `Err(EngineError::InvalidInput { reason: "Tier-0 channel does not call the
+> LLM" })`; `model_name()` → `"tier-zero-guard"`. This is the real semantic
+> guard — a mis-compiled Tier-0 recipe that reaches for the LLM surfaces as
+> `InvalidInput` and degrades to Tier-2 (per H.11), not a silent stub.
+> `#![allow(dead_code)]` module-wide (only constructed under `skills-db` in
+> H.12.4 wiring); 3 unit tests run under both configs. Verified: fmt + clippy
+> clean (default + skills-db); composition lib tests 674 default / 681
+> skills-db (+3 guard tests each).
+
 New module (or fold into H.12.4) implementing `brassclaw_engine::traits::
 LlmBackend`: `complete(..)` returns `Err(EngineError::InvalidInput { reason:
 "Tier-0 channel does not call the LLM" })`; `model_name()` returns
