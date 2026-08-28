@@ -374,6 +374,31 @@ descriptor field names before writing.
 
 ### H.12.2.5 — Composition: construct + wire the adapter in `runtime.rs`
 
+> ✅ **DONE.** Implemented `#[cfg(feature="skills-db")] pub(super) struct
+> TierZeroEffectExecutorBuilder` in `runtime/local_dev.rs` holding
+> `runtime`/`policy: Option<Arc<LocalDevCapabilityPolicy>>`/mounts×3/
+> `extension_surface_source`. `build_for_run(&LoopRunContext)` mirrors
+> `local_dev_visible_capability_request`: resolves `extension_id` via
+> `loop_driver_execution_extension_id`, snapshots the extension surface,
+> assembles grants + provider_trust via the two NEW shared helpers
+> `local_dev_grants_for` / `local_dev_provider_trust_for` (which return empty
+> when `policy` is None — the pure-PG path), bakes tenant/agent from
+> `run_context.scope` into `TierZeroExecutionContextFactory`, and returns
+> `Arc<ProductionEffectExecutor> as Arc<dyn EffectExecutor>`. Errors map to
+> `AgentLoopHostError` so H.12.4 can degrade to Tier 2. `local_dev_visible_capability_request`
+> was refactored to call the same two helpers (one source of truth for the
+> security-load-bearing provider_trust). The builder is constructed in BOTH
+> `capability_wiring` (local-dev: `Some(policy)` + real mounts + real surface
+> source) and `pg_capability_wiring` (pure-PG: `None` policy + `MountView::default()`
+> + `LocalDevExtensionSurfaceSource::new(None)`), and stored in a new
+> `#[cfg(feature="skills-db")] pub(super) tier_zero_executor_builder` field on
+> `LocalDevCapabilityWiring` for H.12.4 consumption. `new` is private (avoids a
+> `private_interfaces` warning from the `pub(in crate::runtime::local_dev)`
+> surface-source param). Q-H12-2-BUILD=A (per-run construction) + Q-H12-2-SNAP=A
+> (per-run held snapshot) + Q-H12-2-EFFECTS=A (empty effects) all honoured. Verified:
+> fmt clean; clippy clean default + skills-db; tests 671 default / 678 skills-db
+> (incl. the 2 new `build_for_run` tests added in H.12.2.6).
+
 At the `LocalDevCapabilityWiring` site (runtime.rs:2401-2468 / local_dev.rs:68-
 118), construct `Arc<ProductionEffectExecutor>` from the SAME `Arc<dyn
 HostRuntime>` + `fallback_user_id` + `policy` + mounts + `extension_surface_source`
@@ -392,6 +417,27 @@ off the adapter is not constructed (H.12.4 leaves `orchestrator_runtime = None`
 there). **Result:** a constructed production `EffectExecutor` ready for H.12.4.
 
 ### H.12.2.6 — Tests
+
+> ✅ **DONE.** All doc-listed categories were already covered by H.12.2.1–H.12.2.4
+> unit tests in `orchestrator_effect_executor.rs` (34 module tests under both
+> configs): `execute_action` dispatch + faithful arg capture
+> (`RecordingHostRuntime`), lease validation (invalid/expired/wrong-thread →
+> `LeaseExpired`/`LeaseDenied`/`Effect` and `invoke_capability` NOT called),
+> gate mapping (ApprovalRequired/AuthRequired/ResourceBlocked/Unknown →
+> `EngineError::Effect`; Failed → `is_error:true`; SpawnedProcess → process
+> handle), `available_actions`/`available_capabilities` projection + lease
+> filtering (`VisibilityHostRuntime`), `TierZeroExecutionContextFactory::build`
+> scope projection + `validate()`, and action-registry valid/invalid
+> `CapabilityId`. The ONLY untested H.12.2.5 artifact was
+> `TierZeroEffectExecutorBuilder::build_for_run`; added 2 `#[cfg(feature="skills-db")]
+> #[tokio::test]`s in `runtime/local_dev/tests.rs` (where the `pub(in crate::runtime)`
+> builder is reachable): one for the local-dev path (`Some(policy)` + real mounts +
+> real extension surface source) and one for the pure-PG path (`None` policy +
+> `MountView::default()` + `LocalDevExtensionSurfaceSource::new(None)`). Both drive
+> `build_for_run` then `available_actions(&[], ctx)` against the REAL host runtime,
+> asserting `Ok(empty)` (no leases held → no callable actions) — proving the
+> per-run assembly (extension-id + grants + provider-trust + surface-kind +
+> factory) composes into a live executor on both authority shapes.
 
 - `ProductionEffectExecutor::execute_action` dispatch: a mock `HostRuntime`
   (capture `invoke_capability` arg — every field: context.tenant_id/user_id/
@@ -416,6 +462,14 @@ Mock of `HostRuntime` MUST capture every argument the production caller passes
 module's `#[cfg(test)]` block. **Result:** regression coverage of the adapter.
 
 ### H.12.2.7 — Verify + mark done
+
+> ✅ **DONE.** `cargo fmt -p brassclaw_reborn_composition` clean; `cargo clippy -p
+> brassclaw_reborn_composition --all-targets -- -D warnings` clean (default);
+> `cargo clippy -p brassclaw_reborn_composition --all-targets --features skills-db
+> -- -D warnings` clean; `cargo test -p brassclaw_reborn_composition --lib` =
+> 671 passed (default); `cargo test -p brassclaw_reborn_composition --lib
+> --features skills-db` = 678 passed; composition `cargo check` clean both
+> configs. **H.12.2 is complete.** Resuming the parent H.12 subplan at H.12.3.
 
 `cargo fmt -p brassclaw_reborn_composition`; `cargo clippy -p
 brassclaw_reborn_composition --all-targets -- -D warnings` (default +

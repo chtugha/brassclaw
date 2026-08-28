@@ -7,8 +7,8 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use brassclaw_host_api::{
-    CapabilityId, ExecutionContext, ExtensionId, InvocationId, MountView, RuntimeKind, TrustClass,
-    UserId,
+    CapabilityId, CapabilitySet, ExecutionContext, ExtensionId, InvocationId, MountView,
+    RuntimeKind, TrustClass, UserId,
 };
 use brassclaw_host_runtime::{
     CapabilitySurfacePolicy, HostRuntime, SurfaceKind,
@@ -36,11 +36,17 @@ use brassclaw_turns::{
 };
 
 use crate::local_dev_capability_policy::LocalDevCapabilityPolicy;
+#[cfg(feature = "skills-db")]
+use crate::orchestrator_effect_executor::{
+    ProductionEffectExecutor, TierZeroActionRegistry, TierZeroExecutionContextFactory,
+};
 use crate::{
     RebornServices,
     projection::{CapabilityDisplayPreviewResult, CapabilityDisplayPreviewStore},
     runtime::LocalDevSelectableSkillContextSource,
 };
+#[cfg(feature = "skills-db")]
+use brassclaw_engine::EffectExecutor;
 
 mod extension_surface;
 #[cfg(test)]
@@ -62,6 +68,17 @@ pub(super) struct LocalDevCapabilityWiring {
     pub(super) capability_result_writer: Arc<dyn LoopCapabilityResultWriter>,
     pub(super) model_gateway: Arc<dyn HostManagedModelGateway>,
     pub(super) display_previews: Arc<CapabilityDisplayPreviewStore>,
+    /// Per-run Tier-0 [`EffectExecutor`] builder (Q-H12-2-BUILD = A). Built from
+    /// the same host runtime + policy + mounts the capability port factory
+    /// uses; H.12.4 (`OrchestratorLookup::run_tier_zero`) calls `build_for_run`
+    /// per turn to construct the production adapter the engine Monty VM
+    /// dispatches `__execute_action__` through. Absent entirely when
+    /// `skills-db` is off — the Tier-0 deterministic-execution path is
+    /// skills-db-gated, so the slot stays `None` → `NoOrchestrator` → Tier-2
+    /// degrade.
+    #[cfg(feature = "skills-db")]
+    #[allow(dead_code)] // read by H.12.4 (OrchestratorLookup::run_tier_zero)
+    pub(super) tier_zero_executor_builder: Arc<TierZeroEffectExecutorBuilder>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -82,6 +99,21 @@ pub(super) fn capability_wiring(
     let memory_mounts = local_runtime.memory_mounts.clone();
     let extension_surface_source =
         LocalDevExtensionSurfaceSource::new(local_runtime.extension_management.clone());
+    // Tier-0 effect executor builder (Q-H12-2-BUILD = A): built from the SAME
+    // host runtime + policy + mounts + extension surface source the
+    // `LocalDevLoopCapabilityPortFactory` below uses, so deterministic Tier-0
+    // execution and the LLM-driven capability port share one authority layer.
+    // The clones here are the only extra cost; the factory below moves the
+    // originals. Skills-db-gated: the Tier-0 path is off otherwise.
+    #[cfg(feature = "skills-db")]
+    let tier_zero_executor_builder = Arc::new(TierZeroEffectExecutorBuilder::new(
+        Arc::clone(&runtime),
+        Some(Arc::clone(&policy)),
+        workspace_mounts.clone(),
+        skill_mounts.clone(),
+        memory_mounts.clone(),
+        extension_surface_source.clone(),
+    ));
     let display_previews = Arc::new(CapabilityDisplayPreviewStore::default());
     let capability_io = Arc::new(LocalDevCapabilityIo::new_with_durable_previews(
         Arc::clone(&display_previews),
@@ -114,6 +146,8 @@ pub(super) fn capability_wiring(
         capability_result_writer,
         model_gateway,
         display_previews,
+        #[cfg(feature = "skills-db")]
+        tier_zero_executor_builder,
     })
 }
 
@@ -729,6 +763,169 @@ fn model_capability_io_error(error: AgentLoopHostError) -> HostManagedModelError
     HostManagedModelError::safe(HostManagedModelErrorKind::Unavailable, error.safe_summary)
 }
 
+/// Assemble the per-run capability grants for the loop-driver execution
+/// extension: `LocalDevCapabilityPolicy::builtin_grants` (workspace/skill/
+/// memory mount constraints) plus the snapshotted extension surface's active
+/// capability grants. Returns an empty [`CapabilitySet`] when no policy is
+/// configured (the pure-PG path), mirroring [`PgLoopCapabilityPortFactory`].
+///
+/// Shared by [`local_dev_visible_capability_request`] (LLM-driven capability
+/// port) and [`TierZeroEffectExecutorBuilder::build_for_run`] (deterministic
+/// Tier-0 port) so the two authority surfaces cannot drift.
+fn local_dev_grants_for(
+    policy: Option<&LocalDevCapabilityPolicy>,
+    extension_id: &ExtensionId,
+    workspace_mounts: &MountView,
+    skill_mounts: &MountView,
+    memory_mounts: &MountView,
+    extension_surface: &LocalDevExtensionSurface,
+) -> CapabilitySet {
+    let Some(policy) = policy else {
+        return CapabilitySet::default();
+    };
+    let mut grants =
+        policy.builtin_grants(extension_id, workspace_mounts, skill_mounts, memory_mounts);
+    grants.grants.extend(extension_surface.grants(extension_id));
+    grants
+}
+
+/// Assemble the per-run provider trust map: the builtin provider's trust
+/// decision (from `LocalDevCapabilityPolicy::provider`) plus the snapshotted
+/// extension surface's per-provider trust. Returns an empty map when no policy
+/// is configured (the pure-PG path), mirroring [`PgLoopCapabilityPortFactory`]
+/// (which supplies no provider trust).
+///
+/// Shared by [`local_dev_visible_capability_request`] and
+/// [`TierZeroEffectExecutorBuilder::build_for_run`] — provider trust is
+/// security-load-bearing, so the two surfaces must assemble it identically.
+fn local_dev_provider_trust_for(
+    policy: Option<&LocalDevCapabilityPolicy>,
+    extension_surface: &LocalDevExtensionSurface,
+) -> Result<BTreeMap<ExtensionId, TrustDecision>, AgentLoopHostError> {
+    let Some(policy) = policy else {
+        return Ok(BTreeMap::new());
+    };
+    let builtin_provider =
+        ExtensionId::new(policy.provider.id.as_str()).map_err(host_api_agent_loop_error)?;
+    let mut provider_trust = BTreeMap::new();
+    provider_trust.insert(
+        builtin_provider,
+        TrustDecision {
+            effective_trust: EffectiveTrustClass::user_trusted(),
+            authority_ceiling: AuthorityCeiling {
+                allowed_effects: policy.provider.authority_effects.clone(),
+                max_resource_ceiling: None,
+            },
+            provenance: TrustProvenance::AdminConfig,
+            evaluated_at: Utc::now(),
+        },
+    );
+    provider_trust.extend(extension_surface.provider_trust());
+    Ok(provider_trust)
+}
+
+/// Composition-owned builder that constructs a production Tier-0
+/// [`EffectExecutor`] for a single `run_tier_zero` turn from the long-lived
+/// host-runtime inputs shared with [`LocalDevLoopCapabilityPortFactory`].
+///
+/// Per Q-H12-2-BUILD = A the executor is built **per run**: tenant/agent/
+/// extension id/grants/provider trust are resolved from the per-turn
+/// [`LoopRunContext`] + a snapshotted extension surface (Q-H12-2-SNAP = A) at
+/// [`TierZeroEffectExecutorBuilder::build_for_run`] time, so every action
+/// within the run sees a coherent surface. The builder itself is constructed
+/// once (at the [`capability_wiring`] site) and held in
+/// [`LocalDevCapabilityWiring`] for H.12.4 (`OrchestratorLookup::run_tier_zero`)
+/// to call per turn.
+///
+/// Gated behind `skills-db`: the Tier-0 deterministic-execution path is
+/// skills-db-gated, so when the feature is off the builder is not constructed
+/// and the orchestrator slot stays `None` → `NoOrchestrator` → Tier-2 degrade.
+#[cfg(feature = "skills-db")]
+pub(super) struct TierZeroEffectExecutorBuilder {
+    runtime: Arc<dyn HostRuntime>,
+    policy: Option<Arc<LocalDevCapabilityPolicy>>,
+    workspace_mounts: MountView,
+    skill_mounts: MountView,
+    memory_mounts: MountView,
+    extension_surface_source: LocalDevExtensionSurfaceSource,
+}
+
+#[cfg(feature = "skills-db")]
+impl TierZeroEffectExecutorBuilder {
+    /// Private: only called from [`capability_wiring`] / [`pg_capability_wiring`]
+    /// in this module. Kept non-`pub` so its `LocalDevExtensionSurfaceSource`
+    /// parameter (which is `pub(in crate::runtime::local_dev)`) does not leak
+    /// through a wider-visible constructor.
+    fn new(
+        runtime: Arc<dyn HostRuntime>,
+        policy: Option<Arc<LocalDevCapabilityPolicy>>,
+        workspace_mounts: MountView,
+        skill_mounts: MountView,
+        memory_mounts: MountView,
+        extension_surface_source: LocalDevExtensionSurfaceSource,
+    ) -> Self {
+        Self {
+            runtime,
+            policy,
+            workspace_mounts,
+            skill_mounts,
+            memory_mounts,
+            extension_surface_source,
+        }
+    }
+
+    /// Build the production [`EffectExecutor`] for one `run_tier_zero` turn.
+    ///
+    /// Mirrors [`local_dev_visible_capability_request`]: the extension id comes
+    /// from `loop_driver_execution_extension_id`, grants from
+    /// `local_dev_grants_for`, provider trust from
+    /// `local_dev_provider_trust_for`, and tenant/agent from the run-context
+    /// scope. The per-action `user_id`/`project_id`/`thread_id` are projected
+    /// from the engine [`brassclaw_engine::ThreadExecutionContext`] inside
+    /// [`TierZeroExecutionContextFactory::build`], so they are not held here.
+    /// Errors map to [`AgentLoopHostError`] so H.12.4 can degrade to Tier 2
+    /// rather than rendering a half-built adapter.
+    #[allow(dead_code)] // wired into OrchestratorLookup::run_tier_zero in H.12.4
+    pub(super) async fn build_for_run(
+        &self,
+        run_context: &LoopRunContext,
+    ) -> Result<Arc<dyn EffectExecutor>, AgentLoopHostError> {
+        let extension_id = loop_driver_execution_extension_id(run_context)?;
+        let extension_surface = self
+            .extension_surface_source
+            .snapshot()
+            .await
+            .map_err(host_api_agent_loop_error)?;
+        let grants = local_dev_grants_for(
+            self.policy.as_deref(),
+            &extension_id,
+            &self.workspace_mounts,
+            &self.skill_mounts,
+            &self.memory_mounts,
+            &extension_surface,
+        );
+        let provider_trust =
+            local_dev_provider_trust_for(self.policy.as_deref(), &extension_surface)?;
+        let context_factory = Arc::new(TierZeroExecutionContextFactory::new(
+            run_context.scope.tenant_id.clone(),
+            run_context.scope.agent_id.clone(),
+            extension_id,
+            grants,
+        ));
+        let action_resolver = Arc::new(TierZeroActionRegistry::new());
+        let surface_kind = SurfaceKind::new("agent_loop").map_err(host_api_agent_loop_error)?;
+        let visibility_policy = CapabilitySurfacePolicy::allow_all();
+        Ok(Arc::new(ProductionEffectExecutor::new(
+            Arc::clone(&self.runtime),
+            context_factory,
+            action_resolver,
+            surface_kind,
+            provider_trust,
+            visibility_policy,
+        )) as Arc<dyn EffectExecutor>)
+    }
+}
+
 fn local_dev_visible_capability_request(
     run_context: &LoopRunContext,
     fallback_user_id: &UserId,
@@ -739,15 +936,14 @@ fn local_dev_visible_capability_request(
     extension_surface: &LocalDevExtensionSurface,
 ) -> Result<HostVisibleCapabilityRequest, AgentLoopHostError> {
     let extension_id = loop_driver_execution_extension_id(run_context)?;
-    let mut grants = policy.builtin_grants(
+    let grants = local_dev_grants_for(
+        Some(policy),
         &extension_id,
         &workspace_mounts,
         &skill_mounts,
         &memory_mounts,
+        extension_surface,
     );
-    grants
-        .grants
-        .extend(extension_surface.grants(&extension_id));
     let user_id = run_context
         .scope
         .explicit_owner_user_id()
@@ -773,22 +969,7 @@ fn local_dev_visible_capability_request(
     context.resource_scope.thread_id = context.thread_id.clone();
     context.validate().map_err(host_api_agent_loop_error)?;
 
-    let builtin_provider =
-        ExtensionId::new(policy.provider.id.as_str()).map_err(host_api_agent_loop_error)?;
-    let mut provider_trust = BTreeMap::new();
-    provider_trust.insert(
-        builtin_provider,
-        TrustDecision {
-            effective_trust: EffectiveTrustClass::user_trusted(),
-            authority_ceiling: AuthorityCeiling {
-                allowed_effects: policy.provider.authority_effects.clone(),
-                max_resource_ceiling: None,
-            },
-            provenance: TrustProvenance::AdminConfig,
-            evaluated_at: Utc::now(),
-        },
-    );
-    provider_trust.extend(extension_surface.provider_trust());
+    let provider_trust = local_dev_provider_trust_for(Some(policy), extension_surface)?;
 
     Ok(HostVisibleCapabilityRequest::new(
         context,
@@ -860,6 +1041,20 @@ pub(super) fn pg_capability_wiring(
     milestone_sink: Arc<dyn brassclaw_turns::run_profile::LoopHostMilestoneSink>,
 ) -> Option<LocalDevCapabilityWiring> {
     let runtime = services.host_runtime.clone()?;
+    // Tier-0 effect executor builder for the pure-PG path (Q-H12-2-BUILD = A):
+    // no `LocalDevCapabilityPolicy`, no mounts, no extension surface discovery
+    // — mirrors `PgLoopCapabilityPortFactory` (empty grants, allow-all policy,
+    // no provider trust). Only builtin capabilities are visible to Tier 0 here.
+    // Skills-db-gated: the Tier-0 path is off otherwise.
+    #[cfg(feature = "skills-db")]
+    let tier_zero_executor_builder = Arc::new(TierZeroEffectExecutorBuilder::new(
+        Arc::clone(&runtime),
+        None,
+        MountView::default(),
+        MountView::default(),
+        MountView::default(),
+        LocalDevExtensionSurfaceSource::new(None),
+    ));
     let display_previews = Arc::new(crate::projection::CapabilityDisplayPreviewStore::default());
     let capability_io = Arc::new(crate::product_live_adapters::ProductLiveCapabilityIo::new(
         Arc::clone(&display_previews),
@@ -883,6 +1078,8 @@ pub(super) fn pg_capability_wiring(
         capability_result_writer,
         model_gateway,
         display_previews,
+        #[cfg(feature = "skills-db")]
+        tier_zero_executor_builder,
     })
 }
 

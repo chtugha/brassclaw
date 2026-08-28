@@ -119,6 +119,14 @@ orchestrator.rs. **Result:** composition can format/parse the
 > `./subplan_problem_stepH12_2_of_saved_plan_to_v3.md` (Zenflow nested
 > sub-substep under the H.12 substep `d401cc45`). Execute H.12.2.1→H.12.2.7
 > one-by-one before resuming the H.12 subplan at H.12.3.
+>
+> ✅ **H.12.2 COMPLETE.** All seven sub-steps (H.12.2.1 factory, H.12.2.2 action
+> registry, H.12.2.3 `ProductionEffectExecutor::dispatch_action`, H.12.2.4
+> `available_actions`/`available_capabilities`, H.12.2.5 `TierZeroEffectExecutorBuilder`
+> + wiring into `LocalDevCapabilityWiring` for both local-dev and pure-PG paths
+> with `skills-db` gating, H.12.2.6 tests incl. 2 new `build_for_run` integration
+> tests, H.12.2.7 verification) are done. Verified: fmt + clippy clean (default +
+> skills-db); tests 671 default / 678 skills-db. Resuming the H.12 subplan at H.12.3.
 
 New `crates/brassclaw_reborn_composition/src/orchestrator_effect_executor.rs`
 implementing `brassclaw_engine::traits::EffectExecutor` over the production

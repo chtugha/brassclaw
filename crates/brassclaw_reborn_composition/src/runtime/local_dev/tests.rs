@@ -1775,4 +1775,120 @@ mod tests {
         assert_eq!(error.kind, HostManagedModelErrorKind::InvalidRequest);
         assert_eq!(error.safe_summary, "tool result replay content is missing");
     }
+
+    #[cfg(feature = "skills-db")]
+    use brassclaw_engine::{
+        ThreadExecutionContext,
+        gate::CancellingGateController,
+        types::project::ProjectId as EngineProjectId,
+        types::step::StepId,
+        types::thread::{ThreadId as EngineThreadId, ThreadType},
+    };
+    #[cfg(feature = "skills-db")]
+    use brassclaw_host_api::MountView;
+
+    #[cfg(feature = "skills-db")]
+    fn engine_thread_ctx(user_id: &str) -> ThreadExecutionContext {
+        ThreadExecutionContext {
+            thread_id: EngineThreadId::new(),
+            thread_type: ThreadType::Foreground,
+            project_id: EngineProjectId::new(),
+            user_id: user_id.to_string(),
+            step_id: StepId::new(),
+            current_call_id: None,
+            source_channel: None,
+            user_timezone: None,
+            thread_goal: None,
+            available_actions_snapshot: None,
+            available_action_inventory_snapshot: None,
+            conversation_scope: None,
+            gate_controller: CancellingGateController::arc(),
+            call_approval_granted: false,
+            conversation_id: None,
+        }
+    }
+
+    /// H.12.2.5: `TierZeroEffectExecutorBuilder::build_for_run` assembles a
+    /// production `EffectExecutor` from the same host runtime + local-dev
+    /// policy + mounts + extension surface source the
+    /// `LocalDevLoopCapabilityPortFactory` uses. With no leases held,
+    /// `available_actions` must answer `Ok(empty)` — proving extension-id
+    /// resolution + grants + provider-trust + surface-kind + the per-run
+    /// `TierZeroExecutionContextFactory` all compose into a live executor
+    /// against the REAL host runtime.
+    #[cfg(feature = "skills-db")]
+    #[tokio::test]
+    async fn tier_zero_builder_build_for_run_assembles_executor_for_local_dev_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let storage_root = dir.path().join("local-dev");
+        let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
+            "tier-zero-local-dev-owner",
+            storage_root.clone(),
+        ))
+        .await
+        .expect("local-dev services build");
+        let runtime = services.host_runtime.clone().expect("host runtime");
+        let local_runtime = services
+            .local_runtime
+            .as_ref()
+            .expect("local runtime substrate");
+        let policy = Arc::new(
+            crate::local_dev_capability_policy::local_dev_capability_policy()
+                .expect("policy parses"),
+        );
+        let builder = TierZeroEffectExecutorBuilder::new(
+            runtime,
+            Some(policy),
+            local_runtime.workspace_mounts.clone(),
+            local_runtime.skill_mounts.clone(),
+            local_runtime.memory_mounts.clone(),
+            LocalDevExtensionSurfaceSource::new(local_runtime.extension_management.clone()),
+        );
+        let run_context = run_context("tier-zero-local-dev").await;
+        let executor = builder
+            .build_for_run(&run_context)
+            .await
+            .expect("per-run tier-zero executor assembles");
+        let actions = executor
+            .available_actions(&[], &engine_thread_ctx("tier-zero-user"))
+            .await
+            .expect("available_actions answers on the assembled executor");
+        assert!(actions.is_empty(), "no leases held => no callable actions");
+    }
+
+    /// H.12.2.5 pure-PG path: `build_for_run` must also assemble when no
+    /// `LocalDevCapabilityPolicy` is configured (empty grants + empty
+    /// provider-trust via the shared `None`-policy helpers), matching the
+    /// `PgLoopCapabilityPortFactory` authority shape.
+    #[cfg(feature = "skills-db")]
+    #[tokio::test]
+    async fn tier_zero_builder_build_for_run_assembles_executor_for_pg_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let storage_root = dir.path().join("local-dev");
+        let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
+            "tier-zero-pg-path-owner",
+            storage_root.clone(),
+        ))
+        .await
+        .expect("local-dev services build");
+        let runtime = services.host_runtime.clone().expect("host runtime");
+        let builder = TierZeroEffectExecutorBuilder::new(
+            runtime,
+            None,
+            MountView::default(),
+            MountView::default(),
+            MountView::default(),
+            LocalDevExtensionSurfaceSource::new(None),
+        );
+        let run_context = run_context("tier-zero-pg-path").await;
+        let executor = builder
+            .build_for_run(&run_context)
+            .await
+            .expect("per-run tier-zero executor assembles on the pg path");
+        let actions = executor
+            .available_actions(&[], &engine_thread_ctx("tier-zero-pg-user"))
+            .await
+            .expect("available_actions answers on the assembled executor");
+        assert!(actions.is_empty(), "no leases held => no callable actions");
+    }
 }

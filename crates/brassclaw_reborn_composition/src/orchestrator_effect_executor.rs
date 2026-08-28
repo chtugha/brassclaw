@@ -15,9 +15,12 @@
 //! `runtime/local_dev.rs` (where those items are visible) and returns an
 //! `Arc<dyn EffectExecutor>` built from the types defined here.
 //!
-//! `dead_code` is allowed module-wide until the adapter is wired in H.12.2.5;
-//! the `#![allow(dead_code)]` is removed once the builder constructs these
-//! types in production.
+//! `dead_code` is allowed module-wide: the adapter is only **constructed** under
+//! the `skills-db` feature — the H.12.2.5 builder and the H.12.4
+//! `OrchestratorLookup::run_tier_zero` wiring are both
+//! `#[cfg(feature = "skills-db")]`-gated — so under the default feature set
+//! these types are defined-but-unused. The types themselves are
+//! feature-agnostic and their unit tests run under both configs.
 
 #![allow(dead_code)]
 
