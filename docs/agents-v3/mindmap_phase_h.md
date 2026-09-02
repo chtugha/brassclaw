@@ -236,8 +236,19 @@ plumbing.
   `step_link`/IBS as the machine form (untouched); add a concise
   human-readable explanation per variant (`RecipeVariant.description`) + Q1
   gate + WebUI surface. **Run FIRST.** **DONE (B.1–B.5; both configs green).**
-- [ ] **C — Model A retirement** subplan (R8): delete engine `ExecutionLoop`
-  recipe path + Python step-0 shims. Run after B.
+- [ ] **C — Monty-as-main-process reframe (Option 2, LOCKED).** Supersedes the
+  "Model A retirement" framing. Neither current model fits: Model A (Python
+  `run_loop` outer loop but LLM-driven) nor H.12 Model B/C (Rust agent-loop +
+  per-step Python sandbox — "Rust running the show"). Target: Monty (Python) is
+  THE one main process, recipe/intent-driven; **retire the Rust agent-loop stage
+  pipeline as the driver entirely**; Rust = pure host. Reworks shipped H.10–H.12.
+  Subplan rewritten
+  `subplan_problem_stepC_model_a_retirement_of_saved_plan_to_v3.md`.
+  Locked sub-decisions: D-C1 = **cross-turn persistent** (one VM/conversation) +
+  D-C2 = **restructure `default.py`** + **componentize host calls into
+  orchestrator skills** behind a uniform **HostSkill interface** (future
+  MCP-extension exposes them as MCP tools to an LLM helper; Rust loads
+  tools/toolskills on demand). Run after B (done).
 - [ ] **A — reshaped H.12.6** (collapse R1/R4/R6/R11, Tier-1 single injection)
   then **H.12.7**. Run after C.
 
@@ -287,3 +298,138 @@ plumbing.
   B.4 docs (`CLAUDE.md` + `03-recipe-system.md` §1.1); B.5 both configs green
   (default 599 / skills-db 610 lib tests, clippy clean). Next: **C** (Model A
   retirement subplan).
+- **C reframe (this turn — Option 2 LOCKED):** the H.12 production path
+  (`execute_tier_zero_channel`'s Rust `for step in &steps { execute_code }`) is
+  "Rust running the show, using Python only to execute each step separately" —
+  architecturally wrong. Neither Model A (Python `run_loop` but LLM-driven) nor
+  H.12 Model B/C (Rust drives) fits. Target: Monty (Python) = THE one
+  long-persisting main process, recipe/intent-driven; **retire the Rust
+  agent-loop stage pipeline as the driver entirely**; Rust = pure host
+  (capabilities/stores/retrieval/LLM-as-helper/sandbox); Rust must not do step
+  sequencing. Reworks shipped H.10–H.12. Grounded: host-fn surface (existing +
+  missing: `__resolve_intent__`/`__fetch_recipe__`/`__compose_orchestrator__`/
+  `__post_reply__`/`__save_history__`); current driver `TurnRunnerWorker` →
+  agent-loop stages (`canonical.rs`). CLAUDE.md + C subplan rewritten. Pending
+  sub-decisions D-C1 (per-turn vs cross-turn Monty session) + D-C2 (restructure
+  `default.py` vs new built-in orchestrator).
+- **Host-call dissection (this turn — for C.1 / builtin_stuff_v3 Step 27):** the
+  19 existing `__host_call__` intrinsics + 4 missing (`__resolve_intent__`/
+  `__compose_orchestrator__`/`__post_reply__`/`__save_history__`) dissected into
+  the EXISTING v3 vocab (Tool/ToolSkill/PythonCode/Skill/Recipe/Catalogue) — NO
+  invented "HostSkill". Disposition: **17 new `host.*` Tool rows**
+  (resolve_intent, compose_orchestrator, post_reply, llm_complete, retrieve_docs,
+  get_reduction_rules, get_actions, record_skill_usage, fetch_component,
+  resolve_component_by_name, validate_component, check_signals, emit_event,
+  save_checkpoint, transition_to, check_budget, log_budget_warning); **2 reuse**
+  (`__list_skills__`→`builtin.skill_list` Step 16; `__regex_match__`→`pc-regex-match`
+  Step 20.x.2); **3 meta-primitives** (no Tool row: `__execute_action__`/
+  `__execute_actions_parallel__`/`__execute_code_step__` — they ARE the dispatcher,
+  reusing Steps 1–19 + 27.*); **2 recipe-only over existing tools**
+  (`host-save-history`→`builtin.memory_write`; `host-assemble-prior-knowledge`→
+  `host.retrieve_docs`+`host.get_reduction_rules`+PythonCode). New catalogue
+  `builtin-host` (class 23). Rust `handle_*` backing fns STAY as the impl behind
+  the `host.*` Tool rows; Monty + future MCP share one `__execute_action__`
+  surface. **Authored (COMPLETE):** Step 27.0 reuse-map + 27.1 (resolve_intent) +
+  27.2 (compose_orchestrator) + 27.3 (post_reply) + 27.4 (save-history recipe) +
+  27.5 (llm_complete/retrieve_docs/get_reduction_rules) + 27.6 (dispatch
+  meta-primitives + get_actions) + 27.7 (component-store: record_skill_usage/
+  fetch_component/resolve_component_by_name/validate_component) + 27.8
+  (regex_match + list_skills reuse unification) + 27.9 (VM-control: check_signals/
+  emit_event/save_checkpoint/transition_to/check_budget/log_budget_warning) +
+  27.10 (recipes: host-assemble-prior-knowledge + host-non-match-llm-answer) +
+  27.11 (ExtensionCatalogue `builtin-host`) — all in `builtin_stuff_v3.md`, in
+  order. Next: Phase C Rust implementation (C.1–C.5).
+- **Orchestrator/Executioner re-think (this turn — user rejected the "two-layer
+  Rust-engine + recipe-layer" model as wrong):** BrassClaw has an **Orchestrator**
+  (Monty/Python — the brain; runs the one main process; reads Recipes/Instructions;
+  decides sequencing; assembles prompts; calls tools by name) and an **Executioner**
+  (Rust — the muscle; holds precompiled **Tools + ToolSkills**; executes one when
+  called; does NOT sequence; has NO recipes). Consequences that correct Step 27:
+  (1) **A host call is EITHER a Rust Tool/ToolSkill OR an Orchestrator Recipe —
+  not both.** Step 27's "Tool+ToolSkill+PythonCode+Skill+Recipe per host call"
+  5-tuple is a category error → bloat. (2) **`__host_call__`'s 23-arm `match`
+  (orchestrator.rs:641-801) IS the over-engineering** — it is a second, hardcoded
+  dispatch path parallel to `__execute_action__(name)` (:1064). The "complete
+  overhaul" = **one tool registry** so host capabilities register like any
+  first-party tool and the orchestrator invokes them by name through the SAME
+  `__execute_action__` surface. (3) **Bare Rust helpers must be dissected into
+  Tools/ToolSkills**, not hidden as intrinsics: `intent_system::resolve_intent`
+  → registered `host.resolve_intent`; `format_orchestrator_content` +
+  `parse_orchestrator_channel_steps` → registered `host.compose_orchestrator`.
+  (4) **Reclassify the 23:** genuine execution primitives (llm_complete,
+  retrieve_docs, get_reduction_rules, fetch_component, resolve_component_by_name,
+  record_skill_usage, validate_component, get_actions, check_signals, emit_event,
+  save_checkpoint, transition_to, check_budget, log_budget_warning) → registered
+  Tools/ToolSkills, NO recipe; multi-step compositions (non-match-llm-answer,
+  save-history, assemble-prior-knowledge) → **Orchestrator Recipes** calling
+  EXISTING tools, NO new Rust; `post_reply` → **Orchestrator Skill** (the act of
+  emitting the answer), not a Tool+Recipe pair; `__execute_action__`/
+  `__execute_actions_parallel__`/`__execute_code_step__` → the dispatcher itself
+  (meta-primitives, no row). (5) **"Rust created on call" = Rust only EXECUTES on
+  orchestrator call; new Rust = a new Tool/ToolSkill; there are NO recipes for
+  the Executioner.** (6) **Precompilation/on-demand answer:** Rust is AOT — true
+  runtime code-loading needs cdylib+`dlopen` plugins (future). PRACTICAL now:
+  tools are **statically precompiled into the binary** but held in a **registry**
+  and **resolved+bound by name on demand** via `__execute_action__`. "Loaded like
+  modules on demand" = registry lookup + lazy binding, NOT runtime compilation.
+  (7) **The Composition-System simplification the user is probing:** the IBS
+  two-channel split (`rust_steps` pre-loads ToolSkill binding / `orchestrator_steps`
+  runs PythonCode) may be **collapsible to one orchestrator channel** IF tools are
+  registry-resolved+bound inside `__execute_action__` in one step — the separate
+  `rust_steps` pre-load channel becomes redundant. This touches `build_instruction`
+  / `BuildInstruction` / `retrieval_source` / every Tier-0 recipe → a real design
+  decision, not a quick fix. **OPEN (need user lock):** D-C3 = unify host-call
+  match into the `__execute_action__` tool registry (the overhaul) AND D-C4 =
+  collapse IBS to single-channel orchestrator recipes (drop `rust_steps`
+  pre-load) — or keep two-channel and only do the registry unification.
+- **Meta-primitive challenge (this turn — user: "why would the orchestrator call
+  __execute_action__?"):** grounded that ALL THREE intrinsics
+  (`__execute_action__`/`__execute_code_step__`/`__execute_actions_parallel__`)
+  are consumed ONLY by `default.py` (the Model-A Python orchestrator being
+  retired) — `__execute_action__` :740/:807/:889, `__execute_code_step__` :1123
+  (the per-step Tier-0 executor = the retired Rust/Python per-step loop),
+  `__execute_actions_parallel__` :837/:1454. Proposal (pending user confirm):
+  (a) **`__execute_action__` string-intrinsic → GONE**; tools become
+  **first-class callables in the Monty namespace** — recipe PythonCode calls
+  `host.resolve_intent(user_input=...)` directly. The ONE thing that survives is
+  the **policy/lease/gate/event wrapper** now inside `handle_execute_action`
+  (:1254) — it moves INTO each `host.*` callable binding (transparent to the
+  orchestrator). (b) **Unification: the Monty namespace IS the tool registry** —
+  bind=load (static precompiled fn OR cdylib-loaded fn), call=execute (wrapper
+  runs), unbind=unload at end of main-process task. ONE mechanism; the future MCP
+  bridge uses the SAME registry (no Python intrinsic needed). (c)
+  **`__execute_code_step__` → GONE** (Model-A per-step relic; under Option 2 the
+  VM runs the recipe's PythonCode as one continuous program). (d)
+  **`__execute_actions_parallel__` → either a small Python helper
+  `pc-host-execute-parallel` calling several `host.*` callables concurrently, OR
+  a thin Rust intrinsic if shared gate/lease is easier** — OPEN (user pick).
+- **Two Tool Systems (this turn — user LOCKED):** (1) **built-in** tools +
+  ToolSkills precompiled into the Rust binary from the start; (2) **kohai/sempai-
+  minted** tools + ToolSkills compiled as **separate cdylib crates**, **loaded
+  dynamically at runtime, on demand by a Recipe, unloaded at the end of the
+  orchestrator main-process task.** Same registry/namespace mechanism as built-ins
+  — only the load source differs (static fn vs `dlopen`-ed cdylib). This is the
+  Composition-System de-bloat lever. TODO (next): add this as a plan step in
+  `saved_plan_to_v3.md`; rewrite `CLAUDE.md` + all plan steps to this architecture
+  (delete obsolete wrong-idea text).
+- **Wrapper removal → mode-driven security (this turn — user LOCKED):** the
+  `handle_execute_action` security wrapper (policy/lease/gate/event) is NOT
+  deleted; it becomes **mode-driven + operator-toggleable**. **Matching-Mode
+  (intent match → validated recipe): wrapper OFF by default** — a validated
+  recipe follows a distinct path; its tool calls (incl. outbound HTTP) execute as
+  intended, no runtime babysitter. **Non-Matching-Mode (LLM involved): wrapper ON
+  by default** — the LLM generates the path, so the runtime guard engages.
+  **WebUI: a global security-settings panel where each wrapper layer can be
+  disabled separately** (operator control per deployment). So the wrapper layers
+  exist as code, dispositioned by mode + operator toggles, not unconditionally
+  applied and not universal. **LOCKED (user final):** no babysitting of validated
+  components — **ALL runtime security OFF in Matching-Mode**, including
+  sensitive-tool self-scoping (filesystem/subprocess/HTTP/secret do NOT
+  scope-check on intent-match); validated Q2+ components execute as intended,
+  full stop. **Non-Matching-Mode (LLM involved): wrapper ON.** **Q1 components
+  are NEVER accessible** — they sit in the Queue-System; the SEC-01 gate returns
+  only Validated (Q2+) components to Rust/Orchestrator, so Q1 can never run and
+  is irrelevant to runtime security (no grace-period needed). **WebUI global
+  security panel: each wrapper layer operator-toggleable per deployment.**
+  Policy for the LLM-involved path = **bind-time namespace filtering** (compose
+  binds only profile+grant-permitted tools); Matching-Mode bypasses it.

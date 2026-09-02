@@ -5615,16 +5615,117 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > H.12.1→H.12.7 one-by-one before resuming Phase H at H.13.
 >
 > **Post-H.12.5 rethink — order B → C → A (user steer).** Phase H rethought:
-> one main process (agent-loop owns production, Model A retired); only the
+> Monty (Python) is the one long-persisting main process; the Rust agent-loop
+> stage pipeline is retired as the production driver (Step C.6); only the
 > basic mode's *beginning* is built-in, everything else is Instructions
 > (Recipe/Action); Tier 2 = recipe/instruction-driven non-match routine. The
 > dual-nature recipe syntax work (**Step B**) is sequenced **first**, then
-> **C** (Model A retirement), then **A** (reshaped H.12.6), then H.12.7. **B**
+> **C** (Orchestrator + Executioner reframe), then **A** (reshaped H.12.6), then
+> H.12.7. **B**
 > scope narrowed: the `step_link` formula stays as-is; the dual-nature need is
 > met by a concise human-readable explanation of what happens, carried
 > alongside the machine `step_link`/IBS form. Full approach + B.1–B.5 +
 > decisions D-B1/D-B2 in
 > `./docs/agents-v3/subplan_problem_stepB_recipe_syntax_of_saved_plan_to_v3.md`.
+> **B DONE** (B.1–B.5; both configs green; shipped in commit `91d57716`).
+>
+> **Step C — REFRAMED (Orchestrator + Executioner, LOCKED 2026-09-02):**
+> Supersedes both "Model A retirement" and the prior "Option 2 / HostSkill"
+> framing. BrassClaw has an **Orchestrator** (Monty/Python — brain; one
+> long-persisting main process per user input; recipe/intent-driven; calls tools
+> by name; assembles every LLM prompt) and an **Executioner** (Rust — muscle;
+> precompiled **Tools + ToolSkills**; executes on call; no sequencing; no
+> recipes; new Rust = a new Tool/ToolSkill). The Rust agent-loop stage pipeline
+> (`canonical.rs`) is RETIRED as the production driver entirely; its stage
+> *logic* is reused as host fns Monty calls.
+>
+> **Tool invocation = first-class callables (no `__execute_action__`):** tools
+> are bound into the Monty namespace; recipe PythonCode calls
+> `host.resolve_intent(user_input=…)` directly. **No `__execute_action__`
+> string-intrinsic, no `__execute_code_step__`** (Model-A relics);
+> `__execute_actions_parallel__` → a Python helper calling several `host.*`
+> callables concurrently. **The Monty namespace IS the tool registry**
+> (bind=load, call=execute, unbind=unload at task end). The `__host_call__`
+> 23-arm `match` (`orchestrator.rs:641-801`) is retired into this registry; host
+> capabilities register like any first-party tool. Bare Rust helpers
+> (`intent_system::resolve_intent`, `format_orchestrator_content`/
+> `parse_orchestrator_channel_steps`) are dissected into registered Tools
+> (`host.resolve_intent`, `host.compose_orchestrator`).
+>
+> **Reclassify the 23 host calls:** execution primitives (llm_complete,
+> retrieve_docs, get_reduction_rules, fetch_component, resolve_component_by_name,
+> record_skill_usage, validate_component, get_actions, check_signals, emit_event,
+> save_checkpoint, transition_to, check_budget, log_budget_warning, +
+> resolve_intent, compose_orchestrator) → registered Tools/ToolSkills, **no
+> recipe**; multi-step compositions (non-match-llm-answer, save-history,
+> assemble-prior-knowledge) → **Orchestrator Recipes** over existing tools, **no
+> new Rust**; `post_reply` → **Orchestrator Skill**; `__execute_action__`/
+> `__execute_code_step__` → gone; `__execute_actions_parallel__` → Python helper.
+>
+> **Two Tool Systems (LOCKED):** (1) **built-in** Tools + ToolSkills precompiled
+> into the Rust binary from the start; (2) **kohai/sempai-minted** Tools +
+> ToolSkills compiled as **separate cdylib crates**, **loaded dynamically at
+> runtime on demand by a recipe** (via `dlopen`), bound into the same namespace,
+> **unloaded at the end of the orchestrator main-process task**. Same binding
+> mechanism; only the load source differs.
+>
+> **Runtime security — mode-driven (LOCKED):** no universal per-call wrapper.
+> **Matching-Mode (intent match → Q2+ validated component): ALL runtime security
+> OFF** — validated components execute as intended (incl. outbound HTTP), no
+> wrapper, no sensitive-tool self-scoping. **Non-Matching-Mode (LLM involved):
+> wrapper ON.** **Q1 components are never accessible** (Queue-System + SEC-01
+> gate returns only Q2+) — irrelevant to runtime security. **WebUI: global
+> security-settings panel, each wrapper layer operator-toggleable.** LLM-path
+> policy = **bind-time namespace filtering** (compose binds only profile+grant-
+> permitted tools); Matching-Mode bypasses it.
+>
+> **Locked sub-decision kept:** D-C1 = **cross-turn persistent** Monty session
+> (one VM per conversation). **D-C2 (HostSkill interface) SUPERSEDED** by the
+> first-class-callable / namespace-registry model. Grounded: current driver
+> `TurnRunnerWorker` → `AgentLoopDriverRunRequest` → `loop_driver_host` →
+> `canonical.rs::execute`; host-fn surface `orchestrator.rs:641-801`.
+>
+> **Implementation steps (one-by-one; commit+push each):**
+> - **C.1 — Tool registry + first-class callables.** Replace the `__host_call__`
+>   23-arm `match` with a tool registry; bind host capabilities as first-class
+>   callables in the Monty namespace (recipe PythonCode calls `host.<name>(…)`
+>   directly). Retire `__execute_action__` + `__execute_code_step__`; reduce
+>   `__execute_actions_parallel__` to a Python helper. Dissect
+>   `intent_system::resolve_intent` + the fetch/split formatters into registered
+>   `host.resolve_intent` / `host.compose_orchestrator` tools.
+> - **C.2 — Reclassify the 23 host calls.** Register the 16 execution primitives
+>   as Tools/ToolSkills (no recipe); convert non-match-llm-answer / save-history /
+>   assemble-prior-knowledge into Orchestrator Recipes over existing tools (no
+>   new Rust); make `post_reply` an Orchestrator Skill. Drop the per-call
+>   `handle_execute_action` wrapper.
+> - **C.3 — Two Tool Systems: cdylib dynamic loading.** Built-in tools stay
+>   precompiled; add the cdylib load/unload path (`dlopen`) for
+>   kohai/sempai-minted Tools+ToolSkills, bound into the same namespace on demand
+>   by a recipe and unloaded at main-process task end.
+> - **C.4 — Mode-driven security + WebUI panel.** Matching-Mode = all security
+>   off (Q2+ validated components execute as intended); Non-Matching-Mode =
+>   wrapper on; bind-time namespace filtering for the LLM path; add the global
+>   security-settings WebUI panel (per-layer toggles).
+> - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
+>   (receive input → `host.resolve_intent` → dispatch). Match →
+>   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls
+>   / Tier-1 prior-knowledge + `host.llm_complete` helper). No-match →
+>   prompt-assembly recipe + `host.llm_complete` + answer. Answer → `post_reply`
+>   skill → `host-save-history` recipe → kohai/sempai.
+> - **C.6 — Production driver switch.** Replace `TurnRunnerWorker` → agent-loop
+>   stages with `TurnRunnerWorker` → one cross-turn persistent Monty session
+>   (D-C1) running the basic-mode orchestrator. Retire `canonical.rs` stage
+>   pipeline as the driver; reuse stage logic as host fns.
+> - **C.7 — Retire dead Model-A code + verify both configs green.** Delete
+>   `execute_orchestrator`/`ExecutionLoop`/`ThreadManager`/`brassclaw_engine::
+>   runtime` + Model-A engine tests; rework the H.12 `orchestrator_lookup` bridge
+>   (Monty calls host fns directly). `CARGO_TARGET_DIR=/Users/ollama/brassclaw-
+>   target` on every build; `df -h` first — `cargo clean` (scoped `-p` ok) if
+>   Avail<15GB or >90%. Mark C done; commit + push; proceed to **A**.
+>
+> Subplan doc
+> `./docs/agents-v3/subplan_problem_stepC_model_a_retirement_of_saved_plan_to_v3.md`
+> to be rewritten to match C.1–C.7.
 >
 > **H.12.5 spawned a further nested subplan — real PG-backed engine
 > `Store::load_thread`.** Grounding H.12.5 surfaced that no production engine

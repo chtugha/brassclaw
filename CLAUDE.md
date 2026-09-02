@@ -241,6 +241,44 @@ anything itself — it only writes Python that Monty runs in the sandbox. The LL
 is consulted only when creative reasoning, content composition, or user
 confirmation is genuinely required.
 
+**Execution model — Orchestrator + Executioner (locked 2026-09-02):**
+BrassClaw has an **Orchestrator** and an **Executioner**.
+
+- **Orchestrator (Monty, Python)** is the brain and the sole execution
+  authority. It runs **one long-persisting main process per user input**
+  (start → intent → match/no-match → answer → history → exit), recipe/
+  intent-driven. It reads Recipes/Instructions, sequences steps, assembles
+  every LLM prompt, and **calls tools by name**. It never executes Rust
+  directly — it calls tools.
+- **Executioner (Rust)** is the muscle. It holds **precompiled Tools +
+  ToolSkills** and executes one when the Orchestrator calls it, returning a
+  result. It does **no step sequencing** and has **no recipes**. New Rust = a
+  new Tool or ToolSkill, nothing else. ("Rust is created on call" = Rust only
+  *executes* on an Orchestrator call; there are normally no recipes for the
+  Executioner.)
+
+**Tool invocation — first-class callables (no `__execute_action__`):** tools are
+**first-class callables in the Monty namespace**. A recipe's PythonCode calls a
+tool directly, e.g. `result = host.resolve_intent(user_input=text)`. Invoking
+the binding crosses into Rust, which runs the tool and returns. There is **no
+`__execute_action__` string-intrinsic** and **no `__execute_code_step__`** (the
+latter was a Model-A per-step relic, retired). `__execute_actions_parallel__`
+becomes a small Python helper that calls several `host.*` callables concurrently.
+
+**The Monty namespace IS the tool registry:** bind = load, call = execute,
+unbind = unload at the end of the main-process task. The future MCP bridge hits
+the same registry — no Python intrinsic needed. The `__host_call__` 23-arm
+`match` (`orchestrator.rs:641-801`) is retired into this registry; host
+capabilities register like any first-party tool. Bare Rust helpers
+(`intent_system::resolve_intent`, `format_orchestrator_content` /
+`parse_orchestrator_channel_steps`) are dissected into registered Tools
+(`host.resolve_intent`, `host.compose_orchestrator`), not hidden intrinsics.
+
+The Rust agent-loop stage pipeline (`canonical.rs` stages) is retired as the
+production driver entirely; its stage *logic* (prompt assembly, capability
+dispatch) is reused as host fns Monty calls. Detail + steps in
+`./docs/agents-v3/subplan_problem_stepC_model_a_retirement_of_saved_plan_to_v3.md`.
+
 #### One single main process (ground truth)
 
 From the user input that triggers the InputStage, the **entire processing of
@@ -334,13 +372,43 @@ it*, etc., until the prompt is finally created.
 The **kohai is always the last one** working on an LLM prompt, because it
 **exchanges the placeholders with the prefix prompts**.
 
-#### Two-channel execution model (Matching-Mode recipes)
+#### The two Tool Systems
 
-Mandatory for Tier-0 recipes:
-```
-channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute)
-channel: "orchestrator"   → PythonCode calls __execute_action__() to run the tool
-```
+A recipe declares the tools it needs; the composition system **binds** them into
+the Monty namespace for that run; the Orchestrator calls them by name; they are
+**unbound (unloaded) at the end of the main-process task**.
+
+- **Built-in Tools + ToolSkills** — precompiled into the Rust binary from the
+  start; bound to static Rust fns.
+- **Kohai/sempai-minted Tools + ToolSkills** — compiled as **separate cdylib
+  crates**, **loaded dynamically at runtime on demand by a recipe** (via
+  `dlopen`), bound into the same namespace, and unloaded at task end.
+
+Same binding mechanism; only the load source differs (static fn vs cdylib).
+
+#### Runtime security — mode-driven, no babysitting of validated components
+
+There is **no universal per-call security wrapper** (the old
+`handle_execute_action` policy/lease/gate/event wrapper is retired as a
+per-call babysitter). Security is **mode-driven + operator-toggleable**:
+
+- **Matching-Mode (intent match → a Q2+ validated component): ALL runtime
+  security OFF.** A validated component follows a distinct, audited path; its
+  tool calls — including outbound HTTP — **execute as intended**, with no
+  wrapper and no per-tool self-scoping. Validated components are trusted.
+- **Non-Matching-Mode (an LLM is involved): wrapper ON.** The policy/lease/
+  gate/event layers engage because the LLM generates the path. (Also applies to
+  the Validation-System, Component-Creation-System, and kohai/sempai paths —
+  anywhere an LLM drives execution.)
+- **Q1 components are never accessible.** They sit in the Queue-System; the
+  SEC-01 validation gate returns only **Validated (Q2+)** components to Rust /
+  the Orchestrator. So Q1 is irrelevant to runtime security — it can never run.
+- **WebUI: a global security-settings panel** where an operator can **disable
+  each wrapper layer separately** per deployment.
+
+Policy for the LLM-involved path is applied at **bind time** (the composition
+system binds only the tools the runtime profile + user grants permit) rather
+than per call. Matching-Mode validated components bypass bind-time filtering.
 
 #### Components are the crucial thing
 
@@ -425,7 +493,7 @@ State transitions enforced by `is_valid_transition` in `brassclaw_product_workfl
 
 ### Monty VM Settings (§3.10)
 
-`PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (V034 migration). `max_duration_secs` is threaded from DB through `ThreadManager` → `ExecutionLoop` → `execute_orchestrator` as `max_duration_override: Option<Duration>`. The legacy `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` env var is a DB-less fallback only.
+`PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (V034 migration). `max_duration_secs` bounds the Orchestrator's main-process turn. The legacy `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` env var is a DB-less fallback only. (The old `ThreadManager` → `ExecutionLoop` → `execute_orchestrator` threading path was Model-A and is retired.)
 
 ### PKC Formatting Split (§3.13/§3.14)
 
