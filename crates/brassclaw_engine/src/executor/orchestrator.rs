@@ -809,8 +809,19 @@ pub async fn execute_orchestrator(
                     // bare tool name, method_call is true, and args[0] is the `host`
                     // Dataclass (self). Skip args[0]; kwargs are untouched. These arms
                     // reuse the existing Rust handlers verbatim — wiring, not new logic.
-                    // The 4 net-new handlers (resolve_intent, compose_orchestrator,
-                    // kohai_complete, post_reply) are added in the next C.1 slice.
+                    // Net-new handlers land inline as they are implemented: resolve_intent
+                    // (Phase 2) is done; compose_orchestrator / kohai_complete / post_reply
+                    // follow in the next C.1 slices.
+                    "resolve_intent" if call.method_call => {
+                        handle_resolve_intent(
+                            &args[1..],
+                            kwargs,
+                            thread,
+                            #[cfg(feature = "skills-db")]
+                            pg_pool,
+                        )
+                        .await
+                    }
                     "fetch_component" if call.method_call => {
                         handle_fetch_component(
                             &args[1..],
@@ -2886,6 +2897,93 @@ async fn handle_resolve_component_by_name(
 
     #[cfg(not(feature = "skills-db"))]
     ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+}
+
+/// Handle `host.resolve_intent(user_input=...)` — Phase 2 of the basic-mode
+/// main process. The whole intent system is ONE Tool: this wraps the existing
+/// `intent_system::resolve_intent` SQL fn (`reborn_intent_inputs` lookup) —
+/// wiring, not new logic. Returns a Python dict the orchestrator dispatches on:
+///   `{"status":"match","component_id":..,"component_class_code":..,
+///     "step_link":<str|null>,"component_name":..}`
+///   `{"status":"disambiguation","candidates":[..]}`
+///   `{"status":"no_match"}`
+///   `{"status":"error","error":..}`
+/// `skills-db`-gated: no skills DB → no intent table → `no_match` (semantically
+/// correct — the run falls through to Non-Matching-Mode / the LLM path). Scope
+/// is built from the thread's real identity (`thread.tenant_id` /
+/// `thread.agent_id` — F.1/F.3), mirroring `handle_fetch_component`.
+async fn handle_resolve_intent(
+    _args: &[MontyObject],
+    _kwargs: &[(MontyObject, MontyObject)],
+    _thread: &Thread,
+    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+) -> ExtFunctionResult {
+    #[cfg(feature = "skills-db")]
+    {
+        use crate::memory::intent_system::{IntentResolution, IntentScope, resolve_intent};
+
+        let user_input = match extract_string_arg(_args, _kwargs, "user_input", 0) {
+            Some(s) => s,
+            None => {
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    "status": "no_match",
+                    "error": "missing user_input",
+                })));
+            }
+        };
+        let Some(pool) = pg_pool else {
+            return ExtFunctionResult::Return(json_to_monty(
+                &serde_json::json!({"status":"no_match"}),
+            ));
+        };
+        let scope = IntentScope {
+            tenant_id: _thread.tenant_id.clone(),
+            user_id: _thread.user_id.clone(),
+            agent_id: _thread.agent_id.clone(),
+            project_id: _thread.project_id.to_string(),
+        };
+        match resolve_intent(pool, &scope, &user_input).await {
+            Ok(IntentResolution::Match {
+                component_id,
+                component_class_code,
+                step_link,
+                component_name,
+            }) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                "status": "match",
+                "component_id": component_id.to_string(),
+                "component_class_code": component_class_code,
+                "step_link": step_link,
+                "component_name": component_name,
+            }))),
+            Ok(IntentResolution::Disambiguation { candidates }) => {
+                let cands: Vec<serde_json::Value> = candidates
+                    .into_iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "component_id": c.component_id.to_string(),
+                            "component_class_code": c.component_class_code,
+                            "score": c.score,
+                            "class_label": c.class_label,
+                        })
+                    })
+                    .collect();
+                ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    "status": "disambiguation",
+                    "candidates": cands,
+                })))
+            }
+            Ok(IntentResolution::NoMatch) => ExtFunctionResult::Return(json_to_monty(
+                &serde_json::json!({"status":"no_match"}),
+            )),
+            Err(e) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                "status": "error",
+                "error": e.to_string(),
+            }))),
+        }
+    }
+
+    #[cfg(not(feature = "skills-db"))]
+    ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"status":"no_match"})))
 }
 
 /// The Capitalized category label for a component `class_code`, used as the
