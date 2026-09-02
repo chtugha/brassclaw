@@ -12491,10 +12491,11 @@ producing duplicate rows.
 > step's PythonCode calls a ToolSkill directly, e.g.
 > `result = host.resolve_intent(user_input=text)`. The rust-channel step binds the
 > ToolSkill into the Monty namespace; the orchestrator-channel PythonCode calls
-> the bound callable. `__execute_action__` / `__execute_code_step__` are
-> **retired** (Model-A relics); `__execute_actions_parallel__` becomes a Python
-> helper. A future MCP bridge hits the **same namespace-registry surface** — no
-> string-intrinsic needed.
+> the bound callable. `__execute_action__` / `__execute_code_step__` /
+> `__execute_actions_parallel__` are all **retired** (Model-A relics; Monty is
+> single-threaded so a parallel helper would degrade to sequential anyway — "call
+> N tools" is a sequential recipe with N steps). A future MCP bridge hits the
+> **same namespace-registry surface** — no string-intrinsic needed.
 >
 > The Rust backing fns (`handle_*` in `orchestrator.rs`) **stay** as the
 > implementation behind the `host.*` Tool rows — **except** `handle_llm_complete`
@@ -12888,14 +12889,16 @@ tier:              0
 > LLM-guided flow in 27.10. See the 27.0 table + CLAUDE.md "LLM invocation =
 > Kohai-mediated".
 
-### Step 27.6 — Dispatch meta-primitives + action inventory — RETIRED except the parallel helper (LOCKED)
+### Step 27.6 — Dispatch meta-primitives + action inventory — RETIRED (LOCKED)
 
 > Under the locked architecture tools are **first-class callables in the Monty
 > namespace** — a recipe's PythonCode calls `host.<name>(…)` directly (see the
 > 27.0 table + intro). So the string-intrinsic dispatchers and the per-step
 > sandbox executor are **RETIRED**, and the action-inventory tool is **RETIRED**
-> (the bound namespace already exposes the callable tools). Only the
-> **parallel-dispatch helper** survives, as a Python helper (not a Rust intrinsic).
+> (the bound namespace already exposes the callable tools). The
+> **parallel-dispatch meta-primitive is RETIRED too** — Monty is single-threaded,
+> so a parallel helper would degrade to sequential anyway; "call N tools" is a
+> sequential recipe with N steps.
 >
 > **RETIRED (no Tool row, no intrinsic, no component):**
 > - `__execute_action__(name, params, call_id=…)` — **RETIRED**. Tools are called
@@ -12913,23 +12916,13 @@ tier:              0
 >   advertises tools from the same namespace registry — no `get_actions` verb
 >   required.)
 >
-> **KEPT — Python helper (not a Rust intrinsic):**
+#### Step 27.6.1 — `__execute_actions_parallel__` — RETIRED (LOCKED)
 
-#### Step 27.6.1 — `pc-host-execute-parallel` PythonCode helper (class 22)
-```python
-# Channel: orchestrator | Class: 22 | No I/O, no imports.
-# Thin convenience helper: call several host.* first-class callables concurrently.
-# {{vars.slot0}} = a list of {name, args} dicts (IBS-baked before execution).
-# Each entry dispatches to the bound callable in the Monty namespace.
-results = __execute_actions_parallel__({{vars.slot0}})
-```
-
-> Implementation note: `__execute_actions_parallel__` is a small Python helper
-> that fans out to the bound `host.*` callables concurrently and gathers their
-> results — it is no longer a Rust meta-primitive routing through
-> `__execute_action__`. If a shared gate/lease batch ever proves cheaper in Rust,
-> a thin Rust intrinsic can be added later as a new Tool; until then it stays
-> Python-side.
+> **RETIRED.** Monty is single-threaded, so a parallel-dispatch helper would
+> degrade to sequential anyway. "Call N tools" is a sequential recipe with N
+> steps — each step calls its `host.<name>(…)` first-class callable directly.
+> No Tool row, no ToolSkill, no PythonCode helper, no Skill. (The Rust
+> meta-primitive + its handler were deleted in C.1.)
 
 ### Step 27.7 — Component-store host calls (SEC-01 fetch + validation queue)
 
@@ -13389,7 +13382,7 @@ overview_doc: |
   - host.get_actions / host.record_skill_usage — RETIRED (Q-D: Orchestrator owns its run)
   - host.emit_event / host.save_checkpoint / host.transition_to / host.check_budget / host.log_budget_warning — RETIRED (Q-D: Orchestrator owns thread state; chat via host.post_reply)
   - __execute_action__ / __execute_code_step__ — RETIRED meta-primitives (first-class callables)
-  - __execute_actions_parallel__ — KEPT as the Python helper pc-host-execute-parallel (not a Rust intrinsic)
+  - __execute_actions_parallel__ — RETIRED (Monty is single-threaded; "call N tools" = a sequential recipe with N steps)
 
 task_groups:
   - group_name:  "main-process-control"
@@ -13424,7 +13417,6 @@ child_component_ids: [
   "<uuid:pc-host-regex-match>",
   "<uuid:host.check_signals>",             "<uuid:ts-host-check-signals>",
   "<uuid:pc-host-check-signals>",          "<uuid:skill-host-check-signals>",
-  "<uuid:pc-host-execute-parallel>",
   "<uuid:host-assemble-prior-knowledge recipe>",
   "<uuid:host-non-match-llm-answer recipe>"
 ]

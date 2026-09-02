@@ -262,8 +262,9 @@ BrassClaw has an **Orchestrator** and an **Executioner**.
 tool directly, e.g. `result = host.resolve_intent(user_input=text)`. Invoking
 the binding crosses into Rust, which runs the tool and returns. There is **no
 `__execute_action__` string-intrinsic** and **no `__execute_code_step__`** (the
-latter was a Model-A per-step relic, retired). `__execute_actions_parallel__`
-becomes a small Python helper that calls several `host.*` callables concurrently.
+latter was a Model-A per-step relic, retired). `__execute_actions_parallel__` is
+**retired** too — Monty is single-threaded, so a parallel helper would degrade to
+sequential anyway; "call N tools" is a sequential recipe with N steps.
 
 **The Monty namespace IS the tool registry:** bind = load, call = execute,
 unbind = unload at the end of the main-process task. The future MCP bridge hits

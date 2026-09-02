@@ -84,10 +84,12 @@ result = __execute_action__("tool_name", {"param": "{{vars.slot0}}"})
 
 | Symbol | Purpose |
 |--------|---------|
-| `__execute_action__(name, params)` | Call a registered tool/capability |
-| `__execute_actions_parallel__(calls)` | Parallel tool calls (`[{name, params}, …]`) |
-| `__check_budget__()` | Check remaining time/token budget |
-| `__emit_event__(kind, **data)` | Emit a structured event |
+| `host.<tool>(...)` | Call a registered host tool/capability as a first-class callable (the rust-channel step binds it into the Monty namespace) |
+
+The retired `__execute_action__` / `__execute_code_step__` /
+`__execute_actions_parallel__` meta-primitives (and the `__check_budget__` /
+`__emit_event__` stage-machinery verbs) are gone — recipe PythonCode calls
+`host.<name>(...)` directly. See `builtin_stuff_v3.md` Step 27.
 
 **Required:** the body must assign `result = <value>` before returning.
 **Forbidden:** `import os`, `import subprocess`, `exec(`, `eval(`, `open(` — scanned at Q1.

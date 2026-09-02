@@ -720,3 +720,30 @@ plumbing.
   (`docs/agents-v3/subplan_problem_stepC2_builtin_seed_of_saved_plan_to_v3.md`). 27.6.1
   `pc-host-execute-parallel` in the spec is STALE (user retired `__execute_actions_parallel__`
   entirely in portion 102/103) → correct to RETIRED, do NOT seed.
+- **C.2 SLICE 0 — MECHANISM GROUNDING (this turn, read-only).** Read the FULL Step 27 spec
+  (`builtin_stuff_v3.md:12439-13449`): 8 net-new `host.*` Tool rows (cl 0) + their ToolSkills
+  (cl 13) + PythonCode (cl 22) + leaf Skills (cl 1) + 6 internal Recipes (cl 21) [resolve-intent,
+  compose-and-run-orchestrator, post-reply, save-history, assemble-prior-knowledge, non-match-llm-answer]
+  + 1 `builtin-host` catalogue (cl 23) + 1 `pc-host-execute-parallel` helper (STALE→drop). Storage
+  map CONFIRMED: cl 0 → `reborn_tools` (V030; cols name/description/param_schema/param_template/
+  effect_type/preconditions/error_handling/consumer_tags/source/validation_status; NOT in the V061
+  components registry → `class_code_to_table(0)==None`, no retrieval, but the table EXISTS); cl 1 →
+  `reborn_skills` (`DbSkillStore::insert`, brassclaw_skills/src/db_store.rs:416); cl 13 →
+  `reborn_tool_skills` (V037); cl 21 → `reborn_recipes` (`PgRecipeStore::insert`+`NewPgRecipe`,
+  pg_recipe_store.rs:281); cl 22 → `reborn_python_code` (`NewPgPythonCode`+`insert`,
+  pg_python_code_store.rs:140/228); cl 23 → `reborn_extension_catalogues`
+  (`PgExtensionCatalogueStore::insert`+`NewPgExtensionCatalogue`, pg_extension_catalogue_store.rs:255).
+  **Validated-status bypass = direct insert with `validation_status='validated'`** (confirmed: every
+  class table has `'validated'` in its CHECK enum; tests insert rows with `'validated'` directly,
+  e.g. fetch_for_turn.rs:226 — no `update_validation_status` call needed for builtins). **Boot wiring
+  point = `webui.rs:135-149`** (`#[cfg(all(root-llm-provider,postgres))]` block has `services.pg_pool`;
+  the host-components seed only needs `postgres` → its own `#[cfg(feature="postgres")] if let Some(pool)`
+  block alongside, `seed_builtin_host_components(pool, tenant_id)`). **INSERT-API GAP:** cl 1/21/22/23
+  have typed `New*`+insert store fns; cl 0 `reborn_tools` is READ-ONLY (`DbToolSource::
+  fetch_tool_names`, skills-db gated — NO insert fn) and cl 13 `reborn_tool_skills` has NO production
+  insert (only test raw-SQL); `component_import.rs` inserts into NEITHER (no reusable helper). → FORK
+  for the seed's cl 0/13 inserts: (A) raw SQL `INSERT ... ON CONFLICT (scope,name) DO NOTHING` inside
+  the seed fn (matches the test pattern; leanest; no new store module) OR (B) create `pg_tool_store.rs`
+  + `pg_tool_skill_store.rs` with `NewPgTool`/`NewPgToolSkill` insert structs (idiomatic, mirrors
+  `NewPgRecipe`, but +2 store modules for a one-off seed). User steer pending. Also: 27.6.1 + the 27.11
+  catalogue (line 13392 + child_component_ids 13427) must drop `pc-host-execute-parallel` (STALE).
