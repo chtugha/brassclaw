@@ -569,3 +569,36 @@ plumbing.
     → `handle_compose_orchestrator`; add `handle_kohai_complete` (interceptor ingress)
     + `handle_post_reply`. **Next:** implement C.1 starting with the `host` namespace
     injection + registry dispatch skeleton.
+- **C.1 SLICE 1 SHIPPED (`6a1d9d63`, this turn) — `host.resolve_intent` first-class
+  callable.** First net-new handler: wraps the existing
+  `intent_system::resolve_intent` SQL fn (the whole intent system = ONE Tool —
+  wiring, not new logic). Mirrors `handle_fetch_component`'s cfg pattern:
+  `#[cfg(feature="skills-db")] { … }` + `#[cfg(not)] -> no_match`. Returns a
+  Python dict the orchestrator dispatches on — `match {component_id,
+  component_class_code, step_link, component_name}` / `disambiguation
+  {candidates}` / `no_match` / `error {error}`. Bare-name arm
+  (`"resolve_intent" if call.method_call`, self-skip `args[1..]`, kwargs
+  passed). Scope from thread identity (tenant/user/agent/project). clippy green
+  both configs (default 5.13s, skills-db 5.21s). Disk rule applied (95%/11Gi →
+  scoped `cargo clean -p brassclaw_engine`).
+- **compose_orchestrator scope observation (DEFER candidate):** the locked plan
+  flags `host.compose_orchestrator` a **REWRITE** ("Rust part significantly
+  reduced; Recipe + Component structure reworked to match"). That rewrite is
+  coupled to the Recipe/Component-structure rework (a larger cross-cutting
+  change), so it is NOT a pure C.1 wiring slice like resolve_intent. Wiring the
+  OLD `fetch_recipe_split_result` behind the callable would preserve the old
+  architecture the user rejected. → compose_orchestrator's working handler lands
+  WITH its rewrite in a later C substep (after the Recipe/Component rework); C.1
+  ships the registry mechanism + resolve_intent + post_reply + kohai_complete
+  (all wiring) + retired meta-primitives. post_reply (chat-socket reply event)
+  + kohai_complete (wraps `brassclaw_interceptor` ingress) are independent of
+  compose_orchestrator and proceed now.
+- **C.1 SLICE 2 SHIPPED (`post_reply`, this turn) — `host.post_reply` first-class
+  callable.** Sync handler (no `.await`). Appends `ThreadMessage::assistant(text)`
+  to `thread.messages` + emits `EventKind::MessageAdded { role:"assistant",
+  content_preview }` via `event_tx` + `thread.events` (the chat-window surface).
+  Wiring over the existing `handle_emit_event` tail path (`ThreadEvent::new` +
+  `tx.send` + `thread.events.push` + `updated_at`). A1-locked: only Rust owns the
+  chat socket, so the Orchestrator hands its final answer to this Tool. Empty text
+  → no-op. Bare-name arm `"post_reply" if call.method_call` (self-skip `args[1..]`,
+  kwargs + `thread` + `event_tx` passed). clippy green both configs.

@@ -810,8 +810,9 @@ pub async fn execute_orchestrator(
                     // Dataclass (self). Skip args[0]; kwargs are untouched. These arms
                     // reuse the existing Rust handlers verbatim — wiring, not new logic.
                     // Net-new handlers land inline as they are implemented: resolve_intent
-                    // (Phase 2) is done; compose_orchestrator / kohai_complete / post_reply
-                    // follow in the next C.1 slices.
+                    // (Phase 2) + post_reply (end-of-turn chat post) are done;
+                    // kohai_complete follows next; compose_orchestrator's rewrite lands
+                    // with the Recipe/Component rework in a later C substep.
                     "resolve_intent" if call.method_call => {
                         handle_resolve_intent(
                             &args[1..],
@@ -821,6 +822,9 @@ pub async fn execute_orchestrator(
                             pg_pool,
                         )
                         .await
+                    }
+                    "post_reply" if call.method_call => {
+                        handle_post_reply(&args[1..], kwargs, thread, event_tx)
                     }
                     "fetch_component" if call.method_call => {
                         handle_fetch_component(
@@ -2614,6 +2618,39 @@ fn handle_emit_event(
     thread.events.push(event);
     thread.updated_at = chrono::Utc::now();
 
+    ExtFunctionResult::Return(MontyObject::None)
+}
+
+/// Handle `host.post_reply(text=...)` — end-of-turn answer post. Per the
+/// locked architecture (A1) only Rust owns the chat socket, so the Orchestrator
+/// hands its final answer to this Tool: it appends an Assistant message to the
+/// thread transcript and emits a `MessageAdded` event (the chat-window surface).
+/// Wiring over the existing `ThreadMessage::assistant` + `ThreadEvent` path —
+/// no new logic.
+fn handle_post_reply(
+    args: &[MontyObject],
+    kwargs: &[(MontyObject, MontyObject)],
+    thread: &mut Thread,
+    event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
+) -> ExtFunctionResult {
+    let text = extract_string_arg(args, kwargs, "text", 0).unwrap_or_default();
+    if text.is_empty() {
+        return ExtFunctionResult::Return(MontyObject::None);
+    }
+    thread.messages.push(ThreadMessage::assistant(&text));
+    let preview: String = text.chars().take(200).collect();
+    let event = ThreadEvent::new(
+        thread.id,
+        EventKind::MessageAdded {
+            role: "assistant".to_string(),
+            content_preview: preview,
+        },
+    );
+    if let Some(tx) = event_tx {
+        let _ = tx.send(event.clone());
+    }
+    thread.events.push(event);
+    thread.updated_at = chrono::Utc::now();
     ExtFunctionResult::Return(MontyObject::None)
 }
 
