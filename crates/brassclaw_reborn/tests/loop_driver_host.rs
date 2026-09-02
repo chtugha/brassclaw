@@ -2095,6 +2095,8 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
         interceptor_mode: None,
         #[cfg(feature = "root-llm-provider")]
         proposal_sink: None,
+        #[cfg(feature = "root-llm-provider")]
+        system_bundle_source: None,
     })
     .unwrap();
 
@@ -2275,6 +2277,8 @@ async fn build_runtime_host_with_optional_hooks(
         interceptor_mode: None,
         #[cfg(feature = "root-llm-provider")]
         proposal_sink: None,
+        #[cfg(feature = "root-llm-provider")]
+        system_bundle_source: None,
     })
     .unwrap();
 
@@ -2616,6 +2620,8 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
         interceptor_mode: None,
         #[cfg(feature = "root-llm-provider")]
         proposal_sink: None,
+        #[cfg(feature = "root-llm-provider")]
+        system_bundle_source: None,
     })
     .expect("all product-live adapters should satisfy readiness");
 
@@ -2741,6 +2747,8 @@ async fn product_live_parts_for_gate_test(
         interceptor_mode: None,
         #[cfg(feature = "root-llm-provider")]
         proposal_sink: None,
+        #[cfg(feature = "root-llm-provider")]
+        system_bundle_source: None,
     }
 }
 

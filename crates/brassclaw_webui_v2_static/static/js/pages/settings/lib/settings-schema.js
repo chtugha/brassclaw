@@ -13,6 +13,7 @@ export const SETTINGS_TABS = [
   { id: "validation-queue", labelKey: "settings.validationQueue", icon: "shield" },
   { id: "reliability", labelKey: "settings.reliability", icon: "pulse" },
   { id: "interceptor", labelKey: "settings.interceptor", icon: "shield" },
+  { id: "prefix", labelKey: "settings.prefix", icon: "layers" },
   { id: "safety", labelKey: "settings.safety", icon: "shield" },
   { id: "tokens", labelKey: "settings.tokens", icon: "bolt" },
   { id: "users", labelKey: "settings.users", icon: "lock" },

@@ -105,9 +105,10 @@ impl RetrievalLookup for PgRetrievalLookup {
 /// `scope.agent_id` (falls back to `"default"`) and `project_id` from
 /// `scope.project_id`. `user_id` stays the effective turn actor / explicit
 /// thread owner / system sentinel (the *user*, distinct from the tenant).
-/// This is the LIVE agent-loop retrieval scope; the dormant engine
-/// `handle_assemble_prior_knowledge` reads `thread.tenant_id` / `thread.agent_id`
-/// (F.1/F.3).
+/// This is the LIVE agent-loop retrieval scope; the retired engine
+/// `handle_assemble_prior_knowledge` (deleted v3 Phase H8.4) read
+/// `thread.tenant_id` / `thread.agent_id` (F.1/F.3), and its replacement
+/// `assemble_prior_knowledge_with_hint` reads the same fields.
 #[cfg(feature = "skills-db")]
 fn build_component_scope(context: &LoopRunContext) -> brassclaw_engine::memory::ComponentScope {
     let scope = &context.scope;

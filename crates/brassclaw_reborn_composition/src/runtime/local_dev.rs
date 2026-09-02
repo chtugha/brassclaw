@@ -841,7 +841,7 @@ fn local_dev_provider_trust_for(
 /// skills-db-gated, so when the feature is off the builder is not constructed
 /// and the orchestrator slot stays `None` → `NoOrchestrator` → Tier-2 degrade.
 #[cfg(feature = "skills-db")]
-pub(super) struct TierZeroEffectExecutorBuilder {
+pub(crate) struct TierZeroEffectExecutorBuilder {
     runtime: Arc<dyn HostRuntime>,
     policy: Option<Arc<LocalDevCapabilityPolicy>>,
     workspace_mounts: MountView,
@@ -885,8 +885,8 @@ impl TierZeroEffectExecutorBuilder {
     /// [`TierZeroExecutionContextFactory::build`], so they are not held here.
     /// Errors map to [`AgentLoopHostError`] so H.12.4 can degrade to Tier 2
     /// rather than rendering a half-built adapter.
-    #[allow(dead_code)] // wired into OrchestratorLookup::run_tier_zero in H.12.4
-    pub(super) async fn build_for_run(
+    #[allow(dead_code)] // wired into PgOrchestratorLookup::run_tier_zero in H.12.5
+    pub(crate) async fn build_for_run(
         &self,
         run_context: &LoopRunContext,
     ) -> Result<Arc<dyn EffectExecutor>, AgentLoopHostError> {

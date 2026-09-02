@@ -151,6 +151,13 @@ pub struct RecipeStep {
 pub struct RecipeVariant {
     /// Human-readable variant identifier (e.g. "ls-la"). Used by WebUI only.
     pub variant_key: String,
+    /// Concise human-readable explanation of what this variant does — the
+    /// human-readable side of the dual-nature recipe syntax (Step B). The
+    /// machine-readable side is `step_link` + IBS `step_descriptions` →
+    /// `build_instruction` (untouched). `#[serde(default)]` so legacy rows
+    /// deserialise unchanged; the Q1 validation gate exempts legacy rows.
+    #[serde(default)]
+    pub description: Option<String>,
     /// Direct IBS input — the step_link formula for this variant.
     /// `None` for legacy variants not yet migrated to v3 intent inputs.
     pub step_link: Option<String>,
@@ -575,5 +582,32 @@ mod tests {
         assert_eq!(r.steps.len(), r2.steps.len());
         assert_eq!(r.trigger, r2.trigger);
         assert_eq!(r.validation, r2.validation);
+    }
+
+    #[test]
+    fn recipe_variant_description_round_trips() {
+        let v = RecipeVariant {
+            variant_key: "ls-la".into(),
+            description: Some("List a directory including hidden files.".into()),
+            step_link: Some("0:0-0:30+1:0-1:E".into()),
+            intent_examples: vec!["list files in {{dir}}".into()],
+            variable_patterns: vec![],
+        };
+        let json = serde_json::to_string(&v).expect("serialize");
+        let v2: RecipeVariant = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(v, v2);
+        assert_eq!(
+            v2.description.as_deref(),
+            Some("List a directory including hidden files.")
+        );
+    }
+
+    #[test]
+    fn recipe_variant_description_legacy_defaults_to_none() {
+        // Legacy rows persisted before Step B have no `description` key.
+        let json = r#"{"variant_key":"ls-la","step_link":"0:0-0:30+1:0-1:E","intent_examples":[],"variable_patterns":[]}"#;
+        let v: RecipeVariant = serde_json::from_str(json).expect("deserialize legacy");
+        assert_eq!(v.variant_key, "ls-la");
+        assert_eq!(v.description, None);
     }
 }

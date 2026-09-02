@@ -172,11 +172,14 @@ export function updateInterceptorConfig(payload) {
     body: JSON.stringify(payload),
   });
 }
-export function reassembleInterceptor() {
-  return apiFetch("/api/webchat/v2/interceptor/reassemble", { method: "POST" });
+// Phase K.1 — Prefix cache routes.
+export function fetchPrefixes() {
+  return apiFetch("/api/webchat/v2/prefixes");
 }
-export function prewarmInterceptor() {
-  return apiFetch("/api/webchat/v2/interceptor/prewarm", { method: "POST" });
+export function regeneratePrefix(name) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(name)}/regenerate`, {
+    method: "POST",
+  });
 }
 
 // Phase 6 — Settings UI: component library endpoints (10-tab editor).

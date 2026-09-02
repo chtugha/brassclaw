@@ -1103,4 +1103,67 @@ mod tests {
             result.errors
         );
     }
+
+    #[test]
+    fn class21_recipe_v3_variant_without_description_fails_q1_gate() {
+        use crate::types::recipe::{RecipeTrigger, RecipeValidation};
+        let recipe = crate::types::recipe::Recipe {
+            id: "r1".into(),
+            name: "my-recipe".into(),
+            description: "desc".into(),
+            trigger: RecipeTrigger::Keyword {
+                keywords: vec!["x".into()],
+                threshold: 0.5,
+            },
+            steps: vec![crate::types::recipe::RecipeStep {
+                skill: "step-skill".into(),
+                tool: "github.api".into(),
+                params: serde_json::json!({}),
+                description: "List open issues".into(),
+            }],
+            validation: RecipeValidation::None,
+            category: "c".into(),
+            usage_count: 0,
+            success_count: 0,
+            failure_count: 0,
+            wilson_lower: 0.0,
+            tier: "seedling".into(),
+            source: RecipeSource::Extracted,
+            source_thread_id: None,
+            project_id: "p".into(),
+            user_id: "u".into(),
+            validation_status: ValidationStatus::Pending,
+            validation_errors: vec![],
+            review_feedback: None,
+            review_attempts: 0,
+            rejected_at: None,
+            similarity_parent_id: None,
+            skip_similarity: false,
+            last_audit_at: None,
+            audit_failure_count: 0,
+            replaces_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            variants: vec![crate::types::recipe::RecipeVariant {
+                variant_key: "ls-la".into(),
+                description: None,
+                step_link: Some("0:0-0:30+1:0-1:E".into()),
+                intent_examples: vec![],
+                variable_patterns: vec![],
+            }],
+            step_descriptions: serde_json::Value::Null,
+            dependency_registry: serde_json::Value::Null,
+        };
+        let result = ComponentValidator::validate_by_class(
+            21,
+            ComponentPayload::Recipe(&recipe),
+            &ValidationConfig::default(),
+            &["step-skill".to_string()],
+            &[],
+        );
+        assert!(
+            result.errors.iter().any(|e| e.contains("dual-nature gate")),
+            "expected dual-nature gate error through component_validator, got {result:?}"
+        );
+    }
 }

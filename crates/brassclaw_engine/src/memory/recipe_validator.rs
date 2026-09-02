@@ -147,6 +147,7 @@ impl RecipeValidator {
         }
 
         check_trigger(&recipe.trigger, &recipe.source, &mut result);
+        check_variant_descriptions(&recipe.variants, &mut result);
 
         if matches!(recipe.tier.as_str(), "growing" | "mature" | "candidate")
             && matches!(recipe.validation, RecipeValidation::None)
@@ -270,6 +271,36 @@ fn check_trigger(trigger: &RecipeTrigger, source: &RecipeSource, result: &mut Va
                     "Keyword trigger threshold {threshold} out of [0.0, 1.0] range"
                 ));
             }
+        }
+    }
+}
+
+/// Q1 gate for the human-readable side of the dual-nature recipe syntax
+/// (Step B). Each **v3-migrated** variant (`step_link` present) must carry a
+/// concise, non-empty human-readable `description`. Legacy variants
+/// (`step_link == None`) are exempt — they predate Step B.
+fn check_variant_descriptions(
+    variants: &[crate::types::recipe::RecipeVariant],
+    result: &mut ValidationResult,
+) {
+    const MAX_CHARS: usize = 512;
+    for (i, v) in variants.iter().enumerate() {
+        // Legacy / un-migrated variants have no step_link → exempt.
+        if v.step_link.is_none() {
+            continue;
+        }
+        let trimmed = v.description.as_deref().map(str::trim).unwrap_or("");
+        let len = trimmed.chars().count();
+        if len == 0 {
+            result.errors.push(format!(
+                "Recipe variant #{i} ('{}') has no human-readable description — required for v3 variants (Step B dual-nature gate)",
+                v.variant_key
+            ));
+        } else if len > MAX_CHARS {
+            result.warnings.push(format!(
+                "Recipe variant #{i} ('{}') description exceeds {MAX_CHARS} chars ({len} chars) — keep it concise",
+                v.variant_key
+            ));
         }
     }
 }
@@ -506,5 +537,55 @@ mod tests {
             step_descriptions: serde_json::Value::Null,
             dependency_registry: serde_json::Value::Null,
         }
+    }
+
+    fn v3_variant(key: &str, description: Option<&str>) -> crate::types::recipe::RecipeVariant {
+        crate::types::recipe::RecipeVariant {
+            variant_key: key.into(),
+            description: description.map(str::to_string),
+            step_link: Some("0:0-0:30+1:0-1:E".into()),
+            intent_examples: vec![],
+            variable_patterns: vec![],
+        }
+    }
+
+    #[test]
+    fn v3_variant_without_description_fails_q1() {
+        let mut r = base_recipe();
+        r.variants = vec![v3_variant("ls-la", None)];
+        let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
+        assert!(
+            result.errors.iter().any(|e| e.contains("dual-nature gate")),
+            "expected dual-nature gate error, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn legacy_variant_without_description_is_exempt() {
+        let mut r = base_recipe();
+        // Legacy variant: step_link == None → exempt from the description gate.
+        r.variants = vec![crate::types::recipe::RecipeVariant {
+            variant_key: "ls-la".into(),
+            description: None,
+            step_link: None,
+            intent_examples: vec![],
+            variable_patterns: vec![],
+        }];
+        let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
+        assert!(
+            result.is_ok(),
+            "legacy variant must be exempt, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn v3_variant_with_description_passes_q1() {
+        let mut r = base_recipe();
+        r.variants = vec![v3_variant(
+            "ls-la",
+            Some("List a directory including hidden files."),
+        )];
+        let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
+        assert!(result.is_ok(), "expected pass, got {result:?}");
     }
 }

@@ -200,6 +200,12 @@ where
     /// silently discarded.  Cfg-gated: only relevant when a Sempai is wired.
     #[cfg(feature = "root-llm-provider")]
     pub proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>>,
+    /// Prefix-cache bundle source (§K.1.5).  When `Some`, each Kohai turn
+    /// and each Sempai review call prepends the stored bundle as System
+    /// message [0].  Cfg-gated: only meaningful when a Sempai/Kohai gateway
+    /// is wired.
+    #[cfg(feature = "root-llm-provider")]
+    pub system_bundle_source: Option<Arc<dyn brassclaw_loop_support::SystemBundleSource>>,
 }
 
 pub trait RuntimeSubagentGoalStore:
@@ -622,6 +628,10 @@ where
     #[cfg(feature = "root-llm-provider")]
     if let Some(sink) = parts.proposal_sink {
         host_factory = host_factory.with_proposal_sink(sink);
+    }
+    #[cfg(feature = "root-llm-provider")]
+    if let Some(source) = parts.system_bundle_source {
+        host_factory = host_factory.with_system_bundle_source(source);
     }
     let host_factory = Arc::new(host_factory);
 

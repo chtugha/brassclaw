@@ -17,21 +17,8 @@ pub struct InterceptorConfigSnapshot {
     pub sempai_connected: bool,
     /// Current interceptor mode string: `"routing"` or `"rerouting"`.
     pub mode: String,
-    /// ISO-8601 timestamp when the base prompt was last assembled, or `None`
-    /// if it has never been assembled.
-    pub base_prompt_assembled_at: Option<String>,
-    /// Number of characters in the current assembled base prompt (Part A).
-    /// `None` when no base prompt has been assembled yet.
-    pub base_prompt_size_chars: Option<usize>,
     /// Current Sempai persona text (Part B).
     pub persona: String,
-    /// ISO-8601 timestamp when `POST /api/interceptor/prewarm` last succeeded.
-    /// `None` if never pre-warmed.
-    pub prewarm_last_at: Option<String>,
-    /// Number of components that have been validated since the base prompt was
-    /// last assembled.  A non-zero value is a passive nudge to re-assemble.
-    /// `None` when the count is unavailable.
-    pub components_since_rebuild: Option<u32>,
 }
 
 /// Request body for `POST /api/interceptor/config`.
@@ -39,6 +26,47 @@ pub struct InterceptorConfigSnapshot {
 pub struct UpdateInterceptorConfigRequest {
     /// New Sempai persona text (Part B).  `None` means no change.
     pub persona: Option<String>,
+}
+
+/// A single named prefix-cache entry.
+///
+/// Corresponds to one row in `reborn_basic_prompt_store`.  Phase K.1 only has
+/// the `"base-prompt"` entry; additional named entries are additive.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrefixEntry {
+    /// Canonical name, e.g. `"base-prompt"`.
+    pub name: String,
+    /// SHA-256 hex over `(uuid_bytes || updated_at_micros_le)` for all
+    /// component rows included in the last assembly.  `None` if no assembly
+    /// has run yet.
+    pub fingerprint: Option<String>,
+    /// `true` when a Q2 graduation has occurred since the last assembly;
+    /// a passive nudge to re-run `regenerate_prefix`.
+    pub is_stale: bool,
+    /// ISO-8601 timestamp of the last successful assembly, or `None`.
+    pub assembled_at: Option<String>,
+    /// ISO-8601 timestamp of the last pre-warm gateway call, or `None`.
+    pub prewarm_last_at: Option<String>,
+}
+
+/// Response body for `GET /api/prefixes`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrefixListResponse {
+    pub prefixes: Vec<PrefixEntry>,
+}
+
+/// Response body for `POST /api/prefixes/{name}/regenerate`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrefixRegenerateResponse {
+    /// The name of the regenerated prefix.
+    pub name: String,
+    /// SHA-256 fingerprint of the assembled component set.
+    pub fingerprint: String,
+    /// ISO-8601 timestamp of this assembly.
+    pub assembled_at: String,
+    /// ISO-8601 timestamp of the pre-warm gateway call, or `None` if no
+    /// Sempai gateway is configured.
+    pub prewarm_last_at: Option<String>,
 }
 
 /// Interceptor configuration + control service (product-layer port).
@@ -57,24 +85,31 @@ pub trait InterceptorConfigService: Send + Sync {
         request: UpdateInterceptorConfigRequest,
     ) -> Result<InterceptorConfigSnapshot, InterceptorConfigServiceError>;
 
-    /// Reassemble the static base prompt (Part A) from validated components
-    /// via direct SQL to individual component tables (Q20).  Synchronous with
-    /// a 120-second server-side timeout; returns the updated snapshot.
+    /// List all named prefix-cache entries for a scope.
     ///
-    /// Rate-limited to 1 request per minute per caller.
-    async fn reassemble_base_prompt(
+    /// Returns one entry per known prefix name.  Phase K.1 returns only the
+    /// `"base-prompt"` entry.
+    async fn list_prefix_entries(
         &self,
         caller: WebUiAuthenticatedCaller,
-    ) -> Result<InterceptorConfigSnapshot, InterceptorConfigServiceError>;
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<PrefixListResponse, InterceptorConfigServiceError>;
 
-    /// Send the current base prompt to the Sempai provider as a single system
-    /// message to warm its KV cache.  Returns the updated snapshot.
+    /// Assemble the named prefix bundle from validated components, optionally
+    /// pre-warm the Sempai gateway, and record the result.
     ///
     /// Rate-limited to 1 request per minute per caller.
-    async fn prewarm(
+    ///
+    /// Errors with [`InterceptorConfigServiceError::PrefixNotFound`] when
+    /// `name` is not a known prefix (currently only `"base-prompt"`).
+    async fn regenerate_prefix(
         &self,
         caller: WebUiAuthenticatedCaller,
-    ) -> Result<InterceptorConfigSnapshot, InterceptorConfigServiceError>;
+        name: &str,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<PrefixRegenerateResponse, InterceptorConfigServiceError>;
 }
 
 /// Errors returned by [`InterceptorConfigService`] methods.
@@ -86,8 +121,8 @@ pub enum InterceptorConfigServiceError {
     InvalidRequest { reason: String },
     #[error("interceptor: rate limit exceeded — retry after {retry_after_seconds}s")]
     RateLimitExceeded { retry_after_seconds: u64 },
-    #[error("interceptor: base prompt has not been assembled yet")]
-    BasePromptNotAssembled,
+    #[error("interceptor: prefix '{name}' not found")]
+    PrefixNotFound { name: String },
 }
 
 /// Returns a stable [`RebornServicesError`] for an unavailable interceptor
@@ -106,11 +141,17 @@ pub fn map_interceptor_config_error(
             503,
             false,
         ),
-        InterceptorConfigServiceError::InvalidRequest { .. }
-        | InterceptorConfigServiceError::BasePromptNotAssembled => {
+        InterceptorConfigServiceError::InvalidRequest { .. } => {
             crate::RebornServicesError::from_status(
                 crate::RebornServicesErrorCode::InvalidRequest,
                 400,
+                false,
+            )
+        }
+        InterceptorConfigServiceError::PrefixNotFound { .. } => {
+            crate::RebornServicesError::from_status(
+                crate::RebornServicesErrorCode::NotFound,
+                404,
                 false,
             )
         }

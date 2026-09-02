@@ -235,15 +235,129 @@ Legacy `brassclaw_memory_docs` rows are migrated into the appropriate class tabl
 
 ### Orchestrator-First, LLM-Minimal (Core Design Principle)
 
-**The orchestrator IS the execution engine. Rust makes tools *available*. The
-LLM is consulted only when creative reasoning, content composition, or user
-confirmation is genuinely required. All other operations are Tier 0.**
+**Monty (the Python orchestrator) IS the execution engine and the sole
+execution authority.** Rust makes tools *available*; an LLM never executes
+anything itself — it only writes Python that Monty runs in the sandbox. The LLM
+is consulted only when creative reasoning, content composition, or user
+confirmation is genuinely required.
 
-The two-channel execution model is mandatory for all Tier-0 recipes:
+#### One single main process (ground truth)
+
+From the user input that triggers the InputStage, the **entire processing of
+that input is one sole process** — the **main process**, orchestrated and
+supervised by Monty from the very start. It is one long-persisting process that
+runs **until the user's prompt has been answered**, preferably in the best
+possible way (that is what the kohai/sempai system is mainly for). Then history
+is stored and the main process exits.
+
+Only the **basic mode's beginning** is built-in (Phase 1: receive the user's
+prompt, start the main process, hand off to Phase 2). Everything else is
+**Instructions** — a component, most often a **Recipe**, but also possibly an
+**Action** or other instruction component. From Phase 2 onward (intent
+matching, Matching-Mode, Non-Matching-Mode, validation, component-creation,
+kohai-sempai) it is all instruction/recipe-driven, so functionality changes
+need **no code changes — only the recipe is altered**.
+
+#### Phase 1 — start (built-in, the one exception)
+
+Monty starts (the information for Monty to run Phase 1 is built-in, not a
+recipe — this is the one built-in exception). The main process receives the
+user's input and **starts the intent-matching-system**.
+
+#### Phase 2 — intent match (recipe-driven in principle; Rust today)
+
+In principle Phase 2 is run by **Recipes/Instructions** (ideally a second
+Python VM), so intent-matching logic can evolve without code changes. For now
+the intent system uses the **already-existing Rust** implementation
+(`resolve_intent` / `fetch_for_turn` in `brassclaw_engine`); the
+recipe/instruction-driven second-VM version is **future work** — only do what
+is necessary for a working intent system. The intent system tries to find a
+match and returns either a **matching id** (or whatever identifies the match
+exactly) or a **"no match"** message back to the orchestrating main process.
+
+#### Phase 3 — dispatch
+
+**Case 1 — Match → Matching-Mode.** The main process receives a component-id
+and switches into Matching-Mode:
+
+1. The id is sent to the **composition system**.
+2. The composition system fetches and reads the instructions (mostly a
+   **Recipe**) belonging to the id. It **splits the rust part and the
+   orchestrator part**. It loads whatever is necessary into Rust, assembles
+   exactly the python-code + instructions etc. from the **orchestrator part**
+   of the recipe, and returns that to the orchestrator.
+3. The orchestrator now runs whatever the plan contains **step by step**,
+   generates the answer for the user, and posts it back into the chat.
+4. History for the process is stored and the main process exits.
+
+Matching-Mode covers both deterministic and LLM-guided recipes — the recipe
+itself decides whether the LLM is needed:
+
+- **Tier 0** — deterministic, no LLM. Tool calls are baked into `PythonCode`
+  leaves; Monty runs them in the sandbox.
+- **Tier 1** — LLM-guided. The recipe hands the LLM prior-knowledge / a plan;
+  after the LLM responds, post-LLM tool steps are run by Monty.
+
+**Case 2 — No match → Non-Matching-Mode.** The orchestrator has no direct
+instruction, so the user's input is sent to the LLM as a **standard prompt**
+assembled by the orchestrator:
+
+1. The **chat history belonging to this exact user-input** (few tokens).
+2. The **user's question** (few tokens).
+3. A huge prefix called the **base-prompt**, where all the information about
+   BrassClaw — about all tools, recipes, skills, etc. — is **precompiled**, so
+   the LLM's answer is very fast while having access to information starting at
+   roughly **250k tokens** and pushable up to **1 million** prefix tokens.
+
+The main process posts the LLM's answer into the user-chat, then saves a
+**thorough history** so the **kohai/sempai system can build new intents,
+skills, recipes, tools and other components**, so that **next time the LLM is
+not needed anymore**. (Future, planned: the main process is available for LLM
+calls **via MCP** to gather information or do whatever the LLM needs — still
+routed through the orchestrator, never a classical direct-MCP execution path.)
+
+This is **Tier 2**. It is **not "raw LLM"** — it is a recipe/instruction-driven
+non-match routine (only the basic mode's *beginning* is built-in). Because it
+is recipe-driven, it can be enhanced with **no code changes**: different prompt
+additions for different query types, different prefixes, etc. — only the
+recipe is altered.
+
+#### Every LLM prompt is assembled by the orchestrator (ground truth 2)
+
+**Every** LLM prompt — whether it belongs to a Recipe, the non-match path, the
+Validation-System, the Component-Creation-System, or the kohai-sempai-system —
+is **assembled by the orchestrator**, which tells each system what to do and
+how to do it. Every LLM prompt is orchestrated **step by step**: *fetch this
+information, now format it for this LLM's needs, now add these sentences to
+it*, etc., until the prompt is finally created.
+
+The **kohai is always the last one** working on an LLM prompt, because it
+**exchanges the placeholders with the prefix prompts**.
+
+#### Two-channel execution model (Matching-Mode recipes)
+
+Mandatory for Tier-0 recipes:
 ```
 channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute)
 channel: "orchestrator"   → PythonCode calls __execute_action__() to run the tool
 ```
+
+#### Components are the crucial thing
+
+With this architecture, most tasks are performed by the orchestrator on its
+own. The most crucial thing is the **components**: if they are made well, a lot
+of different tasks can be performed by **different recipes calling the same
+components**. The long-term lever is a large library of tiny, reusable
+components — more modules and recipes, fewer Rust branches.
+
+#### Recipe syntax — human-readable AND machine-readable
+
+Recipes (+ the composition system) need a **clever dual-nature syntax**: a
+**human-readable, logically-constructed** recipe on one hand, and a
+**machine-readable exact logic** on the other that **always reproduces the same
+results** from the orchestrator and the Rust code. The goal: with everything
+running as intended, **no code changes are necessary** to change behaviour —
+only the recipe is altered.
 
 **Authoring rules** (enforced at Q1 validation):
 - **One leaf skill per approach**: Three skills covering three patterns is better
@@ -257,6 +371,22 @@ channel: "orchestrator"   → PythonCode calls __execute_action__() to run the t
   not call `__execute_action__()` at all.
 - **Never inline tool calls in LLM prose**: Skills are orchestrator-facing
   narrative. Tool execution happens in PythonCode steps only.
+- **Dual-nature fields (Step B):** every recipe carries BOTH natures on the
+  same struct — no separate rendering or transpilation:
+  - **Machine-readable exact logic (untouched):** `RecipeVariant.step_link` +
+    `Recipe.step_descriptions` → IBS `build_instruction` → `BuildInstruction`
+    (`rust_steps` + `orchestrator_steps`). Deterministic; never changed by Step B.
+  - **Human-readable explanation (concise — "what happens"):**
+    `Recipe.description` (recipe-level), `RecipeVariant.description`
+    (variant-level — added in Step B), `StepDescriptionEntry.label` +
+    `StepEntry.goal` (step-level).
+  - **Q1 gate:** a v3-migrated variant (`step_link` present) MUST have a
+    non-empty `RecipeVariant.description` (≤ 512 chars); legacy variants
+    (`step_link == None`) are exempt. Enforced in
+    `RecipeValidator::validate_recipe` (`check_variant_descriptions`).
+  - **Read surface:** `RecipeDetail.recipe` is opaque full-engine JSON, so new
+    variant fields ride along to the WebUI with no DTO recompile. There is no
+    WebUI recipe-authoring route yet (future work).
 
 Full specification: `builtin_stuff_v3.md` (built-in capabilities),
 `tomedo_v3.md` (reference implementation for an extension).

@@ -94,6 +94,7 @@ pub(crate) mod embedding_role_adapter;
 mod fetch_cached_content;
 #[cfg(feature = "migrate-from-libsql")]
 pub mod migration;
+pub(crate) mod orchestrator_lookup_impl;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
@@ -111,6 +112,7 @@ pub(crate) mod pg_monty_vm_settings;
 pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
+pub(crate) mod pg_thread_engine_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_token_settings_store;
 #[cfg(feature = "postgres")]

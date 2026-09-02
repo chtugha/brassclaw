@@ -28,6 +28,28 @@ reuse it too. Never bake a whole procedure into one fat skill — split it into
 leaves. (See `DOC_CONVERSION_MECHANISM_DESIGN.md` §4.0/§4.3 for a worked
 example: one `doc-convert` recipe composing ~11 reusable leaves + one domain skill.)
 
+## 1.1 Dual-nature syntax (human-readable + machine-readable)
+
+A recipe is **dual-nature**: the same `Recipe` / `RecipeVariant` structs carry
+both natures — no separate rendering or transpilation. The `step_link` formula
+stays as-is; the dual-nature need is met by a concise **human-readable
+explanation of what happens** carried alongside the machine form.
+
+- **Machine-readable exact logic (deterministic, never changed by Step B):**
+  `RecipeVariant.step_link` + `Recipe.step_descriptions` → IBS
+  `build_instruction` → `BuildInstruction` (`rust_steps` + `orchestrator_steps`).
+- **Human-readable explanation (concise — "what happens", not too much detail):**
+  `Recipe.description` (recipe-level), `RecipeVariant.description`
+  (variant-level — added in Step B), `StepDescriptionEntry.label` +
+  `StepEntry.goal` (step-level).
+- **Q1 gate (Step B):** a v3-migrated variant (`step_link` present) MUST have a
+  non-empty `RecipeVariant.description` (≤ 512 chars); legacy variants
+  (`step_link == None`) are exempt. Enforced in
+  `RecipeValidator::validate_recipe` (`check_variant_descriptions`).
+- **Read surface:** `RecipeDetail.recipe` is opaque full-engine JSON, so new
+  variant fields ride along to the WebUI with no DTO recompile. No WebUI
+  recipe-authoring route exists yet (future work).
+
 ## 2. Location
 
 - **Data types:** `crates/brassclaw_engine/src/types/recipe.rs` (`Recipe`, `RecipeStep`,

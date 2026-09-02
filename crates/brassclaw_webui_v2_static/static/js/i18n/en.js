@@ -183,6 +183,7 @@ registerPack("en", {
   "settings.users": "Users",
   "settings.language": "Language",
   "settings.interceptor": "Interceptor",
+  "settings.prefix": "Prefix Cache",
   // Phase 6 — 10-tab Settings UI editor.
   "settings.actions": "Actions",
   "settings.orchestrator": "Orchestrator",
@@ -1062,6 +1063,18 @@ registerPack("en", {
   "interceptor.prewarmDesc": "Send the current base prompt to the Sempai provider to warm its KV cache.",
   "interceptor.prewarmOk": "Cache pre-warmed",
   "interceptor.prewarmError": "Pre-warm failed",
+
+  // Phase K.1 — Prefix cache tab.
+  "prefix.title": "Prefix bundles",
+  "prefix.desc": "Pre-assembled component bundles prepended as System message [0] on every turn. Regenerate after validating new components to keep the bundle current.",
+  "prefix.empty": "No prefix bundles found.",
+  "prefix.failedLoad": "Failed to load prefix cache: {message}",
+  "prefix.stale": "stale",
+  "prefix.fresh": "fresh",
+  "prefix.fingerprint": "fingerprint",
+  "prefix.assembledAt": "assembled",
+  "prefix.regenerate": "Regenerate",
+  "prefix.regenerating": "Regenerating…",
 
   // Chat — disambiguation (§3.12 Q11 intent disambiguation card).
   "disambiguation.question": "Multiple matches found. Which one do you mean?",

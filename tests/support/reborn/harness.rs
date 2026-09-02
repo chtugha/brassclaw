@@ -886,6 +886,7 @@ impl RebornBinaryE2EHarness {
             model_route_resolver: None,
             cancellation_factory: None,
             skill_context_source: None,
+            system_bundle_source: None,
             input_queue: None,
             identity_context_source,
             model_policy_guard: None,
@@ -896,6 +897,7 @@ impl RebornBinaryE2EHarness {
             turn_event_sink: None,
             recipe_lookup: None,
             retrieval_lookup: None,
+            orchestrator_lookup: None,
             message_text_resolver: None,
             interceptor_store: None,
             // The brassclaw_reborn dep always enables root-llm-provider, so these

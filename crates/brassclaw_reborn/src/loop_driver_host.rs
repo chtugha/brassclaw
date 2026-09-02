@@ -23,6 +23,8 @@ use brassclaw_interceptor::{
 };
 #[cfg(feature = "root-llm-provider")]
 use brassclaw_interceptor::{NoopProposalSink, SempaiProposalSink};
+#[cfg(feature = "root-llm-provider")]
+use brassclaw_loop_support::SystemBundleSource;
 use brassclaw_loop_support::{
     CapabilityResolveError, CapabilitySurfaceProfileFilter, CapabilitySurfaceProfileResolver,
     EmptyLoopCapabilityPort, GuardedSystemInferencePort, HostIdentityContextSource, HostInputQueue,
@@ -993,6 +995,11 @@ where
     /// When `None`, the interceptor is always in routing mode.
     #[cfg(feature = "root-llm-provider")]
     interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
+    /// Optional prefix-cache bundle source (§K.1.5).
+    /// When set, injected as instruction snippet #0 in every Kohai context
+    /// load and as Part A of every Sempai review call.
+    #[cfg(feature = "root-llm-provider")]
+    system_bundle_source: Option<Arc<dyn SystemBundleSource>>,
 }
 
 /// Per-host-build callback that produces a fresh hook-gate factory bound
@@ -1068,6 +1075,8 @@ where
             sempai_gateway: None,
             #[cfg(feature = "root-llm-provider")]
             interceptor_mode: None,
+            #[cfg(feature = "root-llm-provider")]
+            system_bundle_source: None,
         }
     }
 
@@ -1468,6 +1477,15 @@ where
         self
     }
 
+    /// Install the prefix-cache bundle source (§K.1.5).
+    /// When set, the bundle is injected as instruction snippet #0 on every
+    /// Kohai context load and as Part A of every Sempai review call.
+    #[cfg(feature = "root-llm-provider")]
+    pub fn with_system_bundle_source(mut self, source: Arc<dyn SystemBundleSource>) -> Self {
+        self.system_bundle_source = Some(source);
+        self
+    }
+
     pub async fn build_text_only_host(
         &self,
         request: RebornLoopDriverHostRequest,
@@ -1544,6 +1562,10 @@ where
             }
         }
         context_adapter = context_adapter.with_milestone_sink(Arc::clone(&self.milestone_sink));
+        #[cfg(feature = "root-llm-provider")]
+        if let Some(source) = self.system_bundle_source.as_ref() {
+            context_adapter = context_adapter.with_system_bundle_source(Arc::clone(source));
+        }
         let context: Arc<dyn LoopContextPort> = Arc::new(context_adapter);
         // Mint a fresh dispatcher per build when a factory is installed. This
         // localizes dispatcher-owned state (slot poisoning, registry edits) to
@@ -1808,6 +1830,8 @@ where
             sempai_gateway: self.sempai_gateway.clone(),
             #[cfg(feature = "root-llm-provider")]
             interceptor_mode: self.interceptor_mode.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            system_bundle_source: self.system_bundle_source.clone(),
             _event_subscription: event_subscription,
         })
     }
@@ -1890,6 +1914,11 @@ pub struct RebornLoopDriverHost {
     /// Shared interceptor mode flag. `None` when not wired.
     #[cfg(feature = "root-llm-provider")]
     interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
+    /// Prefix-cache bundle source for Sempai Part A injection (§K.1.5).
+    /// Kohai injection is handled by `ThreadBackedLoopContextPort` via
+    /// `context`; this field is used only by `run_sempai_review`.
+    #[cfg(feature = "root-llm-provider")]
+    system_bundle_source: Option<Arc<dyn SystemBundleSource>>,
     _event_subscription: Option<EventTriggeredHookSubscriptionHandle>,
 }
 
@@ -2125,46 +2154,86 @@ impl RebornLoopDriverHost {
         };
         use brassclaw_turns::LoopMessageRef;
 
+        // Part A: prefix-cache bundle (§K.1.5). Fetched from the
+        // `SystemBundleSource` when wired; falls through to an empty Vec
+        // when not yet assembled or the source is not installed.
+        let part_a_bundle: Option<String> =
+            if let Some(source) = self.system_bundle_source.as_deref() {
+                let user_id = self
+                    .run_context
+                    .actor
+                    .as_ref()
+                    .map(|a| a.user_id.as_str())
+                    .unwrap_or("_system");
+                let project_id = self
+                    .run_context
+                    .scope
+                    .project_id
+                    .as_ref()
+                    .map(|p| p.as_str())
+                    .unwrap_or("_default");
+                Some(source.get_system_bundle(user_id, project_id).await)
+            } else {
+                None
+            };
+
         // Part B: Sempai persona (compiled-in default; editable in WebUI
         // via interceptor config service).
         let persona_text = DEFAULT_SEMPAI_PERSONA;
 
         // Part C: per-turn volatile tail — the actual Kohai messages plus a
         // JSON manifest of the component refs extracted from the snapshot.
-        // For now the manifest is a JSON-serialized array of the message refs;
-        // the full `matched_component_ids` path is wired in Phase 5 when the
-        // PriorKnowledgeResult carries matched component IDs.
         let volatile_tail = serde_json::to_string(&messages).unwrap_or_default();
 
-        // Build the Sempai request: system message (Part B persona) +
-        // user message (Part C volatile tail for review).
-        // Part A (static base) is omitted here when no base prompt has been
-        // assembled yet (pre-`POST /api/interceptor/reassemble`).
+        // Build the Sempai request.
+        // Message layout: [Part A bundle (opt), Part B persona, Part C volatile]
+        let mut sempai_messages: Vec<HostManagedModelMessage> = Vec::new();
+
+        // Part A: bundle System message [0].
+        if let Some(bundle) = part_a_bundle {
+            let bundle_ref = LoopMessageRef::new("interceptor:sempai-bundle".to_string())
+                .map_err(|e| {
+                    tracing::debug!(error = %e, "interceptor: sempai bundle ref invalid");
+                })
+                .ok()?;
+            sempai_messages.push(HostManagedModelMessage {
+                role: HostManagedModelMessageRole::System,
+                content: bundle,
+                content_ref: bundle_ref,
+                tool_result_provider_call: None,
+                tool_result_content: None,
+            });
+        }
+
         let sentinel_ref = LoopMessageRef::new("interceptor:sempai-audit".to_string())
             .map_err(|e| {
                 tracing::debug!(error = %e, "interceptor: sempai sentinel ref invalid");
             })
             .ok()?;
 
-        let system_msg = HostManagedModelMessage {
+        // Part B: persona System message.
+        sempai_messages.push(HostManagedModelMessage {
             role: HostManagedModelMessageRole::System,
             content: persona_text.to_string(),
             content_ref: sentinel_ref.clone(),
             tool_result_provider_call: None,
             tool_result_content: None,
-        };
+        });
+
         let user_ref = LoopMessageRef::new("interceptor:sempai-volatile".to_string())
             .map_err(|e| {
                 tracing::debug!(error = %e, "interceptor: sempai volatile ref invalid");
             })
             .ok()?;
-        let user_msg = HostManagedModelMessage {
+
+        // Part C: volatile tail User message.
+        sempai_messages.push(HostManagedModelMessage {
             role: HostManagedModelMessageRole::User,
             content: volatile_tail,
             content_ref: user_ref,
             tool_result_provider_call: None,
             tool_result_content: None,
-        };
+        });
 
         let model_profile_id = brassclaw_turns::run_profile::ModelProfileId::new("sempai_model")
             .map_err(|e| {
@@ -2174,7 +2243,7 @@ impl RebornLoopDriverHost {
 
         let request = HostManagedModelRequest {
             model_profile_id,
-            messages: vec![system_msg, user_msg],
+            messages: sempai_messages,
             surface_version: None,
             resolved_model_route: None,
             run_id: self.run_context.run_id,

@@ -110,6 +110,11 @@ mod auth_interaction_tests;
 #[path = "runtime/tests/default_system_prompt.rs"]
 mod default_system_prompt_tests;
 mod local_dev;
+// v3 Phase H.12.5: re-export the per-run Tier-0 EffectExecutor builder so the
+// `orchestrator_lookup_impl` bridge (crate-root module) can hold/call it
+// without widening the whole `local_dev` module's visibility.
+#[cfg(feature = "skills-db")]
+pub(crate) use local_dev::TierZeroEffectExecutorBuilder;
 mod skills;
 #[cfg(test)]
 #[path = "runtime/test_pg.rs"]
@@ -2435,6 +2440,13 @@ pub async fn build_reborn_runtime(
         )
         .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?
     };
+    // v3 Phase H.12.5: clone the per-run Tier-0 EffectExecutor builder out of
+    // the capability wiring before any of its sibling fields are moved, so the
+    // OrchestratorLookup bridge (built below near `retrieval_lookup`) can hand
+    // it to `PgOrchestratorLookup`. Skills-db-gated: the builder (and the whole
+    // Tier-0 deterministic path) only exists under that feature.
+    #[cfg(feature = "skills-db")]
+    let tier_zero_executor_builder = local_dev_capabilities.tier_zero_executor_builder.clone();
     let capability_factory = {
         // Wrap the capability factory with the content-cache decorator when
         // content_cache_threshold is configured.
@@ -2559,6 +2571,45 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "skills-db"))]
     let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> = None;
 
+    // v3 Phase H.12.5: wire the production OrchestratorLookup bridge
+    // (PgOrchestratorLookup) when the skills-db feature is active. The bridge
+    // holds the engine TierZeroOrchestrator facade (deterministic Tier-0
+    // channel; LlmBackend = the always-erroring TierZeroLlmGuard so a
+    // mis-compiled recipe surfaces loudly instead of silently calling a model),
+    // the PG-backed engine Store (PgThreadEngineStore — loads the live Thread
+    // via SessionThreadService::read_thread), and the per-run
+    // TierZeroEffectExecutorBuilder (cloned out of the capability wiring above).
+    // No Postgres pool needed — the thread store reads via the loop thread
+    // service, not a raw pool. When the feature is off the slot stays `None` →
+    // `NoOrchestrator` → Tier-2 degrade.
+    #[cfg(feature = "skills-db")]
+    let orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>> = {
+        use brassclaw_engine::{LlmBackend, TierZeroOrchestrator};
+        let thread_store: Arc<dyn brassclaw_engine::Store> =
+            Arc::new(crate::pg_thread_engine_store::PgThreadEngineStore::new(
+                Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
+                validated_identity.tenant_id.as_str(),
+            ));
+        let llm_guard =
+            Arc::new(crate::tier_zero_llm_guard::TierZeroLlmGuard::new()) as Arc<dyn LlmBackend>;
+        let runtime = TierZeroOrchestrator::builder()
+            .llm(llm_guard)
+            .build()
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            })?;
+        Some(
+            Arc::new(crate::orchestrator_lookup_impl::PgOrchestratorLookup::new(
+                Arc::new(runtime),
+                thread_store,
+                tier_zero_executor_builder,
+            )) as Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>,
+        )
+    };
+    #[cfg(not(feature = "skills-db"))]
+    let orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>> =
+        None;
+
     // v3 Phase E.0 / plan §H3: wire SkillActivationMessageTextResolver so the
     // production host can resolve the raw accepted-message body via the
     // non-consuming `messages_by_run` read (intent matching sees unsanitized
@@ -2610,6 +2661,19 @@ pub async fn build_reborn_runtime(
                 validated_identity.tenant_id.as_str(),
                 validated_identity.agent_id.as_str(),
             )) as Arc<dyn brassclaw_interceptor::SempaiProposalSink>
+        });
+
+    // Wire PgBasicPromptStore as SystemBundleSource (§K.1.5).
+    // Each Kohai context load and Sempai review call prepends the stored
+    // bundle as System message [0] for KV-cache reuse.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    let system_bundle_source: Option<Arc<dyn brassclaw_loop_support::SystemBundleSource>> =
+        services.pg_pool.as_ref().map(|pool| {
+            Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+                Arc::clone(pool),
+                validated_identity.tenant_id.as_str(),
+                validated_identity.agent_id.as_str(),
+            )) as Arc<dyn brassclaw_loop_support::SystemBundleSource>
         });
 
     let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
@@ -2675,7 +2739,7 @@ pub async fn build_reborn_runtime(
         hook_dispatcher_builder_factory,
         recipe_lookup,
         retrieval_lookup,
-        orchestrator_lookup: None,
+        orchestrator_lookup,
         message_text_resolver,
         interceptor_store,
         #[cfg(feature = "root-llm-provider")]
@@ -2688,6 +2752,8 @@ pub async fn build_reborn_runtime(
         },
         #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
         proposal_sink,
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        system_bundle_source,
     })?;
     let default_resolved_run_profile = composition
         .run_profile_resolver

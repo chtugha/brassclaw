@@ -5613,6 +5613,29 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `./docs/agents-v3/subplan_problem_stepH12_of_saved_plan_to_v3.md`
 > (Zenflow nested substep under the Phase H subplan step `1a0a9eac`). Execute
 > H.12.1→H.12.7 one-by-one before resuming Phase H at H.13.
+>
+> **Post-H.12.5 rethink — order B → C → A (user steer).** Phase H rethought:
+> one main process (agent-loop owns production, Model A retired); only the
+> basic mode's *beginning* is built-in, everything else is Instructions
+> (Recipe/Action); Tier 2 = recipe/instruction-driven non-match routine. The
+> dual-nature recipe syntax work (**Step B**) is sequenced **first**, then
+> **C** (Model A retirement), then **A** (reshaped H.12.6), then H.12.7. **B**
+> scope narrowed: the `step_link` formula stays as-is; the dual-nature need is
+> met by a concise human-readable explanation of what happens, carried
+> alongside the machine `step_link`/IBS form. Full approach + B.1–B.5 +
+> decisions D-B1/D-B2 in
+> `./docs/agents-v3/subplan_problem_stepB_recipe_syntax_of_saved_plan_to_v3.md`.
+>
+> **H.12.5 spawned a further nested subplan — real PG-backed engine
+> `Store::load_thread`.** Grounding H.12.5 surfaced that no production engine
+> `Store::load_thread` exists (only stubs/test mocks), so `PgOrchestratorLookup`
+> cannot load the engine `Thread` Tier-0 needs. User decision (locked
+> 2026-09-02): Q-H12-5-THREAD = **C** (real PG-backed engine `Store::load_thread`,
+> rejected the thin scope-only loader A + the composition `ThreadLoader` trait B);
+> Q-H12-5-STORE = **C2** (wrap `SessionThreadService::read_thread`, reuse
+> snapshot parsing, rejected direct-PG C1). Full approach + H.12.5.1–H.12.5.3 in
+> `./docs/agents-v3/subplan_problem_stepH12_5_of_saved_plan_to_v3.md`. Execute
+> H.12.5.1→H.12.5.3 one-by-one before resuming H.12.5 main.
 
 **Status:** [ ] Pending
 

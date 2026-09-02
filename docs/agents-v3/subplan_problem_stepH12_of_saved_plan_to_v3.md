@@ -276,9 +276,20 @@ the composition layer.
 
 ### H.12.5 — Composition: `OrchestratorLookup` impl + Thread loader + host wiring
 
+> **Spawned a nested subplan — real PG-backed engine `Store::load_thread`**
+> (`./subplan_problem_stepH12_5_of_saved_plan_to_v3.md`). Grounding proved no
+> production engine `Store::load_thread` exists (only stubs/mocks), so the Thread
+> loader cannot be a thin shim. User lock 2026-09-02: Q-H12-5-THREAD = **C** (real
+> PG-backed engine `Store::load_thread`), Q-H12-5-STORE = **C2** (wrap
+> `SessionThreadService::read_thread`). Execute H.12.5.1→H.12.5.3 (build
+> `PgThreadEngineStore`) before H.12.5 main (`PgOrchestratorLookup` + host
+> wiring) below. The plan wording `thread_loader: Arc<dyn ThreadLoader>` is
+> superseded: `PgOrchestratorLookup` holds `Arc<dyn brassclaw_engine::Store>`
+> (the new `PgThreadEngineStore`) instead.
+
 New `crates/brassclaw_reborn_composition/src/orchestrator_lookup_impl.rs`:
 `struct PgOrchestratorLookup { runtime: Arc<TierZeroOrchestrator>,
-thread_loader: Arc<dyn ThreadLoader> }` implementing
+thread_store: Arc<dyn brassclaw_engine::Store> }` implementing
 `brassclaw_turns::run_profile::OrchestratorLookup`:
 - `run_step_zero(context, recipe_hint)`: load `Thread` from
   `context.thread_id` via the loader (Tier-1 `recipe_hint` is `Some` → engine
@@ -313,6 +324,41 @@ runtime.rs; `DefaultPlannedRuntimeParts`; `brassclaw_reborn/src/runtime.rs`
 (the `with_orchestrator_lookup` install call). **Result:** production host
 wires a real `OrchestratorLookup`; `run_tier_zero`/`run_step_zero` reach the
 engine Monty VM.
+
+**H.12.5 — DONE.** Nested subplan H.12.5.1–H.12.5.3 (`PgThreadEngineStore`) complete
+(see `./subplan_problem_stepH12_5_of_saved_plan_to_v3.md` Completion log). H.12.5 main
+shipped: new `crates/brassclaw_reborn_composition/src/orchestrator_lookup_impl.rs`
+(`pub(crate) struct PgOrchestratorLookup { runtime: Arc<TierZeroOrchestrator>,
+thread_store: Arc<dyn Store>, executor_builder: Arc<TierZeroEffectExecutorBuilder> }`
++ `new` + `load_thread(&LoopRunContext) -> Option<Thread>` mapping turns
+`brassclaw_host_api::ThreadId` → engine `ThreadId(Uuid)` → `PgThreadEngineStore::load_thread`;
+`#[cfg(feature="skills-db")] #[async_trait] impl OrchestratorLookup` — `run_step_zero`
+loads thread → `runtime.assemble_prior_knowledge(&thread, &thread.goal, 4096, "02",
+recipe_hint.cloned())` → `map_pkr_to_bundle`; `run_tier_zero` loads thread →
+`executor_builder.build_for_run(context)` → `runtime.run_tier_zero(&thread, &effects,
+recipe_hint, recipe_rust_context)` → `map_result_to_reply`; both `None` on miss/error
+(degrade-gracefully). Pure ungated map fns `map_pkr_to_bundle` (carries
+`orchestrator_content`/`matched_component_ids`/`override_prompt_creation`, drops vestigial
+Q2 fields) + `map_result_to_reply` (`formatted_output`→`text`) + 2 unit tests. Consts
+`ORCHESTRATOR_SENDER_CLASS_CODE="02"` + `PRIOR_KNOWLEDGE_TOKEN_BUDGET=4096` mirror the
+private `brassclaw_agent_loop::executor::recipe` constants. `TierZeroEffectExecutorBuilder`
++ `build_for_run` widened `pub(super)`→`pub(crate)` in `runtime/local_dev.rs` + a
+`#[cfg(feature="skills-db")] pub(crate) use local_dev::TierZeroEffectExecutorBuilder;`
+re-export in `runtime.rs` (the `local_dev` module is private). Composition `runtime.rs`
+wiring (skills-db-gated): clone `tier_zero_executor_builder` out of `local_dev_capabilities`
+before any sibling field moves; build `PgThreadEngineStore::new(thread_service,
+validated_identity.tenant_id)` + `TierZeroLlmGuard::new()` +
+`TierZeroOrchestrator::builder().llm(guard).build()` + `PgOrchestratorLookup::new(..)` →
+`Some(Arc<..> as Arc<dyn OrchestratorLookup>)`; default-config `None`; field
+`orchestrator_lookup: None,`→`orchestrator_lookup,`. **Note:** `brassclaw_reborn/src/runtime.rs`
+was NOT touched this step — H.12.4 part-2 (`8a094a91`) already committed the
+`DefaultPlannedRuntimeParts.orchestrator_lookup` field + `with_orchestrator_lookup` install
++ setter, so the reborn-side plumbing was finished in the prior step. Verification:
+`cargo fmt` clean; `cargo clippy -p brassclaw_reborn_composition --all-targets -- -D warnings`
+clean (default); `cargo clippy ... --features skills-db -- -D warnings` clean;
+`cargo test -p brassclaw_reborn_composition --lib orchestrator_lookup_impl` → 2 passed /
+0 failed (both configs). Production now wires a real `OrchestratorLookup`; the engine
+Monty VM is live (no longer dormant) under `skills-db`.
 
 ### H.12.6 — Agent-loop + reborn: Tier-1 prompt injection (`build_prompt_bundle` reads `recipe_hint`)
 
