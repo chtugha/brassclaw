@@ -602,3 +602,31 @@ plumbing.
   chat socket, so the Orchestrator hands its final answer to this Tool. Empty text
   → no-op. Bare-name arm `"post_reply" if call.method_call` (self-skip `args[1..]`,
   kwargs + `thread` + `event_tx` passed). clippy green both configs.
+- **C.1 PLACEMENT RESOLVED (this turn) — where the `host.*` registry lives.** The
+  23-arm `match` C.1 replaces is in `execute_orchestrator` (orchestrator.rs:527,
+  called ONLY from `loop_engine.rs:476` — the Model-A engine path). The LIVE
+  production Tier-0 path is `execute_tier_zero_channel` → `scripting::
+  execute_code_with_skills`, which dispatches tools as **bare-name** `MontyObject::
+  Function` stubs (scripting.rs:1363-1380) — it does NOT use `__execute_action__`
+  (scripting.rs:2679 "Dispatch logic moved to orchestrator.rs"). So: the C.1
+  `host.X(...)` arms are in `execute_orchestrator` = the **future production
+  dispatch that C.6 activates** (C.6 replaces `TurnRunnerWorker→canonical.rs` with
+  a cross-turn persistent Monty session running the basic-mode orchestrator; C.7
+  retires `loop_engine`/`ThreadManager`/`ExecutionLoop` scaffolding + reworks the
+  H.12 bridge). The current `scripting.rs` Tier-0 path is what C.6 RETIRES as the
+  driver. → C.1 arms are correctly placed (plan-correct: C.1 targets the
+  `execute_orchestrator` match per saved_plan C.1 text); they are dormant now and
+  activated by C.6. Do NOT also add the registry to `scripting.rs` (that path is
+  being retired). `execute_orchestrator` has NO direct unit tests.
+- **META-PRIMITIVE RETIREMENT SCOPE (next C.1 substep — NOT a quick pass).** Retiring
+  `__execute_action__`/`__execute_code_step__` + reducing `__execute_actions_parallel__`
+  to the `pc-host-execute-parallel` Python helper touches: (1) the 3 match arms
+  (orchestrator.rs:665-708); (2) the 3 handler fns (`handle_execute_code_step`:1136,
+  `handle_execute_action`:1336 [the security wrapper — policy/gate/lease/event, retired
+  by mode-driven security], `handle_execute_actions_parallel`:1640); (3) **2 direct
+  test call sites** (orchestrator.rs:5871 `handle_execute_action`, :7097
+  `handle_execute_code_step`) + their test helpers; (4) `default.py`
+  (`DEFAULT_ORCHESTRATOR`) which calls `__execute_action__`/`__execute_code_step__` —
+  retire it (C.7) or rewrite to `host.X()`; (5) docs sweep (AGENTS.md:59-97,111;
+  CLAUDE.md:437-439; builtin_stuff_v3.md examples). Coupled to C.2 (reclassify host
+  calls) + C.7 (Model-A retirement). → own focused substep; not folded into slice 2.
