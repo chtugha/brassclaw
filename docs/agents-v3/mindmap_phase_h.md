@@ -564,7 +564,9 @@ plumbing.
     "host"; (2) `FunctionCall` match adds bare-name arms for the 8 net-new + reused
     tools, each skipping `args[0]` when `method_call==true`; (3) retire
     `__execute_action__`/`__execute_code_step__` arms; (4) `__execute_actions_parallel__`
-    → Python helper `pc-host-execute-parallel` (retire the Rust arm); (5) dissect
+    RETIRED entirely (NOT a Python helper — Monty is single-threaded, so "call N tools"
+    = a sequential recipe with N steps; a `pc-host-execute-parallel` helper would
+    degrade to sequential anyway); (5) dissect
     `intent_system::resolve_intent` → `handle_resolve_intent`; fetch/split formatters
     → `handle_compose_orchestrator`; add `handle_kohai_complete` (interceptor ingress)
     + `handle_post_reply`. **Next:** implement C.1 starting with the `host` namespace
@@ -618,15 +620,44 @@ plumbing.
   `execute_orchestrator` match per saved_plan C.1 text); they are dormant now and
   activated by C.6. Do NOT also add the registry to `scripting.rs` (that path is
   being retired). `execute_orchestrator` has NO direct unit tests.
-- **META-PRIMITIVE RETIREMENT SCOPE (next C.1 substep — NOT a quick pass).** Retiring
-  `__execute_action__`/`__execute_code_step__` + reducing `__execute_actions_parallel__`
-  to the `pc-host-execute-parallel` Python helper touches: (1) the 3 match arms
-  (orchestrator.rs:665-708); (2) the 3 handler fns (`handle_execute_code_step`:1136,
-  `handle_execute_action`:1336 [the security wrapper — policy/gate/lease/event, retired
-  by mode-driven security], `handle_execute_actions_parallel`:1640); (3) **2 direct
-  test call sites** (orchestrator.rs:5871 `handle_execute_action`, :7097
-  `handle_execute_code_step`) + their test helpers; (4) `default.py`
-  (`DEFAULT_ORCHESTRATOR`) which calls `__execute_action__`/`__execute_code_step__` —
-  retire it (C.7) or rewrite to `host.X()`; (5) docs sweep (AGENTS.md:59-97,111;
-  CLAUDE.md:437-439; builtin_stuff_v3.md examples). Coupled to C.2 (reclassify host
-  calls) + C.7 (Model-A retirement). → own focused substep; not folded into slice 2.
+- **META-PRIMITIVE RETIREMENT EXECUTED (this turn — all 3 retire uniformly, NOT to a
+  Python helper).** User course-corrected: `__execute_actions_parallel__` RETIRES
+  entirely (Monty is single-threaded → a `pc-host-execute-parallel` helper would
+  degrade to sequential; "call N tools" = a sequential recipe with N steps). Deleted:
+  (1) the 3 match arms (orchestrator.rs:665-708); (2) the 3 handler fns
+  (`handle_execute_code_step`, `handle_execute_action` [the security wrapper —
+  policy/gate/lease/event, retired by mode-driven security], `handle_execute_actions_parallel`)
+  + the 2 now-dead helpers they exclusively owned (`execute_single_action`,
+  `execute_single_action_with_inline_retry`) + `interrupted_result_needs_refund`;
+  (3) the 2 direct-call tests (`execute_action_does_not_set_empty_snapshots...`,
+  `execute_code_step_emits_code_execution_failed_event`) + their `InventoryErrorEffects`
+  helper; (4) `tail_chars` (only used by the deleted `handle_execute_code_step`) + its
+  dangling intra-doc link in `tail_utf8_bytes`; (5) `execute_orchestrator`'s now-unused
+  `policy`/`gate_controller` params prefixed `_` (still passed by `loop_engine.rs:476`,
+  the Model-A caller C.7 retires). Cascade verified bounded: `summarize_action_calls_for_log`,
+  `python_json_to_action_calls`, `ModelCapturingLlm`, `PythonActionCall`,
+  `build_orchestrator_inputs`, `parse_outcome`, `json_to_thread_messages`,
+  `tail_utf8_bytes`, `bounded_return_value` all STAY alive (kept arms + direct unit
+  tests). `default.py` (`DEFAULT_ORCHESTRATOR`) still calls the retired names — it is
+  Model-A-only (loaded solely by `execute_orchestrator`, which has NO direct unit
+  tests; its `run_loop` is not exercised by the segment-reduction tests that slice
+  `..helpers_end` before `run_loop`) → latent runtime breakage absorbed by C.7 which
+  deletes `default.py` + `execute_orchestrator` together. Docs swept: module header +
+  scripting.rs:2679 comment + saved_plan C.1 + builtin_stuff 27.11. **C.1 code complete;
+  next C.2** (reclassify remaining `__*__` arms → `host.*` / recipes / retired).
+- **MODEL-A TEST MODS DELETED (this turn — pulled C.7 forward; user-authorized).** The
+  retirement broke 14 lib tests in `executor::loop_engine::tests::*` (13) +
+  `runtime::manager::tests::running_thread_can_install_then_use_new_tool_without_user_bounce`
+  (1): those tests drive `loop_engine` → `execute_orchestrator` → `default.py`, whose
+  `run_loop` calls the now-retired `__execute_action__`/`__execute_code_step__` →
+  NameError → `ThreadOutcome ≠ Completed`. They are C.7's explicit "Model-A engine
+  tests" deletion targets, inseparable from the meta-primitive retirement (default.py
+  is the sole caller). User authorized deleting the ENTIRE `loop_engine::tests` mod
+  (−1599 lines) + ENTIRE `runtime::manager::tests` mod (−955 lines), pulling C.7's
+  test-deletion forward. The ~17 passing tests in those mods go too (all Model-A engine
+  path). No production code touched (test-only `#[cfg(test)] mod`). No dead-code cascade
+  in loop_engine/runtime production (still wired into the agent-loop until C.6/C.7).
+  **Verified green both configs:** clippy `--all-targets -D warnings` + `cargo test --lib`
+  (default 545 passed / skills-db 556 passed, 0 failed) + `cargo check -p
+  brassclaw_reborn_composition` (full downstream chain compiles). C.7 now only needs to
+  delete the loop_engine/runtime/execute_orchestrator PRODUCTION code + default.py.

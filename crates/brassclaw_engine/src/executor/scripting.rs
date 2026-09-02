@@ -2676,7 +2676,8 @@ pub(crate) fn monty_to_string(obj: &MontyObject) -> String {
     }
 }
 
-// Dispatch logic moved to orchestrator.rs (__execute_action__ handler).
+// Dispatch logic moved to orchestrator.rs (first-class `host.<name>(...)`
+// callables; the `__execute_action__` meta-primitive is retired).
 // GatePaused is handled via EngineError → JSON in orchestrator.rs.
 // ── MontyObject ↔ JSON ──────────────────────────────────────
 

@@ -5696,8 +5696,10 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > - **C.1 — Tool registry + first-class callables.** Replace the `__host_call__`
 >   23-arm `match` with a tool registry; bind host capabilities as first-class
 >   callables in the Monty namespace (recipe PythonCode calls `host.<name>(…)`
->   directly). Retire `__execute_action__` + `__execute_code_step__`; reduce
->   `__execute_actions_parallel__` to a Python helper. Dissect
+>   directly). Retire `__execute_action__` + `__execute_code_step__` +
+>   `__execute_actions_parallel__` ("call N tools" = a sequential recipe with N
+>   steps; Monty is single-threaded so a parallel helper would degrade to
+>   sequential anyway — no `pc-host-execute-parallel` helper). Dissect
 >   `intent_system::resolve_intent` + the fetch/split formatters into registered
 >   `host.resolve_intent` / `host.compose_orchestrator` tools.
 > - **C.2 — Reclassify the 23 host calls (per `builtin_stuff_v3.md` Step 27).**
@@ -5731,10 +5733,15 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   pipeline as the driver; reuse stage logic as host fns.
 > - **C.7 — Retire dead Model-A code + verify both configs green.** Delete
 >   `execute_orchestrator`/`ExecutionLoop`/`ThreadManager`/`brassclaw_engine::
->   runtime` + Model-A engine tests; rework the H.12 `orchestrator_lookup` bridge
->   (Monty calls host fns directly). `CARGO_TARGET_DIR=/Users/ollama/brassclaw-
->   target` on every build; `df -h` first — `cargo clean` (scoped `-p` ok) if
->   Avail<15GB or >90%. Mark C done; commit + push; proceed to **A**.
+>   runtime` + `default.py` (the sole caller of the retired meta-primitives);
+>   rework the H.12 `orchestrator_lookup` bridge (Monty calls host fns directly).
+>   **NOTE:** the Model-A engine TEST mods (`executor::loop_engine::tests` +
+>   `runtime::manager::tests`) were already deleted in C.1 (the meta-primitive
+>   retirement broke them — `default.py::run_loop` calls `__execute_action__`),
+>   so C.7 only deletes the production code + `default.py`. `CARGO_TARGET_DIR=
+>   /Users/ollama/brassclaw-target` on every build; `df -h` first — `cargo clean`
+>   (scoped `-p` ok) if Avail<15GB or >90%. Mark C done; commit + push; proceed
+>   to **A**.
 >
 > Subplan doc
 > `./docs/agents-v3/subplan_problem_stepC_model_a_retirement_of_saved_plan_to_v3.md`

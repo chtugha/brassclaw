@@ -12553,7 +12553,7 @@ producing duplicate rows.
 | `__llm_complete__` | **RETIRED** — LLM invocation is Kohai-mediated (Recipe); `handle_llm_complete` / `LlmBackend` retire |
 | `__save_checkpoint__`, `__transition_to__`, `__check_budget__`, `__log_budget_warning__`, `__emit_event__`, `__get_actions__`, `__record_skill_usage__` | **ALL RETIRED** (LOCKED Q-D) — the Orchestrator owns thread state (it knows where it is in its own step sequence); the agent-loop stage pipeline is no longer the driver; chat event emission goes via `host.post_reply` |
 | `__execute_action__`, `__execute_code_step__` | **RETIRED** meta-primitives — the recipe step calls the ToolSkill directly |
-| `__execute_actions_parallel__` | → Python helper `pc-host-execute-parallel` calling several `host.*` callables concurrently |
+| `__execute_actions_parallel__` | **RETIRED** meta-primitive — "call N tools" is a sequential recipe with N steps (Monty is single-threaded, so a `pc-host-execute-parallel` Python helper would degrade to sequential anyway). A parallel-step-group recipe extension may be added later only if a real concurrent case appears |
 
 > **Net new `host.*` Tool rows:** `resolve_intent`, `compose_orchestrator`
 > (rewrite), `post_reply`, `fetch_component`, `resolve_component_by_name`,
