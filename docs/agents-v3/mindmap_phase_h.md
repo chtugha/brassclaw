@@ -747,3 +747,30 @@ plumbing.
   + `pg_tool_skill_store.rs` with `NewPgTool`/`NewPgToolSkill` insert structs (idiomatic, mirrors
   `NewPgRecipe`, but +2 store modules for a one-off seed). User steer pending. Also: 27.6.1 + the 27.11
   catalogue (line 13392 + child_component_ids 13427) must drop `pc-host-execute-parallel` (STALE).
+- **C.2 INSERT-API FORK RESOLVED = B (user-locked).** Create two new store modules
+  `pg_tool_store.rs` (cl 0) + `pg_tool_skill_store.rs` (cl 13) with `NewPgTool`/`NewPgToolSkill`
+  insert structs mirroring `NewPgRecipe`/`NewPgPythonCode` (idiomatic, reusable).
+- **C.2 BUILTIN-SCOPE FORK RESOLVED = B (user-locked this turn).** Retrieval is strictly
+  per-(tenant,user,agent,project) (`fetch_for_turn` + `DbToolSource::fetch_tool_names`); a
+  per-scope seed is invisible to other scopes. User locked **global builtins in retrieval NOW**:
+  `fetch_for_turn` + `DbToolSource::fetch_tool_names` UNION `source='system' AND
+  validation_status='validated'` rows **tenant-anchored** (keep `tenant_id=$1`; drop
+  user/agent/project predicates for system rows; preserve consumer-tag + validator-tag filters).
+  Seed rows carry a marker scope (tenant=runtime tenant, user=`SYSTEM_RESERVED_ID`=`\x1fSYSTEM\x1f`,
+  agent=runtime agent, project=`system`). This expands C.2 beyond "data-only" → adds (1a) a
+  migration + (1b) the retrieval UNION. `TurnScope` model confirmed (`brassclaw_turns::scope`):
+  tenant_id required; agent_id/project_id Option; user_id from actor/explicit-owner else
+  `SYSTEM_RESERVED_ID`; `build_component_scope` (retrieval_lookup_impl.rs:113) is the live
+  agent-loop retrieval scope (agent falls back to `"default"`, project to `""`).
+- **C.2 SLICE 1a — V066 MIGRATION (DONE this turn).** `source='system'` CHECK audit: allowed in
+  `reborn_python_code` (V052) + `reborn_extension_catalogues` (V053); `reborn_tool_skills` (V037)
+  + `reborn_recipes` (V033) have NO CHECK (any value ok); `reborn_tools` (V030) + `reborn_skills`
+  (V027) + `reborn_actions` (V029) FORBID 'system'. The "V057" referenced in V052/V053 comments
+  was NEVER WRITTEN. Wrote `V066__allow_system_source_on_tools_and_skills.sql`: DROP+ADD CONSTRAINT
+  `reborn_tools_source_check` / `reborn_skills_source_check` widening the CHECK to include 'system'.
+  Only the two tables C.2 seeds into (cl 0 + cl 1) altered; `reborn_actions` left alone (C.2 seeds
+  no actions). refinery `embed_migrations!("migrations")` auto-discovers the file (no manifest);
+  `cargo check -p brassclaw_pg` GREEN (embed verified). C.2 slices renumbered: 1a=V066 (done), 1b=
+  retrieval UNION, 1c=two store modules, 1d=seed fn skeleton + `builtin-host` catalogue + boot
+  wiring, 2–12=the 8 tool stacks + 3 recipes, 13=final verify. No live PG locally (Docker/
+  testcontainers SKIP) → migration apply + seed insert verified in CI/user env, not locally.

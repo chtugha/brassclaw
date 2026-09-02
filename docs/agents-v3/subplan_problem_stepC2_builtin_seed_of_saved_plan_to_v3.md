@@ -64,6 +64,19 @@ re-seeded.
 
 ## Slices (one-by-one; clippy green both configs + commit + push each)
 
+> **B-fork expansion (user-locked 2026-09-03):** builtins are **global in
+> retrieval** — `fetch_for_turn` + `DbToolSource::fetch_tool_names` UNION
+> `source='system' AND validation_status='validated'` rows **tenant-anchored**
+> (keep `tenant_id=$1`, drop the user/agent/project predicates for system rows),
+> preserving the consumer-tag + validator-tag filters. Seed rows carry a marker
+> scope (tenant=runtime tenant, user=`SYSTEM_RESERVED_ID`, agent=runtime agent,
+> project=`system`). This expands C.2 beyond "data-only" — it now includes (1a)
+> a migration + (1b) the retrieval UNION. Consequence: `reborn_tools` (V030) +
+> `reborn_skills` (V027) `source` CHECK forbid `'system'` → V066 ALTERs them
+> (the never-written "V057"). `reborn_tool_skills` (V037) + `reborn_recipes`
+> (V033) have no CHECK; `reborn_python_code` (V052) + `reborn_extension_catalogues`
+> (V053) already allow `'system'`.
+
 - **Slice 0 — finish mechanism grounding + doc corrections.**
   - Ground the class-0 (Tool) store + insert API + which table (retrieval returns None
     for class 0, but the row lives somewhere — find the `reborn_*` table + `New*` struct).
@@ -76,11 +89,24 @@ re-seeded.
   - Correct stale placement notes: `saved_plan_to_v3.md` C.1/C.6 text + this subplan's
     C subplan `:86-87` is already correct under β; mark portion-101 placement stale.
   - Correct `builtin_stuff_v3.md` 27.6.1 → RETIRED.
-- **Slice 1 — seed fn skeleton + `builtin-host` catalogue row (27.11).**
-  `seed_builtin_host_components(pool)`; idempotent (upsert by name+project or
-  check-exists-then-insert); inserts the class-23 `builtin-host` row with empty
+- **Slice 1a — V066 migration.** ALTER `reborn_tools` + `reborn_skills` `source`
+  CHECK to add `'system'` (drop + re-add the auto-named `<table>_source_check`).
+  refinery auto-discovers the new file; `cargo check -p brassclaw_pg` verifies the
+  embed. (DONE — ships with this commit.)
+- **Slice 1b — retrieval UNION (Rust).** `fetch_for_turn` (retrieval_source.rs):
+  in each sub-select's WHERE, add `OR source='system'` (tenant-anchored,
+  consumer-tag + validator-tag filters preserved). `DbToolSource::fetch_tool_names`
+  (db_tool_source.rs): same `OR source='system'` tenant-anchored union so host
+  tools are discoverable across user/agent/project. clippy both configs + commit.
+- **Slice 1c — two store modules.** `pg_tool_store.rs` (cl 0, `NewPgTool` + insert
+  by name+scope, idempotent) + `pg_tool_skill_store.rs` (cl 13, `NewPgToolSkill` +
+  insert). Mirror `NewPgRecipe` / `NewPgPythonCode`. clippy + commit.
+- **Slice 1d — seed fn skeleton + `builtin-host` catalogue row (27.11).**
+  `seed_builtin_host_components(pool, tenant_id)`; idempotent (check-exists-then-insert
+  by name+scope); inserts the class-23 `builtin-host` row with empty
   `child_component_ids` (filled incrementally as the tool/recipe ids are minted).
-  Wire into boot. clippy + commit.
+  Wire into boot (`webui.rs` `#[cfg(feature="postgres")]` block alongside
+  `seed_builtin_providers`). clippy + commit.
 - **Slices 2–9 — one per `host.*` tool (27.1, 27.2, 27.3, 27.7.2, 27.7.3, 27.7.4,
   27.9.1, 27.10.3).** Each: read that substep's spec, encode the 5 components (Tool +
   ToolSkill + PythonCode + Leaf Skill + Recipe) as `New*` rows, insert idempotently,
