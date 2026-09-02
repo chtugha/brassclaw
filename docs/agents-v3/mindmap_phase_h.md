@@ -433,3 +433,139 @@ plumbing.
   security panel: each wrapper layer operator-toggleable per deployment.**
   Policy for the LLM-involved path = **bind-time namespace filtering** (compose
   binds only profile+grant-permitted tools); Matching-Mode bypasses it.
+- **Mechanism classification LOCKED (this turn — user answered the 5 open
+  points); stale Step 27.0 table is re-fixed as follows:**
+  (1) **LLM invocation = Kohai-mediated; NOT a Rust tool.** Orchestrator composes
+  the prompt (Recipe) + adds a prefix-placeholder → sends to **Kohai** (Python).
+  Kohai saves the prompt. **Case 1 (Sempai connected):** Kohai adds an
+  optimization-prefix → Sempai optimizes → returns WITHOUT prefix → Kohai saves
+  the optimized prompt beside the original → Kohai adds the provider-LLM prefix
+  (the one for that placeholder) → sends to provider LLM. **Case 2 (no Sempai):**
+  Kohai saves the prompt → adds the provider prefix → sends. Both: Kohai receives
+  the answer, saves it beside its prompt, returns it to the Orchestrator.
+  **`handle_llm_complete` / `LlmBackend` RETIRE as Rust host tools.** Rust↔LLM
+  never talk directly — only over the orchestrator/Kohai.
+  (2) **`fetch_component` + `resolve_component_by_name` = Tools (KEPT).** Not
+  obsolete — components aren't only tools; prior knowledge still assembles.
+  (3) **`retrieve_docs` + `get_reduction_rules` = DROPPED.**
+  `assemble_prior_knowledge` → **Recipe, fallback when NO prefix is present**
+  (adds basic "what is going on" info so the LLM understands context).
+  (4) **`compose_orchestrator` = Tool (REWRITE — Rust part significantly reduced;
+  Recipe + Component structure reworked to match).** `post_reply` = **conditional**:
+  Rust-only chat access → Tool; orchestrator may post directly → Skill + Recipe +
+  PythonCode component. **(RESOLVED = A1 → Tool; see below.)**
+  (5) **`memory_write` = Recipe** that saves chat content via a **shared
+  SQL-saving tool** to the **same store Kohai saved the LLM prompt** (same
+  SQL-saving tool). Storage-not-DB is what we avoid. If every interaction in a
+  chat were a matched process, the chat wouldn't need saving at all.
+- **Grounded this turn (informs the residual forks):** a generic Rust HTTP
+  first-party tool ALREADY exists — `crates/brassclaw_host_runtime/src/
+  first_party_tools/http.rs` (so Kohai can reach the provider LLM by calling it,
+  no new Rust needed for transport). The Kohai/Sempai system already lives in
+  `crates/brassclaw_interceptor` (mode/packet/proposal_sink/pg_store/config).
+- **Residual forks RESOLVED (this turn — user + code grounding); Step 27 intro
+  + 27.0 table re-authored to the locked classification:**
+  **(A) = A1 — `post_reply` is a Tool.** Grounded: Monty VM is sandboxed
+  (`orchestrator.rs:568-582` — `ResourceLimits` + `PrintWriter::CollectString`,
+  no socket); the chat/WebUI is fed by Rust-side `ThreadEvent` broadcast
+  (`event_tx`) consumed by the ingress. Python reaches the chat ONLY via a Rust
+  host fn or the `FINAL` return — both Rust-mediated. So only Rust touches the
+  chat window → `post_reply` = Tool. **(B) = yes —** Kohai (Python) calls the
+  existing `first_party_tools/http.rs` HTTP tool to send the prompt to the
+  provider LLM; no new Rust. **(C) = reuse `builtin.memory_write` (Step 11) —** it
+  IS the existing SQL-saving Tool; both Kohai (persist prompts+answers) and the
+  `host-save-history` Recipe call it; no new SQL tool. **(D) = ALL stage-machinery
+  verbs RETIRED —** `save_checkpoint`/`transition_to`/`check_budget`/
+  `log_budget_warning`/`emit_event`/`get_actions`/`record_skill_usage`: the
+  Orchestrator owns thread state (it knows where it is in its own step sequence);
+  the agent-loop stage pipeline is no longer the driver; chat event emission goes
+  via `host.post_reply`. **Next:** re-author substeps 27.1–27.11 one-by-one to
+  this locked classification.
+
+- **Step 27 re-authoring PASS COMPLETE (this turn).** All 7 todos done:
+  - **27.5** → RETIRED `host.llm_complete` (+ `handle_llm_complete`/`LlmBackend`);
+  DROPPED `host.retrieve_docs` + `host.get_reduction_rules` (prior knowledge =
+  fallback Recipe, no retrieval verbs).
+  - **27.6** → RETIRED `__execute_action__` (+ `handle_execute_action` per-call
+  wrapper → mode-driven security), `__execute_code_step__`, `host.get_actions`;
+  KEPT `__execute_actions_parallel__` as the Python helper
+  `pc-host-execute-parallel` (fans out to bound `host.*` callables, not a Rust
+  intrinsic).
+  - **27.7.1** → RETIRED `host.record_skill_usage` (Q-D); 27.7 header "Three host
+  calls" (fetch_component / resolve_component_by_name / validate_component kept).
+  - **27.9.2–27.9.6** → ALL RETIRED (Q-D): emit_event / save_checkpoint /
+  transition_to / check_budget / log_budget_warning; 27.9 header "One KEPT host
+  call" (check_signals only); chat event emission goes via host.post_reply.
+  - **27.10.1** → `host-assemble-prior-knowledge` = FALLBACK Recipe (only when NO
+  prefix present), no tool bindings, one PythonCode formatter adding basic context.
+  - **27.10.2** → `host-non-match-llm-answer` = Kohai-mediated Recipe (assemble
+  prompt + prefix-PLACEHOLDER → hand to Kohai → answer back); NO `host.llm_complete`.
+  - **27.10.3 (NEW)** → introduced `host.kohai_complete` Tool (the ONE new tool
+  implied by the Kohai-mediated LLM model) — wraps the existing
+  `brassclaw_interceptor` ingress (wiring only, like `host.resolve_intent`); Kohai
+  does save / optional-Sempai / provider-prefix / `first_party_tools/http` /
+  save-answer. Added to the 27.0 Tools table; net-new `host.*` count 7 → 8.
+  - **First-class-callee sweep** → all 8 `__execute_action__("host.X", …)` calls
+  in Step 27 converted to `host.X(…)` (resolve_intent, compose_orchestrator,
+  post_reply, fetch_component, resolve_component_by_name, validate_component,
+  regex_match, check_signals). `__execute_action__("shell", …)` in the already-
+  shipped Steps 1–26 left as-is (out of scope: user scoped the obsolescence pass
+  to not-yet-done steps only).
+  - **27.11 `builtin-host` catalogue** → rewritten to the locked classification:
+  8 net-new Tools, 4 reused, 3 Recipes, 1 Python helper, RETIRED/DROPPED section;
+  task_groups trimmed (main-process-control / llm-via-kohai / component-store /
+  vm-control); child_component_ids pruned to KEPT components only; closing note
+  updated. Consistency grep: all remaining Step-27 mentions of retired names are
+  in RETIRED/DROPPED markers or "No host.llm_complete" notes — no stale ACTIVE
+  references.
+- **Net Step-27 classification (LOCKED + authored):** Tools = resolve_intent,
+  compose_orchestrator (rewrite), post_reply, fetch_component,
+  resolve_component_by_name, validate_component, check_signals, kohai_complete
+  (8). Reused = builtin.memory_write, first_party_tools/http, builtin.skill_list,
+  pc-regex-match. Recipes = host-non-match-llm-answer (Kohai-mediated),
+  host-assemble-prior-knowledge (fallback), host-save-history. DROPPED =
+  retrieve_docs, get_reduction_rules. RETIRED = llm_complete (Rust) + 7 stage
+  verbs (Q-D) + __execute_action__/__execute_code_step__.
+- **Next:** Phase C Rust implementation — C.1 tool registry + first-class
+  callables, C.2 reclassify host calls, C.3 cdylib dynamic loading, C.4 mode-driven
+  security + WebUI panel, C.5 basic-mode orchestrator script, C.6 production driver
+  switch, C.7 retire dead Model-A code + both configs green; then A (reshaped
+  H.12.6) + H.12.7.
+
+- **C.1 FEASIBILITY RESOLVED (this turn) — the `host.X(...)` first-class-callable
+  mechanism, grounded in the unmodifiable monty v0.0.16 source**
+  (`/Users/ollama/.cargo/git/checkouts/monty-1fcd393c2a7c36ca/142807b/crates/monty`):
+  - `RunProgress` has only 5 variants — `FunctionCall`, `OsCall`, `ResolveFutures`,
+    `NameLookup`, `Complete`. **There is NO `AttributeLookup` variant**; attribute
+    access (`LoadAttr` op) is handled INTERNALLY by Monty via `py_getattr` on known
+    heap types — it never suspends to the host.
+  - `MontyObject::Function{name,docstring}` is the host-callable stub: returned from
+    `NameLookup` → when called → `RunProgress::FunctionCall`. This is the EXISTING
+    scripting.rs pattern (registers flat tool names like "shell").
+  - `MontyObject::Dataclass{name,type_id,field_names,attrs,frozen}` is
+    host-constructible and supports attribute access reading `attrs`. **BUT** the
+    compiler emits `CallAttr` (NOT `LoadAttr`+`CallFunction`) for `obj.m(args)`
+    (compiler.rs:1771-1815; kwargs→`CallAttrKw`; *args→`CallAttrExtended`).
+    `CallAttr`→`py_call_attr` (dataclass.rs:267) returns **TypeError "not callable"**
+    for any attr stored in `attrs` (dataclass.rs:295-297). So storing `Function`s in
+    a `host` Dataclass's attrs **BREAKS**.
+  - **The ONLY viable `host.X(...)` path:** inject a `host` Dataclass with **EMPTY
+    attrs** via `NameLookup("host")`. Then `host.resolve_intent(prompt=…)` →
+    `CallAttr` → `py_call_attr` → attr not in (empty) attrs + public (no `_`) →
+    `MethodCall("resolve_intent", [self, …])` → surfaces as
+    `FunctionCall{function_name:"resolve_intent", method_call:true, args[0]=<self>,
+    kwargs=[…]}` (run_progress.rs:678-686). Host dispatches on the **bare tool name**
+    with `method_call==true`, **skipping args[0] (self)**. Namespace "host." is
+    implicit (the Dataclass name); recipe PythonCode still writes `host.X(...)` exactly
+    as locked. Confirmed all 8 net-new tool names are public (no underscore) → all
+    take the MethodCall branch.
+  - **Net C.1 mechanism (LOCKED by feasibility, not a new design choice):**
+    (1) orchestrator `NameLookup` arm returns a `host` Dataclass (empty attrs) for
+    "host"; (2) `FunctionCall` match adds bare-name arms for the 8 net-new + reused
+    tools, each skipping `args[0]` when `method_call==true`; (3) retire
+    `__execute_action__`/`__execute_code_step__` arms; (4) `__execute_actions_parallel__`
+    → Python helper `pc-host-execute-parallel` (retire the Rust arm); (5) dissect
+    `intent_system::resolve_intent` → `handle_resolve_intent`; fetch/split formatters
+    → `handle_compose_orchestrator`; add `handle_kohai_complete` (interceptor ingress)
+    + `handle_post_reply`. **Next:** implement C.1 starting with the `host` namespace
+    injection + registry dispatch skeleton.

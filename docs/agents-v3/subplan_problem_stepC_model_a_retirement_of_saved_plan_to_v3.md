@@ -135,11 +135,17 @@ Mirrors the C.1–C.7 block in `./saved_plan_to_v3.md` (Step C). Summary:
   `__execute_code_step__`; reduce `__execute_actions_parallel__` to a Python
   helper. Dissect `intent_system::resolve_intent` + the fetch/split formatters
   into registered `host.resolve_intent` / `host.compose_orchestrator` tools.
-- **C.2 — Reclassify the 23 host calls.** 16 execution primitives → registered
-  Tools/ToolSkills (no recipe); non-match-llm-answer / save-history /
-  assemble-prior-knowledge → Orchestrator Recipes over existing tools (no new
-  Rust); `post_reply` → Orchestrator Skill. Drop the per-call
-  `handle_execute_action` wrapper.
+- **C.2 — Reclassify the 23 host calls (per `builtin_stuff_v3.md` Step 27).**
+  Register the **8 net-new `host.*` Tools** (resolve_intent, compose_orchestrator
+  [rewrite], post_reply [A1: Tool], fetch_component, resolve_component_by_name,
+  validate_component, check_signals, kohai_complete) + reuse builtin.memory_write /
+  first_party_tools/http / builtin.skill_list / pc-regex-match;
+  non-match-llm-answer (Kohai-mediated) / save-history / assemble-prior-knowledge
+  (fallback, no retrieval verbs) → Orchestrator Recipes over existing tools (no
+  new Rust); **DROP** retrieve_docs + get_reduction_rules; **RETIRE**
+  host.llm_complete (+ `handle_llm_complete`/`LlmBackend`) + 7 stage-machinery
+  verbs (Q-D) + the per-call `handle_execute_action` wrapper (security is
+  mode-driven).
 - **C.3 — Two Tool Systems: cdylib dynamic loading.** Built-in tools stay
   precompiled; add the cdylib load/unload path (`dlopen`) for
   kohai/sempai-minted Tools+ToolSkills — bound into the same namespace on demand
@@ -150,10 +156,10 @@ Mirrors the C.1–C.7 block in `./saved_plan_to_v3.md` (Step C). Summary:
   security-settings WebUI panel (per-layer toggles).
 - **C.5 — Basic-mode orchestrator script.** Built-in Phase-1 harness (receive
   input → `host.resolve_intent` → dispatch). Match → `host.compose_orchestrator`
-  + run assembled recipe program (Tier-0 calls / Tier-1 prior-knowledge +
-  `host.llm_complete`). No-match → prompt-assembly recipe + `host.llm_complete`
-  + answer. Answer → `post_reply` skill → `host-save-history` recipe →
-  kohai/sempai.
+  + run assembled recipe program (Tier-0 calls / Tier-1 fallback prior-knowledge
+  + `host.kohai_complete` Kohai-mediated LLM call). No-match → prompt-assembly
+  recipe + `host.kohai_complete` + answer. Answer → `host.post_reply` tool →
+  `host-save-history` recipe → kohai/sempai.
 - **C.6 — Production driver switch.** Replace `TurnRunnerWorker` → agent-loop
   stages with `TurnRunnerWorker` → one cross-turn persistent Monty session
   (D-C1) running the basic-mode orchestrator. Retire `canonical.rs` stage

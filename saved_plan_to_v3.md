@@ -5652,15 +5652,22 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `parse_orchestrator_channel_steps`) are dissected into registered Tools
 > (`host.resolve_intent`, `host.compose_orchestrator`).
 >
-> **Reclassify the 23 host calls:** execution primitives (llm_complete,
-> retrieve_docs, get_reduction_rules, fetch_component, resolve_component_by_name,
-> record_skill_usage, validate_component, get_actions, check_signals, emit_event,
-> save_checkpoint, transition_to, check_budget, log_budget_warning, +
-> resolve_intent, compose_orchestrator) → registered Tools/ToolSkills, **no
-> recipe**; multi-step compositions (non-match-llm-answer, save-history,
-> assemble-prior-knowledge) → **Orchestrator Recipes** over existing tools, **no
-> new Rust**; `post_reply` → **Orchestrator Skill**; `__execute_action__`/
-> `__execute_code_step__` → gone; `__execute_actions_parallel__` → Python helper.
+> **Reclassify the 23 host calls (LOCKED + authored in `builtin_stuff_v3.md` Step
+> 27):** **8 net-new `host.*` Tools** — resolve_intent, compose_orchestrator
+> (rewrite), post_reply (A1: Rust owns the chat socket), fetch_component,
+> resolve_component_by_name, validate_component, check_signals, kohai_complete
+> (wraps the existing `brassclaw_interceptor` ingress — the Orchestrator→Kohai
+> handoff); **4 reused existing** — builtin.memory_write (shared SQL saver),
+> first_party_tools/http (Kohai→provider transport), builtin.skill_list,
+> pc-regex-match; **3 Orchestrator Recipes** over existing tools (no new Rust) —
+> host-non-match-llm-answer (Kohai-mediated), host-assemble-prior-knowledge
+> (fallback, no retrieval verbs), host-save-history; **DROPPED** retrieve_docs +
+> get_reduction_rules; **RETIRED** host.llm_complete (+ `handle_llm_complete`/
+> `LlmBackend` — LLM invocation is Kohai-mediated) + 7 stage-machinery verbs
+> (Q-D: emit_event/save_checkpoint/transition_to/check_budget/log_budget_warning/
+> get_actions/record_skill_usage — the Orchestrator owns thread state) +
+> `__execute_action__`/`__execute_code_step__`; `__execute_actions_parallel__` →
+> the Python helper `pc-host-execute-parallel`.
 >
 > **Two Tool Systems (LOCKED):** (1) **built-in** Tools + ToolSkills precompiled
 > into the Rust binary from the start; (2) **kohai/sempai-minted** Tools +
@@ -5693,11 +5700,17 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   `__execute_actions_parallel__` to a Python helper. Dissect
 >   `intent_system::resolve_intent` + the fetch/split formatters into registered
 >   `host.resolve_intent` / `host.compose_orchestrator` tools.
-> - **C.2 — Reclassify the 23 host calls.** Register the 16 execution primitives
->   as Tools/ToolSkills (no recipe); convert non-match-llm-answer / save-history /
->   assemble-prior-knowledge into Orchestrator Recipes over existing tools (no
->   new Rust); make `post_reply` an Orchestrator Skill. Drop the per-call
->   `handle_execute_action` wrapper.
+> - **C.2 — Reclassify the 23 host calls (per `builtin_stuff_v3.md` Step 27).**
+>   Register the **8 net-new `host.*` Tools** (resolve_intent, compose_orchestrator
+>   [rewrite], post_reply [A1: Tool], fetch_component, resolve_component_by_name,
+>   validate_component, check_signals, kohai_complete) and reuse
+>   builtin.memory_write / first_party_tools/http / builtin.skill_list /
+>   pc-regex-match; convert non-match-llm-answer (Kohai-mediated) / save-history /
+>   assemble-prior-knowledge (fallback, no retrieval verbs) into Orchestrator
+>   Recipes over existing tools (no new Rust); **DROP** retrieve_docs +
+>   get_reduction_rules; **RETIRE** host.llm_complete (+ `handle_llm_complete`/
+>   `LlmBackend`) + 7 stage-machinery verbs (Q-D) + the per-call
+>   `handle_execute_action` wrapper (security is mode-driven).
 > - **C.3 — Two Tool Systems: cdylib dynamic loading.** Built-in tools stay
 >   precompiled; add the cdylib load/unload path (`dlopen`) for
 >   kohai/sempai-minted Tools+ToolSkills, bound into the same namespace on demand
@@ -5709,9 +5722,9 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
 >   (receive input → `host.resolve_intent` → dispatch). Match →
 >   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls
->   / Tier-1 prior-knowledge + `host.llm_complete` helper). No-match →
->   prompt-assembly recipe + `host.llm_complete` + answer. Answer → `post_reply`
->   skill → `host-save-history` recipe → kohai/sempai.
+>   / Tier-1 fallback prior-knowledge + `host.kohai_complete` Kohai-mediated LLM
+>   call). No-match → prompt-assembly recipe + `host.kohai_complete` + answer.
+>   Answer → `host.post_reply` tool → `host-save-history` recipe → kohai/sempai.
 > - **C.6 — Production driver switch.** Replace `TurnRunnerWorker` → agent-loop
 >   stages with `TurnRunnerWorker` → one cross-turn persistent Monty session
 >   (D-C1) running the basic-mode orchestrator. Retire `canonical.rs` stage

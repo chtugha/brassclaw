@@ -12438,77 +12438,138 @@ producing duplicate rows.
 
 ## Step 27 — Host-Call Component Stack (orchestrator infrastructure → components)
 
-> **Purpose:** The Monty orchestrator talks to the Rust host through `__host_call__`
-> intrinsics (`__llm_complete__`, `__execute_action__`, `__retrieve_docs__`, …).
-> Per the locked architecture (CLAUDE.md "Execution driver — Option 2"), these
-> host calls are **not** to remain bare Rust intrinsics dispatched in a giant
-> `match`. They are dissected into the **same v3 component vocabulary** already
-> used by Steps 1–26 — class-0 Tools, class-13 ToolSkills, class-22 PythonCode,
-> class-1/2 Skills, class-21 Recipes, class-23 ExtensionCatalogues — so that:
+> **Purpose:** The Monty Orchestrator talks to the Rust Executioner through the
+> **Recipe-Skill-Tool System** — not bare `__host_call__` intrinsics. Per the
+> locked architecture (CLAUDE.md "Execution model — Orchestrator + Executioner"),
+> the host calls are dissected into the **same v3 component vocabulary** already
+> used by Steps 1–26 — class-0 Tools (Rust verbs), class-13 ToolSkills (call
+> syntax), class-1/2 Skills (Orchestrator how-to), class-21 Recipes (intent
+> flows), class-22 PythonCode (step bodies), class-23 ExtensionCatalogues.
 >
-> 1. **Recipes can compose them** like any other tool — Monty calls
->    `__execute_action__("host.<name>", params)`.
-> 2. A **future MCP extension** can expose the same skills as MCP tools to an LLM
->    helper: the LLM requests a task, Rust loads the necessary tools/toolskills/
->    python-snippets and runs them through the **same** `__execute_action__`
->    surface Monty uses. One invocation surface; Monty and MCP share it.
+> **Key principle — Rust holds only generic verbs; the logic lives in
+> Recipes/Skills:**
+> - **Tool (Rust)** = a capability/verb group (`component_store`, `intent`,
+>   `composition`, `chat`, `http`, `memory`, `regex`, `signal`, `validation`).
+>   The LLM is **NOT** a Rust Tool — see "LLM invocation = Kohai-mediated" below.
+> - **ToolSkill (Rust)** = one verb under a Tool + its call syntax/params
+>   (`component.fetch`, `intent.resolve`, `composition.compose`,
+>   `chat.post_reply`, `memory.write`, …).
+> - **Skill (Monty)** = narrative how-to for the Orchestrator, hierarchical.
+> - **Recipe (Monty)** = the intent-specific step-script (PythonCode steps using
+>   Skills/ToolSkills) the Orchestrator runs.
 >
-> The Rust backing fns (`handle_*` in `orchestrator.rs`) **stay** — they become
-> the implementation behind the `host.*` Tool rows. No new "HostSkill" type is
-> invented; the existing Tool/ToolSkill/Recipe machinery is reused.
+> **One Rust Tool/ToolSkill is reused by many Orchestrator Skills + Recipes**
+> across different intents. The high-level flows that **compose** generic verbs —
+> `assemble_prior_knowledge`, `non_match_llm_answer`, `save_history` — are
+> **Recipes, NOT Rust Tools**. The flows that **are** a single Rust mechanism —
+> `resolve_intent` (the whole intent system is one Tool), `compose_orchestrator`,
+> `post_reply` — are **Tools** (see the 27.0 table).
 >
-> **capability_id prefix:** all host-service tools use `host.<name>` (e.g.
-> `host.resolve_intent`, `host.llm_complete`). They are first-party system tools
-> (`source: "system"`, `validation_status: "validated"`), registered in
-> `BuiltinFirstPartyTools` alongside the `builtin.*` set.
+> **LLM invocation = Kohai-mediated (NOT a Rust Tool, LOCKED):** the Orchestrator
+> composes the prompt (a Recipe) + adds a prefix-placeholder, then sends the
+> prompt to **Kohai** (Python). Kohai saves the prompt; if a **Sempai** is
+> connected it adds an optimization-prefix → Sempai optimizes → returns without
+> the prefix → Kohai saves the optimized prompt beside the original → Kohai adds
+> the provider-LLM prefix (the one for that placeholder); if no Sempai, Kohai
+> just adds the provider prefix. Kohai then sends the prompt to the provider LLM
+> **by calling the existing Rust `first_party_tools/http.rs` HTTP tool**, receives
+> the answer, saves it beside its prompt, and returns it to the Orchestrator.
+> **`handle_llm_complete` / `LlmBackend` RETIRE as Rust host tools.** Rust↔LLM
+> never communicate directly — only over the Orchestrator/Kohai.
 >
-> **Two-channel rule still applies:** a Tier-0 recipe using a `host.*` tool has a
-> `channel: "rust"` step that pre-loads the `ts-host-*` ToolSkill binding and a
-> `channel: "orchestrator"` PythonCode step that calls `__execute_action__()`.
+> **Thread state is owned by the Orchestrator (LOCKED):** the main process is one
+> long-persisting Monty run; the Orchestrator **inherently knows its own state**
+> (where it is in its step sequence). The Rust stage-pipeline machinery —
+> `save_checkpoint`, `transition_to`, `check_budget`, `log_budget_warning`,
+> `emit_event`, `get_actions`, `record_skill_usage` — is **ALL RETIRED**: the
+> agent-loop stage pipeline is no longer the driver, and no universal per-call
+> wrapper means no per-step state/budget/event host verbs are needed. Chat event
+> emission goes through `host.post_reply`. Security is mode-driven (Matching-Mode
+> all-off / Non-Matching-Mode wrapper-on) — see CLAUDE.md.
+>
+> **Tool invocation = first-class callables (no `__execute_action__`):** a recipe
+> step's PythonCode calls a ToolSkill directly, e.g.
+> `result = host.resolve_intent(user_input=text)`. The rust-channel step binds the
+> ToolSkill into the Monty namespace; the orchestrator-channel PythonCode calls
+> the bound callable. `__execute_action__` / `__execute_code_step__` are
+> **retired** (Model-A relics); `__execute_actions_parallel__` becomes a Python
+> helper. A future MCP bridge hits the **same namespace-registry surface** — no
+> string-intrinsic needed.
+>
+> The Rust backing fns (`handle_*` in `orchestrator.rs`) **stay** as the
+> implementation behind the `host.*` Tool rows — **except** `handle_llm_complete`
+> / `LlmBackend` (retired — Kohai-mediated) and `handle_execute_action` (retired
+> as a universal per-call wrapper — security is now mode-driven).
+>
+> **capability_id prefix:** built-in system Tools use `host.<verb>` (e.g.
+> `host.resolve_intent`, `host.compose_orchestrator`, `host.fetch_component`,
+> `host.post_reply`). They are first-party system tools (`source: "system"`,
+> `validation_status: "validated"`), registered in `BuiltinFirstPartyTools`
+> alongside the `builtin.*` set.
+>
+> **Two-channel rule still applies:** a Tier-0 recipe using a `host.*` verb has a
+> `channel: "rust"` step that binds the `ts-host-*` ToolSkill into the namespace
+> and a `channel: "orchestrator"` PythonCode step that calls the bound callable
+> directly.
 
-### Step 27.0 — Dissection + reuse map
+### Step 27.0 — Dissection + reuse map (LOCKED classification)
 
-| Host call | Disposition | Reuses / backs |
-|-----------|-------------|----------------|
-| `__resolve_intent__` (missing) | NEW Tool `host.resolve_intent` + Recipe | `intent_system.rs::resolve_intent` / `fetch_for_turn` (Phase 2) |
-| `__compose_orchestrator__` (missing; collapses `__fetch_recipe__`) | NEW Tool `host.compose_orchestrator` + Recipe | composition recipe store + rust/orchestrator splitter |
-| `__post_reply__` (missing) | NEW Tool `host.post_reply` + Recipe | chat post |
-| `__save_history__` (missing) | **Recipe only** `host-save-history` | `builtin.memory_write` (Step 11) + PythonCode formatter |
-| `__llm_complete__` | NEW Tool `host.llm_complete` | `LlmBackend` |
-| `__retrieve_docs__` | NEW Tool `host.retrieve_docs` | `RetrievalEngine` |
-| `__get_reduction_rules__` | NEW Tool `host.get_reduction_rules` | store |
-| prior-knowledge assembly (deleted `__assemble_prior_knowledge__`) | **Recipe only** `host-assemble-prior-knowledge` | `host.retrieve_docs` + `host.get_reduction_rules` + PythonCode |
-| `__execute_action__` | **Meta-primitive** — the dispatcher itself; no Tool row | reuses Steps 1–19 + 27.* tools |
-| `__execute_actions_parallel__` | **Meta-primitive** + PythonCode helper `pc-host-execute-parallel` | reuses Steps 1–19 + 27.* |
-| `__execute_code_step__` | **Meta-primitive** — sandbox executor; no Tool row | class-22 PythonCode execution |
-| `__get_actions__` | NEW Tool `host.get_actions` | action inventory |
-| `__list_skills__` | **Reuse** `builtin.skill_list` (Step 16) — unify backing | Step 16 |
-| `__record_skill_usage__` | NEW Tool `host.record_skill_usage` | telemetry |
-| `__fetch_component__` | NEW Tool `host.fetch_component` | component store (SEC-01 gate) |
-| `__resolve_component_by_name__` | NEW Tool `host.resolve_component_by_name` | component store (SEC-01 gate) |
-| `__validate_component__` | NEW Tool `host.validate_component` | validation queue (kohai/sempai) |
-| `__regex_match__` | **Reuse** `pc-regex-match` (Step 20.x.2) — expose as `host.regex_match` Tool over same backing | Step 20.x.2 |
-| `__check_signals__` | NEW Tool `host.check_signals` | signal receiver |
-| `__emit_event__` | NEW Tool `host.emit_event` | event bus |
-| `__save_checkpoint__` | NEW Tool `host.save_checkpoint` | thread state |
-| `__transition_to__` | NEW Tool `host.transition_to` | thread state machine |
-| `__check_budget__` | NEW Tool `host.check_budget` | budget engine |
-| `__log_budget_warning__` | NEW Tool `host.log_budget_warning` | budget telemetry |
+**Recipes (no Tool row) — high-level flows that compose generic verbs:**
 
-> **Net new Tool rows:** 17. **Reused (no new Tool):** `__list_skills__`→Step 16,
-> `__regex_match__`→Step 20.x.2. **Meta-primitives (no Tool row):**
-> `__execute_action__`, `__execute_actions_parallel__`, `__execute_code_step__`.
-> **Recipe-only (over existing tools):** `host-save-history`,
-> `host-assemble-prior-knowledge`. **New Recipes:** `host-resolve-intent`,
-> `host-compose-and-run-orchestrator`, `host-non-match-llm-answer`,
-> `host-post-reply`, `host-save-history`, `host-assemble-prior-knowledge`.
+| Host call | Disposition | Composes |
+|-----------|-------------|----------|
+| `__non_match_llm_answer__` (missing) | **Recipe** `host-non-match-llm-answer` | Orchestrator assembles prompt + placeholder → **Kohai** (saves; optional Sempai optimize; adds provider prefix; calls `first_party_tools/http`; saves answer) → answer back |
+| `__assemble_prior_knowledge__` (deleted) | **Recipe** `host-assemble-prior-knowledge` (**fallback ONLY — when NO prefix is present**) | PythonCode adds basic "what is going on" context so the LLM understands; no retrieval verbs (those are dropped) |
+| `__save_history__` (missing) | **Recipe** `host-save-history` | PythonCode formatter + **`builtin.memory_write`** (Step 11) — the shared SQL-saving Tool — to the same store Kohai saved the prompt/answer |
+
+**Tools (Rust, registered as `host.*`) — single Rust mechanisms:**
+
+| Host call | Tool + ToolSkill | Backs / notes |
+|-----------|------------------|---------------|
+| `__resolve_intent__` (missing) | `host.resolve_intent` + `ts-host-resolve-intent` | the **whole intent system is ONE Tool** — `intent_system.rs::resolve_intent` logic stays in Rust |
+| `__compose_orchestrator__` (missing; collapses `__fetch_recipe__`) | `host.compose_orchestrator` + `ts-host-compose-orchestrator` | **REWRITE** — fetch + split formatters; Rust part significantly reduced; Recipe + Component structure reworked to match |
+| `__post_reply__` (missing) | `host.post_reply` + `ts-host-post-reply` | **A1 (LOCKED):** Monty is sandboxed (no direct chat socket) → only Rust touches the chat window → `post_reply` is a Tool the Orchestrator calls |
+| `__fetch_component__` | `host.fetch_component` + `ts-host-fetch-component` | component store (SEC-01 gate) — **KEPT** |
+| `__resolve_component_by_name__` | `host.resolve_component_by_name` + `ts-host-resolve-component-by-name` | component store (SEC-01 gate) — **KEPT** |
+| `__validate_component__` | `host.validate_component` + `ts-host-validate-component` | validation queue (kohai/sempai) |
+| `__check_signals__` | `host.check_signals` + `ts-host-check-signals` | signal receiver |
+| `__kohai_complete__` (new — implied by the Kohai-mediated LLM model) | `host.kohai_complete` + `ts-host-kohai-complete` | wraps the existing `brassclaw_interceptor` ingress — the Orchestrator→Kohai handoff (Kohai saves prompt / optional Sempai optimize / adds provider prefix / calls `first_party_tools/http` / saves answer / returns). No new logic — wiring. Defined at 27.10.3 |
+
+**Reused existing Tools (no new Tool row):**
+
+| Mechanism | Reused Tool | Source |
+|-----------|-------------|--------|
+| SQL saving (Kohai persist prompt/answer + `host-save-history`) | `builtin.memory_write` (Step 11) | the shared SQL-saving primitive — **no new SQL tool** (LOCKED Q-C) |
+| LLM HTTP transport (Kohai → provider LLM) | `first_party_tools/http.rs` | existing generic HTTP tool — **no new Rust** (LOCKED Q-B) |
+| Skill listing | `builtin.skill_list` (Step 16) | |
+| Regex match | `pc-regex-match` (Step 20.x.2) exposed as `host.regex_match` | |
+
+**DROPPED / RETIRED (no Tool, no Recipe):**
+
+| Host call | Disposition |
+|-----------|-------------|
+| `__retrieve_docs__` | **DROPPED** (LOCKED) — prior knowledge is the fallback Recipe, not a retrieval verb |
+| `__get_reduction_rules__` | **DROPPED** (LOCKED) — same |
+| `__llm_complete__` | **RETIRED** — LLM invocation is Kohai-mediated (Recipe); `handle_llm_complete` / `LlmBackend` retire |
+| `__save_checkpoint__`, `__transition_to__`, `__check_budget__`, `__log_budget_warning__`, `__emit_event__`, `__get_actions__`, `__record_skill_usage__` | **ALL RETIRED** (LOCKED Q-D) — the Orchestrator owns thread state (it knows where it is in its own step sequence); the agent-loop stage pipeline is no longer the driver; chat event emission goes via `host.post_reply` |
+| `__execute_action__`, `__execute_code_step__` | **RETIRED** meta-primitives — the recipe step calls the ToolSkill directly |
+| `__execute_actions_parallel__` | → Python helper `pc-host-execute-parallel` calling several `host.*` callables concurrently |
+
+> **Net new `host.*` Tool rows:** `resolve_intent`, `compose_orchestrator`
+> (rewrite), `post_reply`, `fetch_component`, `resolve_component_by_name`,
+> `validate_component`, `check_signals`, `kohai_complete` (8). **Reused existing:**
+> `builtin.memory_write` (shared SQL saver), `first_party_tools/http` (Kohai
+> transport), `builtin.skill_list`, `pc-regex-match`. **Recipes (no Tool row):**
+> `host-non-match-llm-answer`, `host-assemble-prior-knowledge` (fallback),
+> `host-save-history`. **DROPPED:** `retrieve_docs`, `get_reduction_rules`.
+> **RETIRED:** `llm_complete` (Rust) + 7 stage-machinery verbs + 3 meta-primitives.
 > **New ExtensionCatalogue:** `builtin-host` (class 23).
 >
-> Substeps 27.1–27.4 below are the **main-process control** batch — the 4 missing
-> host calls that implement Phase 2/3 of the basic-mode orchestrator and are
-> required by Phase C.2. Substeps 27.5–27.10 (LLM/retrieval/dispatch/component/
-> VM-control services) + the Non-Matching-Mode + prior-knowledge Recipes + the
-> `builtin-host` catalogue follow in subsequent appends.
+> Substeps 27.1–27.11 below are **being re-authored to this locked
+> classification** (the prior 27.1–27.11 text reflected the stale table and is
+> being replaced one-by-one). 27.1–27.4 = main-process control batch; 27.5–27.11
+> = the Tools, the Non-Matching-Mode + prior-knowledge Recipes, and the
+> `builtin-host` catalogue.
 
 ### Step 27.1 — `host.resolve_intent` (Phase 2 — intent match)
 
@@ -12562,7 +12623,7 @@ validation_status: "validated"
 ```python
 # Channel: orchestrator | Class: 22 | No I/O, no imports, no network, no DB.
 # IBS bakes in {{vars.slotN}} values before execution.
-result = __execute_action__("host.resolve_intent", {"user_input": "{{vars.slot0}}"})
+result = host.resolve_intent(user_input="{{vars.slot0}}")
 ```
 
 #### Step 27.1.4 — Leaf Skill: `skill-host-resolve-intent` (class 1)
@@ -12650,7 +12711,7 @@ validation_status: "validated"
 ```python
 # Channel: orchestrator | Class: 22 | No I/O, no imports.
 # Fetch+split+assemble the matched recipe into a runnable program.
-composed = __execute_action__("host.compose_orchestrator", {"component_id": "{{vars.slot0}}"})
+composed = host.compose_orchestrator(component_id="{{vars.slot0}}")
 # composed = {orchestrator_program, rust_inputs, recipe_hint, tier}
 ```
 
@@ -12730,7 +12791,7 @@ validation_status: "validated"
 #### Step 27.3.3 — PythonCode: `pc-host-post-reply` (class 22)
 ```python
 # Channel: orchestrator | Class: 22 | No I/O, no imports.
-__execute_action__("host.post_reply", {"answer": "{{vars.slot0}}"})
+host.post_reply(answer="{{vars.slot0}}")
 ```
 
 #### Step 27.3.4 — Leaf Skill: `skill-host-post-reply` (class 1)
@@ -12797,304 +12858,96 @@ tier:              0
 # path convention: memory/turn-history/YYYY-MM-DD.log
 ```
 
-### Step 27.5 — LLM-as-helper + retrieval + reduction (host services)
+### Step 27.5 — LLM invocation + retrieval + reduction — RETIRED / DROPPED (LOCKED)
 
-> Three NEW Tool rows backing `__llm_complete__`, `__retrieve_docs__`,
-> `__get_reduction_rules__`. `host.llm_complete` is the one an MCP bridge exposes
-> as "ask the model"; `host.retrieve_docs` + `host.get_reduction_rules` feed
-> prior-knowledge assembly (recipe 27.10). The LLM never executes anything — it
-> returns text/code/actions that Monty acts on.
+> **No new Rust host-service Tools in this slot.** Under the locked architecture
+> the LLM is **NOT a Rust Tool** — LLM invocation is **Kohai-mediated** (a Recipe,
+> see 27.10), and the provider-LLM HTTP call reuses the **existing**
+> `first_party_tools/http.rs` tool (see the 27.0 reused-Tools table). Prior
+> knowledge is the **fallback Recipe** (27.10.1, used only when no prefix is
+> present), not a retrieval verb.
+>
+> **RETIRED (no Tool row, no ToolSkill, no PythonCode, no Skill):**
+> - `host.llm_complete` (+ `ts-host-llm-complete` / `pc-host-llm-complete` /
+>   `skill-host-llm-complete`) — **RETIRED**. LLM invocation is Kohai-mediated.
+>   The Rust backing `handle_llm_complete` / `LlmBackend` **retire**. Rust↔LLM
+>   never communicate directly — only over the Orchestrator/Kohai.
+>
+> **DROPPED (no Tool row, no Recipe):**
+> - `host.retrieve_docs` (+ `ts-host-retrieve-docs` / `pc-host-retrieve-docs`) —
+>   **DROPPED**. Prior knowledge is the fallback Recipe (27.10.1), not a retrieval
+>   verb.
+> - `host.get_reduction_rules` (+ `ts-host-get-reduction-rules` /
+>   `pc-host-get-reduction-rules`) — **DROPPED**. Same — prompt reduction is not a
+>   host verb; if ever needed it is a Recipe step.
+>
+> The Kohai-mediated LLM flow (Orchestrator composes prompt + placeholder → Kohai
+> saves → optional Sempai optimize → Kohai adds provider prefix → Kohai calls
+> `first_party_tools/http` → Kohai saves answer → answer back to Orchestrator) is
+> authored in **Step 27.10.2** (`host-non-match-llm-answer`) and the Tier-1
+> LLM-guided flow in 27.10. See the 27.0 table + CLAUDE.md "LLM invocation =
+> Kohai-mediated".
 
-#### Step 27.5.1 — `host.llm_complete` Tool row (class 0)
-```
-name:            "host.llm_complete"
-description:     "Call the LLM as a helper. Monty assembles the prompt; the LLM
-                  never executes anything itself — it returns text/code/actions
-                  that Monty acts on. Backs __llm_complete__(messages, actions, config)."
-capability_id:   "host.llm_complete"
-effect_type:     "read"
-param_schema: {
-  "type": "object",
-  "properties": {
-    "messages": {"type": "array",  "description": "Chat messages to send to the model"},
-    "config":   {"type": "object", "description": "Optional {max_tokens, temperature, force_text, model}"}
-  },
-  "required": ["messages"]
-}
-param_template:  {"messages": []}
-preconditions:   "LlmBackend wired."
-error_handling:  "LLM failure → raise; caller may retry or degrade."
-consumer_tags:   ["00:rusty", "02:orchestrator"]
-source:          "system"
-validation_status: "validated"
-```
+### Step 27.6 — Dispatch meta-primitives + action inventory — RETIRED except the parallel helper (LOCKED)
 
-#### Step 27.5.2 — `ts-host-llm-complete` ToolSkill (class 13)
-```
-name:          "ts-host-llm-complete"
-tool_name:     "host.llm_complete"
-description:   "Call the LLM helper with assembled messages."
-param_schema:  [
-  {name: "messages", param_type: "array",  required: true,  description: "Chat messages"},
-  {name: "config",   param_type: "object", required: false, description: "{max_tokens, temperature, force_text, model}"}
-]
-param_template: {"messages": "{{messages}}"}
-preconditions:  "LlmBackend wired."
-error_handling: "Raise on LLM failure."
-category:       "management"
-source:         "system"
-validation_status: "validated"
-```
+> Under the locked architecture tools are **first-class callables in the Monty
+> namespace** — a recipe's PythonCode calls `host.<name>(…)` directly (see the
+> 27.0 table + intro). So the string-intrinsic dispatchers and the per-step
+> sandbox executor are **RETIRED**, and the action-inventory tool is **RETIRED**
+> (the bound namespace already exposes the callable tools). Only the
+> **parallel-dispatch helper** survives, as a Python helper (not a Rust intrinsic).
+>
+> **RETIRED (no Tool row, no intrinsic, no component):**
+> - `__execute_action__(name, params, call_id=…)` — **RETIRED**. Tools are called
+>   directly as first-class callables; there is no string-name dispatch intrinsic.
+>   The old Rust `handle_execute_action` policy/lease/gate/event wrapper is also
+>   retired as a universal per-call babysitter — security is now mode-driven
+>   (Matching-Mode all-off / Non-Matching-Mode wrapper-on; see CLAUDE.md).
+> - `__execute_code_step__(code, state)` — **RETIRED** (Model-A per-step relic).
+>   Monty runs a recipe's PythonCode as one continuous program; per-step sandbox
+>   re-entry is not needed.
+> - `host.get_actions` (+ `ts-host-get-actions` / `pc-host-get-actions` /
+>   `skill-host-get-actions`) — **RETIRED**. With first-class callables + the
+>   namespace registry, the Orchestrator already has its bound tools; enumerating
+>   a callable inventory via a host verb is not needed. (A future MCP bridge
+>   advertises tools from the same namespace registry — no `get_actions` verb
+>   required.)
+>
+> **KEPT — Python helper (not a Rust intrinsic):**
 
-#### Step 27.5.3 — `pc-host-llm-complete` PythonCode (class 22)
+#### Step 27.6.1 — `pc-host-execute-parallel` PythonCode helper (class 22)
 ```python
 # Channel: orchestrator | Class: 22 | No I/O, no imports.
-response = __execute_action__("host.llm_complete", {"messages": {{vars.slot0}}, "config": {{vars.slot1}}})
-# response = {type: "text"|"code"|"actions", content/code/calls, usage}
-```
-
-#### Step 27.5.4 — `skill-host-llm-complete` Leaf Skill (class 1)
-```
-name:        "skill-host-llm-complete"
-class_code:  1
-description: "Leaf skill: how to call the LLM as a helper."
-body: |
-  Use `ts-host-llm-complete` ONLY when creative reasoning, composition, or user
-  confirmation is genuinely required. The orchestrator assembles the full prompt
-  (chat history + question + base-prompt prefix) before calling. The LLM returns
-  text/code/actions — it never executes anything; Monty acts on the response
-  (run returned code in the sandbox, dispatch returned actions, or post the text
-  as the answer). Inspect `usage` for budget accounting.
-source:       "system"
-validation_status: "validated"
-consumer_tags: ["02:orchestrator", "05:validator"]
-```
-
-#### Step 27.5.5 — `host.retrieve_docs` Tool row (class 0)
-```
-name:            "host.retrieve_docs"
-description:     "Retrieve prior-knowledge docs for a goal via the RetrievalEngine.
-                  Backs __retrieve_docs__(goal, max_docs). Returns [{type, title, content}]."
-capability_id:   "host.retrieve_docs"
-effect_type:     "read"
-param_schema: {
-  "type": "object",
-  "properties": {
-    "goal":     {"type": "string",  "description": "Retrieval goal / query"},
-    "max_docs": {"type": "integer", "description": "Max docs (default 5)"}
-  },
-  "required": ["goal"]
-}
-param_template:  {"goal": ""}
-preconditions:   "RetrievalEngine wired."
-error_handling:  "Failure → [] (degrade gracefully)."
-consumer_tags:   ["00:rusty", "02:orchestrator"]
-source:          "system"
-validation_status: "validated"
-```
-
-#### Step 27.5.6 — `ts-host-retrieve-docs` ToolSkill (class 13)
-```
-name:          "ts-host-retrieve-docs"
-tool_name:     "host.retrieve_docs"
-description:   "Retrieve prior-knowledge docs for a goal."
-param_schema:  [
-  {name: "goal",     param_type: "string", required: true,  description: "Retrieval goal"},
-  {name: "max_docs", param_type: "number", required: false, description: "Max docs (default 5)"}
-]
-param_template: {"goal": "{{goal}}"}
-preconditions:  "RetrievalEngine wired."
-error_handling: "Empty list on failure."
-category:       "management"
-source:         "system"
-validation_status: "validated"
-```
-
-#### Step 27.5.7 — `pc-host-retrieve-docs` PythonCode (class 22)
-```python
-# Channel: orchestrator | Class: 22 | No I/O, no imports.
-docs = __execute_action__("host.retrieve_docs", {"goal": "{{vars.slot0}}", "max_docs": {{vars.slot1}}})
-```
-
-#### Step 27.5.8 — `host.get_reduction_rules` Tool row (class 0)
-```
-name:            "host.get_reduction_rules"
-description:     "Fetch the per-project/user prompt-reduction rules used to shrink
-                  an over-budget prompt. Backs __get_reduction_rules__(). Returns a list."
-capability_id:   "host.get_reduction_rules"
-effect_type:     "read"
-param_schema:    {"type": "object", "properties": {}, "required": []}
-param_template:  {}
-preconditions:   "Store wired."
-error_handling:  "Failure → []."
-consumer_tags:   ["00:rusty", "02:orchestrator"]
-source:          "system"
-validation_status: "validated"
-```
-
-#### Step 27.5.9 — `ts-host-get-reduction-rules` ToolSkill (class 13)
-```
-name:          "ts-host-get-reduction-rules"
-tool_name:     "host.get_reduction_rules"
-description:   "Fetch prompt-reduction rules."
-param_schema:  []
-param_template: {}
-preconditions:  "Store wired."
-error_handling: "Empty list on failure."
-category:       "management"
-source:         "system"
-validation_status: "validated"
-```
-
-#### Step 27.5.10 — `pc-host-get-reduction-rules` PythonCode (class 22)
-```python
-# Channel: orchestrator | Class: 22 | No I/O, no imports.
-rules = __execute_action__("host.get_reduction_rules", {})
-```
-
-### Step 27.6 — Dispatch meta-primitives + action inventory
-
-> `__execute_action__`, `__execute_actions_parallel__`, and `__execute_code_step__`
-> are **meta-primitives** — they ARE the dispatch/sandbox mechanism, so they get
-> **no Tool row** (they are not tools themselves; they are how all tools are
-> invoked). A future MCP bridge exposes the *individual* tools (Steps 1–19 +
-> 27.*) as MCP tools, all routed back through `__execute_action__` — one shared
-> invocation surface. `__get_actions__` DOES get a Tool row (`host.get_actions`)
-> — it returns the callable inventory the MCP bridge would enumerate.
-
-#### Step 27.6.1 — Meta-primitive: `__execute_action__(name, params, call_id=…)`
-```
-# Not a Tool — the dispatcher itself. Monty intrinsic signature:
-#   __execute_action__(name: str, params: dict, call_id: str = "")
-# Routes `name` to the matching Tool/ToolSkill binding (Steps 1–19 builtin.* +
-# 27.* host.*) via the Rust EffectExecutor + LeaseManager + PolicyEngine +
-# GateController. This is the ONE invocation surface Monty and the future MCP
-# bridge share: an MCP tool call becomes __execute_action__(<tool_name>, <params>).
-# No new component row — reuses every Tool/ToolSkill already defined.
-```
-
-#### Step 27.6.2 — Meta-primitive: `__execute_actions_parallel__(calls)`
-```
-# Not a Tool — parallel-dispatch primitive. Monty intrinsic signature:
-#   __execute_actions_parallel__(calls: list[{name, params}])
-# Dispatches multiple __execute_action__ calls concurrently with shared gate +
-# policy enforcement. Same routing as 27.6.1; reuses Steps 1–19 + 27.* rows.
-```
-
-#### Step 27.6.3 — `pc-host-execute-parallel` PythonCode helper (class 22)
-```python
-# Channel: orchestrator | Class: 22 | No I/O, no imports.
-# Thin convenience wrapper over the __execute_actions_parallel__ primitive.
-# {{vars.slot0}} = a list of {name, params} dicts (IBS-baked before execution).
+# Thin convenience helper: call several host.* first-class callables concurrently.
+# {{vars.slot0}} = a list of {name, args} dicts (IBS-baked before execution).
+# Each entry dispatches to the bound callable in the Monty namespace.
 results = __execute_actions_parallel__({{vars.slot0}})
 ```
 
-#### Step 27.6.4 — Meta-primitive: `__execute_code_step__(code, state)`
-```
-# Not a Tool — the sandbox executor. Monty intrinsic signature:
-#   __execute_code_step__(code: str, state: dict)
-# Runs a class-22 PythonCode body in the sandbox with host-call dispatch + gates.
-# This is how Monty runs pure-logic helpers and composed recipe steps. Reuses the
-# class-22 PythonCode execution surface; no new component row.
-```
+> Implementation note: `__execute_actions_parallel__` is a small Python helper
+> that fans out to the bound `host.*` callables concurrently and gathers their
+> results — it is no longer a Rust meta-primitive routing through
+> `__execute_action__`. If a shared gate/lease batch ever proves cheaper in Rust,
+> a thin Rust intrinsic can be added later as a new Tool; until then it stays
+> Python-side.
 
-#### Step 27.6.5 — `host.get_actions` Tool row (class 0)
-```
-name:            "host.get_actions"
-description:     "List the callable capability actions available in this execution
-                  context (the action inventory). Backs __get_actions__(). The
-                  future MCP bridge enumerates this to advertise MCP tools."
-capability_id:   "host.get_actions"
-effect_type:     "read"
-param_schema:    {"type": "object", "properties": {}, "required": []}
-param_template:  {}
-preconditions:   "EffectExecutor + LeaseManager wired."
-error_handling:  "Failure → []."
-consumer_tags:   ["00:rusty", "02:orchestrator"]
-source:          "system"
-validation_status: "validated"
-```
+### Step 27.7 — Component-store host calls (SEC-01 fetch + validation queue)
 
-#### Step 27.6.6 — `ts-host-get-actions` ToolSkill (class 13)
-```
-name:          "ts-host-get-actions"
-tool_name:     "host.get_actions"
-description:   "List callable capability actions."
-param_schema:  []
-param_template: {}
-preconditions:  "EffectExecutor + LeaseManager wired."
-error_handling: "Empty list on failure."
-category:       "management"
-source:         "system"
-validation_status: "validated"
-```
+> Three host calls over the component store (LOCKED): `host.fetch_component` +
+> `host.resolve_component_by_name` (SEC-01 validated fetch by UUID / by name — the
+> §0.9 Option A/B lookups `call_action` uses), and `host.validate_component`
+> (intercepts self-improvement writes for protected components → Q1 pending
+> update-candidate; kohai/sempai input path). Each is one Tool row (class 0) + one
+> ToolSkill (class 13) + one PythonCode (class 22) + one leaf Skill (class 1).
+> The Rust `handle_*` backing fns stay as the impl.
 
-#### Step 27.6.7 — `pc-host-get-actions` PythonCode (class 22)
-```python
-# Channel: orchestrator | Class: 22 | No I/O, no imports.
-actions = __execute_action__("host.get_actions", {})
-```
+#### Step 27.7.1 — `host.record_skill_usage` (telemetry) — RETIRED (LOCKED Q-D)
 
-#### Step 27.6.8 — `skill-host-get-actions` Leaf Skill (class 1)
-```
-name:        "skill-host-get-actions"
-class_code:  1
-description: "Leaf skill: how to enumerate callable actions."
-body: |
-  Use `ts-host-get-actions` to discover which tools/capabilities are available
-  in the current context (after leases + policy). Useful before composing a
-  multi-tool recipe or when the MCP bridge advertises its tool catalogue. The
-  list reflects the live lease + policy state, not the static Tool rows.
-source:       "system"
-validation_status: "validated"
-consumer_tags: ["02:orchestrator", "05:validator"]
-```
-
-### Step 27.7 — Component-store host calls (telemetry + SEC-01 fetch + validation queue)
-
-> Four host calls over the component store. `host.record_skill_usage` (telemetry),
-> `host.fetch_component` + `host.resolve_component_by_name` (SEC-01 validated
-> fetch by UUID / by name — the §0.9 Option A/B lookups `call_action` uses), and
-> `host.validate_component` (intercepts self-improvement writes for protected
-> components → Q1 pending update-candidate; kohai/sempai input path). Each is one
-> Tool row (class 0) + one ToolSkill (class 13) + one PythonCode (class 22) + one
-> leaf Skill (class 1). The Rust `handle_*` backing fns stay as the impl.
-
-#### Step 27.7.1 — `host.record_skill_usage` (telemetry)
-```
-# Tool row (class 0)
-name:              "host.record_skill_usage"
-capability_id:     "host.record_skill_usage"
-effect_type:       "write"
-description:       "Record that a skill (by doc id) was used, with a success flag.
-                    Feeds the SkillTracker telemetry used by the skill selector."
-param_schema:      {"type":"object","properties":{
-                      "doc_id":  {"type":"string","description":"Skill MemoryDoc UUID"},
-                      "success": {"type":"boolean","description":"Whether the skill helped"}
-                    },"required":["doc_id","success"]}
-param_template:    {"doc_id":"","success":false}
-preconditions:     "Store wired."
-error_handling:    "Bad/missing doc_id → no-op (returns None); never raises."
-consumer_tags:     ["00:rusty","02:orchestrator"]
-source:            "system"
-validation_status: "validated"
-
-# ToolSkill (class 13)
-name:              "ts-host-record-skill-usage"
-tool_name:         "host.record_skill_usage"
-param_schema:      [{name:"doc_id",param_type:"string",required:true},
-                    {name:"success",param_type:"boolean",required:true}]
-param_template:    {"doc_id":"{{doc_id}}","success":{{success}}}
-category:          "management"
-
-# PythonCode (class 22)
-__execute_action__("host.record_skill_usage", {"doc_id":"{{vars.slot0}}","success":{{vars.slot1}}})
-
-# Leaf Skill (class 1)
-name:              "skill-host-record-skill-usage"
-description:       "Record skill-usage telemetry after a skill is tried."
-body:              "Call ts-host-record-skill-usage once per skill attempt with its doc_id and a success flag so the selector learns."
-```
+> **RETIRED.** The Orchestrator owns its own run; skill-usage telemetry is not a
+> runtime host verb. No Tool row, no ToolSkill, no PythonCode, no Skill. (If
+> skill-usage tracking is ever needed it becomes a Recipe step, not a Rust host
+> tool.) The KEPT component-store host calls are 27.7.2 `host.fetch_component`,
+> 27.7.3 `host.resolve_component_by_name`, 27.7.4 `host.validate_component`.
 
 #### Step 27.7.2 — `host.fetch_component` (SEC-01 fetch by UUID)
 ```
@@ -13125,7 +12978,7 @@ param_template:    {"uuid":"{{uuid}}","class_code":{{class_code}}}
 category:          "management"
 
 # PythonCode (class 22)
-comp = __execute_action__("host.fetch_component", {"uuid":"{{vars.slot0}}","class_code":{{vars.slot1}}})
+comp = host.fetch_component(uuid="{{vars.slot0}}", class_code={{vars.slot1}})
 
 # Leaf Skill (class 1)
 name:              "skill-host-fetch-component"
@@ -13162,7 +13015,7 @@ param_template:    {"name":"{{name}}","class_code":{{class_code}}}
 category:          "management"
 
 # PythonCode (class 22)
-comp = __execute_action__("host.resolve_component_by_name", {"name":"{{vars.slot0}}","class_code":{{vars.slot1}}})
+comp = host.resolve_component_by_name(name="{{vars.slot0}}", class_code={{vars.slot1}})
 
 # Leaf Skill (class 1)
 name:              "skill-host-resolve-component-by-name"
@@ -13204,7 +13057,7 @@ param_template:    {"title":"{{title}}","content":"{{content}}","doc_type":"{{do
 category:          "management"
 
 # PythonCode (class 22)
-res = __execute_action__("host.validate_component", {"title":"{{vars.slot0}}","content":"{{vars.slot1}}","doc_type":"{{vars.slot2}}","metadata":{{vars.slot3}}})
+res = host.validate_component(title="{{vars.slot0}}", content="{{vars.slot1}}", doc_type="{{vars.slot2}}", metadata={{vars.slot3}})
 
 # Leaf Skill (class 1)
 name:              "skill-host-validate-component"
@@ -13251,7 +13104,7 @@ param_template:    {"pattern":"{{pattern}}","text":"{{text}}"}
 category:          "utility"
 
 # PythonCode (class 22) — delegates to __regex_match__ (one backing)
-ok = __execute_action__("host.regex_match", {"pattern":"{{vars.slot0}}","text":"{{vars.slot1}}"})
+ok = host.regex_match(pattern="{{vars.slot0}}", text="{{vars.slot1}}")
 ```
 
 #### Step 27.8.2 — `__list_skills__` reuses `builtin.skill_list` (Step 16) — no new Tool
@@ -13268,14 +13121,20 @@ ok = __execute_action__("host.regex_match", {"pattern":"{{vars.slot0}}","text":"
 
 ### Step 27.9 — VM-control + telemetry host calls
 
-> Six host calls that let Monty observe and mutate its own execution state:
-> `host.check_signals` (stop/suspend/inject), `host.emit_event` (UI/event bus),
-> `host.save_checkpoint` + `host.transition_to` (thread state machine),
-> `host.check_budget` + `host.log_budget_warning` (budget engine — tokens/time/
-> USD; soft warnings vs hard stops). Each is one Tool row (class 0) + ToolSkill
-> (class 13) + PythonCode (class 22) + leaf Skill (class 1); the Rust `handle_*`
-> backing fns stay as the impl. These are the primitives a recipe uses to make a
-> run observable, resumable, and budget-safe — not logic the driver imposes.
+> One KEPT host call (LOCKED): `host.check_signals` (stop/suspend/inject poll) —
+> the only VM-control verb that survives, because external signals (stop/suspend/
+> inject) arrive asynchronously from outside the Orchestrator's own step
+> sequence. It is one Tool row (class 0) + ToolSkill (class 13) + PythonCode
+> (class 22) + leaf Skill (class 1); the Rust `handle_*` backing fn stays as the
+> impl.
+>
+> **RETIRED (LOCKED Q-D — the Orchestrator owns thread state):** `host.emit_event`
+> (chat event emission goes via `host.post_reply`), `host.save_checkpoint`,
+> `host.transition_to`, `host.check_budget`, `host.log_budget_warning`. The
+> agent-loop stage pipeline is no longer the driver, and no universal per-call
+> wrapper means no per-step state/budget/event host verbs are needed — the
+> Orchestrator inherently knows where it is in its own step sequence. No Tool rows,
+> no ToolSkills, no PythonCode, no Skills for these five.
 
 #### Step 27.9.1 — `host.check_signals` (stop/suspend/inject poll)
 ```
@@ -13301,7 +13160,7 @@ param_template:    {}
 category:          "management"
 
 # PythonCode (class 22)
-sig = __execute_action__("host.check_signals", {})
+sig = host.check_signals()
 
 # Leaf Skill (class 1)
 name:              "skill-host-check-signals"
@@ -13309,267 +13168,184 @@ description:       "Poll for stop/suspend/inject signals between steps."
 body:              "Call ts-host-check-signals between orchestrator steps. On 'stop', halt cleanly. On {inject: msg}, fold the message in and continue. On None, proceed."
 ```
 
-#### Step 27.9.2 — `host.emit_event` (UI / event bus)
-```
-# Tool row (class 0)
-name:              "host.emit_event"
-capability_id:     "host.emit_event"
-effect_type:       "write"
-description:       "Emit a structured thread event (step_started, step_completed,
-                    action_*, budget_warning, ...) to the event bus + thread log."
-param_schema:      {"type":"object","properties":{
-                      "kind": {"type":"string","description":"Event kind"},
-                      "data":{"type":"object","description":"Event payload fields"}
-                    },"required":["kind"]}
-param_template:    {"kind":"","data":{}}
-preconditions:     "Event bus wired (no-op if absent)."
-error_handling:    "Send failure → swallowed; returns None; never raises."
-consumer_tags:     ["00:rusty","02:orchestrator"]
-source:            "system"
-validation_status: "validated"
+#### Step 27.9.2 — `host.emit_event` — RETIRED (LOCKED Q-D)
 
-# ToolSkill (class 13)
-name:              "ts-host-emit-event"
-tool_name:         "host.emit_event"
-param_schema:      [{name:"kind",param_type:"string",required:true},
-                    {name:"data",param_type:"object",required:false}]
-param_template:    {"kind":"{{kind}}","data":{{data}}}
-category:          "management"
+> **RETIRED.** Chat event emission goes through `host.post_reply` (the
+> Orchestrator posts the final answer; Rust owns the chat socket). No Tool row,
+> no ToolSkill, no PythonCode, no Skill. The `handle_emit_event` Rust backing fn
+> is reused only by `post_reply` / the event broadcast path — not exposed as a
+> host verb.
 
-# PythonCode (class 22)
-__execute_action__("host.emit_event", {"kind":"{{vars.slot0}}","data":{{vars.slot1}}})
+#### Step 27.9.3 — `host.save_checkpoint` — RETIRED (LOCKED Q-D)
 
-# Leaf Skill (class 1)
-name:              "skill-host-emit-event"
-description:       "Emit a structured event for the UI / event bus."
-body:              "Call ts-host-emit-event with a kind string and a data dict to surface progress, step boundaries, and action outcomes to subscribers."
-```
+> **RETIRED.** The Orchestrator owns its own run state — it inherently knows
+> where it is in its own step sequence; cross-turn resumption (D-C1) is handled
+> by the cross-turn persistent Monty session, not a per-step checkpoint verb. No
+> Tool row, no ToolSkill, no PythonCode, no Skill.
 
-#### Step 27.9.3 — `host.save_checkpoint` (thread state persistence)
-```
-# Tool row (class 0)
-name:              "host.save_checkpoint"
-capability_id:     "host.save_checkpoint"
-effect_type:       "write"
-description:       "Persist runtime state + counters into the thread metadata
-                    checkpoint so the main process is resumable across turns
-                    (D-C1 cross-turn persistence)."
-param_schema:      {"type":"object","properties":{
-                      "state":    {"type":"object","description":"Persisted runtime state"},
-                      "counters": {"type":"object","description":"nudge/error/compaction counters"}
-                    },"required":["state"]}
-param_template:    {"state":{},"counters":{}}
-preconditions:     "Thread handle live."
-error_handling:    "Always returns None; never raises."
-consumer_tags:     ["00:rusty","02:orchestrator"]
-source:            "system"
-validation_status: "validated"
+#### Step 27.9.4 — `host.transition_to` — RETIRED (LOCKED Q-D)
 
-# ToolSkill (class 13)
-name:              "ts-host-save-checkpoint"
-tool_name:         "host.save_checkpoint"
-param_schema:      [{name:"state",param_type:"object",required:true},
-                    {name:"counters",param_type:"object",required:false}]
-param_template:    {"state":{{state}},"counters":{{counters}}}
-category:          "management"
+> **RETIRED.** There is no Rust stage-pipeline state machine to drive any more;
+> the Orchestrator is the sole sequencer and already knows its phase. No Tool
+> row, no ToolSkill, no PythonCode, no Skill.
 
-# PythonCode (class 22)
-__execute_action__("host.save_checkpoint", {"state":{{vars.slot0}},"counters":{{vars.slot1}}})
+#### Step 27.9.5 — `host.check_budget` — RETIRED (LOCKED Q-D)
 
-# Leaf Skill (class 1)
-name:              "skill-host-save-checkpoint"
-description:       "Checkpoint runtime state for cross-turn resumption."
-body:              "Call ts-host-save-checkpoint at natural pause points (end of step, before yielding) with the current state + counters so the main process can resume next turn."
-```
+> **RETIRED.** Budget hard-stops are enforced where the Orchestrator decides
+> (it tracks its own counters); there is no universal per-call wrapper needing a
+> budget-read verb. No Tool row, no ToolSkill, no PythonCode, no Skill.
 
-#### Step 27.9.4 — `host.transition_to` (thread state machine)
-```
-# Tool row (class 0)
-name:              "host.transition_to"
-capability_id:     "host.transition_to"
-effect_type:       "write"
-description:       "Move the thread to a named state with a reason (e.g. idle,
-                    running, awaiting_input, done). Pairs with save_checkpoint for
-                    cross-turn resumption."
-param_schema:      {"type":"object","properties":{
-                      "state":  {"type":"string","description":"Target state name"},
-                      "reason": {"type":"string","description":"Why the transition"}
-                    },"required":["state"]}
-param_template:    {"state":"","reason":""}
-preconditions:     "Thread handle live."
-error_handling:    "Always returns None; never raises."
-consumer_tags:     ["00:rusty","02:orchestrator"]
-source:            "system"
-validation_status: "validated"
+#### Step 27.9.6 — `host.log_budget_warning` — RETIRED (LOCKED Q-D)
 
-# ToolSkill (class 13)
-name:              "ts-host-transition-to"
-tool_name:         "host.transition_to"
-param_schema:      [{name:"state",param_type:"string",required:true},
-                    {name:"reason",param_type:"string",required:false}]
-param_template:    {"state":"{{state}}","reason":"{{reason}}"}
-category:          "management"
-
-# PythonCode (class 22)
-__execute_action__("host.transition_to", {"state":"{{vars.slot0}}","reason":"{{vars.slot1}}"})
-
-# Leaf Skill (class 1)
-name:              "skill-host-transition-to"
-description:       "Move the thread to a named state."
-body:              "Call ts-host-transition-to to mark phase boundaries (idle between turns, running during a turn, done after posting the answer). Always pair with a checkpoint when yielding."
-```
-
-#### Step 27.9.5 — `host.check_budget` (tokens / time / USD remaining)
-```
-# Tool row (class 0)
-name:              "host.check_budget"
-capability_id:     "host.check_budget"
-effect_type:       "read"
-description:       "Return remaining budget: {tokens_remaining, time_remaining_ms,
-                    usd_remaining}. Hard stops are enforced by the caller (Monty),
-                    not by this read."
-param_schema:      {"type":"object","properties":{},"required":[]}
-param_template:    {}
-preconditions:     "Thread config populated."
-error_handling:    "Unset limits → u64::MAX / null; never raises."
-consumer_tags:     ["00:rusty","02:orchestrator"]
-source:            "system"
-validation_status: "validated"
-
-# ToolSkill (class 13)
-name:              "ts-host-check-budget"
-tool_name:         "host.check_budget"
-param_schema:      []
-param_template:    {}
-category:          "management"
-
-# PythonCode (class 22)
-budget = __execute_action__("host.check_budget", {})
-
-# Leaf Skill (class 1)
-name:              "skill-host-check-budget"
-description:       "Read remaining token/time/USD budget."
-body:              "Call ts-host-check-budget before expensive steps (LLM calls, big retrievals). If any remaining field is at/near zero, halt or shrink the plan rather than exceeding the hard limit."
-```
-
-#### Step 27.9.6 — `host.log_budget_warning` (soft telemetry)
-```
-# Tool row (class 0)
-name:              "host.log_budget_warning"
-capability_id:     "host.log_budget_warning"
-effect_type:       "write"
-description:       "Emit a soft BudgetWarning event (field, value, message). Token
-                    soft-warnings only; time/cost budgets remain hard-stops. Does
-                    NOT abort the orchestrator."
-param_schema:      {"type":"object","properties":{
-                      "field":   {"type":"string","description":"Budget field (e.g. tokens)"},
-                      "value":   {"type":"integer","description":"Current value"},
-                      "message": {"type":"string","description":"Human-readable warning"}
-                    },"required":["field"]}
-param_template:    {"field":"","value":0,"message":""}
-preconditions:     "Event bus wired."
-error_handling:    "Always returns None; never raises."
-consumer_tags:     ["00:rusty","02:orchestrator"]
-source:            "system"
-validation_status: "validated"
-
-# ToolSkill (class 13)
-name:              "ts-host-log-budget-warning"
-tool_name:         "host.log_budget_warning"
-param_schema:      [{name:"field",param_type:"string",required:true},
-                    {name:"value",param_type:"number",required:false},
-                    {name:"message",param_type:"string",required:false}]
-param_template:    {"field":"{{field}}","value":{{value}},"message":"{{message}}"}
-category:          "management"
-
-# PythonCode (class 22)
-__execute_action__("host.log_budget_warning", {"field":"{{vars.slot0}}","value":{{vars.slot1}},"message":"{{vars.slot2}}"})
-
-# Leaf Skill (class 1)
-name:              "skill-host-log-budget-warning"
-description:       "Emit a soft budget warning without aborting."
-body:              "Call ts-host-log-budget-warning when a budget field crosses a soft threshold (e.g. 80% tokens). The run continues; the warning surfaces to operators/UI for awareness."
-```
+> **RETIRED.** Soft budget telemetry is not a runtime host verb; if a soft
+> warning is ever needed it is a Recipe step, not a Rust host tool. No Tool row,
+> no ToolSkill, no PythonCode, no Skill.
 
 ### Step 27.10 — Recipes: prior-knowledge assembly + Non-Matching-Mode LLM answer
 
-> Two **recipe-only** components (class 21) composed entirely over the `host.*`
-> tools defined above — no new Tool rows. `host-assemble-prior-knowledge` builds
-> the prior-knowledge bundle a Tier-1 recipe hands to the LLM helper; `host-non-
-> match-llm-answer` is the **Tier-2 Non-Matching-Mode** routine (base-prompt prefix
-> + chat history + user question → `host.llm_complete` → answer). Both are
-> instruction-driven, so they can be enhanced with **no code changes** (different
-> prefixes / prompt additions per query type) — only the recipe is altered.
+> Two **recipe-only** components (class 21) composed over the `host.*` tools — no
+> new Tool rows except the one **Orchestrator→Kohai handoff** tool
+> `host.kohai_complete` (wraps the existing `brassclaw_interceptor` ingress; no new
+> logic — wiring, like `host.resolve_intent`; added to the 27.0 table below).
+> `host-assemble-prior-knowledge` is the **fallback** prior-knowledge bundle, used
+> **only when no prefix is present**: it adds basic "what is going on" context so
+> the LLM understands; it calls **no retrieval verbs** (`retrieve_docs` /
+> `get_reduction_rules` are dropped). `host-non-match-llm-answer` is the **Tier-2
+> Non-Matching-Mode** routine: assemble the prompt (chat history + user question +
+> a prefix-placeholder) → hand to **Kohai** (saves; optional Sempai optimize; adds
+> the provider prefix; calls `first_party_tools/http`; saves the answer) → answer
+> back. **No `host.llm_complete`**. Both are instruction-driven, so prompt
+> additions / prefixes / query-type routing evolve with **no code changes** — only
+> the recipe is altered.
 
-#### Step 27.10.1 — Recipe `host-assemble-prior-knowledge` (class 21, Tier 1)
+#### Step 27.10.1 — Recipe `host-assemble-prior-knowledge` (class 21, Tier 1 — fallback)
 ```
 name:              "host-assemble-prior-knowledge"
-description:       "Assemble prior knowledge for a Tier-1 LLM helper call: retrieve
-                    docs for the goal, fetch reduction rules, and format them into a
-                    prior-knowledge bundle. Recipe-only — composes host.retrieve_docs
-                    + host.get_reduction_rules + a PythonCode formatter."
-llm_call_required: false   # this recipe only BUILDS the bundle; the caller does the LLM call
-intent_examples:   ["(internal Tier-1 prior-knowledge builder — not user-routed)"]
-rust_steps:        [tool_binding: ts-host-retrieve-docs,
-                    tool_binding: ts-host-get-reduction-rules]
-orchestrator_steps:[pc-host-retrieve-docs,
-                    pc-host-get-reduction-rules,
-                    pc-host-format-prior-knowledge]
+description:       "FALLBACK prior-knowledge bundle, used ONLY when no prefix is
+                    present. Adds basic 'what is going on' context so the LLM
+                    understands the run. Calls NO retrieval verbs (retrieve_docs /
+                    get_reduction_rules are dropped). Recipe-only — one PythonCode
+                    formatter, no tool bindings."
+llm_call_required: false   # builds the bundle; the caller does the (Kohai-mediated) LLM call
+intent_examples:   ["(internal Tier-1 prior-knowledge fallback — not user-routed)"]
+rust_steps:        []
+orchestrator_steps:[pc-host-fallback-prior-knowledge]
 step_descriptions: [
-  {"step":0,"action":"retrieve_docs","desc":"Retrieve docs for the goal via host.retrieve_docs."},
-  {"step":1,"action":"reduction_rules","desc":"Fetch reduction rules via host.get_reduction_rules."},
-  {"step":2,"action":"format","desc":"Format docs+rules into a prior-knowledge bundle for the LLM."}
+  {"step":0,"action":"fallback_context","desc":"Add basic 'what is going on' context so the LLM understands (no retrieval)."}
 ]
 tier:              1
 
-# pc-host-format-prior-knowledge (class 22) — pure-logic formatter, no host call:
-#   docs     = <result of pc-host-retrieve-docs>
-#   rules    = <result of pc-host-get-reduction-rules>
-#   bundle   = {"docs": docs, "reduction_rules": rules, "assembled_at": __now__()}
-# (IBS binds the two upstream results into {{vars.slot0}} / {{vars.slot1}}.)
+# pc-host-fallback-prior-knowledge (class 22) — pure-logic formatter, no host call:
+#   user_query = {{vars.slot0}}
+#   bundle = {
+#     "context": "You are running inside BrassClaw's orchestrator. Answer the user's request.",
+#     "user_query": user_query,
+#     "assembled_at": __now__()
+#   }
+# (No retrieve_docs / get_reduction_rules — those are dropped. This bundle is only
+#  used when the caller has no precompiled prefix.)
 ```
 
-#### Step 27.10.2 — Recipe `host-non-match-llm-answer` (class 21, Tier 2 — Non-Matching-Mode)
+#### Step 27.10.2 — Recipe `host-non-match-llm-answer` (class 21, Tier 2 — Non-Matching-Mode, Kohai-mediated)
 ```
 name:              "host-non-match-llm-answer"
-description:       "Non-Matching-Mode (Tier 2): when no intent matched, assemble the
-                    standard prompt (chat history + user question + base-prompt prefix
-                    ~250k-1M tokens), call the LLM helper via host.llm_complete, and
-                    return the answer. The base-prompt prefix is precompiled by the
-                    composition system (all tools/recipes/skills info); the kohai is
-                    always the last one working on the prompt (placeholder → prefix
-                    chunks). Recipe-driven so prompt additions / prefixes evolve with
-                    no code changes."
+description:       "Non-Matching-Mode (Tier 2): no intent matched. The Orchestrator
+                    assembles the standard prompt (chat history + user question + a
+                    prefix-PLACEHOLDER) and hands it to Kohai. Kohai saves the prompt;
+                    if a Sempai is connected, Kohai adds an optimization-prefix →
+                    Sempai optimizes → returns without prefix → Kohai saves the
+                    optimized prompt beside the original; Kohai adds the provider-LLM
+                    prefix (the one for that placeholder) and sends the prompt to the
+                    provider LLM by calling first_party_tools/http; Kohai receives the
+                    answer, saves it beside its prompt, and returns it to the
+                    Orchestrator. NO host.llm_complete. Recipe-driven so prompt
+                    additions / prefixes / query-type routing evolve with no code
+                    changes."
 llm_call_required: true
 intent_examples:   ["(internal Non-Matching-Mode fallback — not user-routed)"]
-rust_steps:        [tool_binding: ts-host-llm-complete]
+rust_steps:        [tool_binding: ts-host-kohai-complete]
 orchestrator_steps:[pc-host-assemble-non-match-prompt,
-                    pc-host-llm-complete]
+                    pc-host-kohai-complete]
 step_descriptions: [
-  {"step":0,"action":"assemble_prompt","desc":"Assemble chat history + user question + base-prompt prefix into the LLM message list (kohai swaps placeholders last)."},
-  {"step":1,"action":"llm_complete","desc":"Call the LLM helper via host.llm_complete with the assembled messages."}
+  {"step":0,"action":"assemble_prompt","desc":"Assemble chat history + user question + a prefix-PLACEHOLDER into the prompt (kohai swaps the placeholder for the provider prefix last)."},
+  {"step":1,"action":"kohai_complete","desc":"Hand the assembled prompt to Kohai via host.kohai_complete; Kohai saves, optional Sempai optimize, adds provider prefix, calls first_party_tools/http, saves the answer, and returns it."}
 ]
 tier:              2
 
 # pc-host-assemble-non-match-prompt (class 22) — pure-logic assembler, no host call:
 #   chat_history = {{vars.slot0}}      # few tokens, belongs to this exact user-input
 #   user_query   = {{vars.slot1}}      # few tokens
-#   base_prompt  = {{vars.slot2}}      # precompiled prefix (~250k-1M tokens)
-#   messages = [{"role":"system","content": base_prompt}]
-#   messages += chat_history
-#   messages += [{"role":"user","content": user_query}]
-# (The composition system precompiles base_prompt and IBS binds it into slot2;
-#  the kohai placeholder→prefix swap happens before this step runs.)
+#   placeholder  = {{vars.slot2}}      # prefix-PLACEHOLDER (kohai swaps it last)
+#   prompt = {"chat_history": chat_history, "user_query": user_query, "prefix_placeholder": placeholder}
+# (The composition system precompiles the prefix chunks indexed by placeholder, but
+#  does NOT bake them into the prompt — Kohai swaps the placeholder for the provider
+#  prefix. IBS binds chat_history/user_query/placeholder into slots 0/1/2.)
+
+# pc-host-kohai-complete (class 22) — the Orchestrator→Kohai handoff (first-class call):
+#   prompt = <result of pc-host-assemble-non-match-prompt>
+#   answer = host.kohai_complete(prompt=prompt)
+# (host.kohai_complete wraps the existing brassclaw_interceptor ingress; Kohai does
+#  the save / optional-Sempai / provider-prefix / first_party_tools/http / save-answer
+#  dance and returns the answer. No host.llm_complete — Rust↔LLM never talk directly.)
 ```
+
+#### Step 27.10.3 — `host.kohai_complete` (Orchestrator→Kohai handoff Tool)
+```
+# Tool row (class 0)
+name:              "host.kohai_complete"
+capability_id:     "host.kohai_complete"
+effect_type:       "write"
+description:       "Hand an assembled LLM prompt (with a prefix-placeholder) to Kohai.
+                    Kohai saves the prompt; if a Sempai is connected, adds an
+                    optimization-prefix → Sempai optimizes → returns without prefix →
+                    Kohai saves the optimized prompt beside the original; Kohai adds
+                    the provider-LLM prefix for that placeholder and sends the prompt
+                    to the provider LLM by calling first_party_tools/http; receives the
+                    answer, saves it beside its prompt, and returns it. Wraps the
+                    existing brassclaw_interceptor ingress — no new logic, wiring only."
+param_schema:      {"type":"object","properties":{
+                      "prompt": {"type":"object","description":"Assembled prompt {chat_history, user_query, prefix_placeholder}"}
+                    },"required":["prompt"]}
+param_template:    {"prompt":{}}
+preconditions:     "Interceptor (Kohai) ingress wired; provider-LLM prefix chunk precompiled for the placeholder."
+error_handling:    "Provider/HTTP failure → raises; Orchestrator catches and surfaces via post_reply."
+consumer_tags:     ["00:rusty","02:orchestrator"]
+source:            "system"
+validation_status: "validated"
+
+# ToolSkill (class 13)
+name:              "ts-host-kohai-complete"
+tool_name:         "host.kohai_complete"
+param_schema:      [{name:"prompt",param_type:"object",required:true}]
+param_template:    {"prompt":{{prompt}}}
+category:          "llm"
+
+# PythonCode (class 22) — first-class callable (no __execute_action__):
+answer = host.kohai_complete(prompt=prompt)
+
+# Leaf Skill (class 1)
+name:              "skill-host-kohai-complete"
+description:       "Hand an assembled prompt to Kohai and await the provider-LLM answer."
+body:              "Call host.kohai_complete with the assembled prompt (chat history + user query + a prefix-placeholder). Kohai saves it, optionally Sempai-optimizes it, swaps the placeholder for the provider prefix, calls the provider LLM via first_party_tools/http, saves the answer, and returns it. Use this for every Orchestrator-side LLM call — Rust never talks to the LLM directly."
+```
+
+> **Why a Tool, not a Recipe step:** the interceptor ingress is a Rust mechanism
+> (the `brassclaw_interceptor` crate owns Kohai/Sempai mode/packet/proposal_sink/
+> pg_store/config). Per the locked architecture every Rust mechanism the
+> Orchestrator needs is a host Tool — so the handoff is `host.kohai_complete`,
+> wiring the existing ingress (like `host.resolve_intent` wires the existing intent
+> system). The *prompt-assembly* before it is the Recipe; the *provider-HTTP call*
+> inside Kohai reuses `first_party_tools/http`. No `host.llm_complete`.
 
 ### Step 27.11 — ExtensionCatalogue: `builtin-host` (class 23)
 
-> Owns the **orchestrator infrastructure** components — the `host.*` tools,
-> ToolSkills, PythonCode snippets, leaf skills, and internal recipes that Monty
-> and the composition system use to run the main process. This is the catalogue a
-> future MCP bridge enumerates to expose host capabilities as MCP tools to an LLM
-> helper (all routed back through the one `__execute_action__` surface). It is
-> `source: "system"`, `validation_status: "validated"` — first-party, not
+> Owns the **orchestrator infrastructure** components — the `host.*` Tools,
+> ToolSkills, PythonCode snippets, leaf skills, and internal Recipes that Monty
+> and the composition system use to run the main process. Tools are **first-class
+> callables in the Monty namespace** (recipe PythonCode calls `host.<name>(…)`
+> directly — no `__execute_action__`); this is the catalogue a future MCP bridge
+> enumerates to advertise host capabilities from the **same namespace registry**.
+> It is `source: "system"`, `validation_status: "validated"` — first-party, not
 > user-editable.
 
 ```
@@ -13578,60 +13354,52 @@ class_code:   23
 overview_doc: |
   # Orchestrator Host Capabilities
 
-  The host domain covers the `host.*` service tools the Monty main process
-  invokes through `__execute_action__`, plus the internal main-process recipes.
-  These are first-party system components backing the `__host_call__` intrinsics.
+  The host domain covers the `host.*` service Tools the Monty main process calls
+  as first-class namespace callables, plus the internal main-process Recipes.
+  These are first-party system components; the old `__host_call__` 23-arm match
+  and the `__execute_action__` string-intrinsic are RETIRED into this registry.
 
-  ## Tools in this domain (class 0)
-  - host.resolve_intent            — Phase 2 intent match (intent_system)
-  - host.compose_orchestrator      — Phase 3 Matching-Mode fetch+split+assemble
-  - host.post_reply                — end-of-turn answer post
-  - host.llm_complete              — LLM-as-helper call
-  - host.retrieve_docs             — retrieval for prior knowledge
-  - host.get_reduction_rules       — reduction rules for prompt assembly
-  - host.get_actions               — callable action inventory (MCP enumeration)
-  - host.record_skill_usage        — skill-usage telemetry
+  ## Tools in this domain (class 0) — 8 net new
+  - host.resolve_intent            — Phase 2 intent match (whole intent system = one Tool)
+  - host.compose_orchestrator      — Phase 3 Matching-Mode fetch+split+assemble (REWRITE)
+  - host.post_reply                — end-of-turn answer post (Rust owns the chat socket)
   - host.fetch_component           — SEC-01 fetch by UUID (§0.9 Option A)
   - host.resolve_component_by_name — SEC-01 fetch by name (§0.9 Option B)
   - host.validate_component        — kohai/sempai → Q1 pending queue
-  - host.regex_match               — regex test (same backing as pc-regex-match)
-  - host.check_signals             — stop/suspend/inject poll
-  - host.emit_event                — event bus emit
-  - host.save_checkpoint           — thread state persistence (cross-turn)
-  - host.transition_to             — thread state machine
-  - host.check_budget              — tokens/time/USD remaining
-  - host.log_budget_warning        — soft budget telemetry
+  - host.check_signals             — stop/suspend/inject poll (the only VM-control verb kept)
+  - host.kohai_complete            — Orchestrator→Kohai handoff (wraps brassclaw_interceptor ingress)
 
-  ## Meta-primitives (NO Tool row — they ARE the dispatcher)
-  - __execute_action__             — the one invocation surface (Monty + MCP)
-  - __execute_actions_parallel__   — parallel dispatch
-  - __execute_code_step__          — sandbox executor for class-22 PythonCode
-
-  ## Internal recipes (class 21 — not user-routed)
-  - host-resolve-intent                  — Phase 2
-  - host-compose-and-run-orchestrator    — Phase 3 Matching-Mode
-  - host-post-reply                      — Phase 3 end-of-turn emit
-  - host-save-history                    — history save (over builtin.memory_write)
-  - host-assemble-prior-knowledge        — Tier-1 prior-knowledge builder
-  - host-non-match-llm-answer            — Tier-2 Non-Matching-Mode fallback
-
-  ## Reused (owned by other catalogues, unified backing)
+  ## Reused existing Tools (no new row, unified backing)
+  - builtin.memory_write (Step 11) — shared SQL saver (Kohai persist + host-save-history)
+  - first_party_tools/http (Step 19) — Kohai→provider-LLM HTTP transport
   - builtin.skill_list (Step 16) — __list_skills__ routes to the same handler
   - pc-regex-match (Step 20.x.2) — host.regex_match routes to the same handler
+
+  ## Internal Recipes (class 21 — not user-routed)
+  - host-resolve-intent                  — Phase 2 (over host.resolve_intent)
+  - host-compose-and-run-orchestrator    — Phase 3 Matching-Mode (over host.compose_orchestrator)
+  - host-post-reply                      — Phase 3 end-of-turn (over host.post_reply)
+  - host-save-history                    — history save (over builtin.memory_write)
+  - host-assemble-prior-knowledge        — Tier-1 FALLBACK prior-knowledge (no retrieval verbs)
+  - host-non-match-llm-answer            — Tier-2 Non-Matching-Mode (Kohai-mediated, over host.kohai_complete)
+
+  ## RETIRED / DROPPED (no component)
+  - host.llm_complete (+ handle_llm_complete / LlmBackend) — RETIRED (Kohai-mediated)
+  - host.retrieve_docs / host.get_reduction_rules — DROPPED (prior knowledge = fallback Recipe)
+  - host.get_actions / host.record_skill_usage — RETIRED (Q-D: Orchestrator owns its run)
+  - host.emit_event / host.save_checkpoint / host.transition_to / host.check_budget / host.log_budget_warning — RETIRED (Q-D: Orchestrator owns thread state; chat via host.post_reply)
+  - __execute_action__ / __execute_code_step__ — RETIRED meta-primitives (first-class callables)
+  - __execute_actions_parallel__ — KEPT as the Python helper pc-host-execute-parallel (not a Rust intrinsic)
 
 task_groups:
   - group_name:  "main-process-control"
     description: "Phase 2/3 of the basic-mode main process: intent, compose, post, history"
-  - group_name:  "llm-and-retrieval"
-    description: "LLM-as-helper, doc retrieval, reduction rules, prior-knowledge assembly"
-  - group_name:  "dispatch"
-    description: "The __execute_action__ meta-primitives + action inventory (MCP surface)"
+  - group_name:  "llm-via-kohai"
+    description: "Orchestrator→Kohai handoff (host.kohai_complete) + Non-Matching-Mode + fallback prior-knowledge"
   - group_name:  "component-store"
-    description: "SEC-01 fetch (UUID/name), skill-usage telemetry, validation queue"
+    description: "SEC-01 fetch (UUID/name), validation queue"
   - group_name:  "vm-control"
-    description: "Signals, events, checkpoint/transition, budget read + soft warnings"
-  - group_name:  "non-match-mode"
-    description: "Tier-2 fallback: base-prompt prefix + chat history + LLM answer"
+    description: "Signal poll (the only VM-control verb kept)"
 
 child_component_ids: [
   "<uuid:host.resolve_intent>",            "<uuid:ts-host-resolve-intent>",
@@ -13644,18 +13412,8 @@ child_component_ids: [
   "<uuid:pc-host-post-reply>",             "<uuid:skill-host-post-reply>",
   "<uuid:host-post-reply recipe>",
   "<uuid:host-save-history recipe>",
-  "<uuid:host.llm_complete>",              "<uuid:ts-host-llm-complete>",
-  "<uuid:pc-host-llm-complete>",           "<uuid:skill-host-llm-complete>",
-  "<uuid:host.retrieve_docs>",             "<uuid:ts-host-retrieve-docs>",
-  "<uuid:pc-host-retrieve-docs>",          "<uuid:skill-host-retrieve-docs>",
-  "<uuid:host.get_reduction_rules>",       "<uuid:ts-host-get-reduction-rules>",
-  "<uuid:pc-host-get-reduction-rules>",    "<uuid:skill-host-get-reduction-rules>",
-  "<uuid:host-assemble-prior-knowledge recipe>",
-  "<uuid:pc-host-execute-parallel>",       "<uuid:host.get_actions>",
-  "<uuid:ts-host-get-actions>",            "<uuid:pc-host-get-actions>",
-  "<uuid:skill-host-get-actions>",
-  "<uuid:host.record_skill_usage>",        "<uuid:ts-host-record-skill-usage>",
-  "<uuid:pc-host-record-skill-usage>",     "<uuid:skill-host-record-skill-usage>",
+  "<uuid:host.kohai_complete>",            "<uuid:ts-host-kohai-complete>",
+  "<uuid:pc-host-kohai-complete>",         "<uuid:skill-host-kohai-complete>",
   "<uuid:host.fetch_component>",           "<uuid:ts-host-fetch-component>",
   "<uuid:pc-host-fetch-component>",        "<uuid:skill-host-fetch-component>",
   "<uuid:host.resolve_component_by_name>", "<uuid:ts-host-resolve-component-by-name>",
@@ -13666,26 +13424,25 @@ child_component_ids: [
   "<uuid:pc-host-regex-match>",
   "<uuid:host.check_signals>",             "<uuid:ts-host-check-signals>",
   "<uuid:pc-host-check-signals>",          "<uuid:skill-host-check-signals>",
-  "<uuid:host.emit_event>",                "<uuid:ts-host-emit-event>",
-  "<uuid:pc-host-emit-event>",             "<uuid:skill-host-emit-event>",
-  "<uuid:host.save_checkpoint>",           "<uuid:ts-host-save-checkpoint>",
-  "<uuid:pc-host-save-checkpoint>",        "<uuid:skill-host-save-checkpoint>",
-  "<uuid:host.transition_to>",             "<uuid:ts-host-transition-to>",
-  "<uuid:pc-host-transition-to>",          "<uuid:skill-host-transition-to>",
-  "<uuid:host.check_budget>",              "<uuid:ts-host-check-budget>",
-  "<uuid:pc-host-check-budget>",           "<uuid:skill-host-check-budget>",
-  "<uuid:host.log_budget_warning>",        "<uuid:ts-host-log-budget-warning>",
-  "<uuid:pc-host-log-budget-warning>",     "<uuid:skill-host-log-budget-warning>",
+  "<uuid:pc-host-execute-parallel>",
+  "<uuid:host-assemble-prior-knowledge recipe>",
   "<uuid:host-non-match-llm-answer recipe>"
 ]
 ```
 
-> **Step 27 complete.** All 23 host calls (19 existing `__host_call__` intrinsics
-> + 4 missing) are dissected into the existing v3 component vocabulary: 17 new
-> `host.*` Tool rows, 2 reused (skill_list / regex_match), 3 meta-primitives (the
-> dispatcher itself), 2 recipe-only over existing tools, 6 internal recipes, and
-> the `builtin-host` catalogue. The Rust `handle_*` backing fns stay as the impl
-> behind the Tool rows; Monty and the future MCP bridge share one
-> `__execute_action__` surface. Phase C Rust implementation (C.1 host-fn
-> additions, C.2 basic-mode orchestrator script, C.3 production driver switch,
-> C.4 retire dead Model A code, C.5 verify both configs) follows this spec.
+> **Step 27 complete.** The 23 old host calls are dissected into the v3 component
+> vocabulary under the locked Orchestrator/Executioner classification: **8 net new
+> `host.*` Tool rows** (resolve_intent, compose_orchestrator [rewrite], post_reply,
+> fetch_component, resolve_component_by_name, validate_component, check_signals,
+> kohai_complete), **4 reused existing** (builtin.memory_write, first_party_tools/
+> http, builtin.skill_list, pc-regex-match), **3 Recipes** (host-non-match-llm-answer
+> [Kohai-mediated], host-assemble-prior-knowledge [fallback], host-save-history),
+> **1 Python helper** (pc-host-execute-parallel), **DROPPED** retrieve_docs +
+> get_reduction_rules, and **RETIRED** host.llm_complete (+ handle_llm_complete /
+> LlmBackend) + 7 stage-machinery verbs (Q-D) + __execute_action__ /
+> __execute_code_step__. Tools are first-class namespace callables (no
+> `__execute_action__`); the future MCP bridge advertises the same registry. Phase
+> C Rust implementation (C.1 tool registry + first-class callables, C.2 reclassify
+> host calls, C.3 cdylib dynamic loading, C.4 mode-driven security + WebUI panel,
+> C.5 basic-mode orchestrator script, C.6 production driver switch, C.7 retire dead
+> Model-A code + both configs green) follows this spec.

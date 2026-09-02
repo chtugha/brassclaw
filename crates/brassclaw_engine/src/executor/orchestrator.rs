@@ -29,8 +29,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::collections::HashMap;
 
 use monty::{
-    ExtFunctionResult, LimitedTracker, MontyObject, MontyRun, NameLookupResult, PrintWriter,
-    ResourceLimits, RunProgress,
+    DictPairs, ExtFunctionResult, LimitedTracker, MontyObject, MontyRun, NameLookupResult,
+    PrintWriter, ResourceLimits, RunProgress,
 };
 use tracing::{debug, warn};
 
@@ -51,6 +51,13 @@ use crate::types::project::ProjectId;
 use crate::types::shared_owner_id;
 use crate::types::step::{ActionCall, StepId, TokenUsage};
 use crate::types::thread::{Thread, ThreadState};
+
+/// Stable Python-level `type_id` for the injected `host` namespace Dataclass (C.1).
+/// `host.<tool>(...)` compiles to `CallAttr`; the dataclass `py_call_attr` routes any
+/// public attr not in attrs to `MethodCall`, surfacing as a `FunctionCall` with the
+/// bare tool name and `method_call = true`. The id is arbitrary — it never keys into
+/// Monty's type table; it only identifies the `host` object for repr/equality.
+const HOST_NAMESPACE_TYPE_ID: u64 = 0x484F_5354; // "HOST"
 
 /// The compiled-in default orchestrator (v0).
 pub(crate) const DEFAULT_ORCHESTRATOR: &str = include_str!("../../orchestrator/default.py");
@@ -797,6 +804,50 @@ pub async fn execute_orchestrator(
                         .await
                     }
 
+                    // ── C.1 first-class `host.*` callables ───────────────────────
+                    // `host.<tool>(...)` surfaces as a MethodCall: function_name is the
+                    // bare tool name, method_call is true, and args[0] is the `host`
+                    // Dataclass (self). Skip args[0]; kwargs are untouched. These arms
+                    // reuse the existing Rust handlers verbatim — wiring, not new logic.
+                    // The 4 net-new handlers (resolve_intent, compose_orchestrator,
+                    // kohai_complete, post_reply) are added in the next C.1 slice.
+                    "fetch_component" if call.method_call => {
+                        handle_fetch_component(
+                            &args[1..],
+                            thread,
+                            #[cfg(feature = "skills-db")]
+                            pg_pool,
+                        )
+                        .await
+                    }
+                    "resolve_component_by_name" if call.method_call => {
+                        handle_resolve_component_by_name(
+                            &args[1..],
+                            thread,
+                            #[cfg(feature = "skills-db")]
+                            pg_pool,
+                        )
+                        .await
+                    }
+                    "validate_component" if call.method_call => {
+                        handle_validate_component(&args[1..], thread, store).await
+                    }
+                    "check_signals" if call.method_call => {
+                        handle_check_signals(signal_rx, thread)
+                    }
+                    // Reused existing tools exposed under the `host.*` namespace.
+                    "regex_match" if call.method_call => handle_regex_match(&args[1..]),
+                    "skill_list" if call.method_call => {
+                        handle_list_skills(
+                            &args[1..],
+                            thread,
+                            store,
+                            #[cfg(feature = "skills-db")]
+                            pg_pool,
+                        )
+                        .await
+                    }
+
                     // Unknown — let Monty resolve it (user-defined functions, builtins)
                     other => ExtFunctionResult::NotFound(other.to_string()),
                 };
@@ -827,14 +878,30 @@ pub async fn execute_orchestrator(
             }
 
             RunProgress::NameLookup(lookup) => {
-                // Undefined variable — resume with NameError
                 let name = lookup.name.clone();
-                debug!(name = %name, "orchestrator: unresolved name");
+                // C.1: the Monty namespace IS the tool registry. The `host` object is a
+                // frozen Dataclass with empty attrs. `host.<tool>(...)` compiles to
+                // `CallAttr`; the dataclass `py_call_attr` routes any public attr that is
+                // not in attrs to `MethodCall`, which surfaces as
+                // `FunctionCall{function_name:"<tool>", method_call:true, args[0]=self}`.
+                // The host dispatches on the bare tool name (skipping args[0]); kwargs are
+                // untouched. Storing `Function` values in attrs would raise TypeError on
+                // CallAttr, so the namespace deliberately carries no attrs.
+                let result = if name == "host" {
+                    debug!(name = %name, "orchestrator: resolved host namespace");
+                    NameLookupResult::Value(MontyObject::Dataclass {
+                        name: "host".to_string(),
+                        type_id: HOST_NAMESPACE_TYPE_ID,
+                        field_names: Vec::new(),
+                        attrs: DictPairs::from(Vec::new()),
+                        frozen: true,
+                    })
+                } else {
+                    debug!(name = %name, "orchestrator: unresolved name");
+                    NameLookupResult::Undefined
+                };
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    lookup.resume(
-                        NameLookupResult::Undefined,
-                        PrintWriter::CollectString(&mut stdout),
-                    )
+                    lookup.resume(result, PrintWriter::CollectString(&mut stdout))
                 })) {
                     Ok(Ok(p)) => progress = p,
                     Ok(Err(e)) => {
