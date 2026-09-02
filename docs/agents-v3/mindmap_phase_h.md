@@ -661,3 +661,62 @@ plumbing.
   (default 545 passed / skills-db 556 passed, 0 failed) + `cargo check -p
   brassclaw_reborn_composition` (full downstream chain compiles). C.7 now only needs to
   delete the loop_engine/runtime/execute_orchestrator PRODUCTION code + default.py.
+- **C.2 GROUNDING + PLACEMENT FORK (this turn — needs user steer before editing).** The 16
+  remaining `__*__` arms live in `execute_orchestrator`'s match (`orchestrator.rs:640-752`),
+  alongside the 8 C.1 `host.*` arms (`:763-811`) which already reuse the same Rust handlers.
+  Step-27 classification of the 16: RETIRE 8 (`__llm_complete__`, `__emit_event__`,
+  `__save_checkpoint__`, `__transition_to__`, `__check_budget__`, `__log_budget_warning__`,
+  `__get_actions__`, `__record_skill_usage__`) + DROP 2 (`__retrieve_docs__`,
+  `__get_reduction_rules__`) = delete arm + handler; KEEP 6 (`__check_signals__`,
+  `__list_skills__`, `__regex_match__`, `__validate_component__`, `__fetch_component__`,
+  `__resolve_component_by_name__`) = delete the `__x__` arm (redundant — the C.1 `host.x`
+  arm already calls the same handler) but KEEP the handler. Fork: C.7 text says "Delete
+  `execute_orchestrator`" (so C.2 arm work there would be wasted / moved to the C.6 driver),
+  BUT portion-101 placed the C.1 `host.*` arms IN `execute_orchestrator` as "the future C.6
+  driver, plan-correct". Caller facts: `execute_orchestrator` has ONE caller
+  (`loop_engine.rs:476` = `ExecutionLoop::run`); `loop_engine`/`ExecutionLoop` is NOT
+  referenced in `brassclaw_agent_loop` (agent-loop = production driver, does NOT use Model-A
+  path); `CLAUDE.md:496` states `ThreadManager → ExecutionLoop → execute_orchestrator` "was
+  Model-A and is retired". So the Model-A path is dormant in production (still compiles via
+  `runtime::manager.rs:411` ThreadManager + `scripting.rs:2053` child-ExecutionLoop spawn).
+  → ASK USER: (α) `execute_orchestrator` IS the future C.6 driver (portion-101 right): C.2
+  deletes RETIRED/DROPPED/KEEP-redundant `__*__` arms + RETIRED/DROPPED handlers in place now;
+  C.7 only deletes `default.py` + Model-A callers (loop_engine/runtime/ThreadManager/
+  ExecutionLoop), NOT `execute_orchestrator`; correct C.7's stale "delete execute_orchestrator"
+  text. OR (β) `execute_orchestrator` IS deleted in C.7 (C.7 text right): C.2 does NOT touch
+  `execute_orchestrator` arms — only authors the 3 Recipes + registers the 8 `host.*` tool
+  rows; arm reclassification + the C.1 `host.*` arms move into the NEW C.6 driver fn; correct
+  portion-101's placement note.
+- **C.2 FORK — FINAL-DESIGN SYNTHESIS (this turn, per user "ask again with more info").**
+  Authoritative = CLAUDE.md:244-275 (Orchestrator/Executioner locked 2026-09-02). It says the
+  `__host_call__` 23-arm **match** "is retired into this registry" (the `host.*` first-class
+  callables) — i.e. the **match** retires, NOT necessarily the whole `execute_orchestrator` fn.
+  But the C subplan `:86-87` (Retire/rework, written in the same reframe) lists
+  `execute_orchestrator`/`ExecutionLoop`/`ThreadManager`/`runtime` as "dead test-only code;
+  **delete**". C.6 = replace agent-loop stages with "one cross-turn persistent Monty session
+  (D-C1) running the basic-mode orchestrator". REACHABILITY: the C.1 `host.*` arms + `host`
+  NameLookup injection live ONLY in `execute_orchestrator`'s body; the H.12 production path
+  (`execute_tier_zero_channel` → `execute_code`) does NOT inject `host` (its NameLookup →
+  `Undefined`), so the C.1 arms are reachable ONLY via `execute_orchestrator` (Model-A, dormant).
+  So: (α) `execute_orchestrator` skeleton STAYS → becomes the C.6 cross-turn-persistent driver;
+  its `__host_call__` match retires into the `host.*` registry (C.1+C.2); C.7 deletes only
+  `default.py` + Model-A CALLERS (loop_engine/ExecutionLoop/ThreadManager/runtime); corrects C
+  subplan `:86-87` "delete execute_orchestrator" as stale. (β) `execute_orchestrator` IS deleted
+  in C.7 (C subplan `:86-87` right); C.2 does NOT touch its arms; the `host.*` registry dispatch
+  + arm reclassification move into the NEW C.6 driver fn; C.2 now only authors the 3 Recipes +
+  registers the 8 `host.*` tool catalogue rows (data, no Rust); corrects portion-101 placement.
+  **Re-asked user with this synthesis.**
+- **C.2 PLACEMENT FORK RESOLVED = β (user-locked this turn).** `execute_orchestrator` IS deleted
+  in C.7 (C subplan `:86-87` affirmed). C.2 does NOT touch its arms. C.2 = **spec + seed (data
+  only, no Rust)**: build an idempotent boot seed `seed_builtin_host_components` that inserts the
+  Step 27 component stacks (8 `host.*` tools × 5 components + 3 Recipes + 1 `builtin-host`
+  ExtensionCatalogue) into the DB at startup. The C.1 `host.*` arms + `host` namespace injection
+  currently in `execute_orchestrator` are **temporarily placed** (it's the only Monty-driver fn
+  with a FunctionCall match today) and **MOVE to the NEW C.6 cross-turn-persistent driver fn**
+  when built; they're dormant now (execute_orchestrator is Model-A, not reached by the agent-loop).
+  Portion-101's "arms in execute_orchestrator = future C.6 driver" note is STALE → corrected to
+  "temporary placement, moves in C.6." Scope magnitude: ~45 component rows across 6 class tables
+  (0/1/13/21/22/23) + ~900 lines of Step 27 spec to encode → multi-turn → nested subplan written
+  (`docs/agents-v3/subplan_problem_stepC2_builtin_seed_of_saved_plan_to_v3.md`). 27.6.1
+  `pc-host-execute-parallel` in the spec is STALE (user retired `__execute_actions_parallel__`
+  entirely in portion 102/103) → correct to RETIRED, do NOT seed.

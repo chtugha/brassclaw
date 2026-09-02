@@ -5713,6 +5713,18 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   get_reduction_rules; **RETIRE** host.llm_complete (+ `handle_llm_complete`/
 >   `LlmBackend`) + 7 stage-machinery verbs (Q-D) + the per-call
 >   `handle_execute_action` wrapper (security is mode-driven).
+>
+>   **β placement (locked 2026-09-03):** C.2 is **spec + seed (data only, no Rust)**.
+>   The Step 27 spec in `builtin_stuff_v3.md` is complete; C.2 builds an idempotent
+>   boot seed `seed_builtin_host_components` that inserts the Step 27 component stacks
+>   (8 `host.*` tools × 5 components + 3 Recipes + 1 `builtin-host` ExtensionCatalogue)
+>   as validated rows at startup. C.2 does **NOT** touch `execute_orchestrator`'s arms
+>   — the `host.*` registry dispatch + the `__*__` arm reclassification move into the
+>   NEW C.6 driver fn (execute_orchestrator is deleted in C.7). The C.1 `host.*` arms
+>   currently in `execute_orchestrator` are temporary + dormant. 27.6.1
+>   `pc-host-execute-parallel` is STALE (retired entirely) → correct to RETIRED, don't
+>   seed. **Subplan doc:**
+>   `./docs/agents-v3/subplan_problem_stepC2_builtin_seed_of_saved_plan_to_v3.md`
 > - **C.3 — Two Tool Systems: cdylib dynamic loading.** Built-in tools stay
 >   precompiled; add the cdylib load/unload path (`dlopen`) for
 >   kohai/sempai-minted Tools+ToolSkills, bound into the same namespace on demand
