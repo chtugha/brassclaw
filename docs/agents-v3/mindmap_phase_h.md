@@ -790,3 +790,26 @@ plumbing.
   default to 'authored'/'migrated'). **Verified green both configs:** clippy
   `--all-targets -D warnings` (default + skills-db) + `cargo test --lib` (default 545 /
   skills-db 556 passed, 0 failed). No live PG locally → query execution verified in CI.
+- **C.2 SLICE 1c — TWO STORE MODULES (DONE this turn).** Insert-API fork = B (user-locked):
+  two new seed/CRUD-side store modules mirroring the lean-insert pattern of `pg_recipe_store`
+  / `pg_python_code_store` (retrieval-side projection stays in `db_tool_source.rs` /
+  `retrieval_source.rs`). Added `lib.rs` mod decls: `#[cfg(feature="postgres")]
+  pub(crate) mod pg_tool_skill_store;` + `pg_tool_store;` (after `pg_recipe_store`). Both
+  modules carry `#![allow(dead_code)]` + `#![forbid(unsafe_code)]` (insert/lookup exercised
+  by the boot seed in slice 1d; full CRUD later if a non-seed authoring path needs it).
+  `pg_tool_store.rs` (cl 0): `NewPgTool` (scope-4 + name/description + param_schema/
+  param_template(Option<Value>) + effect_type + preconditions/error_handling(Option<String>)
+  + consumer_tags(Vec<String>) + source + validation_status); `PgToolStore::insert` sets 14
+  cols, `ON CONFLICT (tenant_id,user_id,agent_id,project_id,name) DO NOTHING RETURNING id` →
+  `Option<Uuid>` (idempotent); `get_id_by_name` → `Option<Uuid>` (recover existing id on
+  re-seed). class_code(0)/prompt_uid(seq)/validation_errors('{}') via DDL defaults.
+  `pg_tool_skill_store.rs` (cl 13): `NewPgToolSkill` (scope-4 + name/description/content +
+  prior_knowledge_content(Option<String>) + override_prompt_creation(bool) +
+  tool_name(Option<String>) + param_schema/param_template(Option<Value>) + consumer_tags +
+  intent_examples(Option<Value>) + source + validation_status); `insert` sets 16 cols, same
+  ON CONFLICT idempotent pattern; `get_id_by_name`. class_code(13)/prompt_uid(seq)/
+  tier('seedling')/scoring(0)/validation_errors('{}') via DDL defaults. **Verified green
+  both configs:** clippy `-p brassclaw_reborn_composition --all-targets -D warnings`
+  (default + `--features skills-db`), scoped `cargo clean -p brassclaw_reborn_composition`
+  first (disk 95%/10Gi). Next: slice 1d = `seed_builtin_host_components` skeleton + the
+  class-23 `builtin-host` catalogue row + boot wiring in `webui.rs:143` block.

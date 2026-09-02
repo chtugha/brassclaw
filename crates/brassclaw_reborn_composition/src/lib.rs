@@ -112,6 +112,10 @@ pub(crate) mod pg_monty_vm_settings;
 pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_tool_skill_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_tool_store;
 pub(crate) mod pg_thread_engine_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_token_settings_store;
