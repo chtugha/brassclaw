@@ -168,6 +168,25 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         api = api.with_llm_config_service(Arc::new(llm_config));
     }
 
+    // Seed the built-in host.* component stack (Phase C.2). Idempotent; runs
+    // on every service start. Only needs postgres (independent of
+    // root-llm-provider) — the host.* Tools + Recipes back the
+    // Orchestrator↔Executioner surface regardless of which LLM provider is
+    // configured.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.clone() {
+        let host_tenant_id = runtime.webui_tenant_id().to_string();
+        if let Err(e) =
+            crate::seed_builtin_host::seed_builtin_host_components(pool, &host_tenant_id).await
+        {
+            tracing::warn!(
+                error = %e,
+                "builtin host component seeding failed; host.* capabilities may be \
+                 missing until the next restart"
+            );
+        }
+    }
+
     // Wire the safety configuration store (Postgres path).
     #[cfg(feature = "postgres")]
     if let Some(safety_config_store) = &services.pg_safety_config_store {

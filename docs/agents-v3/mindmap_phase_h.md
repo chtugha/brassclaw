@@ -813,3 +813,24 @@ plumbing.
   (default + `--features skills-db`), scoped `cargo clean -p brassclaw_reborn_composition`
   first (disk 95%/10Gi). Next: slice 1d = `seed_builtin_host_components` skeleton + the
   class-23 `builtin-host` catalogue row + boot wiring in `webui.rs:143` block.
+- **C.2 SLICE 1d — SEED FN SKELETON + `builtin-host` CATALOGUE + BOOT WIRING (DONE this turn).**
+  New module `seed_builtin_host.rs` (`#[cfg(feature="postgres")]`, `#![allow(dead_code)]` +
+  `#![forbid(unsafe_code)]`) + `lib.rs` mod decl after `secrets_master`. `seed_builtin_host_
+  components(pool: Arc<PgPool>, tenant_id: &str) -> Result<(), SeedBuiltinHostError>`:
+  idempotent — `PgExtensionCatalogueStore::get_by_name` skip-if-exists; else `insert` a class-23
+  `builtin-host` row (empty `child_component_ids`, filled incrementally in slices 2–12) then
+  `update_validation_status("validated")` to bypass Q1 pending. Marker scope = (tenant=runtime,
+  user=`SYSTEM_RESERVED_ID`=`\x1fSYSTEM\x1f` via `brassclaw_host_api::SYSTEM_RESERVED_ID`,
+  agent=`"default"` [aligns with `build_component_scope` fallback], project=`"system"`); retrieval
+  UNION is agnostic on user/agent/project for `source='system'` rows so the marker is just the
+  stable storage key. `consumer_tags=["02:orchestrator"]` (NO `05:validator` — builtins skip Q1 +
+  graduate directly to validated → SEC-01 filter surfaces them immediately). `source="system"`.
+  Boot wiring in `webui.rs` (new `#[cfg(feature="postgres")]` block right after the
+  `seed_builtin_providers` block, before the safety-config wiring): grabs `services.pg_pool` +
+  `runtime.webui_tenant_id()`, calls the seed, logs a warn on failure (non-fatal — mirrors the
+  provider-seed pattern). Only needs `postgres` (independent of `root-llm-provider`). **Verified
+  green both configs:** clippy `-p brassclaw_reborn_composition --all-targets -D warnings`
+  (default + `--features skills-db`), scoped `cargo clean -p` first. Next: slices 2–12 = the 8
+  `host.*` tool 5-component stacks (27.1/27.2/27.3/27.7.2/27.7.3/27.7.4/27.9.1/27.10.3) + 3 Recipes
+  (27.4/27.10.1/27.10.2), each inserted via the new stores + appended to
+  `builtin-host.child_component_ids`.
