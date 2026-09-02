@@ -10,7 +10,11 @@
 //! - `class_code = 0` (Rusty-only) — tools do not carry Monty/LLM prompt text.
 //! - Filtered by the full `(tenant_id, user_id, agent_id, project_id)` scope
 //!   tuple so that a wrong-scope read returns an empty set (scope isolation
-//!   contract).
+//!   contract), **except** the builtin union (Phase C.2): `source = 'system'`
+//!   validated rows are returned tenant-globally — tenant-anchored ($1) but
+//!   agnostic on user_id/agent_id/project_id — so seeded `host.*` builtins are
+//!   discoverable by every turn under the tenant. Tenant isolation is preserved
+//!   (no cross-tenant leak); the validator-tag filter still applies.
 
 use async_trait::async_trait;
 use brassclaw_capabilities::tool_registry::{ToolRegistryError, ToolRegistryStore, ToolScopeKey};
@@ -51,12 +55,11 @@ impl ToolRegistryStore for DbToolSource {
                 "SELECT name
                  FROM reborn_tools
                  WHERE tenant_id   = $1
-                   AND user_id     = $2
-                   AND agent_id    = $3
-                   AND project_id  = $4
                    AND class_code  = 0
                    AND validation_status = 'validated'
                    AND NOT ('05:validator' = ANY(consumer_tags))
+                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                         OR source = 'system' )
                  ORDER BY prompt_uid ASC",
                 &[
                     &scope.tenant_id,

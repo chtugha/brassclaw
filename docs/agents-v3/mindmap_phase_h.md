@@ -774,3 +774,19 @@ plumbing.
   retrieval UNION, 1c=two store modules, 1d=seed fn skeleton + `builtin-host` catalogue + boot
   wiring, 2–12=the 8 tool stacks + 3 recipes, 13=final verify. No live PG locally (Docker/
   testcontainers SKIP) → migration apply + seed insert verified in CI/user env, not locally.
+- **C.2 SLICE 1b — RETRIEVAL UNION (DONE this turn).** `fetch_for_turn`
+  (retrieval_source.rs:~414) — all 14 sub-selects (skills/extensions_unified/actions/
+  specs/tool_skills/plans/summaries/docus/lessons/issues/notes/recipes/python_code/
+  extension_catalogues) WHERE rewritten (single `replace_all` — the 4-line WHERE was
+  identical across all 14): keep `tenant_id=$1 AND validation_status='validated' AND
+  '05:validator'!=ALL(consumer_tags) AND $5=ANY(consumer_tags)`, then
+  `AND ( (user_id=$2 AND agent_id=$3 AND project_id=$4) OR source='system' )` → system
+  rows tenant-global, exact-scope rows unchanged. `DbToolSource::fetch_tool_names`
+  (db_tool_source.rs:52) — same union for class-0 tool discovery. All 14 tables +
+  reborn_tools confirmed to have a `source` column. Both fns are
+  `#[cfg(feature="skills-db")]`-gated → only skills-db config compiles them. Security:
+  tenant_id anchoring preserved (no cross-tenant leak); validator-tag + consumer-tag
+  filters still apply to system rows; `source='system'` set only by the seed fn (stores
+  default to 'authored'/'migrated'). **Verified green both configs:** clippy
+  `--all-targets -D warnings` (default + skills-db) + `cargo test --lib` (default 545 /
+  skills-db 556 passed, 0 failed). No live PG locally → query execution verified in CI.

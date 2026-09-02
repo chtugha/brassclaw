@@ -403,6 +403,14 @@ impl RetrievalSource for PostgresSource {
         // reborn_tools (class 00) is excluded — no prompt text.
         // Scope params: $1=tenant_id, $2=user_id, $3=agent_id, $4=project_id,
         // $5=consumer_tag (must be in consumer_tags[]).
+        //
+        // Builtin union (Phase C.2): each sub-select also returns
+        // `source = 'system' AND validation_status = 'validated'` rows
+        // tenant-globally — i.e. tenant-anchored ($1) but agnostic on
+        // user_id/agent_id/project_id — so seeded builtins are visible to
+        // every turn under the tenant without a per-scope seed. The
+        // validator-tag + consumer-tag filters still apply to system rows.
+        // Tenant isolation is preserved (no cross-tenant leak).
         let query_sql = "
             SELECT id, class_code, prompt_uid, name, description, effective_content,
                    override_prompt_creation
@@ -413,10 +421,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), body) AS effective_content,
                        override_prompt_creation
                 FROM reborn_skills
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -426,10 +436,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(prior_knowledge_content, description) AS effective_content,
                        override_prompt_creation
                 FROM reborn_extensions_unified
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -439,10 +451,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(prior_knowledge_content, description) AS effective_content,
                        override_prompt_creation
                 FROM reborn_actions
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -452,10 +466,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_specs
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -465,10 +481,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_tool_skills
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -478,10 +496,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_plans
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -491,10 +511,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_summaries
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -504,10 +526,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_docus
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -517,10 +541,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_lessons
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -530,10 +556,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_issues
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -543,10 +571,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_notes
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -556,10 +586,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), '') AS effective_content,
                        override_prompt_creation
                 FROM reborn_recipes
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -569,10 +601,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
                        override_prompt_creation
                 FROM reborn_python_code
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
 
                 UNION ALL
 
@@ -582,10 +616,12 @@ impl RetrievalSource for PostgresSource {
                        COALESCE(NULLIF(prior_knowledge_content, ''), overview_doc) AS effective_content,
                        override_prompt_creation
                 FROM reborn_extension_catalogues
-                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                WHERE tenant_id = $1
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+                  AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
+                        OR source = 'system' )
             ) AS components
             ORDER BY class_code ASC, prompt_uid ASC
         ";
