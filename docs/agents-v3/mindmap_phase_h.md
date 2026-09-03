@@ -2176,3 +2176,34 @@ grounded every claim against shipped source/migrations before committing.
   → `host.run_program` + `host.<tool>(...)`. Pending: Phase N snippet→component
   gate logic + boot-integrity; Phase I/N referential placeholder↔include
   matching; C.5/C.6 VM driver; WebUI authoring route.
+
+- **d08** `08-actions-system` (this portion): rewrite — **Actions are
+  vestigial.** Grounded vs V029/V073 + `orchestrator.rs` FetchForTurnResult +
+  retrieval_source class-16 projection. Shipped facts: `reborn_actions` (V029)
+  table live; V073 (C.4.5.6) DROPPED the 5 legacy lifecycle cols
+  (validation_errors/review_feedback/review_attempts/rejected_at/queue_code) +
+  auto-dropped queue_code CHECK; parent_mission_id dropped by V064.
+  `FetchForTurnResult::ActionShortCircuit { component_id, name }` is a SHIPPED
+  variant + `PkrAssemblyResult.action_short_circuit/action_component_id/
+  action_name` but documented "vestigial under Q2". The class-16 SELECT
+  projection reads (id, class_code, prompt_uid, name, description,
+  effective_content, override_prompt_creation, steps, allowed_tools) — NONE of
+  the dropped cols. **NO `pg_action_store.rs`/`PgAction`** — only raw SQL
+  INSERTs in tests + retrieval_lookup_impl.rs seed. `source` CHECK =
+  (authored/extracted/migrated/imported) — NO 'system' (V073 didn't widen;
+  V066 widened only tools+skills) → system Actions CANNOT be seeded today.
+  `override_prompt_creation` DEFAULT true (Actions default to Solution
+  Override = LLM path). CRITICAL: the step-machine executor
+  (`default.py::execute_action_procedure` + `_execute_action_steps` + the
+  `__execute_action__`/`__execute_code_step__`/`__execute_actions_parallel__`
+  meta-primitives) is RETIRED (default.py retired → Monty; `__execute_action__`
+  removed in C.1) → NO live no-LLM Action execution path today. The no-LLM
+  deterministic pattern now lives in Tier-0 Recipes (TierZeroOrchestrator,
+  active via turns PgOrchestratorLookup bridge) + composition system
+  (host.compose_orchestrator→host.run_program, VM-dormant pending C.5/C.6).
+  Per F6=A, the step-machine retire-vs-reformulate fate DEFERRED to C.5/C.6/C.7;
+  V073 did only the DB cleanup that persists regardless. Retired all
+  default.py/__retrieve_docs__/__llm_complete__/__assemble_prior_knowledge__/
+  __list_skills__/working_messages/step-0-shim framing. Hard limits 256KB/500
+  steps/50 allowed_tools; recursion depth 5/1000-step budget; SEC-08
+  spawn_subprocess via host-runtime sandbox only — retained as spec.
