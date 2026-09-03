@@ -2103,3 +2103,22 @@ grounded every claim against shipped source/migrations before committing.
   (§0.23.8: `validation_idle_threshold_minutes`/`validation_improve_start_hour`/
   `validation_improve_enabled`) — the shipped hook for the Sempai idle-time
   self-optimization loop.
+
+- **d02** `02-intent-system` (this portion): f1 Intent-Matching-System rewrite.
+  De-staled "today vs v3" → "shipped vs pending"; grounded vs
+  `intent_system.rs` + `orchestrator.rs::handle_resolve_intent`. Shipped facts
+  corrected: `IntentResolution::Match` DOES carry `step_link: Option<String>`
+  + `component_name: String` (V054 + LEFT JOIN on `reborn_actions`,
+  security-scoped FIND-P6-05); `class_label` HAS 22/23 arms; `FetchForTurnResult`
+  has all 4 variants (`Components`/`Disambiguation`/`ActionShortCircuit`/
+  `SplitResult`); `host.resolve_intent` shipped (C.2) returning JSON
+  `{status: match|disambiguation|no_match|error, …}` to Monty; `seed_intent_input`
+  shipped (auto-seed on validation via `retrieval_lookup_impl.rs` + WebUI store
+  `pg_intent_inputs_store.rs`, carries `step_link` FIND-NEW-03);
+  `record_disambiguation_choice` returns `Match{step_link:None}` (FINDING A —
+  caller re-fetches); `purge_component_inputs` shipped; `DbLessFallback`
+  removed. Pending: C.5/C.6 driver activates the engine VM host-call path in
+  prod (today dormant; active Tier-0/Tier-1 path = TURNS `PgOrchestratorLookup`
+  bridge); WebUI disambiguation UX; Phase J `intent_examples` formalization.
+  Retired `default.py` references → Monty. Migration filenames confirmed:
+  `V028__reborn_intent_inputs.sql` + `V054__reborn_intent_inputs_step_link.sql`.
