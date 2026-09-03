@@ -1614,3 +1614,55 @@ plumbing.
   `cargo clean -p brassclaw_engine` before compile (freed 2.1GiB); engine 567 +
   composition 682/689 lib tests green. **Zenflow step `bc3f81d4` (HI.3, sort 34)
   marked Completed.** Next: C.4.5.4 `tool`(0).
+
+- **C.4.5.4 — `tool`(0) COMPLETE + shipped `06718944` (2026-09-03).** Forks
+  LOCKED via ask_user (2 rounds): **4-A=A** (drop all 5 dead legacy cols from
+  `reborn_tools`) + check `builtin_stuff_v3.md`; **4-B-followup=A** (reverse
+  V067: drop `cdylib_artifact_path` from `reborn_tools` — dead, misplaced; the
+  cdylib load directive is a composition concern that moves to recipe-step/
+  toolskill in C.4.5.17 — AND add `capability_id TEXT NOT NULL DEFAULT ''`, the
+  rust-side common form of a Tool = the Executioner's dispatch id); **4-C=A**
+  (add `validate_tool_skill_placeholders` to the class-0 ToolSkill-payload arm,
+  mirroring class 13). Grounding: `reborn_tools` (V030) had the FULL 5-col
+  legacy set (queue_code, validation_errors, review_feedback, review_attempts,
+  rejected_at) — all DDL-default-only; the central `reborn_validation_queue`
+  tracks lifecycle via `state`+its own `validation_errors`/`review_feedback`;
+  the Q2 graduation `approve()` UPDATE (validation_queue.rs:466) only sets
+  `validation_status='validated'`, never touches the legacy cols; no Rust
+  reader/writer (`pg_tool_store` INSERT omits them; `db_tool_source` SELECTs
+  only `name`; `06-tools-system.md:144` confirms "Phase N centralises them");
+  `parent_mission_id` already dropped by V064. `cdylib_artifact_path` (V067) had
+  ZERO Rust readers/writers (V067 only created the column + a partial index;
+  `NewPgTool` never set it; `db_tool_source` doesn't read it) — dead.
+  `builtin_stuff_v3.md` Step 1.1 plans Tool rows with `capability_id` (e.g.
+  "builtin.shell") + NO cdylib_artifact_path: Tools are ready-to-run Executioner
+  units (built-in = static dispatch; dynamic = a cdylib that just needs loading)
+  and do NOT pass IBS to be rebuilt. The class-0 Q1 arm reuses
+  `ComponentPayload::ToolSkill` whose `tool_name` field CARRIES the capability_id
+  (test fixture line 798 `tool_name: "builtin.shell"`), so `validate_tool_skill`'s
+  tool_name-non-empty check IS the capability_id-non-empty gate. Deliverable:
+  (1) migration **V071** `reborn_tools_syntax` — `DROP INDEX IF EXISTS
+  reborn_tools_cdylib_path_idx`; `DROP COLUMN IF EXISTS cdylib_artifact_path`
+  (reverses V067); `DROP COLUMN IF EXISTS` queue_code/validation_errors/
+  review_feedback/review_attempts/rejected_at (the 5 legacy); `ADD COLUMN IF NOT
+  EXISTS capability_id TEXT NOT NULL DEFAULT ''`; backfill `UPDATE reborn_tools
+  SET capability_id = name WHERE capability_id = ''` (idempotent; for the seeded
+  host.* tools capability_id == name); (2) `NewPgTool` (pg_tool_store.rs) gains
+  `capability_id: String`; INSERT column list + VALUES → 15 params ($15
+  capability_id); **all 8 host.* seed Tool rows** in seed_builtin_host.rs
+  updated (`capability_id: "host.X".into()` == name for host.* bridge tools:
+  resolve_intent, compose_orchestrator, post_reply, fetch_component,
+  kohai_complete, check_signals, validate_component, resolve_component_by_name);
+  (3) Q1 gate — class-0 arm now `let mut result = validate_tool_skill(...);
+  validate_tool_skill_placeholders(skill, &mut result); result` (placeholder
+  grammar on description/preconditions/error_handling/code_snippet/
+  param_template/param_schema + non-nil includes; for class 0 these are concrete
+  → no-op for valid tools); (4) **3 engine gate tests** (valid capability_id
+  passes; unbalanced `{{` in preconditions fails; empty tool_name=capability_id
+  fails — proves the capability_id-non-empty gate runs). Both configs clippy-
+  clean (engine + composition, default + `--features skills-db`, `-D warnings`
+  after `--`); disk 95%/11Gi → `cargo clean -p brassclaw_engine -p
+  brassclaw_reborn_composition` before compile (freed 10.1GiB → 20Gi Avail);
+  engine 570 (567+3 new) + composition 689 lib tests green. **Zenflow step
+  `33268a15` (HI.4, sort 35) marked Completed.** Next: C.4.5.5 `skill`(1/2/3/10)
+  + command syntax (item e).

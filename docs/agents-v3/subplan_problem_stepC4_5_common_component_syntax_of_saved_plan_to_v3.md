@@ -278,10 +278,32 @@ is never baked into raw code — only into string-literal positions.
     nil-include / Generic-payload-errors / empty-tool_name-fails — proves
     `validate_tool_skill` is called). ToolSkill has NO `variable_patterns`
     (vars from recipe/caller; `{{vars.name}}` lives in param_template). Both
-    configs clippy-clean; engine 567 + composition 682/689 lib tests green).
-    **Remaining: C.4.5.4–C.4.5.19 not implemented** (IBS core exists Phase A but
+    configs clippy-clean; engine 567 + composition 682/689 lib tests green). [x]
+    **C.4.5.4 DONE** (2026-09-03 — `tool`(0) + DB-structure standardization (item g)
+    + the rust-side common form: migration V071 `reborn_tools_syntax` — drops the
+    full 5-col legacy set (queue_code, validation_errors, review_feedback,
+    review_attempts, rejected_at; all DDL-default-only, central queue tracks
+    lifecycle, graduation UPDATE only sets validation_status, no Rust reader) +
+    drops `cdylib_artifact_path` (REVERSES V067 — dead, zero Rust readers; the
+    cdylib load directive is a composition concern that moves to recipe-step/
+    toolskill in C.4.5.17; builtin_stuff_v3.md Step 1.1 plans Tool rows with NO
+    cdylib_artifact_path) + drops the V067 partial index `reborn_tools_cdylib_path_idx`
+    + adds `capability_id TEXT NOT NULL DEFAULT ''` (the Executioner's dispatch id
+    — "builtin.shell" / "host.resolve_intent"; the rust-side common form of a Tool)
+    + backfill `UPDATE ... SET capability_id = name WHERE capability_id = ''`
+    (idempotent; for seeded host.* tools capability_id == name); `NewPgTool` gains
+    `capability_id: String` + INSERT → 15 params ($15); all 8 host.* seed Tool
+    rows updated; Q1 gate — class-0 arm now runs `validate_tool_skill` (whose
+    tool_name-non-empty check IS the capability_id-non-empty gate, since for
+    class 0 `tool_name` carries the capability_id) + `validate_tool_skill_placeholders`
+    (placeholder grammar + non-nil includes, mirrors class 13; concrete for valid
+    tools → no-op); 3 engine gate tests (valid capability_id passes; unbalanced
+    `{{` fails; empty capability_id fails). Both configs clippy-clean; engine 570
+    (567+3 new) + composition 689 lib tests green).
+    **Remaining: C.4.5.5–C.4.5.19 not implemented** (IBS core exists Phase A but
     Recipe-only; compose_orchestrator is a C.2 placeholder; host.run_program
     net-new; per-class syntax upgrades + predefined structure + rust-plugin
-    directives all pending). Next slice C.4.5.4 (`tool`(0)).
+    directives all pending). Next slice C.4.5.5 (`skill`(1/2/3/10) + command
+    syntax item e).
     This subplan is the canonical one (the prior `subplan_problem_phaseHI_…md`
     is a redirect stub).
