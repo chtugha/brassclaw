@@ -240,10 +240,25 @@ is never baked into raw code — only into string-literal positions.
     template-vars + component-includes; F4=A-modified + F4-refinement
     composer-returns-parts / IBS-IS-the-composition-system /
     compose_orchestrator-is-a-Skill-over-IBS / predefined output structure;
-    F5=B folded into Step C as C.4.5). **Remaining: C.4.5.2–C.4.5.19 not
-    implemented** (IBS core exists Phase A but Recipe-only; compose_orchestrator
-    is a C.2 placeholder; host.run_program net-new; per-class syntax upgrades +
-    predefined structure + rust-plugin directives all pending). Next slice
-    C.4.5.2 (`python_code`(22) + placeholder/include mechanism — c/h, F3=A).
+    F5=B folded into Step C as C.4.5). [x] C.4.5.2 DONE (2026-09-03 —
+    `python_code`(22) + placeholder/include mechanism (c/h, F3=A): migration
+    V069 adds JSONB `includes` column (`Vec<Uuid>`, machine form of
+    `{{component_name}}` structural includes — mirrors recipe `StepEntry.include`,
+    DEFAULT '[]' so pre-existing rows stay valid); `PgPythonCode`/`NewPgPythonCode`
+    extended (includes field) + `PYTHON_CODE_SELECT` (index 25) +
+    `decode_python_code_row` (JSONB→Vec<Uuid>) + INSERT ($14); 12 seed
+    `NewPgPythonCode` sites updated (`includes: vec![]`); explicit Q1 gate
+    `validate_python_code_placeholders` added to component_validator class-22 arm
+    (balanced `{{ }}` + recognised kinds vars.NAME/vars.slotN/user_input/
+    component_name + non-nil include UUIDs read from `GenericComponent::extra`
+    `{"includes":[...]}`; referential placeholder↔include match deferred to
+    Phase I/N — Fork 2-B=B); 6 engine gate tests + composition store round-trip
+    (non-empty includes assertion, docker-gated) + column-count pin (26 cols);
+    both configs clippy-clean (engine + composition, default + --features
+    skills-db); 9 class22 + 47 recipe + 6 composition tests green). **Remaining:
+    C.4.5.3–C.4.5.19 not implemented** (IBS core exists Phase A but Recipe-only;
+    compose_orchestrator is a C.2 placeholder; host.run_program net-new;
+    per-class syntax upgrades + predefined structure + rust-plugin directives
+    all pending). Next slice C.4.5.3 (`tool_skill`(13)).
     This subplan is the canonical one (the prior `subplan_problem_phaseHI_…md`
     is a redirect stub).

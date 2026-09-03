@@ -90,13 +90,15 @@ fn map_pg(e: tokio_postgres::Error) -> PgPythonCodeStoreError {
 /// A fully-decoded `reborn_python_code` row.
 ///
 /// Column order matches [`PYTHON_CODE_SELECT`] / [`decode_python_code_row`].
-/// `reborn_python_code` has 25 columns: the 5 scope fields, the 3 content
+/// `reborn_python_code` has 26 columns: the 5 scope fields, the 3 content
 /// fields, the 2 solution-override columns, class/uid/tags/intent, the
 /// post-validation `validation_status`, source + similarity/replaces/audit
-/// columns, the dependency registry, and created/updated timestamps. The five
-/// queue-tracking columns (`queue_code`, `review_attempts`, `review_feedback`,
-/// `rejected_at`, `validation_errors`) are NOT here — they are centralised on
-/// `reborn_validation_queue` (§0.18 / V051).
+/// columns, the dependency registry, the `includes` component-UUID list
+/// (C.4.5.2 — machine form of `{{component_name}}` structural includes), and
+/// created/updated timestamps. The five queue-tracking columns (`queue_code`,
+/// `review_attempts`, `review_feedback`, `rejected_at`, `validation_errors`)
+/// are NOT here — they are centralised on `reborn_validation_queue` (§0.18 /
+/// V051).
 #[derive(Debug, Clone)]
 pub(crate) struct PgPythonCode {
     pub(crate) id: Uuid,
@@ -129,6 +131,10 @@ pub(crate) struct PgPythonCode {
     pub(crate) dependency_registry: Option<Value>,
     pub(crate) created_at: chrono::DateTime<chrono::Utc>,
     pub(crate) updated_at: chrono::DateTime<chrono::Utc>,
+    /// C.4.5.2 — component UUIDs the composer inlines for `{{component_name}}`
+    /// structural-include placeholders (machine form; mirrors recipe
+    /// `StepEntry.include`). Stored as JSONB; decoded to `Vec<Uuid>`.
+    pub(crate) includes: Vec<Uuid>,
 }
 
 /// Minimal data required to insert a new `reborn_python_code` row.
@@ -153,6 +159,9 @@ pub(crate) struct NewPgPythonCode {
     pub(crate) intent_examples: Option<Value>,
     pub(crate) source: String,
     pub(crate) dependency_registry: Option<Value>,
+    /// C.4.5.2 — component UUIDs the composer inlines for `{{component_name}}`
+    /// structural-include placeholders. Empty for leaf bodies (no includes).
+    pub(crate) includes: Vec<Uuid>,
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +177,7 @@ const PYTHON_CODE_SELECT: &str = "
     validation_status, source, content_hash,
     similarity_parent_id, replaces_id, parent_version,
     last_audit_at, audit_failure_count,
-    dependency_registry, created_at, updated_at
+    dependency_registry, created_at, updated_at, includes
 ";
 
 fn decode_python_code_row(
@@ -200,6 +209,10 @@ fn decode_python_code_row(
         dependency_registry: row.get(22),
         created_at: row.get(23),
         updated_at: row.get(24),
+        includes: serde_json::from_value(row.get::<_, Value>(25))
+            .map_err(|e| PgPythonCodeStoreError::Db {
+                reason: format!("includes JSONB malformed: {e}"),
+            })?,
     })
 }
 
@@ -229,6 +242,11 @@ impl PgPythonCodeStore {
         &self,
         row: NewPgPythonCode,
     ) -> Result<Uuid, PgPythonCodeStoreError> {
+        let includes_json = serde_json::to_value(&row.includes).map_err(|e| {
+            PgPythonCodeStoreError::Db {
+                reason: format!("includes encode failed: {e}"),
+            }
+        })?;
         let client = self.pool.get().await.map_err(map_pool)?;
         let db_row = client
             .query_one(
@@ -236,8 +254,9 @@ impl PgPythonCodeStore {
                     (tenant_id, user_id, agent_id, project_id,
                      name, description, content,
                      prior_knowledge_content, override_prompt_creation,
-                     consumer_tags, intent_examples, source, dependency_registry)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                     consumer_tags, intent_examples, source, dependency_registry,
+                     includes)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -253,6 +272,7 @@ impl PgPythonCodeStore {
                     &row.intent_examples,
                     &row.source,
                     &row.dependency_registry,
+                    &includes_json,
                 ],
             )
             .await
@@ -465,7 +485,7 @@ impl PgPythonCodeStore {
 mod tests {
     use super::*;
 
-    /// `PYTHON_CODE_SELECT` must list exactly the 25 `reborn_python_code`
+    /// `PYTHON_CODE_SELECT` must list exactly the 26 `reborn_python_code`
     /// columns in the order [`decode_python_code_row`] reads them. A mismatch
     /// (missing/extra/reordered column) would silently mis-decode every row —
     /// this test pins the contract without needing a live Postgres pool.
@@ -476,12 +496,13 @@ mod tests {
             .map(|c| c.trim())
             .filter(|c| !c.is_empty())
             .collect();
-        assert_eq!(cols.len(), 25, "PYTHON_CODE_SELECT must list 25 columns");
+        assert_eq!(cols.len(), 26, "PYTHON_CODE_SELECT must list 26 columns");
         assert_eq!(cols[0], "id");
         assert_eq!(cols[7], "content");
         assert_eq!(cols[14], "validation_status");
         assert_eq!(cols[22], "dependency_registry");
         assert_eq!(cols[24], "updated_at");
+        assert_eq!(cols[25], "includes");
     }
 
     /// The validator consumer tag is load-bearing for the SEC-01 delivery
@@ -595,6 +616,7 @@ mod tests {
                 intent_examples: None,
                 source: "authored".into(),
                 dependency_registry: None,
+                includes: vec![],
             }
         }
 
@@ -605,7 +627,11 @@ mod tests {
             };
             let scope = test_scope();
             let store = PgPythonCodeStore::new(rig.pool.clone());
-            let row = new_row(&scope);
+            let mut row = new_row(&scope);
+            // C.4.5.2 — `includes` (the machine form of `{{component_name}}`
+            // structural includes) round-trips through the JSONB column.
+            let expected_includes = vec![Uuid::new_v4(), Uuid::new_v4()];
+            row.includes = expected_includes.clone();
             let expected_name = row.name.clone();
             let expected_content = row.content.clone();
 
@@ -625,6 +651,7 @@ mod tests {
             assert_eq!(fetched.id, id);
             assert_eq!(fetched.name, expected_name);
             assert_eq!(fetched.content, expected_content);
+            assert_eq!(fetched.includes, expected_includes);
             assert_eq!(fetched.class_code, 22);
             assert_eq!(fetched.validation_status, "pending");
             assert_eq!(fetched.source, "authored");

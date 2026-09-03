@@ -201,6 +201,7 @@ impl ComponentValidator {
                         false,
                     );
                     validate_python_code_body(g.content, &mut result);
+                    validate_python_code_placeholders(g.content, g.extra.as_ref(), &mut result);
                     result
                 }
                 ComponentPayload::ToolSkill(_) => {
@@ -397,6 +398,87 @@ fn validate_python_code_body(content: &str, result: &mut ValidationResult) {
                 .to_string(),
         );
     }
+}
+
+/// C.4.5.2 — validate the `{{ ... }}` placeholder structure in a PythonCode
+/// body (F-HI-2=A) and the non-nil-ness of its declared `includes` UUID list
+/// (Fork 2-B=B). Structural-only: the composer (C.4.5.17) is the sole baker;
+/// Q1 never bakes. Referential placeholder<->include matching (each
+/// `{{component_name}}` resolves to a real fetched component, and every
+/// include is consumed by a placeholder) is deferred to Phase I/N (requires a
+/// pool); Q1 here checks well-formedness + non-nil UUIDs only.
+fn validate_python_code_placeholders(
+    content: &str,
+    extra: Option<&Value>,
+    result: &mut ValidationResult,
+) {
+    // Placeholder well-formedness: every `{{ ... }}` must close and name a
+    // recognised kind (vars.NAME | vars.slotN | user_input | component_name).
+    let mut cursor = 0;
+    while let Some(open_rel) = content[cursor..].find("{{") {
+        let open = cursor + open_rel;
+        let Some(close_rel) = content[open + 2..].find("}}") else {
+            result.errors.push(
+                "PythonCode body has an unbalanced `{{` placeholder (no closing `}}`)"
+                    .to_string(),
+            );
+            return;
+        };
+        let inner = &content[open + 2..open + 2 + close_rel];
+        let trimmed = inner.trim();
+        if !is_recognised_python_placeholder(trimmed) {
+            result.errors.push(format!(
+                "PythonCode body placeholder `{{{{ {trimmed} }}}}` is not a recognised kind \
+                 (expected vars.NAME, vars.slotN, user_input, or component_name)"
+            ));
+        }
+        cursor = open + 2 + close_rel + 2;
+    }
+
+    // Includes (carried in `extra` on the Q1 save path): each present UUID must
+    // parse and be non-nil. Absent `extra` / absent `includes` is allowed (a
+    // leaf body declares no includes).
+    let Some(extra) = extra else { return };
+    let Some(arr) = extra.get("includes").and_then(Value::as_array) else {
+        return;
+    };
+    for (j, entry) in arr.iter().enumerate() {
+        match entry.as_str() {
+            Some(s) => match uuid::Uuid::parse_str(s) {
+                Ok(u) if u != uuid::Uuid::nil() => {}
+                Ok(_) => result.errors.push(format!(
+                    "PythonCode includes[{j}] is the nil UUID — component-include must resolve to a real component"
+                )),
+                Err(_) => result.errors.push(format!(
+                    "PythonCode includes[{j}] `{s}` is not a valid UUID"
+                )),
+            },
+            None => result.errors.push(format!(
+                "PythonCode includes[{j}] `{entry}` is not a UUID string"
+            )),
+        }
+    }
+}
+
+/// Recognised `{{ ... }}` placeholder kinds for a PythonCode body (F-HI-2=A):
+/// `user_input`, `component_name`, `vars.NAME` (identifier), `vars.slotN`
+/// (non-negative integer).
+fn is_recognised_python_placeholder(trimmed: &str) -> bool {
+    if trimmed == "user_input" || trimmed == "component_name" {
+        return true;
+    }
+    let Some(rest) = trimmed.strip_prefix("vars.") else {
+        return false;
+    };
+    if let Some(n) = rest.strip_prefix("slot") {
+        return !n.is_empty() && n.chars().all(|c| c.is_ascii_digit());
+    }
+    // vars.NAME — non-empty, [A-Za-z0-9_-], not starting with a digit.
+    !rest.is_empty()
+        && rest
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && !rest.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
 /// Validate the ExtensionCatalogue-specific extras carried in
@@ -821,6 +903,161 @@ mod tests {
             "expected a print() warning, got {:?}",
             result.warnings
         );
+    }
+
+    #[test]
+    fn class22_python_code_placeholders_valid_passes() {
+        // C.4.5.2 — every recognised placeholder kind + a non-nil includes list
+        // passes Q1 (referential placeholder<->include match is deferred).
+        let inc = uuid::Uuid::new_v4().to_string();
+        let g = GenericComponent {
+            name: "placeholder-leaf",
+            description: "Body using all four placeholder kinds",
+            content: "a = \"{{vars.slot0}}\"\nb = \"{{user_input}}\"\nc = \"{{component_name}}\"\nd = \"{{vars.dir}}\"\nreturn a",
+            extra: Some(serde_json::json!({ "includes": [inc] })),
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors for well-formed placeholders, got {:?}",
+            result.errors
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn class22_python_code_unbalanced_placeholder_fails() {
+        let g = GenericComponent {
+            name: "unbalanced-leaf",
+            description: "Missing closing braces",
+            content: "a = \"{{vars.slot0\"\nreturn a",
+            extra: None,
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("unbalanced") && e.contains("{{")),
+            "expected an unbalanced-placeholder error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class22_python_code_unrecognised_placeholder_fails() {
+        let g = GenericComponent {
+            name: "bad-kind-leaf",
+            description: "An unknown placeholder kind",
+            content: "a = \"{{bogus}}\"\nreturn a",
+            extra: None,
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("not a recognised kind") && e.contains("bogus")),
+            "expected an unrecognised-placeholder error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class22_python_code_nil_include_fails() {
+        let g = GenericComponent {
+            name: "nil-include-leaf",
+            description: "Declares a nil include UUID",
+            content: "a = \"{{component_name}}\"\nreturn a",
+            extra: Some(serde_json::json!({
+                "includes": [uuid::Uuid::nil().to_string()]
+            })),
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.iter().any(|e| e.contains("nil UUID")),
+            "expected a nil-include error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class22_python_code_bad_include_uuid_fails() {
+        let g = GenericComponent {
+            name: "bad-include-leaf",
+            description: "Declares a non-UUID include entry",
+            content: "a = \"{{component_name}}\"\nreturn a",
+            extra: Some(serde_json::json!({ "includes": ["not-a-uuid"] })),
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("not a valid UUID") && e.contains("not-a-uuid")),
+            "expected a bad-include-uuid error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class22_python_code_component_placeholder_without_includes_passes() {
+        // C.4.5.2 boundary: a well-formed {{component_name}} with no includes
+        // list passes Q1 — the referential placeholder<->include match is
+        // deferred to Phase I/N (Fork 2-B=B); Q1 is structural-only.
+        let g = GenericComponent {
+            name: "deferred-include-leaf",
+            description: "Component placeholder, includes declared later",
+            content: "a = \"{{component_name}}\"\nreturn a",
+            extra: None,
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.is_empty(),
+            "Q1 must not enforce referential placeholder<->include match, got {:?}",
+            result.errors
+        );
+        assert!(result.is_ok(), "{result:?}");
     }
 
     #[test]

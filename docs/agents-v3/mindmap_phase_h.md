@@ -1526,3 +1526,28 @@ plumbing.
   exempt); wired into validate_recipe; (3) 5 gate tests + 1 IBS round-trip test
   (`recipe_machine_form_round_trips_through_ibs`). No schema change. Both
   configs clippy-clean (default + --features skills-db); 47 recipe tests green.
+- **C.4.5.2 — PythonCode (class 22) + placeholder/include mechanism DONE
+  (2026-09-03).** F3=A structural includes + Fork 2-A=A (new JSONB `includes`
+  column `Vec<Uuid>` via V069) + Fork 2-B=B (Q1=placeholder well-formedness +
+  non-nil UUIDs; referential deferred to Phase I/N). Deliverable: (1) migration
+  V069 `ALTER TABLE reborn_python_code ADD COLUMN includes JSONB NOT NULL
+  DEFAULT '[]'` — machine form of `{{component_name}}` structural includes,
+  mirrors recipe `StepEntry.include`, default '[]' keeps pre-existing rows
+  valid; (2) `PgPythonCode`/`NewPgPythonCode` get `includes: Vec<Uuid>`;
+  `PYTHON_CODE_SELECT` appends `includes` at index 25; `decode_python_code_row`
+  decodes JSONB→Vec<Uuid> (map_err→Db); INSERT adds `$14` (encode Vec→Value);
+  12 seed `NewPgPythonCode` sites in seed_builtin_host.rs updated via a single
+  `replace_all` on the PythonCode-unique `01:monty` consumer_tags line
+  (`includes: vec![]`); test helper `new_row` + column-count pin (26) updated;
+  round-trip test asserts non-empty includes (docker-gated); (3) explicit Q1
+  gate `validate_python_code_placeholders` in component_validator class-22 arm —
+  scans body for `{{ ... }}`, enforces balanced braces + recognised kinds
+  (`vars.NAME`/`vars.slotN`/`user_input`/`component_name` via
+  `is_recognised_python_placeholder`) + non-nil include UUIDs read from
+  `GenericComponent::extra = {"includes":[...]}` (absent extra/includes =
+  leaf, allowed); 6 engine gate tests (valid 4-kind passes; unbalanced /
+  unrecognised / nil-include / bad-include-uuid fail; component-placeholder-
+  without-includes passes = deferred-referential boundary). PythonCode carries
+  NO `variable_patterns` field (vars flow from recipe/caller). Both configs
+  clippy-clean (engine + composition, default + --features skills-db); 9 class22
+  + 47 recipe + 6 composition tests green. Next: C.4.5.3 `tool_skill`(13).
