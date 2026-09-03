@@ -312,6 +312,10 @@ pub(crate) async fn seed_builtin_host_components(
     // Slice 8 — Step 27.9.1 host.check_signals (4 components, no Recipe).
     child_ids.extend(seed_host_check_signals(&stores).await?);
 
+    // Slice 9 — Step 27.10.3 host.kohai_complete (4 components, no Recipe).
+    // The 8th + last net-new host.* Tool — the Orchestrator→Kohai LLM handoff.
+    child_ids.extend(seed_host_kohai_complete(&stores).await?);
+
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
         .catalogue
@@ -1021,6 +1025,160 @@ async fn seed_host_fetch_component(
                 validation_status: "validated".into(),
             },
             "skill-host-fetch-component",
+        )
+        .await?;
+
+    Ok(vec![tool_id, tool_skill_id, python_code_id, skill_id])
+}
+
+/// Step 27.10.3 — `host.kohai_complete` (Orchestrator→Kohai LLM handoff Tool).
+///
+/// A 4-component leaf-tool stack (Tool + ToolSkill + PythonCode + leaf Skill —
+/// no Recipe; the Recipe that composes it is 27.10.2 `host-non-match-llm-answer`,
+/// seeded in slice 12). The 8th + LAST net-new `host.*` Tool. Wraps the existing
+/// `brassclaw_interceptor` ingress — wiring only, no new logic. This is the LLM
+/// surface: Rust↔LLM never communicate directly; the Orchestrator composes the
+/// prompt + prefix-placeholder → Kohai saves → optional Sempai optimize → Kohai
+/// adds the provider prefix → Kohai calls `first_party_tools/http` → Kohai saves
+/// the answer → answer back to the Orchestrator.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_kohai_complete(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let tool_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host.kohai_complete".to_string(),
+                description: "Hand an assembled LLM prompt (with a prefix-placeholder) to \
+                              Kohai. Kohai saves the prompt; if a Sempai is connected, adds \
+                              an optimization-prefix → Sempai optimizes → returns without \
+                              prefix → Kohai saves the optimized prompt beside the original; \
+                              Kohai adds the provider-LLM prefix for that placeholder and \
+                              sends the prompt to the provider LLM by calling \
+                              first_party_tools/http; receives the answer, saves it beside \
+                              its prompt, and returns it. Wraps the existing \
+                              brassclaw_interceptor ingress — no new logic, wiring only."
+                    .to_string(),
+                param_schema: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "prompt": {"type": "object", "description": "Assembled prompt {chat_history, user_query, prefix_placeholder}"}
+                    },
+                    "required": ["prompt"]
+                })),
+                param_template: Some(json!({"prompt": {}})),
+                effect_type: "write".to_string(),
+                preconditions: Some(
+                    "Interceptor (Kohai) ingress wired; provider-LLM prefix chunk \
+                     precompiled for the placeholder."
+                        .to_string(),
+                ),
+                error_handling: Some(
+                    "Provider/HTTP failure → raises; Orchestrator catches and surfaces \
+                     via post_reply."
+                        .to_string(),
+                ),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "host.kohai_complete",
+        )
+        .await?;
+
+    let tool_skill_id = stores
+        .upsert_tool_skill(
+            NewPgToolSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "ts-host-kohai-complete".to_string(),
+                description: "Hand an assembled prompt to Kohai and await the provider-LLM \
+                              answer."
+                    .to_string(),
+                content: "Call `host.kohai_complete(prompt=<assembled prompt>)` with the \
+                          assembled prompt (chat history + user query + a prefix-placeholder). \
+                          Kohai saves it, optionally Sempai-optimizes it, swaps the placeholder \
+                          for the provider prefix, calls the provider LLM via \
+                          first_party_tools/http, saves the answer, and returns it. Use this \
+                          for every Orchestrator-side LLM call — Rust never talks to the LLM \
+                          directly."
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                tool_name: Some("host.kohai_complete".to_string()),
+                param_schema: Some(json!([
+                    {"name": "prompt", "param_type": "object", "required": true, "description": "Assembled prompt {chat_history, user_query, prefix_placeholder}"}
+                ])),
+                param_template: Some(json!({"prompt": "{{prompt}}"})),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "ts-host-kohai-complete",
+        )
+        .await?;
+
+    let python_code_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-kohai-complete".to_string(),
+                description: "Orchestrator→Kohai handoff: hand the assembled prompt to Kohai \
+                              and await the provider-LLM answer."
+                    .to_string(),
+                // `prompt` is the in-scope variable holding the prior assembler
+                // step's result (Option 2 — one continuous program).
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
+                          answer = host.kohai_complete(prompt=prompt)\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-kohai-complete",
+        )
+        .await?;
+
+    let skill_id = stores
+        .upsert_skill(
+            NewPgSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "skill-host-kohai-complete".to_string(),
+                description: "Hand an assembled prompt to Kohai and await the provider-LLM \
+                              answer."
+                    .to_string(),
+                body: "Call `host.kohai_complete` with the assembled prompt (chat history + \
+                       user query + a prefix-placeholder). Kohai saves it, optionally \
+                       Sempai-optimizes it, swaps the placeholder for the provider prefix, \
+                       calls the provider LLM via first_party_tools/http, saves the answer, \
+                       and returns it. Use this for every Orchestrator-side LLM call — Rust \
+                       never talks to the LLM directly."
+                    .to_string(),
+                class_code: 1,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
+                intent_examples: json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "skill-host-kohai-complete",
         )
         .await?;
 

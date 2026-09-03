@@ -1018,3 +1018,24 @@ plumbing.
   prefix-placeholder → Kohai saves → optional Sempai optimize → Kohai adds provider prefix → Kohai
   calls first_party_tools/http → Kohai saves answer → answer back to Orchestrator. Need to read the
   27.10 + 27.10.3 spec block next.
+- **C.2 SLICE 9 — 27.10.3 `host.kohai_complete` 4-COMPONENT LEAF-TOOL STACK (DONE + committed locally).**
+  Spec read: 27.10.3 is a **4-component leaf-tool stack** (Tool + ToolSkill + PythonCode + leaf Skill
+  — NO Recipe; the Recipe that composes it is 27.10.2 `host-non-match-llm-answer`, seeded in slice 12).
+  Corrects the earlier "5-component" guess — the spec lists no Recipe for 27.10.3. This is the **8th +
+  LAST net-new `host.*` Tool** (resolve_intent, compose_orchestrator, post_reply, fetch_component,
+  resolve_component_by_name, validate_component, check_signals, kohai_complete = 8 ✓). Tool
+  `host.kohai_complete` effect_type `write`; param_schema {prompt (object,req)}; param_template
+  `{"prompt":{}}`; preconditions "Interceptor (Kohai) ingress wired; provider-LLM prefix chunk
+  precompiled for the placeholder." + error_handling "Provider/HTTP failure → raises; Orchestrator
+  catches and surfaces via post_reply." (both Some); consumer_tags `["00:rusty","02:orchestrator"]`.
+  ToolSkill ts-host-kohai-complete (tool_name Some, param_template stringified `{"prompt":"{{prompt}}"}`).
+  PythonCode pc-host-kohai-complete (`answer = host.kohai_complete(prompt=prompt)` — `prompt` is the
+  in-scope var holding the prior assembler step's result; Option 2 = one continuous program, no slot
+  re-binding needed). Leaf skill skill-host-kohai-complete (05:validation, class_code 1). All
+  source=system + validated. `seed_host_kohai_complete` returns 4 ids, wired after check_signals.
+  Wraps the existing `brassclaw_interceptor` ingress — wiring only, no new logic (like resolve_intent
+  wires the existing intent system). **Verified green both configs** (incremental). This COMPLETES all
+  8 net-new host.* Tools. Remaining = the 3 Recipe-only components (slice 10 = 27.4 host-save-history,
+  slice 11 = 27.10.1 host-assemble-prior-knowledge, slice 12 = 27.10.2 host-non-match-llm-answer).
+  NOTE: push of slice 8 (`6253bf56`) + slice 9 is pending — DNS SERVFAIL on github.com; will
+  batch-push when network recovers.
