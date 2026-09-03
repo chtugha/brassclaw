@@ -416,10 +416,13 @@ impl RetrievalSource for PostgresSource {
                    override_prompt_creation
             FROM (
                 -- reborn_skills (classes 1-3)
+                -- `reborn_skills` has no `prior_knowledge_content` / `override_prompt_creation`
+                -- columns (V027 lacks them; V046 added them to 8 other component tables but
+                -- NOT reborn_skills). `body` is the content column; solution-override is N/A.
                 SELECT id::text, class_code::int, prompt_uid::bigint,
                        name, description,
-                       COALESCE(NULLIF(prior_knowledge_content, ''), body) AS effective_content,
-                       override_prompt_creation
+                       body AS effective_content,
+                       false AS override_prompt_creation
                 FROM reborn_skills
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'

@@ -458,6 +458,50 @@ impl PgExtensionCatalogueStore {
             .map_err(map_pg)?;
         Ok(())
     }
+
+    /// Append `child_ids` to the catalogue row's `child_component_ids`
+    /// (idempotent — concatenated then de-duplicated with a stable order).
+    /// Used by the Phase C.2 builtin-host seed to register the minted
+    /// `host.*` component ids on the `builtin-host` catalogue row as slices
+    /// 2–12 insert them.
+    pub(crate) async fn append_child_component_ids(
+        &self,
+        tenant_id: &str,
+        user_id: &str,
+        agent_id: &str,
+        project_id: &str,
+        id: Uuid,
+        child_ids: &[Uuid],
+    ) -> Result<(), PgExtensionCatalogueStoreError> {
+        if child_ids.is_empty() {
+            return Ok(());
+        }
+        let client = self.pool.get().await.map_err(map_pool)?;
+        client
+            .query_opt(
+                "UPDATE reborn_extension_catalogues
+                 SET child_component_ids = COALESCE(
+                     (SELECT array_agg(DISTINCT x ORDER BY x)
+                      FROM unnest(
+                          COALESCE(child_component_ids, ARRAY[]::uuid[]) || $1::uuid[]
+                      ) AS t(x)),
+                     ARRAY[]::uuid[])
+                 WHERE id = $2
+                   AND tenant_id = $3 AND user_id = $4
+                   AND agent_id  = $5 AND project_id = $6",
+                &[
+                    &child_ids,
+                    &id,
+                    &tenant_id,
+                    &user_id,
+                    &agent_id,
+                    &project_id,
+                ],
+            )
+            .await
+            .map_err(map_pg)?;
+        Ok(())
+    }
 }
 
 /// Phase-K-ready queue surface (§0.23.5). The whole module is gated to the

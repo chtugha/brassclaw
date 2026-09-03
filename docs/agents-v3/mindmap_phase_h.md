@@ -834,3 +834,43 @@ plumbing.
   `host.*` tool 5-component stacks (27.1/27.2/27.3/27.7.2/27.7.3/27.7.4/27.9.1/27.10.3) + 3 Recipes
   (27.4/27.10.1/27.10.2), each inserted via the new stores + appended to
   `builtin-host.child_component_ids`.
+- **C.2 SLICES-2-12 FORK LOCKS (user-locked this turn).**
+  - **Fork 1 (leaf-skill `05:validator` vs retrieval):** spec 27.1.4/27.2.4 give leaf skills
+    `consumer_tags:["02:orchestrator","05:validator"]`, but the slice-1b UNION filter
+    `'05:validator' != ALL(consumer_tags)` EXCLUDES any row carrying `05:validator` → validated
+    builtin leaf skills would be invisible. A literal rename of `05:validator`→`05:validation` is
+    NOT clean (it's the load-bearing Q1 grey-out tag; renaming would un-grey all pending rows).
+    **LOCK = new distinct tag `05:validation`** on validated builtin leaf skills (retrieval excludes
+    only `05:validator`, so `05:validation`-tagged leaf skills stay retrievable + keep a
+    validation-system marker). Q1 grey-out mechanism untouched.
+  - **Fork 2 (class-1 Skill store): LOCK = yes** → new `pg_skill_store.rs`.
+  - **Fork 3 (catalogue append-children): LOCK = add the fn** →
+    `PgExtensionCatalogueStore::append_child_component_ids`.
+  - **Fork 4 (Recipe `steps` JSON shape): LOCK = B** — define the canonical new-architecture
+    `steps` shape NOW; the 27.2 `compose_orchestrator` rewrite later implements a splitter for
+    exactly that shape. User note: "rust steps are now very different, but need to prepare/handle
+    builtin AND dynamically-addable (cdylib) tools" → `rust_steps` bindings are tool-NAME-based so
+    they work for builtin (precompiled) + cdylib (dynamically loaded) tools alike.
+- **C.2 SLICE 1e — SLICES-2-12 INFRASTRUCTURE (DONE this turn).** Three pieces:
+  (1) **Latent-bug fix in `retrieval_source.rs` reborn_skills sub-select:** it referenced
+  `prior_knowledge_content` + `override_prompt_creation`, which DO NOT EXIST on `reborn_skills`
+  (V027 lacks them; V046 added them to 8 other component tables — specs/tool_skills/plans/
+  summaries/docus/lessons/issues/notes — but NOT reborn_skills; no later ALTER adds them). Latent
+  because the fn is `#[cfg(feature="skills-db")]` + no live PG locally → never exercised. Fixed to
+  `body AS effective_content, false AS override_prompt_creation` (matches the existing comment
+  "reborn_skills uses `body` as the content column"). This unblocks fork 1 (leaf-skill retrieval).
+  (2) **New `pg_skill_store.rs` (class 1, `reborn_skills`)** + `lib.rs` mod decl (alphabetical,
+  after `pg_recipe_store`). `NewPgSkill` = scope-4 + name/description/body + class_code(i16) +
+  consumer_tags(Vec<String>) + intent_examples(Value, NOT NULL — seed passes `json!([])`) +
+  source + validation_status. `insert` (12 cols, `ON CONFLICT (scope,name) DO NOTHING RETURNING id`
+  → `Option<Uuid>`, idempotent) + `get_id_by_name`. Only V027-verified columns written
+  (no prior_knowledge_content/override_prompt_creation). `#![allow(dead_code)]`+
+  `#![forbid(unsafe_code)]`. `source='system'` allowed via V066.
+  (3) **`PgExtensionCatalogueStore::append_child_component_ids(scope,id,&[Uuid])`** — idempotent
+  dedup append via `array_agg(DISTINCT x ORDER BY x)` over `unnest(COALESCE(child_component_ids,
+  ARRAY[]::uuid[]) || $1::uuid[])`; early-returns on empty. Used by slices 2–12 to register minted
+  component ids on the `builtin-host` catalogue row. `&[Uuid]` ToSql compiles (tokio-postgres
+  array impl). **Verified green both configs:** clippy `brassclaw_engine --features skills-db` +
+  `brassclaw_reborn_composition` (default + `--features skills-db`) `--all-targets -D warnings`,
+  incremental (no clean — artifacts cached from slice 1d; disk stable 10Gi). Next: define the
+  fork-4 canonical `steps` shape + seed slice 2 (27.1 `host.resolve_intent` 5-component stack).
