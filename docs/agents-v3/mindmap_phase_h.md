@@ -1796,3 +1796,41 @@ plumbing.
   docu/17) is satisfied by V074 + the existing catch-all Q1 gate. Next: C.4.5.14
   (extensions 4–9 + ExtensionCatalogue 23 + `scaffold`(50)) → C.4.5.15–16 →
   C.4.5.17 composition → C.4.5.18 docs → C.4.5.19 green → resume C.5/C.6/C.7 → A.
+
+- **C.4.5.14–C.4.5.16 — extensions (4–9, 23) + `scaffold`(50) COMPLETE +
+  shipped `96250709` (2026-09-03).** Fork LOCKED via ask_user (1 question):
+  **F8=A** (V072-style refactor now). Grounding: `reborn_extensions_unified`
+  (V032, classes 4–9) was the LAST class table still carrying the 5 legacy
+  lifecycle cols with an ACTIVE Rust reader —
+  `brassclaw_extensions::unified_store::PgUnifiedExtensionStore` (the V072
+  `DbSkillStore` case, NOT the V073/V074 no-reader clean-cleanup): the
+  `UnifiedExtension` struct + `decode_row` (ordinals 16-20) + `SELECT_COLS` +
+  `update_validation_status` + `wipe` all referenced them. `parent_mission_id`
+  already dropped by V064; `queue_code` plain TEXT no inline CHECK (V032:121).
+  Decisive: the extension-store `update_validation_status` +
+  `ValidationStatusUpdate` struct are DEAD (never constructed/called — only the
+  catalogue store's simpler `update_validation_status(scope,id,"validated")` is
+  used by `seed_builtin_host.rs:277`); `validation_queue.rs` legacy-col refs are
+  on central-queue rows (class 20), NOT `UnifiedExtension`;
+  `docplan_dissector.rs:192` constructs `NewUnifiedExtension` (no legacy
+  fields); INSERT/upsert already omitted the 5 cols. SIBLINGS ALREADY CLEAN:
+  ExtensionCatalogue 23 (`reborn_extension_catalogues`, V053) created Phase C
+  with NO queue-tracking cols (V053:9-11); scaffold 50 in `reborn_skills`
+  (V072). So C.4.5.14 reduces to ONE table. Deliverable: migration **V075**
+  `reborn_extensions_unified_syntax` (5 `DROP COLUMN IF EXISTS`) + paired
+  `unified_store.rs` refactor (drop 5 `UnifiedExtension` fields, renumber
+  `decode_row`/`SELECT_COLS`, shrink dead `ValidationStatusUpdate` to
+  `{validation_status}`, simplify `update_validation_status` to SET only
+  `validation_status`, drop `wipe`'s `review_feedback = NULL`); lifecycle
+  centralised to `reborn_validation_queue` (V051). SCOPE (F8=A): DB-structure
+  standardization ONLY — extension payload/class semantics (`payload` JSONB
+  shape per `class` + `monty`-class projection to `RecipeStage`/`plan_library`)
+  deferred to C.4.5.17 + C.5/C.6/C.7 retirement. Verification: `cargo check -p
+  brassclaw_pg` (V075 embeds); `brassclaw_extensions` clippy clean (default +
+  `--features postgres`); `composition --features skills-db --all-targets`
+  clippy clean; default `composition` check clean. **Zenflow step `20e08a28`
+  (HI.9, sort 40) marked Completed** — HI.9's full scope (catalogue 23 +
+  extension variants 4–9 + scaffold 50) satisfied by V075 + already-clean
+  V053/V072. Next: C.4.5.17 (composition system — IBS IS the composition
+  system) → C.4.5.18 docs → C.4.5.19 both-configs-green → resume C.5/C.6/C.7
+  → A.

@@ -354,7 +354,7 @@ is never baked into raw code — only into string-literal positions.
     NO dedicated Zenflow step exists for action(16) — the plan jumps HI.5 skill
     → C.4.5.1 recipe → HI.7 composition; tracked in this subplan + mindmap
     only). V073 shipped `ca276c16`.
-    **Remaining: C.4.5.14–C.4.5.19 not implemented** (IBS core exists Phase A but
+    **Remaining: C.4.5.17–C.4.5.19 not implemented** (IBS core exists Phase A but
     Recipe-only; compose_orchestrator is a C.2 placeholder; host.run_program
     net-new; per-class syntax upgrades + predefined structure + rust-plugin
     directives all pending). [x]
@@ -386,6 +386,46 @@ is never baked into raw code — only into string-literal positions.
     (zero Rust touched; DB integration tests skip locally — no Docker). V074
     shipped `ca8a12b7`. **Zenflow step `cbd206ef` (HI.8, sort 39) marked
     Completed.** Next slice C.4.5.14 (extensions 4–9 + ExtensionCatalogue 23 +
-    `scaffold`(50)).
+    `scaffold`(50)). [x]
+    **C.4.5.14–C.4.5.16 DONE** (2026-09-03 — extensions (4–9, 23) + `scaffold`(50)
+    DB-structure standardization (item g), grouped as one slice per subplan line
+    209 — C.4.5.15/16 have no separate deliverables). Fork LOCKED via ask_user (1
+    question): **F8=A** (V072-style refactor now). Grounding:
+    `reborn_extensions_unified` (V032, classes 4–9) was the LAST class table
+    still carrying the 5 legacy lifecycle cols with an ACTIVE Rust reader —
+    `brassclaw_extensions::unified_store::PgUnifiedExtensionStore` (the V072
+    `DbSkillStore` case, NOT the V073/V074 no-reader clean-cleanup): the
+    `UnifiedExtension` struct, `decode_row` (ordinals 16-20), `SELECT_COLS`,
+    `update_validation_status` + `wipe` all referenced them. `parent_mission_id`
+    already dropped by V064; `queue_code` is plain TEXT with NO inline CHECK
+    (V032:121). Decisive: the extension-store `update_validation_status` +
+    `ValidationStatusUpdate` struct are DEAD (never constructed/called — only the
+    catalogue store's simpler `update_validation_status(scope,id,"validated")`
+    is used by `seed_builtin_host.rs:277`); `validation_queue.rs` legacy-col refs
+    are on central-queue rows (class 20), NOT `UnifiedExtension`;
+    `docplan_dissector.rs:192` constructs `NewUnifiedExtension` (no legacy
+    fields); INSERT/upsert already omitted the 5 cols. SIBLING CLASSES ALREADY
+    CLEAN: ExtensionCatalogue 23 (`reborn_extension_catalogues`, V053) was
+    created in Phase C with NO queue-tracking cols (V053:9-11); scaffold 50 lives
+    in `reborn_skills` (cleaned by V072). So C.4.5.14 reduces to ONE table.
+    Deliverable: migration **V075** `reborn_extensions_unified_syntax` — 5 `DROP
+    COLUMN IF EXISTS` + paired `unified_store.rs` refactor (drop 5
+    `UnifiedExtension` fields, renumber `decode_row`/`SELECT_COLS`, shrink dead
+    `ValidationStatusUpdate` to `{validation_status}`, simplify
+    `update_validation_status` to SET only `validation_status`, drop `wipe`'s
+    `review_feedback = NULL`). Lifecycle centralised to `reborn_validation_queue`
+    (V051). SCOPE (F8=A): DB-structure standardization ONLY — extension
+    payload/class semantics (`payload` JSONB shape per `class` + the `monty`-class
+    projection to `RecipeStage`/`plan_library`) deferred to C.4.5.17 + C.5/C.6/
+    C.7 retirement. Verification: `cargo check -p brassclaw_pg` (V075 embeds);
+    `cargo clippy -p brassclaw_extensions --all-targets -- -D warnings` clean
+    (default + `--features postgres`); `cargo clippy -p
+    brassclaw_reborn_composition --features skills-db --all-targets -- -D
+    warnings` clean; default `cargo check -p brassclaw_reborn_composition` clean.
+    V075 + refactor shipped `96250709`. **Zenflow step `20e08a28` (HI.9, sort 40)
+    marked Completed** — HI.9's full scope (ExtensionCatalogue 23 + extension
+    variants 4–9 + scaffold 50) is satisfied by V075 + the already-clean V053 +
+    V072. Next: C.4.5.17 (composition system — IBS IS the composition system) →
+    C.4.5.18 docs → C.4.5.19 both-configs-green → resume C.5/C.6/C.7 → A.
     This subplan is the canonical one (the prior `subplan_problem_phaseHI_…md`
     is a redirect stub).
