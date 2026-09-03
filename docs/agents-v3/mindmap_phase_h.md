@@ -2018,3 +2018,27 @@ tested but NOT yet injected into `ThreadManager` — wiring is inert until the
 C.5/C.6 driver activates the engine Monty VM host-call path (the user confirmed
 the driver lands in C.6/C.7). `#![allow(dead_code)]` covers the window. This is
 "what persists" per the user's steer.
+
+**Part 4 (shipped `1fdcadfe`):** refined the
+`seed_host_compose_orchestrator` 5-component stack to the composed-program
+contract. Tool: `compose_orchestrator(component_id, step_link, user_input)` →
+`{ok, program:{skills, steplist, rust_directives, variables, assembled_program,
+tier}}`; param_schema/template now carry component_id+step_link+user_input
+(dropped the stale `class_code`). ToolSkill `ts-host-compose-orchestrator`:
+content rewritten — iterate `program.steplist`, consult `program.skills` for
+exact tool usage, run each step's `executable_code` via `host.run_program`;
+`rust_directives` carried for the cdylib loader (C.5/C.6), NOT executed by the
+orchestrator; `{ok:false}` → degrade to Non-Matching-Mode. PythonCode
+`pc-host-compose-orchestrator`: the per-step run path (fork A) — compose via
+`{{vars.component_id}}/{{vars.step_link}}/{{vars.user_input}}` slots, then
+`for step in program["steplist"]: host.run_program(step["executable_code"])`.
+Skill body + recipe `step_descriptions` (step 0 compose / step 1 per-step run)
+aligned; the retired "one continuous program" wording is gone. No test
+references the seed fields → content-only change. Both configs clippy-clean.
+
+**Part 5 (closing):** both-configs green — composition default + skills-db
+clippy-clean; engine clippy-clean (cached); engine `--lib` 582 passed;
+composition skills-db `--lib` 694 passed (incl. the 5 Part-3a handler tests +
+5 Part-3b pure-helper tests). C.4.5.17 COMPLETE; Zenflow step `38` (HI.7) →
+Completed. Next: C.4.5.18 (architecture docs d/e/f1-f8/g/h/i) → C.4.5.19
+(both-configs green + mark C.4.5 done) → resume C.5/C.6/C.7 → A.
