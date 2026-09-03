@@ -1188,3 +1188,27 @@ plumbing.
   NULL, store write/read deferred to the dynamic-tool authoring surface); `cargo check -p
   brassclaw_pg` green (refinery embed_migrations! accepts V067). Commit `81a13375` = grounding +
   slice 1; slice 2 = this commit.
+- **C.3 SLICE 3 — `DynamicToolLoader` service in `brassclaw_host_runtime` (DONE + shipped
+  `2defb17e`/slice-2 then this slice-3 commit).** Added `libloading = "0.8"` to host_runtime
+  deps. New module `dynamic_tool_loader.rs` (private mod + `pub use {CdylibLoadDirective,
+  DynamicToolLoader, DynamicToolLoaderError}` from lib.rs). Surface:
+  `CdylibLoadDirective{tool_name, artifact_path}` (+ `new` ctor — the composition-mechanism's
+  "rust part" hand-off shape); `DynamicToolLoaderError` thiserror enum (Load/SymbolNotFound/
+  NotLoaded/RequestSerialization + `Invoke(#[from] CdylibAbiError)`); `DynamicToolLoader` with
+  `new`/`load`/`load_directives`/`invoke`/`unload`/`unload_all`/`is_loaded`/`loaded_count`.
+  Internals: `LoadedTool{library, invoke_fn, drop_fn}` (private; `library` is `#[allow(dead_code)]`
+  — held to keep the dlopen handle open, dropped to unload; never read directly). `load` dlopens
+  (`unsafe Library::new` — dlopen runs init code, trusted Q2+ artifact) + binds both ABI symbols
+  (`unsafe resolve_symbol::<T: Copy>` copies the fn pointer out of the `Symbol`). `invoke`
+  serializes `CdylibRequest`→JSON bytes + calls `unsafe invoke_via_abi` (the FFI driver: calls
+  `brassclaw_tool_invoke`, copies the response slice via `from_raw_parts`, frees the cdylib's buffer
+  via `brassclaw_tool_drop_out` on every path — success, non-zero code, bad UTF-8, bad JSON — to
+  avoid leaks, deserializes `CdylibResponse`, maps `ok:false`→`ToolError`). Single-threaded per turn
+  → `&mut` for load/unload, `&self` for invoke/is_loaded, NO lock. Edition 2024
+  `unsafe_op_in_unsafe_fn=deny` → every unsafe op wrapped in its own `unsafe {}` with a SAFETY
+  comment. `#[derive(Default)]` on the loader (HashMap: Default unconditionally) + `new()->default`
+  silences `clippy::new_without_default`. All pub methods are re-exported to the crate root → no
+  dead_code/unreachable_pub. Workspace lints: only unreachable_pub/dead_code/unexpected_cfgs (warn);
+  no pedantic clippy, no forbid(unsafe_code). `cargo clippy -p brassclaw_host_runtime --all-targets
+  -- -D warnings` green BOTH default + `--features postgres`; `cargo test --lib` → 185 passed / 0
+  failed (loader has no own tests yet — those are slice 4's fixture cdylib round-trip).

@@ -37,6 +37,7 @@ use std::{collections::BTreeMap, env, fmt};
 use thiserror::Error;
 
 mod capability_catalog;
+mod dynamic_tool_loader;
 mod egress;
 mod extension_contracts;
 mod first_party;
@@ -58,6 +59,9 @@ mod turn_scheduler;
 pub use capability_catalog::{
     HotCapabilityCatalog, HotCapabilityRecord, MAX_HOT_PROMPT_BYTES, MAX_HOT_SCHEMA_BYTES,
     publish_hot_capability_catalog,
+};
+pub use dynamic_tool_loader::{
+    CdylibLoadDirective, DynamicToolLoader, DynamicToolLoaderError,
 };
 pub use egress::{
     HostHttpEgressService, HostRuntimeCredentialMaterial, HostRuntimeHttpEgressPort,
