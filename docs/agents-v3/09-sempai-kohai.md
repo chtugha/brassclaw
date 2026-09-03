@@ -13,10 +13,11 @@
 The interceptor is the **single chokepoint between `PromptStage` and `ModelStage`** in the
 agent-loop pipeline. It serves three goals from the user's task description:
 
-1. **Memorize** — every turn's composition plan (`BuildInstruction` orchestrator_steps + routing
-   signals — *not* the base-prompt content, §0.14) is captured as a `ForensicPacket` and
-   persisted to the `InterceptorStore` (`PgInterceptorStore`). This happens **always**, with or
-   without a Sempai — the Kohai half is always on.
+1. **Memorize** — every turn's composition plan (the `ComposedProgram` — skills + steplist +
+   rust_directives + routing signals, produced by `host.compose_orchestrator`; *not* the
+   base-prompt content, §0.14) is captured as a `ForensicPacket` and persisted to the
+   `InterceptorStore` (`PgInterceptorStore`). This happens **always**, with or without a Sempai —
+   the Kohai half is always on.
 2. **Optimize** — when a Sempai provider is connected, the interceptor constructs a rich audit
    prompt and asks the Sempai to **review and adjust the outgoing prompt before it ships to the
    Kohai** (pre-send review). The Sempai returns adjusted volatile messages + bridge messages +
@@ -114,6 +115,40 @@ component becomes trusted" (§0.18).
 
 ## 4. Behavior / flow
 
+### 4.0 The Kohai's duties (f7) — with and without the Sempai
+
+The **Kohai** is the working LLM — the model that actually answers the user and drives the
+Orchestrator (Monty). The **Sempai** is an optional reviewing LLM. The interceptor sits between
+prompt assembly and the Kohai call, so the Kohai's duties split by whether a Sempai is connected
+(`InterceptorMode::Routing` vs `Rerouting`):
+
+**Kohai's duties — without a Sempai (Routing):**
+- Be the **sole execution authority**: iterate the composed `steplist`, consult the `skills`
+  array for exact tool usage, and run each step's `executable_code` via `host.run_program`.
+- Assemble every LLM prompt it needs (there is no Sempai to do it).
+- Receive the prompt **unchanged** from the interceptor and produce the turn's answer.
+- Its work is **memorized** every turn (the `ForensicPacket` capture happens regardless of
+  Sempai), so the self-optimization loop still accumulates telemetry.
+
+**Kohai's duties — with a Sempai (Rerouting):**
+- All of the above, **except** the outgoing prompt is first **reviewed and adjusted** by the
+  Sempai (volatile tail replaced, bridge messages injected; the stable KV-cached base Part A is
+  kept). The Kohai runs on the **adjusted** prompt.
+- The Kohai does **not** propose components — that is the Sempai's role. The Kohai's duty remains
+  execution + answering; the Sempai's duty is review + proposal.
+
+**Sempai's duties (only when connected):**
+- **Review** the outgoing Kohai prompt (audit prompt = Kohai prompt + segment metadata + token
+  accounting + recipe/skill/tool context) and return `SempaiReviewOutcome` (adjusted volatile
+  messages + bridge messages + composition summary).
+- **Propose** new/updated Recipes / ToolSkills / Skills / PythonCode / intent-examples — but
+  **never write production tables**: proposals are drafts enqueued to Q1 (`SempaiProposalSink`).
+  This is the f8 new-component-creation loop (§4.5).
+- Optionally emit `settings_adjustments` (operator-confirmed).
+
+The interceptor is **always running**; the mode only changes *what it does* with each packet
+(capture+forward vs capture+review+adjust+propose+forward).
+
 ### 4.1 Routing state (no Sempai) — Kohai always-on
 
 1. After `PromptStage`, capture the final prompt as a `ForensicPacket` (all segments + token
@@ -172,78 +207,104 @@ This is the self-optimization loop: Sempai reviews a turn → proposes new
 Recipes/ToolSkills/intent-examples → they enter Q1 → Q1+Q2 graduate them → they become
 retrievable → future turns may match them. The Sempai never bypasses validation.
 
-### 4.4 The `base-prompt` placeholder substitution (Phase K.1)
+### 4.4 The `base-prompt` placeholder substitution (shipped, V063)
 
-Per the user's task, a single line `base-prompt` is added to the prompt while it is composed;
-the Sempai-Kohai system replaces that placeholder with the real (precompiled, KV-cached)
-base-prompt **at the very end** of prompt creation. The interceptor config already stores the
-assembled base prompt (`interceptor.sempai_base_prompt`) and the pre-warm timestamp. The full
-`reborn_basic_prompt_store` (V055) + the substitution wiring is Phase K.1 — see
-`10-prefix-base-prompt.md`. §0.13 constrains the **patch** the BuildInstruction adds on top of
+A single-line `base-prompt` placeholder is added to the prompt while it is composed; the
+Sempai-Kohai system replaces that placeholder with the real (precompiled, KV-cached) base-prompt
+**at the very end** of prompt creation. The durable store is `reborn_basic_prompt_store`
+(**V063**, shipped) backed by `PgBasicPromptStore` (`mark_stale` on graduation — see §5); the
+interceptor config keys (`interceptor.sempai_base_prompt`, `_assembled_at`, `_persona`,
+`_prewarm_last_at`) hold the assembled bundle + pre-warm timestamp. See `10-prefix-base-prompt.md`
+(f6) for the full Prefix-System. §0.13 constrains the **patch** the orchestrator adds on top of
 the cached base: it must NOT repeat content already in the stored base-prompt;
 `basic_prompt_section_refs` carry navigation hints (pointers, not content); target patch < 4k
-tokens; orchestrator patch PRIORITY 2; memory PRIORITY 3; rust context delivered directly by
-`RecipeStage` (not in the bundle at all).
+tokens; orchestrator patch PRIORITY 2; memory PRIORITY 3; rust context is delivered directly by
+the Executioner on `host.*` calls (not in the prompt bundle at all).
+
+### 4.5 New-component-creation process (f8)
+
+The Sempai is the **only** path by which the running system invents new components. The loop,
+per component class:
+
+1. **Observe** — during a rerouting review the Sempai sees the turn's composition plan +
+   outcome and decides a new/revised component would help.
+2. **Propose (draft)** — `SempaiReviewOutcome.proposed_recipe_updates` /
+   `proposed_intent_examples` carry raw JSON drafts. The Sempai **cannot write production
+   tables**; `SempaiProposalSink::submit_proposals` enqueues each draft to Q1
+   (`validation_status='pending'`, `queue_code='q1_auto'`), best-effort (never aborts the Kohai
+   call).
+3. **Q1 (Gate 1)** — `run_q1_validation` runs the per-class structural + injection checks +
+   the C.4.5.1–5 common-syntax placeholder-grammar gates. The **exact per-class Q1 criteria are
+   in `14-validation-queue.md` §4b** (f8): Skill (1–3), Tool (0), Extension (4–9),
+   Orchestrator/Scaffold (10/50), Action (16), Recipe (21), PythonCode (22),
+   ExtensionCatalogue (23), Notes (15), ToolSkill (13), Memory (12/14/17–20). A Q1 failure
+   stays state-1 with errors; the Sempai's draft is rejected at the gate.
+4. **Q2 (human review)** — a reviewer approves (graduation: `validation_status='validated'`,
+   queue row deleted, `PgBasicPromptStore::mark_stale(scope)` so the prefix reassembles) or
+   rejects (state 3, permanent `counter`; at threshold → state 4 deletion candidate).
+5. **Retrieve** — once validated, the component is retrievable and future turns may match it
+   (recipes via `host.resolve_intent` → `host.compose_orchestrator`; skills/python-code via
+   composition `include` UUIDs).
+
+The Sempai never bypasses validation — every invented component is a draft through the same Q1/Q2
+gate an authored component passes. Builtins (`source='system'`) skip Q2 but not Q1.
 
 ## 5. Relations
 
 - **Agent Loop** (`12`): `InterceptorStage` sits between `PromptStage` and `ModelStage`; the
   interceptor is the stage's implementation.
-- **Prefix / Base-Prompt** (`10`): the interceptor owns the base-prompt store + substitution;
-  §0.13 patch rules govern the BuildInstruction-on-top-of-cache.
+- **Prefix / Base-Prompt** (`10`): the interceptor owns the base-prompt store + substitution
+  (`reborn_basic_prompt_store` V063); §0.13 patch rules govern the orchestrator patch on top of
+  the cached base.
 - **Recipe / Skills / Tools / PythonCode** (`03`/`05`/`06`/`07`): the Sempai proposes
   new/updated ones; `PgSempaiProposalSink` inserts into the recipe store; proposals enter Q1.
 - **Validation Queue** (`14`): the security boundary — Sempai proposals are drafts into Q1
   (`pending`/`q1_auto`), never direct production writes; Q1+Q2 graduation makes them trusted.
+  The per-class Q1 criteria (f8) are in `14` §4b.
 - **Intent System** (`02`): validated `proposed_intent_examples` are seeded into
-  `reborn_intent_inputs` (Q30 resolution).
+  `reborn_intent_inputs` (V054 `step_link` resolution).
 - **Orchestrator** (`13`): the composition plan the interceptor memorizes is the
-  `BuildInstruction` orchestrator_steps + routing signals produced by the Python step-0 / IBS.
+  `ComposedProgram` (skills + steplist + rust_directives + routing signals) produced by
+  `host.compose_orchestrator`.
 
-## 6. Status — today vs. v3
+## 6. Status — shipped vs. pending
 
-**Today:**
+**Shipped:**
 - `brassclaw_interceptor` crate exists and is complete for the **routing** path (capture +
   forward unchanged + persist packet) and the **rerouting** path (Sempai audit →
   `SempaiReviewOutcome` → adjusted prompt + proposals → Q1).
 - `SempaiReviewOutcome`, `SempaiProposalSink`, `PgSempaiProposalSink` (composition),
   `InterceptorConfigStore` (keys in `brassclaw_config`), `PgInterceptorStore`,
   `SharedInterceptorMode` (WebUI-toggleable) all exist.
-- The base-prompt **config keys** (`interceptor.sempai_base_prompt`, `_assembled_at`,
-  `_persona`, `_prewarm_last_at`) exist, but the **`reborn_basic_prompt_store` table (V055) and
-  the `base-prompt` placeholder substitution wiring are not implemented** (Phase K.1). The
-  WebUI has a "Pre-warm Sempai KV-cache" button but the underlying store is a config-string,
-  not the durable compiled-prefix store.
+- `reborn_basic_prompt_store` (**V063**) + `PgBasicPromptStore` (incl. `mark_stale`) are
+  shipped; the `base-prompt` placeholder substitution wiring is in place. The interceptor config
+  keys hold the assembled bundle + pre-warm timestamp.
 - The proposals are produced **inline** during the rerouting review (not a separate idle-time
   sweep).
 
-**v3 plan adds:**
-- **Phase K.1 (V055):** `reborn_basic_prompt_store` — the durable precompiled base-prompt store;
-  the `base-prompt` placeholder substitution at the end of prompt creation (the
-  sempai-kohai system replaces the single-line placeholder with the real KV-cached content);
-  the WebUI **Prefix Tab** (list + generate/regenerate each prefix → compile to the LLM). The
-  base-prompt shifts from the config-string to the dedicated store/table.
-- **Idle-time self-optimization (v3 direction):** the live inline proposal mechanism is the
-  foundation; a background Sempai-driven refresh loop (re-deriving/optimizing components and
-  the converted documentation — see `DOC_CONVERSION_MECHANISM_DESIGN.md`) extends it to true
-  idle-time operation rather than turn-coupled review.
+**Pending (v3 direction):**
+- **Idle-time self-optimization:** the live inline proposal mechanism is the foundation; a
+  background Sempai-driven refresh loop (re-deriving/optimizing components and the converted
+  documentation — see `DOC_CONVERSION_MECHANISM_DESIGN.md`) extends it to true idle-time
+  operation rather than turn-coupled review.
+- **C.5/C.6 driver activation:** the engine Monty VM host-call path that the interceptor's
+  `PromptStage`/`ModelStage` feed is inert in production until the driver wires the composition
+  host-calls (active production path is the TURNS `PgOrchestratorLookup` bridge).
 
 ## 7. LLM-relevant summary
 
 The Sempai-Kohai interceptor (`brassclaw_interceptor`) sits between `PromptStage` and
-`ModelStage` and **memorizes** every turn's composition plan as a `ForensicPacket` (always — the
-Kohai half is always on). **Routing** (no Sempai): capture + forward the prompt unchanged to the
-Kohai. **Rerouting** (Sempai connected, `SharedInterceptorMode` flipped via WebUI): build a rich
-audit prompt → Sempai returns `SempaiReviewOutcome` (adjusted volatile messages replacing the
-tail while the stable KV-cached base Part A is kept + bridge messages + composition summary) →
-forward the **adjusted** prompt to the Kohai. The Sempai also **proposes** new
-Recipes/ToolSkills/intent-examples (`proposed_recipe_updates`/`proposed_intent_examples`), but it
-**cannot write production tables** — `SempaiProposalSink::submit_proposals` enqueues them to Q1
-(`pending`/`q1_auto`, best-effort, never aborts the Kohai call); Q1+Q2 graduate them; validated
-intent examples seed `reborn_intent_inputs` (Q30). Config keys live in `brassclaw_config`
-(`sempai_base_prompt`, `_persona`, `_prewarm_last_at`). Today the routing + rerouting + proposal
-paths exist; the **`base-prompt` placeholder substitution + `reborn_basic_prompt_store` (V055)
-are Phase K.1** (the `base-prompt` line is replaced with the real KV-cached content at the end
-of prompt creation; the WebUI Prefix Tab compiles/regenerates each prefix). The live
-self-optimization is **inline** (proposals produced during the turn's review); true idle-time
-operation is the v3 direction.
+`ModelStage` and **memorizes** every turn's composition plan (`ComposedProgram`) as a
+`ForensicPacket` (always — the Kohai half is always on). **Kohai's duties without a Sempai
+(Routing):** be the sole execution authority — iterate the `steplist`, consult the `skills`
+array, run each step via `host.run_program`, assemble every prompt, answer the user; the prompt
+is forwarded unchanged. **With a Sempai (Rerouting):** the Sempai reviews/adjusts the outgoing
+prompt (volatile tail replaced, KV-cached base Part A kept, bridge messages injected) and the
+Kohai runs on the adjusted prompt; the Sempai also **proposes** new components but **cannot write
+production tables** — `SempaiProposalSink::submit_proposals` enqueues drafts to Q1
+(`pending`/`q1_auto`, best-effort, never aborts the Kohai call). The f8 new-component-creation
+loop (§4.5): propose → Q1 per-class criteria (`14` §4b) → Q2 graduation →
+`PgBasicPromptStore::mark_stale` → retrieval. Validated intent examples seed
+`reborn_intent_inputs` (V054). The durable base-prompt store is `reborn_basic_prompt_store`
+(V063, shipped). The live self-optimization is **inline**; true idle-time operation + C.5/C.6
+driver activation of the engine Monty VM path are the remaining v3 work.
