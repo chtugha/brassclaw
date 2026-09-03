@@ -119,7 +119,16 @@ impl ComponentValidator {
             // Tool (00): tool_name + param_schema required
             0 => match &component {
                 ComponentPayload::ToolSkill(skill) => {
-                    RecipeValidator::validate_tool_skill(skill, available_tools)
+                    // C.4.5.4 — for class 0, `tool_name` carries the capability_id
+                    // (the Executioner's dispatch id, e.g. "builtin.shell" /
+                    // "host.resolve_intent" — the rust-side common form of a Tool,
+                    // V071 `reborn_tools.capability_id`). `validate_tool_skill`'s
+                    // tool_name-non-empty check above IS the capability_id-non-empty
+                    // Q1 gate. Plus the common-syntax placeholder-grammar + non-nil
+                    // includes gate (F-HI-2=A, mirrors class 13).
+                    let mut result = RecipeValidator::validate_tool_skill(skill, available_tools);
+                    validate_tool_skill_placeholders(skill, &mut result);
+                    result
                 }
                 // Generic payload: structural checks run; explicit error tells the operator
                 // a ToolSkill payload is needed to validate tool_name + param_schema.
@@ -1272,6 +1281,77 @@ mod tests {
                 .iter()
                 .any(|e| e.contains("tool_name") && e.contains("empty")),
             "expected a tool_name-empty error from validate_tool_skill, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class0_tool_valid_capability_id_passes() {
+        // C.4.5.4 — a class-0 Tool payload (tool_name = the capability_id, no
+        // placeholders, leaf includes) passes the full class-0 gate
+        // (validate_tool_skill + validate_tool_skill_placeholders).
+        let skill = base_skill();
+        let result = ComponentValidator::validate_by_class(
+            0,
+            ComponentPayload::ToolSkill(&skill),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors for well-formed class-0 Tool, got {:?}",
+            result.errors
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn class0_tool_unbalanced_placeholder_fails() {
+        // C.4.5.4 — the common-syntax placeholder-grammar gate runs on class 0
+        // (F-HI-2=A): an unbalanced `{{` in a text field is rejected.
+        let mut skill = base_skill();
+        skill.preconditions = "git repo {{vars.slot0".into();
+        let result = ComponentValidator::validate_by_class(
+            0,
+            ComponentPayload::ToolSkill(&skill),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("unbalanced") && e.contains("{{")),
+            "expected an unbalanced-placeholder error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class0_tool_empty_capability_id_fails() {
+        // C.4.5.4 — for class 0, tool_name carries the capability_id (V071
+        // `reborn_tools.capability_id`); an empty capability_id is rejected by
+        // validate_tool_skill's tool_name-non-empty check (available_tools=&[]
+        // so membership is skipped; the emptiness check still fires).
+        let mut skill = base_skill();
+        skill.tool_name = "".into();
+        let result = ComponentValidator::validate_by_class(
+            0,
+            ComponentPayload::ToolSkill(&skill),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("tool_name") && e.contains("empty")),
+            "expected a tool_name-empty (capability_id) error, got {:?}",
             result.errors
         );
         assert!(!result.is_ok());

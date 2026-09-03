@@ -76,6 +76,12 @@ pub(crate) struct NewPgTool {
     pub(crate) consumer_tags: Vec<String>,
     pub(crate) source: String,
     pub(crate) validation_status: String,
+    /// C.4.5.4 — the Executioner's dispatch identifier (the rust-side common
+    /// form of a Tool). For built-in tools the static `match call.function_name`
+    /// key (e.g. "builtin.shell"); for host.* bridge tools the `host.X` name
+    /// (e.g. "host.resolve_intent"). Validated non-empty by the Q1 gate
+    /// (component_validator class-0 arm — `tool_name` carries the capability_id).
+    pub(crate) capability_id: String,
 }
 
 /// Postgres-backed store for `reborn_tools` (class 0).
@@ -106,8 +112,9 @@ impl PgToolStore {
                     (tenant_id, user_id, agent_id, project_id,
                      name, description, param_schema, param_template,
                      effect_type, preconditions, error_handling,
-                     consumer_tags, source, validation_status)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                     consumer_tags, source, validation_status,
+                     capability_id)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",
@@ -126,6 +133,7 @@ impl PgToolStore {
                     &row.consumer_tags,
                     &row.source,
                     &row.validation_status,
+                    &row.capability_id,
                 ],
             )
             .await

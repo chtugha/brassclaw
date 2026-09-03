@@ -401,6 +401,7 @@ async fn seed_host_resolve_intent(
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
+                capability_id: "host.resolve_intent".into(),
             },
             "host.resolve_intent",
         )
@@ -595,6 +596,7 @@ async fn seed_host_compose_orchestrator(
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
+                capability_id: "host.compose_orchestrator".into(),
             },
             "host.compose_orchestrator",
         )
@@ -780,6 +782,7 @@ async fn seed_host_post_reply(
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
+                capability_id: "host.post_reply".into(),
             },
             "host.post_reply",
         )
@@ -960,6 +963,7 @@ async fn seed_host_fetch_component(
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
+                capability_id: "host.fetch_component".into(),
             },
             "host.fetch_component",
         )
@@ -1109,6 +1113,7 @@ async fn seed_host_kohai_complete(
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
+                capability_id: "host.kohai_complete".into(),
             },
             "host.kohai_complete",
         )
@@ -1594,6 +1599,7 @@ async fn seed_host_check_signals(
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
+                capability_id: "host.check_signals".into(),
             },
             "host.check_signals",
         )
@@ -1738,6 +1744,7 @@ async fn seed_host_validate_component(
                 ],
                 source: "system".into(),
                 validation_status: "validated".into(),
+                capability_id: "host.validate_component".into(),
             },
             "host.validate_component",
         )
@@ -1879,6 +1886,7 @@ async fn seed_host_resolve_component_by_name(
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
+                capability_id: "host.resolve_component_by_name".into(),
             },
             "host.resolve_component_by_name",
         )
