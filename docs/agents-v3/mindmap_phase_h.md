@@ -2042,3 +2042,64 @@ composition skills-db `--lib` 694 passed (incl. the 5 Part-3a handler tests +
 5 Part-3b pure-helper tests). C.4.5.17 COMPLETE; Zenflow step `38` (HI.7) →
 Completed. Next: C.4.5.18 (architecture docs d/e/f1-f8/g/h/i) → C.4.5.19
 (both-configs green + mark C.4.5 done) → resume C.5/C.6/C.7 → A.
+
+**C.4.5.18 — architecture-docs pass (d05…d10 shipped).** Doc-only;
+grounded every claim against shipped source/migrations before committing.
+- **d01** `01-architecture-overview` (`41768b63`) + **d13** `13-orchestrator`
+  full-rewrite (`ff265c0d`) + **d04** `04-ibs` (`29bc7de3`) — prior portion.
+- **d05** `05-skills-system` (`82cfa990`): §4 → composition-system model
+  (selection intent-driven + exact UUIDs via `host.resolve_intent`→
+  `host.compose_orchestrator`; retired `default.py` keyword-scoring gone);
+  §4.3 skills-as-first-class-array — `program.skills: Vec<SkillRef{id,class_code,name,body}>`
+  Monty consults while stepping, each skill carries exact tool usage so a
+  steplist step need only name the approach + carry `executable_code`; Monty
+  does NOT bake skills into a static prefix. ToolSkill→`rust_directives`
+  (orchestrator never sees the body). De-staled §6/§7 + header.
+- **d06** `06-tools-system` FULL-REWRITE (`c2c3c55f`) → f5 Rust-Executioner
+  model: Executioner=muscle (precompiled Tools class 0 + ToolSkills class 13,
+  executes on call, no sequencing); Orchestrator reaches Tools via builtin
+  `host.*`/`builtin.*` + composed `rust_directives` (cdylib via C.3
+  `DynamicToolLoader`, application deferred C.5/C.6). Data model V030+V071
+  (`capability_id`, dropped `cdylib_artifact_path`). §4a orchestrator-command-
+  driven rule + 4 exceptions (stop-signal, budget hard-stops, sandbox refusal,
+  approval-gate) — the ONLY autonomous Executioner actions; everything else is
+  Orchestrator-command-driven.
+- **d14** `14-validation-queue` (`d65d4390`): discovered queue/store/q1 SHIPPED
+  V051 (table+indexes+`ValidationQueueStore`+`run_q1_validation`); 5 legacy
+  cols DROPPED V072/V073/V074/V075; `reborn_python_code` V052 +
+  `reborn_extension_catalogues` V053 created without legacy cols. Graduation
+  trigger+`last_graduation_at` NOT shipped (Phase N). Added §4b f8 per-class
+  Q1 criteria table (grounded `component_validator.rs:95-325`, PH markers for
+  placeholder-grammar classes) + common-syntax placeholder grammar note +
+  system-authored Q2-bypass-not-Q1 note. De-staled §5/§6/§7.
+- **d09** `09-sempai-kohai` (`171ae8f7`): discovered `reborn_basic_prompt_store`
+  SHIPPED V063 (NOT V055/V056); `PgBasicPromptStore`+`mark_stale`; interceptor
+  in `brassclaw_agent_loop`. Added §4.0 f7 Kohai duties (without Sempai =
+  Routing: sole execution authority, iterate steplist, consult skills array,
+  `host.run_program` per step, assemble every prompt; with Sempai =
+  Rerouting: same but runs Sempai-adjusted prompt, does NOT propose) +
+  Sempai duties (review/adjust outgoing prompt + propose components, never
+  write production tables). Added §4.5 f8 new-component-creation loop
+  (Observe→Propose draft to Q1→Q1 per-class criteria→Q2 graduation
+  `mark_stale`→Retrieve). De-staled §4.4/§5/§6/§7.
+- **d10** `10-prefix-base-prompt` (this portion, uncommitted): f6 LLM-prompt-
+  creation/Prefix-System. Rewrote to shipped V063 state + de-staled retired
+  default.py/RecipeStage/IBS-build_instruction. CRITICAL accuracy corrections
+  after grounding vs source: shipped per-turn mechanism =
+  `loop_driver_host`→`SystemBundleSource::get_system_bundle` PREPEND (not a
+  `base-prompt` placeholder-substitution — that is the §0.13 SPEC refinement,
+  marked planned). `mark_stale` IS wired (from `validation_queue::approve` on
+  Q2). Fingerprint short-circuit NOT shipped (future opt; Phase K.1 always
+  writes). Pre-warm targets `sempai_gateway.stream_model` (`sempai_model`
+  profile), 60s/caller rate-limit. `kv_cache_optimised` lives on
+  `TokenAccountingSnapshot` (nested in `CapturedPrompt.token_accounting`).
+  Real symbols: `do_assemble_bundle`/`do_format_bundle`/`get_system_bundle`/
+  `list_prefix_entries`/`regenerate_prefix`/`PREFIX_NAME_BASE_PROMPT`/
+  `COMPONENT_TABLES`/`class_label` (NOT the stale `do_reassemble`/
+  `reassemble_base_prompt`/`KEY_BASE_PROMPT` names). Bundle format
+  `## {class_code}:{prompt_uid}  {class_label}  "{name}"` + appended Sempai
+  Response Schema JSON. V063 also adds `brassclaw_forensic_packets.component_uuid`
+  (§0.23.7) + validation-improve idle settings on `reborn_monty_vm_settings`
+  (§0.23.8: `validation_idle_threshold_minutes`/`validation_improve_start_hour`/
+  `validation_improve_enabled`) — the shipped hook for the Sempai idle-time
+  self-optimization loop.
