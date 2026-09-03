@@ -570,27 +570,31 @@ async fn seed_host_compose_orchestrator(
                 agent_id: SEED_AGENT.to_string(),
                 project_id: SEED_PROJECT.to_string(),
                 name: "host.compose_orchestrator".to_string(),
-                description: "Fetch + split + assemble a recipe by component id. \
-                              Returns the ready-to-run orchestrator program + rust \
-                              inputs + tier. Monty runs the program; Rust does not \
-                              sequence steps."
+                description: "Compose a matched recipe (component_id) + variant (step_link) \
+                              into the predefined orchestrator program. Returns \
+                              {ok, program} where program = {skills, steplist, \
+                              rust_directives, variables, assembled_program, tier}. \
+                              Monty iterates steplist, consults skills for exact tool \
+                              usage, and runs each step's executable_code via \
+                              host.run_program. Rust does not sequence steps."
                     .to_string(),
                 param_schema: Some(json!({
                     "type": "object",
                     "properties": {
-                        "component_id": {"type": "string", "description": "UUID or name of the matched recipe/instruction"},
-                        "class_code": {"type": "integer", "description": "Component class (21 recipe, 11 action, …)"}
+                        "component_id": {"type": "string", "description": "UUID of the matched recipe (class 21) from host.resolve_intent"},
+                        "step_link": {"type": "string", "description": "Matched variant step_link formula (from host.resolve_intent)"},
+                        "user_input": {"type": "string", "description": "The turn's user text — {{vars.NAME}} slots are captured from it"}
                     },
-                    "required": ["component_id"]
+                    "required": ["component_id", "step_link", "user_input"]
                 })),
-                param_template: Some(json!({"component_id": ""})),
+                param_template: Some(json!({"component_id": "", "step_link": "", "user_input": ""})),
                 effect_type: "read".to_string(),
                 preconditions: Some(
-                    "Composition recipe store + rust/orchestrator splitter wired.".to_string(),
+                    "Composition port (PgCompositionPort) wired into the engine.".to_string(),
                 ),
                 error_handling: Some(
-                    "Miss/parse failure → {orchestrator_program: null}; caller degrades to \
-                     Non-Matching-Mode."
+                    "No bridge / recipe not found / no variant match / compose failure → \
+                     {ok:false, error}; caller degrades to Non-Matching-Mode."
                         .to_string(),
                 ),
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
@@ -610,24 +614,29 @@ async fn seed_host_compose_orchestrator(
                 agent_id: SEED_AGENT.to_string(),
                 project_id: SEED_PROJECT.to_string(),
                 name: "ts-host-compose-orchestrator".to_string(),
-                description: "Compose the orchestrator program for a matched component id."
+                description: "Compose a matched recipe + variant into the predefined \
+                              orchestrator program (skills + steplist + rust_directives)."
                     .to_string(),
                 content: "After `host.resolve_intent` returns a match, call \
-                          `host.compose_orchestrator(component_id=<matched id>)`. The host fetches \
-                          the recipe, splits the rust vs orchestrator parts, loads rust bindings, \
-                          and hands back `{orchestrator_program, rust_inputs, recipe_hint, tier}`. \
-                          Run the returned `orchestrator_program` directly — do NOT re-sequence \
-                          its steps from Rust. If `orchestrator_program` is null, degrade to the \
+                          `host.compose_orchestrator(component_id, step_link, user_input)` using \
+                          the match's component_id + step_link and the turn's user_input. The host \
+                          composes the recipe into {ok, program} where program = {skills, steplist, \
+                          rust_directives, variables, assembled_program, tier}. Iterate \
+                          program.steplist: consult program.skills for the exact tool usage, then \
+                          run each step's executable_code via host.run_program. \
+                          program.rust_directives are carried for the cdylib loader (Step C.5/C.6) \
+                          and are NOT executed by the orchestrator. If ok is false, degrade to the \
                           Non-Matching-Mode routine."
                     .to_string(),
                 prior_knowledge_content: None,
                 override_prompt_creation: false,
                 tool_name: Some("host.compose_orchestrator".to_string()),
                 param_schema: Some(json!([
-                    {"name": "component_id", "param_type": "string", "required": true, "description": "Matched component UUID or name"},
-                    {"name": "class_code", "param_type": "number", "required": false, "description": "Component class code (default 21)"}
+                    {"name": "component_id", "param_type": "string", "required": true, "description": "Matched recipe (class 21) UUID from host.resolve_intent"},
+                    {"name": "step_link", "param_type": "string", "required": true, "description": "Matched variant step_link formula from host.resolve_intent"},
+                    {"name": "user_input", "param_type": "string", "required": true, "description": "Turn user text — {{vars.NAME}} slots captured from it"}
                 ])),
-                param_template: Some(json!({"component_id": "{{component_id}}"})),
+                param_template: Some(json!({"component_id": "{{component_id}}", "step_link": "{{step_link}}", "user_input": "{{user_input}}"})),
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 intent_examples: None,
                 source: "system".into(),
@@ -646,13 +655,26 @@ async fn seed_host_compose_orchestrator(
                 agent_id: SEED_AGENT.to_string(),
                 project_id: SEED_PROJECT.to_string(),
                 name: "pc-host-compose-orchestrator".to_string(),
-                description: "Orchestrator step: fetch+split+assemble the matched recipe \
-                              into a runnable program."
+                description: "Matching-Mode: compose the matched recipe + variant into the \
+                              predefined program, then run each steplist step."
                     .to_string(),
                 content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
-                          # Fetch+split+assemble the matched recipe into a runnable program.\n\
-                          composed = host.compose_orchestrator(component_id=\"{{vars.slot0}}\")\n\
-                          # composed = {orchestrator_program, rust_inputs, recipe_hint, tier}\n"
+                          # Matching-Mode: compose the matched recipe, then run each step.\n\
+                          composed = host.compose_orchestrator(\n\
+                              component_id=\"{{vars.component_id}}\",\n\
+                              step_link=\"{{vars.step_link}}\",\n\
+                              user_input=\"{{vars.user_input}}\",\n\
+                          )\n\
+                          # composed = {ok, program:{skills, steplist, rust_directives,\n\
+                          #            variables, assembled_program, tier}}\n\
+                          if composed.get(\"ok\"):\n\
+                              program = composed[\"program\"]\n\
+                              # Consult program[\"skills\"] for exact tool usage while stepping.\n\
+                              for step in program[\"steplist\"]:\n\
+                                  host.run_program(step[\"executable_code\"])\n\
+                          else:\n\
+                              # compose miss/failure -> degrade to Non-Matching-Mode.\n\
+                              pass\n"
                     .to_string(),
                 prior_knowledge_content: None,
                 override_prompt_creation: false,
@@ -674,16 +696,18 @@ async fn seed_host_compose_orchestrator(
                 agent_id: SEED_AGENT.to_string(),
                 project_id: SEED_PROJECT.to_string(),
                 name: "skill-host-compose-orchestrator".to_string(),
-                description: "Leaf skill: how to compose a matched recipe into a runnable \
-                              program."
+                description: "Leaf skill: how to compose a matched recipe + variant into the \
+                              predefined program and run its steplist."
                     .to_string(),
                 body: "After `host.resolve_intent` returns a match, call \
-                       `ts-host-compose-orchestrator` with the component_id. The host fetches \
-                       the recipe, splits the rust vs orchestrator parts, and hands back a \
-                       ready-to-run orchestrator program plus rust inputs and a tier hint. Run \
-                       the returned program directly — do NOT re-sequence its steps from Rust. \
-                       If `orchestrator_program` is null, degrade to the Non-Matching-Mode \
-                       routine."
+                       `ts-host-compose-orchestrator` with the match's component_id + step_link \
+                       and the turn's user_input. The host composes the recipe into \
+                       {ok, program} where program = {skills, steplist, rust_directives, \
+                       variables, assembled_program, tier}. Iterate program.steplist: consult \
+                       program.skills for the exact tool usage, then run each step's \
+                       executable_code via host.run_program. program.rust_directives are carried \
+                       for the cdylib loader (Step C.5/C.6) and are NOT executed by the \
+                       orchestrator. If ok is false, degrade to the Non-Matching-Mode routine."
                     .to_string(),
                 class_code: 1,
                 consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
@@ -726,8 +750,8 @@ async fn seed_host_compose_orchestrator(
                 ])),
                 source: "system".into(),
                 step_descriptions: Some(json!([
-                    {"step": 0, "action": "compose", "desc": "Fetch+split+assemble the matched recipe."},
-                    {"step": 1, "action": "run", "desc": "Run the assembled orchestrator program (Monty, one continuous program)."}
+                    {"step": 0, "action": "compose", "desc": "host.compose_orchestrator(component_id, step_link, user_input) -> {ok, program:{skills, steplist, rust_directives, variables, assembled_program, tier}}."},
+                    {"step": 1, "action": "run", "desc": "Iterate program.steplist: consult program.skills for exact tool usage, run each step's executable_code via host.run_program."}
                 ])),
                 variants: None,
                 dependency_registry: None,
