@@ -1039,3 +1039,32 @@ plumbing.
   slice 11 = 27.10.1 host-assemble-prior-knowledge, slice 12 = 27.10.2 host-non-match-llm-answer).
   NOTE: push of slice 8 (`6253bf56`) + slice 9 is pending — DNS SERVFAIL on github.com; will
   batch-push when network recovers.
+- **C.2 SLICE 9 PUSH + DNS RECOVERY.** DNS recovered mid-turn; slice 8 (`6253bf56`) + slice 9
+  (`e6e65da5`) both pushed (`939a740a..e6e65da5 main -> main`).
+- **C.2 SLICE 10 — 27.4 `host-save-history` RECIPE OVER builtin.memory_write (DONE + clippy green,
+  commit/push pending).** **Spec-inconsistency fork surfaced + user-locked B:** the 27.4 Recipe
+  references `pc-memory-write` in orchestrator_steps (reusing Step 11's builtin.memory_write), but
+  Step 11 actually names that PythonCode `pc-exec-memory-write` (line 4633) — and `pc-memory-write` is
+  NEVER defined. Worse, `pc-exec-memory-write` calls the now-RETIRED `__execute_action__` (stale under
+  the new first-class-callable arch). **User locked B:** seed a NEW `pc-memory-write` PythonCode
+  (new-arch first-class callable to the memory_write tool) + reference it → slice 10 = **3
+  components** (pc-host-history-format + pc-memory-write + Recipe host-save-history), not 2.
+  `seed_host_save_history` returns 3 ids. (1) pc-host-history-format (class 22): pure-logic formatter
+  producing `body` (a `## Turn summary` doc) from slot0-4 (user_input/answer/mode/matched_component/
+  timestamp). **Multi-line indented Python → raw string `r###"..."###`** (NOT `\`-continuation, which
+  strips leading whitespace and would collapse the Python dict/for-loop indentation); raw string
+  preserves `\n` as backslash-n (correct for Python source) + literal indentation. (2) pc-memory-write
+  (class 22, NEW): `host.memory_write(content=body, target="daily_log")` — `body` is the in-scope var
+  from the prior step (Option 2 = one continuous program); the memory_write tool is pre-bound into the
+  host namespace by the Recipe's rust_steps. (3) Recipe host-save-history (tier 0, llm_call_required
+  false): rust_steps `[{tool:"memory_write", tool_skill:"ts-memory-write"}]` (the builtin tool NAME
+  `memory_write` per Step 11 line 4572, capability `builtin.memory_write`); orchestrator_steps
+  `[{python_code:"pc-host-history-format"},{python_code:"pc-memory-write"}]`; step_descriptions
+  [format, memory_write]; intent_examples ["(internal end-of-turn history save — not user-routed)"].
+  Both PythonCode `["01:monty","02:orchestrator"]`; Recipe `["02:orchestrator"]`. All source=system +
+  validated. **Open C.5/C.6 resolution point noted:** the exact callable key for a BOUND BUILTIN tool
+  (`host.memory_write` vs `builtin.memory_write` vs `memory_write`) + whether dispatch resolves by
+  registry-name (not just host.* arms) is a splitter/dispatch concern, NOT a C.2 data-seed concern —
+  the seed stores the component row; runtime wiring is C.6. **Verified green both configs** (incremental).
+  Next: slice 11 = 27.10.1 `host-assemble-prior-knowledge` (fallback Recipe, tier 1, rust_steps `[]`,
+  one PythonCode formatter pc-host-fallback-prior-knowledge — no tool bindings, no retrieval verbs).

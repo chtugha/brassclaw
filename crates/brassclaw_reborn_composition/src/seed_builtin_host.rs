@@ -316,6 +316,10 @@ pub(crate) async fn seed_builtin_host_components(
     // The 8th + last net-new host.* Tool — the Orchestrator→Kohai LLM handoff.
     child_ids.extend(seed_host_kohai_complete(&stores).await?);
 
+    // Slice 10 — Step 27.4 host-save-history (Recipe over builtin.memory_write;
+    // 3 components: pc-host-history-format + pc-memory-write + the Recipe).
+    child_ids.extend(seed_host_save_history(&stores).await?);
+
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
         .catalogue
@@ -1183,6 +1187,139 @@ async fn seed_host_kohai_complete(
         .await?;
 
     Ok(vec![tool_id, tool_skill_id, python_code_id, skill_id])
+}
+
+/// Step 27.4 — `host-save-history` (Recipe over `builtin.memory_write`).
+///
+/// A Recipe-only component set (no new Tool): one PythonCode formatter
+/// (`pc-host-history-format`) + a NEW `pc-memory-write` first-class-callable
+/// step + the `host-save-history` Recipe (Tier 0). Reuses Step 11's
+/// `builtin.memory_write` tool (`memory_write` + `ts-memory-write`) via the
+/// Recipe's `rust_steps` binding — fork-B (user-locked): the 27.4 spec
+/// referenced `pc-memory-write`, which was never defined (Step 11's PythonCode
+/// is the stale `pc-exec-memory-write` that calls the RETIRED
+/// `__execute_action__`), so a NEW `pc-memory-write` is seeded here as the
+/// new-architecture first-class callable to the `memory_write` tool. Returns
+/// the minted ids in `[pc-host-history-format, pc-memory-write, recipe]` order.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_save_history(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let pc_history_format_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-history-format".to_string(),
+                description: "Orchestrator step: format a structured turn-summary \
+                              doc body for the daily memory log."
+                    .to_string(),
+                content: r###"# Channel: orchestrator | Class: 22 | No I/O, no imports, no network, no DB.
+# Compose a structured turn-summary doc body from slot vars.
+summary = {
+  "user_input": "{{vars.slot0}}",
+  "answer": "{{vars.slot1}}",
+  "mode": "{{vars.slot2}}",
+  "matched_component": "{{vars.slot3}}",
+  "timestamp": "{{vars.slot4}}"
+}
+body = "## Turn summary\n"
+for k, v in summary.items():
+    body += f"- **{k}**: {v}\n"
+# handed to the following memory_write step
+"###
+                .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-history-format",
+        )
+        .await?;
+
+    let pc_memory_write_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-memory-write".to_string(),
+                description: "Orchestrator step: append the formatted turn-summary \
+                              body to the daily memory log via the memory_write tool \
+                              (new-arch first-class callable — replaces the stale \
+                              pc-exec-memory-write that called the RETIRED \
+                              __execute_action__)."
+                    .to_string(),
+                // `body` is the in-scope variable holding the prior
+                // pc-host-history-format step's result (Option 2 — one
+                // continuous program). The memory_write tool is pre-bound into
+                // the host namespace by the Recipe's rust_steps.
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
+                          # body = the formatted turn-summary from the prior step (in scope).\n\
+                          host.memory_write(content=body, target=\"daily_log\")\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-memory-write",
+        )
+        .await?;
+
+    let recipe_id = stores
+        .upsert_recipe(
+            NewPgRecipe {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host-save-history".to_string(),
+                description: "Save a structured turn summary to the daily memory log \
+                              for kohai/sempai. Tier 0 — no LLM. Reuses \
+                              builtin.memory_write (Step 11)."
+                    .to_string(),
+                trigger: None,
+                steps: json!({
+                    "llm_call_required": false,
+                    "tier": 0,
+                    "rust_steps": [
+                        {"tool": "memory_write", "tool_skill": "ts-memory-write"}
+                    ],
+                    "orchestrator_steps": [
+                        {"python_code": "pc-host-history-format"},
+                        {"python_code": "pc-memory-write"}
+                    ]
+                }),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into()],
+                intent_examples: Some(json!([
+                    "(internal end-of-turn history save — not user-routed)"
+                ])),
+                source: "system".into(),
+                step_descriptions: Some(json!([
+                    {"step": 0, "action": "format", "desc": "Format the turn summary body."},
+                    {"step": 1, "action": "memory_write", "desc": "Append the summary to the daily memory log."}
+                ])),
+                variants: None,
+                dependency_registry: None,
+            },
+            "host-save-history",
+        )
+        .await?;
+
+    Ok(vec![pc_history_format_id, pc_memory_write_id, recipe_id])
 }
 
 /// Step 27.9.1 — `host.check_signals` (stop/suspend/inject poll).
