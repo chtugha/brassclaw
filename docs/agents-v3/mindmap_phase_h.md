@@ -1968,3 +1968,53 @@ plumbing.
   C = compose_orchestrator also accepts a `step_link`/`variant_key` arg (Monty
   passes the matched variant from resolve_intent) so it can reuse
   fetch_recipe_split_result verbatim. **NEXT: ask F17-E, then implement Part 3.**
+
+## C.4.5.17 Part 3a+3b essence (shipped 6ce7de5a + this slice)
+
+**F17-E LOCKED: WIRING=B, VARIANT=B.** VARIANT=B contract already done —
+`IntentResolution` carries `step_link: Option<String>`; `handle_resolve_intent`
+already returns `step_link` to Monty → Monty calls
+`host.compose_orchestrator(component_id, step_link, user_input)`.
+
+**Layering fact: `brassclaw_turns` does NOT depend on `brassclaw_engine`** → the
+turns `OrchestratorLookup` trait is UNREACHABLE from the engine. Engine-side port
+pattern = `DynamicToolPort`/`RetrievalSource` (in-engine trait, impl in
+composition, plumbed as `Option<&Arc<dyn …>>` into `execute_orchestrator`).
+`execute_orchestrator` has ONE call site (`loop_engine.rs:514`).
+
+**Part 3a (shipped `6ce7de5a`):** new engine `CompositionPort` trait +
+`CompositionPortError` (`executor/composition_port.rs`, manual boxed-future
+`compose()`, no async_trait) + `compose_orchestrator` MethodCall dispatch arm +
+`handle_compose_orchestrator` (thin-calls `port.compose`; degrades on
+None/invalid-UUID/missing-step_link → `{ok:false,error}`; Ok →
+`{ok:true,program:<ComposedProgram>}`). Plumbed: `ExecutionLoop.composition_port`
++ `with_composition_port`; `ThreadManager.composition_port` + `with_composition_port`
++ spawn-path `if let Some(port) = self.composition_port.clone() { exec_loop =
+exec_loop.with_composition_port(port); }`. 5 handler unit tests (MockCompositionPort).
+Both configs clippy-clean + tests green.
+
+**Part 3b (this slice):** composition `PgCompositionPort` (new
+`pg_composition_port.rs`) — owns `Arc<PgPool>`, impls `CompositionPort`.
+Pipeline: recipe SELECT (scope) → tier0_eligible→llm_call_required → variant
+match by `step_link` (`NoVariantMatch` if none) → `build_instruction` →
+`capture_variables(user_input,user_input,…)` (§7.1) → collect include UUIDs +
+rust tool_binding tool_ids → `lookup_component_class` + `fetch_components_by_ids`
+(batched) → `MapComponentResolver` (sync, pre-populated) → `compose_program`.
+Pure helpers `match_variant`/`component_item_to_resolved`/`MapComponentResolver`
++ 5 unit tests compile/run BOTH configs (ungated; DB struct gated `skills-db`).
+`cdylib_artifact_path` always `None` (V071 dropped the col; class-0 tools carry no
+prompt text) → `RustDirective.artifact_path` empty until C.5/C.6 loader. Both
+configs clippy-clean + tests green.
+
+**WIRING DEFERRED to C.5/C.6 (driver):** `ThreadManager::with_composition_port`
+has NO external caller — nor do `with_pg_pool`/`with_dynamic_tools`. Composition's
+`build_reborn_runtime` does NOT construct `ThreadManager`/`ConversationManager`/
+`MissionManager` (they're engine-internal, built inside the
+turns/agent_loop/`brassclaw_reborn` stack). The active production Tier-0/Tier-1
+path is the TURNS `PgOrchestratorLookup` bridge (wraps engine
+`TierZeroOrchestrator::run_tier_zero`), NOT the engine Monty VM
+`execute_orchestrator` host-call path. So `PgCompositionPort` is constructed +
+tested but NOT yet injected into `ThreadManager` — wiring is inert until the
+C.5/C.6 driver activates the engine Monty VM host-call path (the user confirmed
+the driver lands in C.6/C.7). `#![allow(dead_code)]` covers the window. This is
+"what persists" per the user's steer.
