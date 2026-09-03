@@ -2151,3 +2151,28 @@ grounded every claim against shipped source/migrations before committing.
   `ThreadManager`/`ConversationManager` in `build_reborn_runtime`) → C.5/C.6
   driver activates it. Migrations: V033 create, V046 Solution Override cols,
   V050 authoring cols, V061/V064 registry touch-ups.
+
+- **d07** `07-pythoncode-system` (this portion): rewrite from "v3-only, does
+  not exist" → **shipped**. Grounded vs V052/V069 + `pg_python_code_store.rs`
+  + `component_validator.rs` + `retrieval_source.rs` + `intent_system.rs`.
+  Shipped facts: V052 `reborn_python_code` (class 22, final authoritative
+  shape — no 5 queue cols, validation_status stays, source CHECK incl
+  'system', prompt_uid seq, dependency_registry at creation, 6 indexes);
+  V069 adds `includes JSONB NOT NULL DEFAULT '[]'` (`Vec<Uuid>` the composer
+  inlines into `{{component_name}}` placeholders); `pg_python_code_store.rs`;
+  class-22 validator arm uses `Generic(GenericComponent)` + calls
+  `validate_python_code_body` (FIND-AUDIT-12 scan) + `validate_python_code_placeholders`
+  (C.4.5.2 placeholder grammar via shared `validate_placeholder_grammar` +
+  includes non-nil Fork 2-B=B); class-22 retrieval arms in BOTH
+  `fetch_for_consumer` (UNION ALL ~601-606) + `fetch_component_by_id` (~1096)
+  + `class_code_to_table` (22,"reborn_python_code","content" ~1663);
+  `class_label` 22 => "python_code" (~289) + legend 21/22/23/50 (~264).
+  Placeholder kinds: `vars.NAME`/`vars.slotN`/`user_input`/`component_name`.
+  CODE FIX: the hard-error message in `validate_python_code_body` still said
+  "use __execute_action__ for host access" — RETIRED in C.1 → changed to
+  "use host tool calls (host.<tool>(...)) for host access instead" (test
+  only asserts `contains("import os")`, safe; 9 class22 tests green; engine
+  clippy clean). Retired `__execute_action__`/`__check_budget__` refs in doc
+  → `host.run_program` + `host.<tool>(...)`. Pending: Phase N snippet→component
+  gate logic + boot-integrity; Phase I/N referential placeholder↔include
+  matching; C.5/C.6 VM driver; WebUI authoring route.

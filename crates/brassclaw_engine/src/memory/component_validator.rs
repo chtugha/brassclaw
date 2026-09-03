@@ -426,7 +426,7 @@ fn validate_python_code_body(content: &str, result: &mut ValidationResult) {
         if content.contains(needle) {
             result.errors.push(format!(
                 "PythonCode body contains forbidden construct `{needle}` \
-                 (use __execute_action__ for host access instead)"
+                 (use host tool calls (host.<tool>(...)) for host access instead)"
             ));
         }
     }
