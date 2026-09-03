@@ -259,8 +259,11 @@ plumbing.
   retired meta-primitives; the old `default.py`/`DEFAULT_ORCHESTRATOR` stay
   untouched until C.7). Host calls are **first-class `host.*` callables** bound
   into the Monty namespace (C.1) — NO `HostSkill` interface (dropped). Run after
-  B (done) → Phase HI (common syntax + composition-system, prerequisite for
-  C.5) → C.5/C.6/C.7 → A.
+  B (done) → **C.4.5** (Phase HI folded into Step C — common component syntax +
+  composition-system, prerequisite for C.5; forks F1–F5 locked: F1=A IBS-universal
+  machine form, F2=C recipe-first, F3=A structural PythonCode-includes, F4=A-modified
+  composer-returns-parts + Monty-writes+runs via `host.run_program` [Monty 0.0.16
+  has no exec/eval/compile — verified], F5=B fold into C.4.5) → C.5/C.6/C.7 → A.
 - [ ] **A — reshaped H.12.6** (collapse R1/R4/R6/R11, Tier-1 single injection)
   then **H.12.7**. Run after C.
 
@@ -328,6 +331,29 @@ plumbing.
   recorded D-C1/D-C2 as pending + D-C2 as "restructure `default.py`" — corrected
   2026-09-03 per the user's new-orchestrator lock; see the Phase HI redirect
   block at the end of this mindmap.]
+- **C.4.5 fork locks (this turn — Phase HI folded into Step C):** the Phase HI
+  common-component-syntax effort is folded into Step C as **C.4.5** (F5=B),
+  keeping C.5/C.6/C.7 numbering. Five foundational forks locked:
+  **F1=A** — IBS `BuildInstruction` (`rust_steps` + `orchestrator_steps`) is the
+  universal machine-readable form for ALL classes; per-class `step_link` resolves
+  to it (no class-specific machine shape). **F2=C** — `recipe` (21) FIRST
+  (align the Step B dual-nature to the common contract as the reference), then
+  extend to the other classes one at a time. **F3=A** — structural PythonCode
+  component-includes resolved at compose time (a body's component-placeholder is
+  inlined with the referenced mini-PythonCode component's body — one function
+  each, like an include); `{{vars.slotN}}`/`{{user_input}}` stay for variable
+  substitution of prompt data. **F4=A-modified** — the composer
+  (`host.compose_orchestrator` rewrite, C.4.5.17) returns the **parts**
+  (skills + PythonCode pieces + variable bindings), NOT a baked program string;
+  Monty receives them, assembles, **writes code** (LLM-helped via
+  `host.kohai_complete`), and **runs** it via `host.run_program` (Monty 0.0.16
+  has NO `exec`/`eval`/`compile` builtin — verified in the git checkout; a host
+  callable creating + driving a `MontyRun` is the only way to run a dynamic
+  code string). **All orchestration is inside Monty — not the composer, not the
+  driver.** The composer's LLM-helped code writing feeds the kohai-sempai loop
+  → optimise a recipe OR mint new python-code components usable next time
+  (after Q1 validation). Full approach + C.4.5.0–C.4.5.19 slices in
+  `./docs/agents-v3/subplan_problem_stepC4_5_common_component_syntax_of_saved_plan_to_v3.md`.
 - **Host-call dissection (this turn — for C.1 / builtin_stuff_v3 Step 27):** the
   19 existing `__host_call__` intrinsics + 4 missing (`__resolve_intent__`/
   `__compose_orchestrator__`/`__post_reply__`/`__save_history__`) dissected into
@@ -1450,3 +1476,35 @@ plumbing.
   Parent-plan reference inserted into `saved_plan_to_v3.md` between Step B and
   Step C.5. **Sequence: resolve forks → HI.0 spec → HI.1 audit → HI.2–HI.9
   per-class → HI.7 composition-system → HI.10 docs → resume C.5/C.6/C.7 → A.**
+- **Phase HI forks LOCKED (user, 2026-09-03) + F-HI-4 refinement + C.4.5
+  consolidation.** Forks: **F-HI-1=A** (IBS `BuildInstruction` `rust_steps`+
+  `orchestrator_steps` + per-class `step_link` = the universal machine-readable
+  form for ALL classes, extended from Recipe); **F-HI-2=A** (`{{vars.slotN}}`/
+  `{{component_name}}` template syntax the composer bakes in — `{{component_name}}`
+  IS the include mechanism: the composer inlines the referenced mini-PythonCode
+  component's body at that slot; `{{vars.slotN}}`/`{{user_input}}` = variable
+  data substitution); **F-HI-3=B** (composer returns a **structured step list**,
+  NOT a single baked program string); **F-HI-4 = "the composition system IS the
+  IBS"** + refinement (below); **F-HI-5=C** (`recipe`(21) upgraded first — the
+  Step B dual-nature reference — then the other classes). **F-HI-4 refinement
+  (user):** the **IBS** (`instruction_builder.rs`, Phase A `build_instruction`→
+  `BuildInstruction`) **IS the composition system**; `host.compose_orchestrator`
+  is **reclassified** from C.2's "net-new host.* Tool" seed into a **ToolSkill/
+  Skill component that thin-calls the IBS** — NOT bespoke Rust. The IBS, when
+  driven, **creates the rust dynamic plugin** (cdylib load directives via C.3
+  `DynamicToolLoader`) **+ the Monty stuff**, and hands Monty a **predefined
+  structured output** `{ skills, steplist[{step_id, instructions,
+  executable_code, tool_bindings}], rust_directives, variables }` so Monty can
+  reliably handle it (iterate steplist, use skills, run each step's
+  `executable_code` via `host.run_program`, load rust plugin per
+  `rust_directives`). **Less new Rust** — the IBS core already exists (Phase A);
+  C.4.5.17 extends it + mints the compose_orchestrator Skill. **Consolidation
+  (user):** the two drafts merged — canonical subplan =
+  `subplan_problem_stepC4_5_common_component_syntax_of_saved_plan_to_v3.md`
+  (Phase HI folded into Step C as **C.4.5**, F5=B; slices C.4.5.0–C.4.5.19,
+  recipe-first per F2=C); `subplan_problem_phaseHI_…md` is now a redirect stub.
+  **Grounded 2026-09-03: NONE of C.4.5.1–C.4.5.19 implemented yet** — IBS core
+  exists (Phase A, Recipe-only `step_link`→`BuildInstruction`); compose_orchestrator
+  is a C.2 seed placeholder (no handler in orchestrator.rs); host.run_program
+  net-new; per-class syntax upgrades + predefined structure + rust-plugin
+  directives all pending. Next: C.4.5.1 (recipe alignment, F2=C recipe-first).
