@@ -1294,3 +1294,30 @@ plumbing.
   (purely additive — agent_loop/host_runtime/loop_support all check). Two clippy fixes: struct-literal
   `..Default::default()` instead of `let mut cfg = ...; cfg.x = ...` (`field_reassign_with_default`).
   Next: C.4 slice 2 (`PgSecuritySettingsStore` + `impl SecurityConfigSource` in composition).
+
+- **C.4 slice 2 — `PgSecuritySettingsStore` + `impl SecurityConfigSource` in composition (DONE).**
+  Precedent: `pg_monty_vm_settings.rs` + `pg_user_preference_store.rs` — both use
+  `#[cfg(feature="postgres")] mod inner { ... }` + `#[cfg(feature="postgres")] pub(crate) use inner::...;`,
+  `pool.get().await` (deadpool), `client.query_opt(sql, &[&params])` / `client.execute(...)`,
+  `tracing::debug!` (never `info!`/`warn!`), local thiserror or direct trait-error mapping. New file
+  `crates/brassclaw_reborn_composition/src/pg_security_settings_store.rs`: `PgSecuritySettingsStore { pool:
+  Arc<PgPool>, tenant_id: String }` — tenant captured at construction because `SecurityConfigSource::
+  load_config(&self)` takes NO tenant arg (the C.6 driver constructs one per-turn-tenant; the WebUI route
+  constructs one per authenticated operator session). `load() -> Result<SecurityModeConfig,
+  SecurityConfigError>`: SELECT 6 override cols WHERE tenant_id=$1; `None` → `SecurityModeConfig::default()`
+  (all-Auto, no DB-less seed); `Some(r)` → `SecurityLayerOverride::from_str(r.get::<_,&str>(i))` per col
+  (`FromStr::Err = SecurityConfigError`, so `?` propagates directly — no `map_err`). `save(&cfg)`:
+  INSERT…ON CONFLICT ON CONSTRAINT `reborn_security_settings_tenant_unique` DO UPDATE SET all 6 + updated_at
+  = now(), then re-`load()` (returns DB-coerced row). `#[async_trait] impl SecurityConfigSource` forwards
+  `load_config` → `self.load()`. Errors: pool/pg → `SecurityConfigError::Load(e.to_string())`; bad override
+  text → `SecurityConfigError::Deserialize` (via `from_str`). Registered `pub(crate) mod
+  pg_security_settings_store;` in `lib.rs` (no mod-level cfg gate — mirrors `pg_monty_vm_settings`; the
+  file's inner `#[cfg(feature="postgres")]` makes the module empty when postgres off). `#[allow(dead_code)]`
+  on struct + impl + `#[allow(unused_imports)]` on the re-export — no caller yet (slice 3 WebUI route is the
+  first caller; C.6 the driver) — to be removed when wired. Clippy
+  `-p brassclaw_reborn_composition --all-targets -- -D warnings` green BOTH default + `--features skills-db`
+  (postgres is a default feature so both configs compile the new module). No DB unit test (DB-backed —
+  consistent with the precedent stores which have no tests; the resolver logic is fully covered by slice-1
+  turns tests). Disk 89%/22-21Gi throughout — no clean needed. Next: C.4 slice 3 (WebUI backend route
+  GET/PUT `/security-settings` — constructs the store per session, calls `load`/`save`, removes the
+  `#[allow(dead_code)]`/`#[allow(unused_imports)]`).

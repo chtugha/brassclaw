@@ -5826,6 +5826,21 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   `mod security;` + `pub use security::{...}` + host `pub use` additions in
 >   `mod.rs`. 9 unit tests pass; clippy `-p brassclaw_turns --all-targets -- -D
 >   warnings` green; `cargo check -p brassclaw_reborn` clean (purely additive).
+>   **Slice 2 DONE:** `crates/brassclaw_reborn_composition/src/pg_security_settings_store.rs`
+>   — `PgSecuritySettingsStore { pool, tenant_id }` (tenant captured at
+>   construction; `SecurityConfigSource::load_config` takes no tenant arg) with
+>   `load()` (SELECT 6 override cols WHERE tenant_id=$1; missing row →
+>   `SecurityModeConfig::default()`; `SecurityLayerOverride::from_str` per col) +
+>   `save(&cfg)` (INSERT … ON CONFLICT ON CONSTRAINT
+>   `reborn_security_settings_tenant_unique` DO UPDATE, re-read after) +
+>   `#[async_trait] impl SecurityConfigSource` forwarding to `load()`. Errors map
+>   to `SecurityConfigError::{Load,Deserialize}`. `#[cfg(feature="postgres")] mod
+>   inner` + `pub(crate) use` (mirrors `pg_monty_vm_settings`); registered in
+>   `lib.rs`. `#[allow(dead_code)]`/`#[allow(unused_imports)]` until slice 3 wires
+>   the WebUI route (first caller) + C.6 the driver. Clippy
+>   `-p brassclaw_reborn_composition --all-targets -- -D warnings` green BOTH
+>   default + `--features skills-db`. No DB unit test (DB-backed; consistent with
+>   the precedent stores — resolver logic is covered by the slice-1 turns tests).
 > - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
 >   (receive input → `host.resolve_intent` → dispatch). Match →
 >   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls
