@@ -27,10 +27,18 @@
    possible answer = the kohai/sempai system's main purpose). Then history is
    stored and the main process exits. The agent-loop IS this one process.
 2. **ONE authority** = Monty (the Python orchestrator). Every tool invocation
-   runs inside Monty's sandbox via `__execute_action__`. An LLM **never**
-   executes anything itself — it only writes Python that Monty runs. (Future:
-   an MCP bridge lets the LLM call tools / gather info **through Monty** —
-   still routed via the orchestrator, never a classical direct-MCP path.)
+   is a **first-class `host.*` callable in the Monty namespace** — Monty calls
+   tools by name (e.g. `host.resolve_intent(user_input=...)`). The
+   `__execute_action__` string-intrinsic was **retired in C.1** (it was the
+   Model-A dispatcher, consumed only by the retired `default.py`). The
+   policy/lease/gate/event-emission wrapper that used to live in
+   `handle_execute_action` is now **mode-gated** (C.4): OFF in Matching-Mode
+   (Q2+ validated components run as intended), ON in Non-Matching-Mode (an LLM
+   is involved), with per-layer operator overrides from
+   `reborn_security_settings`. An LLM **never** executes anything itself — it
+   only writes Python that Monty runs. (Future: an MCP bridge lets the LLM call
+   tools / gather info **through Monty** — still routed via the orchestrator,
+   never a classical direct-MCP path.)
 3. **Only the basic mode's beginning is built-in.** Phase 1 (receive the
    prompt, start the main process, **start the intent-matching-system**) is
    the ONE built-in exception. Everything else is **Instructions** — a
