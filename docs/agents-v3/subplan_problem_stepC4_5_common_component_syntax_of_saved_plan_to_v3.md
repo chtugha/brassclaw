@@ -326,10 +326,38 @@ is never baked into raw code — only into string-literal positions.
     backtick-name convention; Q1 does NOT enforce narrative); 3 engine gate
     tests (valid placeholders pass; unbalanced `{{` fails; unrecognised
     `{{bogus}}` fails). Both configs clippy-clean; engine 573 default / 584
-    skills-db + brassclaw_skills db-store 231 + composition skills-db 689 green).
-    **Remaining: C.4.5.6–C.4.5.19 not implemented** (IBS core exists Phase A but
+    skills-db + brassclaw_skills db-store 231 + composition skills-db 689 green). [x]
+    **C.4.5.6 DONE** (2026-09-03 — `action`(16) DB-structure standardization ONLY,
+    F6=A: migration V073 `reborn_actions_syntax` drops the 5 legacy
+    pre-centralization lifecycle cols (validation_errors, review_feedback,
+    review_attempts, rejected_at, queue_code — the SAME set V071 dropped from
+    reborn_tools + V072 from reborn_skills) from `reborn_actions`;
+    `parent_mission_id` already dropped by V064; `queue_code`'s CHECK auto-drops
+    with the column. UNLIKE V072 (reborn_skills, where the cols were actively
+    used by `DbSkillStore`), `reborn_actions` has NO dedicated store (no
+    `PgAction`/`pg_action_store`) — the 5 cols have ZERO Rust readers/writers
+    (the class-16 SELECT projection in retrieval_source.rs reads
+    id/class_code/prompt_uid/name/description/effective_content/
+    override_prompt_creation/steps/allowed_tools; NONE of the 5 legacy) and NO
+    INSERT names them (all 6 `INSERT INTO reborn_actions` specify only
+    id/scope/name/description/class_code|validation_status|steps|allowed_tools)
+    → NO paired Rust refactor + NO test changes needed. F6=A DEFERRED the Action
+    step-machine — the `steps` JSONB 13-step-type model (tool_call/conditional/
+    set_var/loop/return/evaluate/call_skill/try_catch/parallel/call_action/
+    spawn_subprocess/wait/emit_event) + the `ActionShortCircuit` intent path
+    (retrieval_source.rs:727, documented "vestigial under Q2") — driven by the
+    retired `default.py`/`__execute_action__`; its retire-vs-reformulate fate is
+    entangled with C.4.5.17 (composition system, not built) + C.5/C.6/C.7
+    (retirement, not done), so the step-machine/Q1-gate/syntax alignment is
+    deferred to those slices. `cargo check -p brassclaw_pg` confirms the
+    migration embeds cleanly via `refinery::embed_migrations!`; no Rust touched.
+    NO dedicated Zenflow step exists for action(16) — the plan jumps HI.5 skill
+    → C.4.5.1 recipe → HI.7 composition; tracked in this subplan + mindmap
+    only). V073 shipped `ca276c16`.
+    **Remaining: C.4.5.7–C.4.5.19 not implemented** (IBS core exists Phase A but
     Recipe-only; compose_orchestrator is a C.2 placeholder; host.run_program
     net-new; per-class syntax upgrades + predefined structure + rust-plugin
-    directives all pending). Next slice C.4.5.6 (`action`(16)).
+    directives all pending). Next slice C.4.5.7 (`spec`(12), first of HI.8
+    memory/instruction classes 12/14/15/18/19/20 + docu(17)).
     This subplan is the canonical one (the prior `subplan_problem_phaseHI_…md`
     is a redirect stub).

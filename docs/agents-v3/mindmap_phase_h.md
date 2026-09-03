@@ -1724,3 +1724,37 @@ plumbing.
   before compile (freed 1.8GiB); tests green (engine 573 default / 584 skills-db;
   brassclaw_skills db-store 231; composition skills-db 689). **Zenflow step
   `1a94cb6c` (HI.5, sort 36) marked Completed.** Next: C.4.5.6 `action`(16).
+
+- **C.4.5.6 — `action`(16) DB-cleanup ONLY COMPLETE + shipped `ca276c16`
+  (2026-09-03).** Fork LOCKED via ask_user (1 question): **F6=A** (DB-cleanup
+  only now; DEFER the step-machine/Q1-gate/syntax to C.4.5.17+C.5/C.6/C.7 — only
+  do what persists). Grounding: `reborn_actions` (V029) carries the SAME 5 legacy
+  lifecycle cols (validation_errors, review_feedback, review_attempts,
+  rejected_at, queue_code) as reborn_tools (V071) + reborn_skills (V072);
+  `parent_mission_id` already dropped by V064. The Action's distinctiveness = the
+  `ActionShortCircuit` intent path (retrieval_source.rs:727 — "execute directly,
+  no LLM, no fetch", returns `FetchForTurnResult::ActionShortCircuit`) + the
+  `steps` JSONB 13-step-type model (tool_call/conditional/set_var/loop/return/
+  evaluate/call_skill/try_catch/parallel/call_action/spawn_subprocess/wait/
+  emit_event) driven by the retired `default.py` + `__execute_action__`.
+  `action_short_circuit` is documented **"vestigial under Q2"**
+  (orchestrator.rs:1738, orchestrator_lookup_impl.rs:198 "Drops the vestigial Q2
+  fields") — the step-machine is already half-orphaned. Decisive: UNLIKE
+  reborn_skills (V072, actively used by `DbSkillStore`), `reborn_actions` has NO
+  dedicated store (no `PgAction`/`pg_action_store`) — the only INSERTs are raw
+  SQL in tests + `retrieval_lookup_impl.rs:775` seed, NONE name the 5 legacy cols
+  (all 6 specify only id/scope/name/description/class_code|validation_status|
+  steps|allowed_tools), and the class-16 SELECT projection reads NONE of them →
+  ZERO Rust readers/writers → NO paired Rust refactor + NO test changes (unlike
+  V072's DbSkillStore refactor). `queue_code`'s CHECK auto-drops with the column
+  (no explicit constraint drop, unlike V072's class_code CHECK widening).
+  Deliverable: migration **V073** `reborn_actions_syntax` — 5 `DROP COLUMN IF
+  EXISTS` (the 5 legacy); detailed comments explain the no-store/no-reader
+  difference from V072 + the F6=A deferral of the step-machine. Verification:
+  `cargo check -p brassclaw_pg` confirms the migration embeds cleanly via
+  `refinery::embed_migrations!` (zero Rust touched → no clippy needed; DB
+  integration tests skip locally — no Docker). NO dedicated Zenflow step exists
+  for action(16) — the plan jumps HI.5 (skill, sort 36) → C.4.5.1 (recipe, sort
+  37) → HI.7 (composition); C.4.5.6 tracked in subplan + mindmap only. Next:
+  C.4.5.7 `spec`(12) — first of HI.8 memory/instruction classes
+  (12/14/15/18/19/20 + docu(17)).
