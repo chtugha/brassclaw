@@ -11,6 +11,10 @@
 //! - 2  — Step 27.1 `host.resolve_intent`: the 5-component stack (Tool +
 //!   ToolSkill + PythonCode + leaf Skill + Recipe), minted ids appended
 //!   to `builtin-host.child_component_ids`.
+//! - 3  — Step 27.2 `host.compose_orchestrator`: the 5-component stack. The
+//!   Recipe `orchestrator_steps` seeds only the real component
+//!   (`pc-host-compose-orchestrator`); the composed program is run at runtime
+//!   by the C.5 basic-mode script (not a static step — fork A).
 //!
 //! `child_component_ids` is appended to incrementally across slices 2–12 as
 //! each `host.*` tool / ToolSkill / PythonCode / leaf-Skill / Recipe id is
@@ -285,6 +289,9 @@ pub(crate) async fn seed_builtin_host_components(
     let mut child_ids = Vec::new();
     child_ids.extend(seed_host_resolve_intent(&stores).await?);
 
+    // Slice 3 — Step 27.2 host.compose_orchestrator (5 components).
+    child_ids.extend(seed_host_compose_orchestrator(&stores).await?);
+
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
         .catalogue
@@ -487,6 +494,201 @@ async fn seed_host_resolve_intent(
                 dependency_registry: None,
             },
             "host-resolve-intent",
+        )
+        .await?;
+
+    Ok(vec![
+        tool_id,
+        tool_skill_id,
+        python_code_id,
+        skill_id,
+        recipe_id,
+    ])
+}
+
+/// Step 27.2 — `host.compose_orchestrator` (Phase 3 — Matching-Mode compose).
+///
+/// Fetch + split + assemble a matched recipe into a ready-to-run orchestrator
+/// program (+ rust inputs + tier). Seeds the 5-component stack idempotently
+/// and returns the minted ids in `[tool, tool_skill, python_code, skill,
+/// recipe]` order. The Recipe `orchestrator_steps` seeds only the real
+/// component (`pc-host-compose-orchestrator`) — the composed program is run at
+/// runtime by the C.5 basic-mode script (fork A); `step_descriptions` keeps
+/// both the compose + run steps as documentation.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_compose_orchestrator(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let tool_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host.compose_orchestrator".to_string(),
+                description: "Fetch + split + assemble a recipe by component id. \
+                              Returns the ready-to-run orchestrator program + rust \
+                              inputs + tier. Monty runs the program; Rust does not \
+                              sequence steps."
+                    .to_string(),
+                param_schema: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "component_id": {"type": "string", "description": "UUID or name of the matched recipe/instruction"},
+                        "class_code": {"type": "integer", "description": "Component class (21 recipe, 11 action, …)"}
+                    },
+                    "required": ["component_id"]
+                })),
+                param_template: Some(json!({"component_id": ""})),
+                effect_type: "read".to_string(),
+                preconditions: Some(
+                    "Composition recipe store + rust/orchestrator splitter wired.".to_string(),
+                ),
+                error_handling: Some(
+                    "Miss/parse failure → {orchestrator_program: null}; caller degrades to \
+                     Non-Matching-Mode."
+                        .to_string(),
+                ),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "host.compose_orchestrator",
+        )
+        .await?;
+
+    let tool_skill_id = stores
+        .upsert_tool_skill(
+            NewPgToolSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "ts-host-compose-orchestrator".to_string(),
+                description: "Compose the orchestrator program for a matched component id."
+                    .to_string(),
+                content: "After `host.resolve_intent` returns a match, call \
+                          `host.compose_orchestrator(component_id=<matched id>)`. The host fetches \
+                          the recipe, splits the rust vs orchestrator parts, loads rust bindings, \
+                          and hands back `{orchestrator_program, rust_inputs, recipe_hint, tier}`. \
+                          Run the returned `orchestrator_program` directly — do NOT re-sequence \
+                          its steps from Rust. If `orchestrator_program` is null, degrade to the \
+                          Non-Matching-Mode routine."
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                tool_name: Some("host.compose_orchestrator".to_string()),
+                param_schema: Some(json!([
+                    {"name": "component_id", "param_type": "string", "required": true, "description": "Matched component UUID or name"},
+                    {"name": "class_code", "param_type": "number", "required": false, "description": "Component class code (default 21)"}
+                ])),
+                param_template: Some(json!({"component_id": "{{component_id}}"})),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "ts-host-compose-orchestrator",
+        )
+        .await?;
+
+    let python_code_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-compose-orchestrator".to_string(),
+                description: "Orchestrator step: fetch+split+assemble the matched recipe \
+                              into a runnable program."
+                    .to_string(),
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
+                          # Fetch+split+assemble the matched recipe into a runnable program.\n\
+                          composed = host.compose_orchestrator(component_id=\"{{vars.slot0}}\")\n\
+                          # composed = {orchestrator_program, rust_inputs, recipe_hint, tier}\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-compose-orchestrator",
+        )
+        .await?;
+
+    let skill_id = stores
+        .upsert_skill(
+            NewPgSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "skill-host-compose-orchestrator".to_string(),
+                description: "Leaf skill: how to compose a matched recipe into a runnable \
+                              program."
+                    .to_string(),
+                body: "After `host.resolve_intent` returns a match, call \
+                       `ts-host-compose-orchestrator` with the component_id. The host fetches \
+                       the recipe, splits the rust vs orchestrator parts, and hands back a \
+                       ready-to-run orchestrator program plus rust inputs and a tier hint. Run \
+                       the returned program directly — do NOT re-sequence its steps from Rust. \
+                       If `orchestrator_program` is null, degrade to the Non-Matching-Mode \
+                       routine."
+                    .to_string(),
+                class_code: 1,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
+                intent_examples: json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "skill-host-compose-orchestrator",
+        )
+        .await?;
+
+    let recipe_id = stores
+        .upsert_recipe(
+            NewPgRecipe {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host-compose-and-run-orchestrator".to_string(),
+                description: "Matching-Mode: compose the matched recipe then run its \
+                              orchestrator program. Tier depends on the composed recipe \
+                              (0 or 1)."
+                    .to_string(),
+                trigger: None,
+                steps: json!({
+                    "llm_call_required": false,
+                    "tier": 0,
+                    "rust_steps": [
+                        {"tool": "host.compose_orchestrator", "tool_skill": "ts-host-compose-orchestrator"}
+                    ],
+                    "orchestrator_steps": [
+                        {"python_code": "pc-host-compose-orchestrator"}
+                    ]
+                }),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into()],
+                intent_examples: Some(json!([
+                    "(internal Matching-Mode driver — not user-routed)"
+                ])),
+                source: "system".into(),
+                step_descriptions: Some(json!([
+                    {"step": 0, "action": "compose", "desc": "Fetch+split+assemble the matched recipe."},
+                    {"step": 1, "action": "run", "desc": "Run the assembled orchestrator program (Monty, one continuous program)."}
+                ])),
+                variants: None,
+                dependency_registry: None,
+            },
+            "host-compose-and-run-orchestrator",
         )
         .await?;
 
