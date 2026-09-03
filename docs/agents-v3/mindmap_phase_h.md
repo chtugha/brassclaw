@@ -962,5 +962,21 @@ plumbing.
   grey-out from the LLM tool list — bindable by name via `rust_steps`; by-name compose keys on
   `validation_status='validated'`, NOT the consumer-tag grey-out) — that's slice 7. **Verified green
   both configs:** clippy `-p brassclaw_reborn_composition --all-targets -D warnings` (default +
-  `--features skills-db`), incremental (disk 82%/35Gi, no clean needed). Next: slice 6 = 27.7.3
-  `host.resolve_component_by_name` (read its spec — also a 4-component leaf-tool stack).
+  `--features skills-db`), incremental (disk 82%/35Gi, no clean needed).
+- **C.2 SLICE 6 — 27.7.3 `host.resolve_component_by_name` 4-COMPONENT LEAF-TOOL STACK (DONE + shipped).**
+  The §0.9 Option B fallback (call_action holds a step NAME, not a UUID) — structurally a near-clone
+  of slice 5 with `name` replacing `uuid`. Tool `host.resolve_component_by_name` (read); param_schema
+  {name (string,required), class_code (integer,required)}; preconditions "skills-db pool wired
+  (returns null without it)." + error_handling "Missing/invalid/absent → null; never raises." (both
+  Some). ToolSkill ts-host-resolve-component-by-name (tool_name Some); PythonCode pc-host-resolve-
+  component-by-name (`host.resolve_component_by_name(name="{{vars.slot0}}", class_code={{vars.slot1}})`);
+  leaf skill skill-host-resolve-component-by-name (05:validation, class_code 1, intent_examples
+  json!([])). All source=system + validated. Tool+ToolSkill `["00:rusty","02:orchestrator"]`;
+  PythonCode `["01:monty","02:orchestrator"]`; leaf skill `["02:orchestrator","05:validation"]`.
+  `seed_host_resolve_component_by_name` returns 4 ids, wired after fetch_component. param_template
+  stored stringified (`{{class_code}}` as a string placeholder — the spec's bare `{{class_code}}` is
+  a template literal not valid JSONB, so the seed stores the storable stringified form, matching the
+  shipped slice-5/post_reply precedent). **Verified green both configs** (incremental). Next: slice 7
+  = 27.7.4 `host.validate_component` (4-component leaf-tool stack; effect_type `write`; Tool KEEPS
+  `05:validator` consumer_tag — the intentional LLM-tool-list grey-out, bindable by name via
+  rust_steps).

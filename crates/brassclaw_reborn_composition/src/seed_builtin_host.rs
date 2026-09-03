@@ -303,6 +303,9 @@ pub(crate) async fn seed_builtin_host_components(
     // Slice 5 — Step 27.7.2 host.fetch_component (4 components, no Recipe).
     child_ids.extend(seed_host_fetch_component(&stores).await?);
 
+    // Slice 6 — Step 27.7.3 host.resolve_component_by_name (4 components, no Recipe).
+    child_ids.extend(seed_host_resolve_component_by_name(&stores).await?);
+
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
         .catalogue
@@ -1012,6 +1015,141 @@ async fn seed_host_fetch_component(
                 validation_status: "validated".into(),
             },
             "skill-host-fetch-component",
+        )
+        .await?;
+
+    Ok(vec![tool_id, tool_skill_id, python_code_id, skill_id])
+}
+
+/// Step 27.7.3 — `host.resolve_component_by_name` (SEC-01 validated fetch by
+/// name — §0.9 Option B).
+///
+/// A 4-component leaf-tool stack (Tool + ToolSkill + PythonCode + leaf Skill —
+/// no Recipe) — the `call_action` Option B fallback when only a step name is
+/// held. Returns the minted ids in `[tool, tool_skill, python_code, skill]`
+/// order. Same null-means-absent contract as `host.fetch_component`.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_resolve_component_by_name(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let tool_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host.resolve_component_by_name".to_string(),
+                description: "Fetch a single validated component by NAME + class code \
+                              (SEC-01 gate) — the §0.9 Option B fallback when only a step \
+                              name is held. Same dict shape as host.fetch_component, or null."
+                    .to_string(),
+                param_schema: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Component name"},
+                        "class_code": {"type": "integer", "description": "Component class code"}
+                    },
+                    "required": ["name", "class_code"]
+                })),
+                param_template: Some(json!({"name": "", "class_code": 0})),
+                effect_type: "read".to_string(),
+                preconditions: Some(
+                    "skills-db pool wired (returns null without it).".to_string(),
+                ),
+                error_handling: Some(
+                    "Missing/invalid/absent → null; never raises.".to_string(),
+                ),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "host.resolve_component_by_name",
+        )
+        .await?;
+
+    let tool_skill_id = stores
+        .upsert_tool_skill(
+            NewPgToolSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "ts-host-resolve-component-by-name".to_string(),
+                description: "Resolve a validated component by name + class code \
+                              (SEC-01 gate, §0.9 Option B)."
+                    .to_string(),
+                content: "Call `host.resolve_component_by_name(name=<name>, class_code=<int>)` \
+                          when call_action holds a step name, not a UUID. Returns the component \
+                          projection or null. A null result means the component is absent or not \
+                          validated — do not invent one."
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                tool_name: Some("host.resolve_component_by_name".to_string()),
+                param_schema: Some(json!([
+                    {"name": "name", "param_type": "string", "required": true, "description": "Component name"},
+                    {"name": "class_code", "param_type": "number", "required": true, "description": "Component class code"}
+                ])),
+                param_template: Some(json!({"name": "{{name}}", "class_code": "{{class_code}}"})),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "ts-host-resolve-component-by-name",
+        )
+        .await?;
+
+    let python_code_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-resolve-component-by-name".to_string(),
+                description: "Orchestrator step: resolve a validated component by name + \
+                              class code (§0.9 Option B)."
+                    .to_string(),
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
+                          comp = host.resolve_component_by_name(name=\"{{vars.slot0}}\", class_code={{vars.slot1}})\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-resolve-component-by-name",
+        )
+        .await?;
+
+    let skill_id = stores
+        .upsert_skill(
+            NewPgSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "skill-host-resolve-component-by-name".to_string(),
+                description: "Resolve a component by name (§0.9 Option B) when only a \
+                              step name is held."
+                    .to_string(),
+                body: "Use `ts-host-resolve-component-by-name` when call_action holds a \
+                       step name, not a UUID. Same null-means-absent contract as \
+                       fetch_component."
+                    .to_string(),
+                class_code: 1,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
+                intent_examples: json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "skill-host-resolve-component-by-name",
         )
         .await?;
 
