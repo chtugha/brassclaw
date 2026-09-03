@@ -68,6 +68,11 @@ pub struct ThreadManager {
     /// behaviour.
     #[cfg(feature = "skills-db")]
     pg_pool: Option<std::sync::Arc<brassclaw_pg::PgPool>>,
+    /// Step C.4.5.17 — composition-system port (the IBS) backing
+    /// `host.compose_orchestrator`. `Some` once the composition layer wires a
+    /// `PgCompositionPort`-backed impl; `None` leaves the host-call dormant
+    /// (degrades gracefully). Plumbed into every spawned `ExecutionLoop`.
+    composition_port: Option<std::sync::Arc<dyn crate::executor::CompositionPort>>,
 }
 
 impl ThreadManager {
@@ -96,6 +101,7 @@ impl ThreadManager {
             max_duration_secs: None,
             #[cfg(feature = "skills-db")]
             pg_pool: None,
+            composition_port: None,
         }
     }
 
@@ -119,6 +125,19 @@ impl ThreadManager {
     #[cfg(feature = "skills-db")]
     pub fn with_pg_pool(mut self, pool: std::sync::Arc<brassclaw_pg::PgPool>) -> Self {
         self.pg_pool = Some(pool);
+        self
+    }
+
+    /// Step C.4.5.17 — attach the composition-system port (the IBS) backing
+    /// `host.compose_orchestrator`. The impl (composition) performs recipe
+    /// fetch → IBS `build_instruction` → `compose_program`. Plumbed into every
+    /// spawned `ExecutionLoop`; `None` (the default) leaves the host-call
+    /// dormant.
+    pub fn with_composition_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::executor::CompositionPort>,
+    ) -> Self {
+        self.composition_port = Some(port);
         self
     }
 
@@ -423,6 +442,13 @@ impl ThreadManager {
         .with_retrieval(retrieval)
         .with_store(Arc::clone(&self.store))
         .with_retrieval_source(retrieval_source);
+        // Step C.4.5.17: plumb the composition-system port (the IBS) so the
+        // `host.compose_orchestrator` handler can thin-call it. `None` (the
+        // default until the composition layer wires `PgCompositionPort`) leaves
+        // the host-call dormant — it degrades gracefully.
+        if let Some(port) = self.composition_port.clone() {
+            exec_loop = exec_loop.with_composition_port(port);
+        }
         // v3 Phase H4.8: plumb the DB pool into the ExecutionLoop so the
         // SEC-01-validated orchestrator host functions can read
         // `reborn_skills` / `reborn_components` instead of falling back to

@@ -1912,3 +1912,59 @@ plumbing.
   one coherent slice, per-part commits, keep going past commits, no inter-part
   fork round-trips). All C.4.5.17 forks now locked (Enhanced-C structure + A run
   path + A slicing). **IMPLEMENTING.**
+
+- **C.4.5.17 Part 1 SHIPPED `1e1db677` (2026-09-03):** new
+  `brassclaw_engine::memory::composition` module — `ComposedProgram { skills,
+  steplist, rust_directives, variables, assembled_program, tier }`,
+  `ComposedStep { step_id, instructions, executable_code, tool_bindings }`,
+  `SkillRef`, `RustDirective`, `ResolvedComponent`, `ComponentResolver` trait,
+  + pure `compose_program(BuildInstruction, resolver, variables) ->
+  ComposedProgram` (routes includes by class_code: 22->executable_code,
+  1-3/13->skills, 0->rust directives; binds `{{vars.NAME}}`; populates
+  per-step tool_bindings from the matching rust-channel step; dedupes
+  skills/tools; concatenates assembled_program; derives tier from
+  llm_call_required). 4 unit tests w/ a fixture resolver (deterministic-program,
+  empty, unresolved-includes-skipped, skills-deduped); clippy clean.
+- **C.4.5.17 Part 2 SHIPPED `c3112fef` (2026-09-03):** `host.run_program(code)`
+  dispatch arm + `handle_run_program` in orchestrator.rs — spawns a NESTED
+  `execute_code` (fresh `ThreadExecutionContext` + `persisted_state={}` per
+  call; ISOLATION invariant, mirrors `execute_tier_zero_channel`:2127). Returns
+  a Monty dict `{ok, return_value, stdout, error}` (ok=false + error on Err /
+  classified failure / approval-gate pause). Renamed execute_orchestrator params
+  `_policy`/`_gate_controller` -> `policy`/`gate_controller` (now consumed by
+  the run_program arm). 577 brassclaw_engine tests green; clippy clean.
+- **C.4.5.17 Part 3 grounding (IN PROGRESS, 2026-09-03 — open wiring fork):**
+  `host.compose_orchestrator(component_id, class_code)` is DB-bound (needs the
+  recipe's `step_descriptions`/`step_link`/`variable_patterns` to feed
+  `build_instruction`). Findings: (a) the engine `Store` trait
+  (`traits/store.rs:18`) has Thread/Step/Event/Project/Conversation ops but NO
+  recipe loading — recipes live in composition's `PgRecipeStore`. (b) The
+  engine's `retrieval_source.rs::fetch_recipe_split_result` (:809) IS the
+  recipe-load + IBS-compile path: it SELECTs `reborn_recipes` (name, tier,
+  wilson_lower, validation_status, step_descriptions, variants), computes
+  llm_call_required (tier0_eligible: mature|candidate + validated + wilson>=0.70),
+  matches the variant BY `step_link`, parses step_descs, calls `build_instruction`
+  → BuildInstruction, then fetch_components_by_ids + substitute `{{vars}}` →
+  `FetchForTurnResult{SplitResult}`. BUT it is keyed by `step_link`, while
+  `compose_orchestrator` gets only `component_id` (+optional class_code) —
+  **OPEN: variant selection without step_link** (resolve_intent returns a
+  component_id, not a step_link, per the user's earlier lock). (c)
+  `dynamic_tools: Option<&Arc<dyn DynamicToolPort>>` IS already plumbed into
+  `execute_orchestrator` (param :536) + the dispatch loop — so CdylibLoadDirective
+  application has a ready port; NO new cross-crate plumbing needed for the tool
+  side. (d) The composition `OrchestratorLookup` bridge
+  (`brassclaw_turns/.../orchestrator_lookup.rs:95`, impl
+  `PgOrchestratorLookup` in composition) is the composition→loop bridge but is
+  NOT plumbed into the engine `execute_orchestrator` dispatch params. **OPEN
+  FORK (F17-E):** where does compose_orchestrator's composition logic live + how
+  is the variant chosen? A = engine handler reuses `fetch_recipe_split_result`-
+  style recipe fetch via pg_pool + picks the default (first) variant + calls
+  `compose_program` + applies CdylibLoadDirectives via the already-plumbed
+  `dynamic_tools` (thin engine-side wrapper over the IBS, NO new cross-crate
+  trait plumbing); B = extend the composition `OrchestratorLookup` bridge with a
+  `compose(component_id)` method (composition-side, has PgRecipeStore), plumb
+  the bridge handle into execute_orchestrator, engine handler thin-calls it
+  (architecturally cleaner, matches H.7/H.12, but new cross-crate plumbing);
+  C = compose_orchestrator also accepts a `step_link`/`variant_key` arg (Monty
+  passes the matched variant from resolve_intent) so it can reuse
+  fetch_recipe_split_result verbatim. **NEXT: ask F17-E, then implement Part 3.**

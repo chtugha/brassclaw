@@ -534,6 +534,7 @@ pub async fn execute_orchestrator(
     #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
     _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
     dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
+    composition_port: Option<&Arc<dyn crate::executor::CompositionPort>>,
     max_duration_override: Option<std::time::Duration>,
 ) -> Result<OrchestratorResult, EngineError> {
     let mut total_tokens = TokenUsage::default();
@@ -830,6 +831,19 @@ pub async fn execute_orchestrator(
                             event_tx,
                         )
                         .await
+                    }
+
+                    // C.4.5.17: compose a recipe (component_id) + variant
+                    // (step_link) into the predefined ComposedProgram via the
+                    // composition-system port (the IBS). Monty iterates the
+                    // returned steplist, consults the skills array for exact
+                    // tool usage, and runs each step's executable_code via
+                    // host.run_program. The cdylib application of
+                    // rust_directives is a C.5/C.6 concern (deferred). Returns
+                    // {ok, program} on success; {ok:false, error} on no bridge
+                    // / not found / failure.
+                    "compose_orchestrator" if call.method_call => {
+                        handle_compose_orchestrator(&args[1..], thread, composition_port).await
                     }
 
                     // ── C.3 dynamic cdylib Tool fallthrough ─────────────────────
@@ -1652,6 +1666,68 @@ async fn handle_resolve_component_by_name(
 
     #[cfg(not(feature = "skills-db"))]
     ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+}
+
+/// Handle `host.compose_orchestrator(component_id, step_link, user_input)`
+/// (C.4.5.17). Thin-calls the composition-system port (the IBS) to compose the
+/// recipe (`component_id`) + variant (`step_link`, surfaced to Monty by
+/// `host.resolve_intent`) into the predefined `ComposedProgram`, binding
+/// `{{vars.NAME}}` slots captured from `user_input`. Returns a Monty dict:
+///   `{"ok":true, "program":{skills,steplist,rust_directives,variables,
+///                           assembled_program,tier}}`
+///   `{"ok":false, "error":..}`  (no bridge / recipe not found / no variant
+///                                match / composition failure)
+/// Monty iterates `program.steplist`, consults `program.skills` for exact tool
+/// usage, and runs each step's `executable_code` via `host.run_program`. The
+/// cdylib *application* of `program.rust_directives` is a C.5/C.6 concern
+/// (deferred — the directives are carried in the program for that wiring).
+/// Scope is built from the thread's real identity, mirroring
+/// `handle_fetch_component` / `handle_resolve_intent`.
+async fn handle_compose_orchestrator(
+    args: &[MontyObject],
+    thread: &Thread,
+    composition_port: Option<&Arc<dyn crate::executor::CompositionPort>>,
+) -> ExtFunctionResult {
+    let component_id_str = args.first().map(monty_to_string).unwrap_or_default();
+    let Ok(component_id) = uuid::Uuid::parse_str(&component_id_str) else {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "ok": false,
+            "error": "missing or invalid component_id",
+        })));
+    };
+    let step_link = args.get(1).map(monty_to_string).unwrap_or_default();
+    if step_link.is_empty() {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "ok": false,
+            "error": "missing step_link",
+        })));
+    }
+    let user_input = args.get(2).map(monty_to_string).unwrap_or_default();
+    let Some(port) = composition_port else {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "ok": false,
+            "error": "composition_unavailable",
+        })));
+    };
+    let scope = ComponentScope {
+        tenant_id: thread.tenant_id.clone(),
+        user_id: thread.user_id.clone(),
+        agent_id: thread.agent_id.clone(),
+        project_id: thread.project_id.to_string(),
+    };
+    match port.compose(&scope, component_id, &step_link, &user_input).await {
+        Ok(program) => {
+            let program_value = serde_json::to_value(&program).unwrap_or(serde_json::Value::Null);
+            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                "ok": true,
+                "program": program_value,
+            })))
+        }
+        Err(e) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "ok": false,
+            "error": e.to_string(),
+        }))),
+    }
 }
 
 /// Handle `host.resolve_intent(user_input=...)` — Phase 2 of the basic-mode
@@ -3535,6 +3611,168 @@ mod tests {
         let result =
             super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
         assert!(matches!(result, monty::ExtFunctionResult::Error(_)));
+    }
+
+    // ── C.4.5.17 Part 3a: host.compose_orchestrator handler ────────────────
+    use crate::executor::{CompositionPort, CompositionPortError};
+    use crate::memory::composition::{ComposedProgram, ComposedStep, RustDirective, SkillRef};
+    use std::future::Future;
+    use std::pin::Pin;
+
+    /// A mock [`CompositionPort`] for the compose_orchestrator handler tests.
+    /// Returns a canned [`ComposedProgram`] (or an injected `Err`).
+    struct MockCompositionPort {
+        result: Mutex<Option<Result<ComposedProgram, CompositionPortError>>>,
+    }
+
+    impl MockCompositionPort {
+        fn ok() -> Self {
+            Self {
+                result: Mutex::new(Some(Ok(ComposedProgram {
+                    skills: vec![SkillRef {
+                        id: uuid::Uuid::nil(),
+                        class_code: 1,
+                        name: "skill-fixture".into(),
+                        body: "do the thing".into(),
+                    }],
+                    steplist: vec![ComposedStep {
+                        step_id: "0:1".into(),
+                        instructions: "run fixture".into(),
+                        executable_code: "host.run_program('x')".into(),
+                        tool_bindings: Vec::new(),
+                    }],
+                    rust_directives: vec![RustDirective {
+                        tool_id: uuid::Uuid::nil(),
+                        tool_name: "fixture_tool".into(),
+                        artifact_path: "/tmp/fixture.cdylib".into(),
+                    }],
+                    variables: vec![("slot0".into(), "v0".into())],
+                    assembled_program: "host.run_program('x')".into(),
+                    tier: "tier0".into(),
+                }))),
+            }
+        }
+        fn failing(err: CompositionPortError) -> Self {
+            Self {
+                result: Mutex::new(Some(Err(err))),
+            }
+        }
+    }
+
+    impl CompositionPort for MockCompositionPort {
+        fn compose(
+            &self,
+            _scope: &ComponentScope,
+            _component_id: uuid::Uuid,
+            _step_link: &str,
+            _user_input: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<ComposedProgram, CompositionPortError>> + Send + '_>>
+        {
+            let result = self.result.lock().unwrap().clone();
+            Box::pin(async move { result.expect("mock result must be injected") })
+        }
+    }
+
+    #[tokio::test]
+    async fn compose_orchestrator_no_port_returns_unavailable() {
+        let thread = make_validate_thread();
+        let args = vec![
+            MontyObject::String(uuid::Uuid::nil().to_string()),
+            MontyObject::String("0:1".into()),
+            MontyObject::String("hi".into()),
+        ];
+        let result = handle_compose_orchestrator(&args, &thread, None).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["ok"], serde_json::json!(false));
+        assert_eq!(json["error"], serde_json::json!("composition_unavailable"));
+    }
+
+    #[tokio::test]
+    async fn compose_orchestrator_invalid_component_id_returns_error() {
+        let thread = make_validate_thread();
+        let port: Arc<dyn CompositionPort> = Arc::new(MockCompositionPort::ok());
+        let args = vec![
+            MontyObject::String("not-a-uuid".into()),
+            MontyObject::String("0:1".into()),
+        ];
+        let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["ok"], serde_json::json!(false));
+        assert_eq!(
+            json["error"],
+            serde_json::json!("missing or invalid component_id")
+        );
+    }
+
+    #[tokio::test]
+    async fn compose_orchestrator_missing_step_link_returns_error() {
+        let thread = make_validate_thread();
+        let port: Arc<dyn CompositionPort> = Arc::new(MockCompositionPort::ok());
+        let args = vec![MontyObject::String(uuid::Uuid::nil().to_string())];
+        let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["ok"], serde_json::json!(false));
+        assert_eq!(json["error"], serde_json::json!("missing step_link"));
+    }
+
+    #[tokio::test]
+    async fn compose_orchestrator_mock_port_returns_program() {
+        let thread = make_validate_thread();
+        let port: Arc<dyn CompositionPort> = Arc::new(MockCompositionPort::ok());
+        let args = vec![
+            MontyObject::String(uuid::Uuid::nil().to_string()),
+            MontyObject::String("0:1".into()),
+            MontyObject::String("user text".into()),
+        ];
+        let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["ok"], serde_json::json!(true));
+        assert_eq!(json["program"]["tier"], serde_json::json!("tier0"));
+        assert_eq!(
+            json["program"]["steplist"][0]["step_id"],
+            serde_json::json!("0:1")
+        );
+        assert_eq!(
+            json["program"]["skills"][0]["name"],
+            serde_json::json!("skill-fixture")
+        );
+        assert_eq!(
+            json["program"]["rust_directives"][0]["tool_name"],
+            serde_json::json!("fixture_tool")
+        );
+    }
+
+    #[tokio::test]
+    async fn compose_orchestrator_port_failure_surfaces_error() {
+        let thread = make_validate_thread();
+        let port: Arc<dyn CompositionPort> = Arc::new(MockCompositionPort::failing(
+            CompositionPortError::RecipeNotFound {
+                component_id: uuid::Uuid::nil().to_string(),
+            },
+        ));
+        let args = vec![
+            MontyObject::String(uuid::Uuid::nil().to_string()),
+            MontyObject::String("0:1".into()),
+        ];
+        let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["ok"], serde_json::json!(false));
+        assert!(json["error"].as_str().unwrap().contains("not found"));
     }
 
     // ── Test constants ──────────────────────────────────────────────────────

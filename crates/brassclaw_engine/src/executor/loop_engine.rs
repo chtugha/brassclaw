@@ -142,6 +142,12 @@ pub struct ExecutionLoop {
     /// dispatch fallthrough dormant (built-in tools still resolve via the
     /// static match). Passed to `execute_orchestrator` each turn.
     dynamic_tools: Option<Arc<dyn crate::executor::DynamicToolPort>>,
+    /// Step C.4.5.17 — port over the composition system (the IBS). `Some` when
+    /// the composition layer has wired a `PgCompositionPort`-backed impl; `None`
+    /// leaves the `host.compose_orchestrator` handler dormant (degrades
+    /// gracefully to `{ok:false, error:"composition_unavailable"}`). Passed to
+    /// `execute_orchestrator` each turn.
+    composition_port: Option<Arc<dyn crate::executor::CompositionPort>>,
     /// DB-backed max wall-clock budget override for the Monty orchestrator VM.
     /// `Some` overrides `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` (Step 9.3).
     /// `None` falls back to the env-var / compiled-in DB-less default.
@@ -178,6 +184,7 @@ impl ExecutionLoop {
             pg_pool: None,
             retrieval_source: None,
             dynamic_tools: None,
+            composition_port: None,
             max_duration_secs: None,
         }
     }
@@ -245,6 +252,18 @@ impl ExecutionLoop {
         port: Arc<dyn crate::executor::DynamicToolPort>,
     ) -> Self {
         self.dynamic_tools = Some(port);
+        self
+    }
+
+    /// Step C.4.5.17 — attach the composition-system port (the IBS). The impl
+    /// (composition) backs `host.compose_orchestrator`: recipe fetch → IBS
+    /// `build_instruction` → `compose_program` → `ComposedProgram`. Without this
+    /// the host-call degrades gracefully.
+    pub fn with_composition_port(
+        mut self,
+        port: Arc<dyn crate::executor::CompositionPort>,
+    ) -> Self {
+        self.composition_port = Some(port);
         self
     }
 
@@ -510,6 +529,7 @@ impl ExecutionLoop {
             self.pg_pool.as_deref(),
             self.retrieval_source.as_ref(),
             self.dynamic_tools.as_ref(),
+            self.composition_port.as_ref(),
             max_duration_override,
         )
         .await;
