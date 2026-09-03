@@ -15,6 +15,8 @@
 //!   Recipe `orchestrator_steps` seeds only the real component
 //!   (`pc-host-compose-orchestrator`); the composed program is run at runtime
 //!   by the C.5 basic-mode script (not a static step — fork A).
+//! - 4  — Step 27.3 `host.post_reply`: the 5-component stack (effect `write`);
+//!   the single end-of-turn emit for both Matching- and Non-Matching-Mode.
 //!
 //! `child_component_ids` is appended to incrementally across slices 2–12 as
 //! each `host.*` tool / ToolSkill / PythonCode / leaf-Skill / Recipe id is
@@ -291,6 +293,9 @@ pub(crate) async fn seed_builtin_host_components(
 
     // Slice 3 — Step 27.2 host.compose_orchestrator (5 components).
     child_ids.extend(seed_host_compose_orchestrator(&stores).await?);
+
+    // Slice 4 — Step 27.3 host.post_reply (5 components).
+    child_ids.extend(seed_host_post_reply(&stores).await?);
 
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
@@ -689,6 +694,175 @@ async fn seed_host_compose_orchestrator(
                 dependency_registry: None,
             },
             "host-compose-and-run-orchestrator",
+        )
+        .await?;
+
+    Ok(vec![
+        tool_id,
+        tool_skill_id,
+        python_code_id,
+        skill_id,
+        recipe_id,
+    ])
+}
+
+/// Step 27.3 — `host.post_reply` (Phase 3 — answer post; effect `write`).
+///
+/// The single end-of-turn emit for both Matching- and Non-Matching-Mode: posts
+/// the final answer text into the user chat. Seeds the 5-component stack
+/// idempotently and returns the minted ids in `[tool, tool_skill,
+/// python_code, skill, recipe]` order.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_post_reply(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let tool_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host.post_reply".to_string(),
+                description: "Post the final answer text into the user chat. End-of-turn \
+                              emit for both Matching- and Non-Matching-Mode."
+                    .to_string(),
+                param_schema: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "answer": {"type": "string", "description": "The final answer to post"}
+                    },
+                    "required": ["answer"]
+                })),
+                param_template: Some(json!({"answer": ""})),
+                effect_type: "write".to_string(),
+                preconditions: Some("Active chat session.".to_string()),
+                error_handling: Some("Post failure → raise; caller retries.".to_string()),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "host.post_reply",
+        )
+        .await?;
+
+    let tool_skill_id = stores
+        .upsert_tool_skill(
+            NewPgToolSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "ts-host-post-reply".to_string(),
+                description: "Post the final answer into the user chat.".to_string(),
+                content: "Call `host.post_reply(answer=<final answer text>)` once after the \
+                          turn's work is complete. This is the single end-of-turn emit for \
+                          both Matching- and Non-Matching-Mode. After posting, call the \
+                          `host-save-history` recipe so kohai/sempai can mint new components. \
+                          Raises on post failure; the caller retries."
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                tool_name: Some("host.post_reply".to_string()),
+                param_schema: Some(json!([
+                    {"name": "answer", "param_type": "string", "required": true, "description": "Final answer text"}
+                ])),
+                param_template: Some(json!({"answer": "{{answer}}"})),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "ts-host-post-reply",
+        )
+        .await?;
+
+    let python_code_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-post-reply".to_string(),
+                description: "Orchestrator step: post the final answer into the user chat."
+                    .to_string(),
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
+                          host.post_reply(answer=\"{{vars.slot0}}\")\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-post-reply",
+        )
+        .await?;
+
+    let skill_id = stores
+        .upsert_skill(
+            NewPgSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "skill-host-post-reply".to_string(),
+                description: "Leaf skill: how to post the final answer into the chat."
+                    .to_string(),
+                body: "Call `ts-host-post-reply` once with the final answer text after the \
+                       turn's work is complete. This is the single end-of-turn emit for both \
+                       modes. After posting, call the `host-save-history` recipe so \
+                       kohai/sempai can mint new components."
+                    .to_string(),
+                class_code: 1,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
+                intent_examples: json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "skill-host-post-reply",
+        )
+        .await?;
+
+    let recipe_id = stores
+        .upsert_recipe(
+            NewPgRecipe {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host-post-reply".to_string(),
+                description: "Post the final answer into the user chat. Tier 0 — no LLM."
+                    .to_string(),
+                trigger: None,
+                steps: json!({
+                    "llm_call_required": false,
+                    "tier": 0,
+                    "rust_steps": [
+                        {"tool": "host.post_reply", "tool_skill": "ts-host-post-reply"}
+                    ],
+                    "orchestrator_steps": [
+                        {"python_code": "pc-host-post-reply"}
+                    ]
+                }),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into()],
+                intent_examples: Some(json!([
+                    "(internal end-of-turn emit — not user-routed)"
+                ])),
+                source: "system".into(),
+                step_descriptions: Some(json!([
+                    {"step": 0, "action": "post_reply", "desc": "Post the final answer."}
+                ])),
+                variants: None,
+                dependency_registry: None,
+            },
+            "host-post-reply",
         )
         .await?;
 

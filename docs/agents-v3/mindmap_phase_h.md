@@ -930,3 +930,17 @@ plumbing.
   both configs:** clippy `-p brassclaw_reborn_composition --all-targets -D warnings` (default +
   `--features skills-db`), incremental (~10s each). Next: slice 4 = 27.3 `host.post_reply`
   (effect_type `write`; spec already read lines 12748-12810).
+- **C.2 SLICE 4 — 27.3 `host.post_reply` 5-COMPONENT STACK (DONE + shipped).** The single
+  end-of-turn emit for both Matching- and Non-Matching-Mode. Tool effect_type `write`; param_schema
+  {answer (string, required)}; preconditions "Active chat session." + error_handling "Post failure →
+  raise; caller retries." (both Some). ToolSkill ts-host-post-reply; PythonCode pc-host-post-reply
+  (`host.post_reply(answer="{{vars.slot0}}")`); leaf skill skill-host-post-reply (05:validation);
+  Recipe host-post-reply (tier 0, llm_call_required false; rust_steps=[{tool: host.post_reply,
+  tool_skill: ts-host-post-reply}]; orchestrator_steps=[{python_code: pc-host-post-reply}];
+  step_descriptions=[{step 0, post_reply}]; intent_examples=["(internal end-of-turn emit — not
+  user-routed)"]). Added `seed_host_post_reply` (~165 lines, `#[allow(clippy::too_many_lines)]`)
+  wired after compose_orchestrator. NOTE: the C.1 Rust dispatch arm for host.post_reply shipped in
+  portion 102 (`a6bdbd03`) — C.2 is the DB-seed of the 5 component rows (distinct). **Verified green
+  both configs.** Slice map reminder: 2=27.1, 3=27.2, 4=27.3, 5=27.7.2, 6=27.7.3, 7=27.7.4,
+  8=27.9.1, 9=27.10.3, 10=27.4 (save-history: 2 components, reuses builtin.memory_write), 11=27.10.1,
+  12=27.10.2. Next: slice 5 = 27.7.2 (read its spec).
