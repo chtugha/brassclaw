@@ -5,12 +5,16 @@
 //! [`crate::webui::seed_builtin_providers`]). Idempotent: a re-seed leaves
 //! existing rows untouched and only inserts what is missing.
 //!
-//! # Slice 1d scope (this file)
+//! # Slices shipped in this file
 //!
-//! The skeleton + the class-23 `builtin-host` ExtensionCatalogue row only.
-//! `child_component_ids` starts empty and is appended to incrementally across
-//! slices 2–12 as the `host.*` tool / ToolSkill / PythonCode / leaf-Skill /
-//! Recipe ids are minted.
+//! - 1d — skeleton + the class-23 `builtin-host` ExtensionCatalogue row.
+//! - 2  — Step 27.1 `host.resolve_intent`: the 5-component stack (Tool +
+//!   ToolSkill + PythonCode + leaf Skill + Recipe), minted ids appended
+//!   to `builtin-host.child_component_ids`.
+//!
+//! `child_component_ids` is appended to incrementally across slices 2–12 as
+//! each `host.*` tool / ToolSkill / PythonCode / leaf-Skill / Recipe id is
+//! minted.
 //!
 //! # Marker scope
 //!
@@ -20,6 +24,14 @@
 //! 1b) is tenant-anchored + `source = 'system'` agnostic on
 //! user/agent/project, so this scope is just the row's stable storage key
 //! across re-seeds — it does NOT gate visibility.
+//!
+//! # Idempotency model
+//!
+//! `tool` / `tool_skill` / `skill` inserts use `ON CONFLICT (scope,name) DO
+//! NOTHING` → `Option<Uuid>` (race-free); `None` is resolved via the matching
+//! `get_id_by_name`. `python_code` / `recipe` inserts are not ON-CONFLICT, so
+//! they use get-then-insert via `get_by_name` (the TOCTOU window is benign — a
+//! concurrent insert would surface as a unique violation, retried next boot).
 //!
 //! # Feature gate
 //!
@@ -35,9 +47,16 @@ use std::sync::Arc;
 
 use brassclaw_host_api::SYSTEM_RESERVED_ID;
 use brassclaw_pg::PgPool;
+use serde_json::json;
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::pg_extension_catalogue_store::{NewPgExtensionCatalogue, PgExtensionCatalogueStore};
+use crate::pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore};
+use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
+use crate::pg_skill_store::{NewPgSkill, PgSkillStore};
+use crate::pg_tool_skill_store::{NewPgToolSkill, PgToolSkillStore};
+use crate::pg_tool_store::{NewPgTool, PgToolStore};
 
 /// Marker `user_id` for seeded builtins — the system sentinel.
 const SEED_USER: &str = SYSTEM_RESERVED_ID;
@@ -60,20 +79,146 @@ pub(crate) enum SeedBuiltinHostError {
     Db { reason: String },
 }
 
+/// The five seed-side stores + the catalogue store, all sharing one pool.
+/// Built once per [`seed_builtin_host_components`] call; each slice's
+/// `seed_host_*` helper borrows it.
+struct HostStores {
+    tenant: String,
+    tool: PgToolStore,
+    tool_skill: PgToolSkillStore,
+    python_code: PgPythonCodeStore,
+    skill: PgSkillStore,
+    recipe: PgRecipeStore,
+    catalogue: PgExtensionCatalogueStore,
+}
+
+impl HostStores {
+    fn new(pool: Arc<PgPool>, tenant_id: &str) -> Self {
+        Self {
+            tenant: tenant_id.to_string(),
+            tool: PgToolStore::new(pool.clone()),
+            tool_skill: PgToolSkillStore::new(pool.clone()),
+            python_code: PgPythonCodeStore::new(pool.clone()),
+            skill: PgSkillStore::new(pool.clone()),
+            recipe: PgRecipeStore::new(pool.clone()),
+            catalogue: PgExtensionCatalogueStore::new(pool),
+        }
+    }
+
+    /// Insert-or-recover a Tool id (class 0). `insert` is ON-CONFLICT, so
+    /// `None` is resolved via [`PgToolStore::get_id_by_name`].
+    async fn upsert_tool(&self, row: NewPgTool, name: &str) -> Result<Uuid, SeedBuiltinHostError> {
+        let map = |e: crate::pg_tool_store::PgToolStoreError| SeedBuiltinHostError::Db {
+            reason: e.to_string(),
+        };
+        if let Some(id) = self.tool.insert(row).await.map_err(map)? {
+            return Ok(id);
+        }
+        self.tool
+            .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+            .ok_or_else(|| SeedBuiltinHostError::Db {
+                reason: format!("tool `{name}` insert no-op but not found"),
+            })
+    }
+
+    /// Insert-or-recover a ToolSkill id (class 13). Same ON-CONFLICT pattern.
+    async fn upsert_tool_skill(
+        &self,
+        row: NewPgToolSkill,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinHostError> {
+        let map = |e: crate::pg_tool_skill_store::PgToolSkillStoreError| SeedBuiltinHostError::Db {
+            reason: e.to_string(),
+        };
+        if let Some(id) = self.tool_skill.insert(row).await.map_err(map)? {
+            return Ok(id);
+        }
+        self.tool_skill
+            .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+            .ok_or_else(|| SeedBuiltinHostError::Db {
+                reason: format!("tool_skill `{name}` insert no-op but not found"),
+            })
+    }
+
+    /// Insert-or-recover a leaf Skill id (class 1). Same ON-CONFLICT pattern.
+    async fn upsert_skill(&self, row: NewPgSkill, name: &str) -> Result<Uuid, SeedBuiltinHostError> {
+        let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinHostError::Db {
+            reason: e.to_string(),
+        };
+        if let Some(id) = self.skill.insert(row).await.map_err(map)? {
+            return Ok(id);
+        }
+        self.skill
+            .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+            .ok_or_else(|| SeedBuiltinHostError::Db {
+                reason: format!("skill `{name}` insert no-op but not found"),
+            })
+    }
+
+    /// Insert-or-recover a PythonCode id (class 22). `insert` is not
+    /// ON-CONFLICT, so get-then-insert via [`PgPythonCodeStore::get_by_name`].
+    async fn upsert_python_code(
+        &self,
+        row: NewPgPythonCode,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinHostError> {
+        let map = |e: crate::pg_python_code_store::PgPythonCodeStoreError| SeedBuiltinHostError::Db {
+            reason: e.to_string(),
+        };
+        if let Some(existing) = self
+            .python_code
+            .get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+        {
+            return Ok(existing.id);
+        }
+        self.python_code.insert(row).await.map_err(map)
+    }
+
+    /// Insert-or-recover a Recipe id (class 21). `insert` is not ON-CONFLICT,
+    /// so get-then-insert via [`PgRecipeStore::get_by_name`].
+    async fn upsert_recipe(
+        &self,
+        row: NewPgRecipe,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinHostError> {
+        let map = |e: crate::pg_recipe_store::PgRecipeStoreError| SeedBuiltinHostError::Db {
+            reason: e.to_string(),
+        };
+        if let Some(existing) = self
+            .recipe
+            .get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+        {
+            return Ok(existing.id);
+        }
+        self.recipe.insert(row).await.map_err(map)
+    }
+}
+
 /// Seed the built-in `host.*` component stack for `tenant_id`.
 ///
-/// Slice 1d: inserts the class-23 `builtin-host` ExtensionCatalogue row with
-/// empty `child_component_ids` (filled in slices 2–12), as
-/// `source = "system"` + `validation_status = "validated"` (bypassing the Q1
-/// pending queue). Idempotent: a no-op if the catalogue row already exists.
+/// Inserts the class-23 `builtin-host` ExtensionCatalogue row (idempotent) then
+/// seeds each `host.*` tool's 5-component stack (slices 2–12) and appends the
+/// minted ids to `builtin-host.child_component_ids`. All builtins are
+/// `source = "system"` + `validation_status = "validated"` (bypassing Q1).
 pub(crate) async fn seed_builtin_host_components(
     pool: Arc<PgPool>,
     tenant_id: &str,
 ) -> Result<(), SeedBuiltinHostError> {
-    let cat_store = PgExtensionCatalogueStore::new(pool);
+    let stores = HostStores::new(pool, tenant_id);
 
-    // Idempotent: skip if the `builtin-host` catalogue row already exists.
-    if cat_store
+    // get-or-insert the class-23 `builtin-host` catalogue row → cat_id.
+    let cat_id = match stores
+        .catalogue
         .get_by_name(
             tenant_id,
             SEED_USER,
@@ -85,60 +230,271 @@ pub(crate) async fn seed_builtin_host_components(
         .map_err(|e| SeedBuiltinHostError::Db {
             reason: e.to_string(),
         })?
-        .is_some()
     {
-        tracing::debug!("builtin-host catalogue already seeded; skipping");
-        return Ok(());
-    }
-
-    // Insert the class-23 `builtin-host` catalogue row. `child_component_ids`
-    // starts empty; slices 2–12 append the minted host.* component ids.
-    // No `05:validator` consumer tag — builtins skip Q1 and graduate directly
-    // to `validated`, so the SEC-01 delivery filter surfaces them immediately.
-    let row = NewPgExtensionCatalogue {
-        tenant_id: tenant_id.to_string(),
-        user_id: SEED_USER.to_string(),
-        agent_id: SEED_AGENT.to_string(),
-        project_id: SEED_PROJECT.to_string(),
-        name: BUILTIN_HOST_CATALOGUE_NAME.to_string(),
-        description: "Built-in host.* capability stack (Step 27).".into(),
-        version: "1.0".into(),
-        overview_doc: "Container for the built-in host.* Tools, ToolSkills, \
-                       PythonCode formatters, leaf Skills, and Recipes that \
-                       back the Orchestrator↔Executioner surface."
-            .into(),
-        task_groups: serde_json::json!([]),
-        child_component_ids: Vec::new(),
-        intent_index: None,
-        prior_knowledge_content: None,
-        override_prompt_creation: false,
-        consumer_tags: vec!["02:orchestrator".into()],
-        intent_examples: None,
-        source: "system".into(),
-        dependency_registry: None,
+        Some(existing) => existing.id,
+        None => {
+            let row = NewPgExtensionCatalogue {
+                tenant_id: tenant_id.to_string(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: BUILTIN_HOST_CATALOGUE_NAME.to_string(),
+                description: "Built-in host.* capability stack (Step 27).".into(),
+                version: "1.0".into(),
+                overview_doc: "Container for the built-in host.* Tools, ToolSkills, \
+                               PythonCode formatters, leaf Skills, and Recipes that \
+                               back the Orchestrator↔Executioner surface."
+                    .into(),
+                task_groups: json!([]),
+                child_component_ids: Vec::new(),
+                intent_index: None,
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            };
+            let id = stores
+                .catalogue
+                .insert(row)
+                .await
+                .map_err(|e| SeedBuiltinHostError::Db {
+                    reason: e.to_string(),
+                })?;
+            // Bypass Q1 pending: graduate the builtin to `validated` directly.
+            stores
+                .catalogue
+                .update_validation_status(
+                    tenant_id,
+                    SEED_USER,
+                    SEED_AGENT,
+                    SEED_PROJECT,
+                    id,
+                    "validated",
+                )
+                .await
+                .map_err(|e| SeedBuiltinHostError::Db {
+                    reason: e.to_string(),
+                })?;
+            id
+        }
     };
-    let id = cat_store
-        .insert(row)
-        .await
-        .map_err(|e| SeedBuiltinHostError::Db {
-            reason: e.to_string(),
-        })?;
 
-    // Bypass Q1 pending: graduate the builtin to `validated` directly.
-    cat_store
-        .update_validation_status(
+    // Slice 2 — Step 27.1 host.resolve_intent (5 components).
+    let mut child_ids = Vec::new();
+    child_ids.extend(seed_host_resolve_intent(&stores).await?);
+
+    // Register the minted component ids on the `builtin-host` catalogue row.
+    stores
+        .catalogue
+        .append_child_component_ids(
             tenant_id,
             SEED_USER,
             SEED_AGENT,
             SEED_PROJECT,
-            id,
-            "validated",
+            cat_id,
+            &child_ids,
         )
         .await
         .map_err(|e| SeedBuiltinHostError::Db {
             reason: e.to_string(),
         })?;
 
-    tracing::debug!(catalogue_id = %id, "seeded builtin-host catalogue");
+    tracing::debug!(
+        catalogue_id = %cat_id,
+        child_components = child_ids.len(),
+        "seeded builtin-host stack"
+    );
     Ok(())
+}
+
+/// Step 27.1 — `host.resolve_intent` (Phase 2 of the basic-mode main process).
+///
+/// Seeds the 5-component stack idempotently and returns the minted ids in
+/// order: `[tool, tool_skill, python_code, skill, recipe]`. Per-component
+/// `consumer_tags` (fork-locked): Tool + ToolSkill = `["00:rusty",
+/// "02:orchestrator"]`; PythonCode = `["01:monty","02:orchestrator"]`; leaf
+/// Skill = `["02:orchestrator","05:validation"]` (the fork-1 distinct tag);
+/// Recipe = `["02:orchestrator"]`. None carry `05:validator` (builtins skip
+/// Q1). The Recipe `steps` JSON is the fork-4 canonical shape:
+/// `{llm_call_required, tier, rust_steps:[{tool,tool_skill}],
+/// orchestrator_steps:[{python_code}]}`.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_resolve_intent(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let tool_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host.resolve_intent".to_string(),
+                description: "Resolve a user input against the intent system. \
+                              Returns a match descriptor {matched, component_id, \
+                              intent_id, score, disambiguation}. Phase 2 of the \
+                              basic-mode main process."
+                    .to_string(),
+                param_schema: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "user_input": {"type": "string", "description": "The user's prompt text"},
+                        "chat_history": {"type": "array", "description": "Recent turn messages (few tokens)"}
+                    },
+                    "required": ["user_input"]
+                })),
+                param_template: Some(json!({"user_input": ""})),
+                effect_type: "read".to_string(),
+                preconditions: None,
+                error_handling: Some(
+                    "No match → {matched: false}; never raises.".to_string(),
+                ),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "host.resolve_intent",
+        )
+        .await?;
+
+    let tool_skill_id = stores
+        .upsert_tool_skill(
+            NewPgToolSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "ts-host-resolve-intent".to_string(),
+                description: "Resolve user input to a component id via the intent system."
+                    .to_string(),
+                content: "Call `host.resolve_intent(user_input=<user text>)` at the start \
+                          of every turn. Returns {matched, component_id, intent_id, score, \
+                          disambiguation}. If matched is true, hand the component_id to \
+                          `host.compose_orchestrator` (Matching-Mode). If false, fall through \
+                          to the Non-Matching-Mode routine. `matched=false` is a normal result, \
+                          not an error."
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                tool_name: Some("host.resolve_intent".to_string()),
+                param_schema: Some(json!([
+                    {"name": "user_input", "param_type": "string", "required": true, "description": "User prompt text"},
+                    {"name": "chat_history", "param_type": "array", "required": false, "description": "Recent messages for context"}
+                ])),
+                param_template: Some(json!({"user_input": "{{user_input}}"})),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "ts-host-resolve-intent",
+        )
+        .await?;
+
+    let python_code_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-resolve-intent".to_string(),
+                description: "Orchestrator step: resolve user input to a component id \
+                              (Phase 2)."
+                    .to_string(),
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports, no \
+                          network, no DB.\n# IBS bakes in {{vars.slotN}} values before \
+                          execution.\nresult = host.resolve_intent(user_input=\"{{vars.slot0}}\")\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-resolve-intent",
+        )
+        .await?;
+
+    let skill_id = stores
+        .upsert_skill(
+            NewPgSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "skill-host-resolve-intent".to_string(),
+                description: "Leaf skill: how to resolve user input to a component id \
+                              (Phase 2)."
+                    .to_string(),
+                body: "Use `ts-host-resolve-intent` at the start of every turn to decide \
+                       whether a recipe/instruction matches. Inspect `matched` in the \
+                       result. If true, hand the `component_id` to `host.compose_orchestrator` \
+                       (Matching-Mode). If false, fall through to the Non-Matching-Mode \
+                       routine. Never treat `matched=false` as an error — it means the LLM \
+                       path is required."
+                    .to_string(),
+                class_code: 1,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
+                intent_examples: json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "skill-host-resolve-intent",
+        )
+        .await?;
+
+    let recipe_id = stores
+        .upsert_recipe(
+            NewPgRecipe {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host-resolve-intent".to_string(),
+                description: "Resolve user input to a component id (Phase 2). Tier 0 — \
+                              no LLM."
+                    .to_string(),
+                trigger: None,
+                steps: json!({
+                    "llm_call_required": false,
+                    "tier": 0,
+                    "rust_steps": [
+                        {"tool": "host.resolve_intent", "tool_skill": "ts-host-resolve-intent"}
+                    ],
+                    "orchestrator_steps": [
+                        {"python_code": "pc-host-resolve-intent"}
+                    ]
+                }),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into()],
+                intent_examples: Some(json!([
+                    "what can you do", "run git status", "read the readme",
+                    "search memory for x", "list files", "show me the plan",
+                    "grep for foo", "write a file", "parse this json", "what time is it"
+                ])),
+                source: "system".into(),
+                step_descriptions: Some(json!([
+                    {"step": 0, "action": "resolve_intent", "desc": "Resolve user input to a component id or no-match."}
+                ])),
+                variants: None,
+                dependency_registry: None,
+            },
+            "host-resolve-intent",
+        )
+        .await?;
+
+    Ok(vec![
+        tool_id,
+        tool_skill_id,
+        python_code_id,
+        skill_id,
+        recipe_id,
+    ])
 }
