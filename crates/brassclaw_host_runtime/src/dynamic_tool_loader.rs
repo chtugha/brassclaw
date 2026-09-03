@@ -300,3 +300,220 @@ unsafe fn invoke_via_abi(
         reason: "ok=true but result missing".to_string(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    /// A self-contained cdylib fixture: std-only (no serde_json dep), exports the
+    /// two `brassclaw_*` ABI symbols, and echoes the request by embedding the raw
+    /// request JSON as the `"request"` value of a `CdylibResponse::ok` payload.
+    /// Compiled in a tempdir by `rustc --crate-type cdylib` so the loader test
+    /// exercises the real dlopen/bind/invoke/unload path.
+    const FIXTURE_SOURCE: &str = r##"
+use std::alloc::{Layout, alloc, dealloc};
+use std::os::raw::c_char;
+use std::ptr::copy_nonoverlapping;
+use std::str::from_utf8;
+
+#[no_mangle]
+pub extern "C" fn brassclaw_tool_invoke(
+    payload: *const c_char,
+    payload_len: usize,
+    out: *mut *mut c_char,
+    out_len: *mut usize,
+) -> i32 {
+    if payload.is_null() || out.is_null() || out_len.is_null() {
+        return 1;
+    }
+    let req_bytes = unsafe { std::slice::from_raw_parts(payload as *const u8, payload_len) };
+    let req_str = match from_utf8(req_bytes) {
+        Ok(s) => s,
+        Err(_) => return 2,
+    };
+    let response = format!("{{\"ok\":true,\"result\":{{\"echoed\":true,\"request\":{}}}}}", req_str);
+    let resp_bytes = response.into_bytes();
+    let len = resp_bytes.len();
+    let layout = match Layout::from_size_align(len, 1) {
+        Ok(l) => l,
+        Err(_) => return 3,
+    };
+    let ptr = unsafe { alloc(layout) };
+    if ptr.is_null() {
+        return 4;
+    }
+    unsafe { copy_nonoverlapping(resp_bytes.as_ptr(), ptr, len) };
+    unsafe {
+        *out = ptr as *mut c_char;
+        *out_len = len;
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn brassclaw_tool_drop_out(buf: *mut c_char, len: usize) {
+    if buf.is_null() {
+        return;
+    }
+    let layout = match Layout::from_size_align(len, 1) {
+        Ok(l) => l,
+        Err(_) => return,
+    };
+    unsafe { dealloc(buf as *mut u8, layout) };
+}
+"##;
+
+    /// Compile the fixture cdylib into a fresh tempdir. Returns the tempdir
+    /// (kept alive by the caller so the `.dylib`/`.so`/`.dll` survives the
+    /// dlopen) and the artifact path, or `None` to skip the test when `rustc`
+    /// is unavailable or the compile fails.
+    fn compile_fixture_cdylib() -> Option<(tempfile::TempDir, PathBuf)> {
+        let dir = tempfile::tempdir().ok()?;
+        let src = dir.path().join("fixture_echo.rs");
+        std::fs::write(&src, FIXTURE_SOURCE).ok()?;
+
+        let ext = if cfg!(target_os = "macos") {
+            "dylib"
+        } else if cfg!(target_os = "windows") {
+            "dll"
+        } else {
+            "so"
+        };
+        let out = dir.path().join(format!("fixture_echo.{ext}"));
+
+        let (src_str, out_str) = (src.to_str()?, out.to_str()?);
+        let output = Command::new("rustc")
+            .args([
+                "--edition",
+                "2021",
+                "--crate-type",
+                "cdylib",
+                "-o",
+                out_str,
+                src_str,
+            ])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            eprintln!(
+                "skipping cdylib loader tests: rustc fixture compile failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return None;
+        }
+        Some((dir, out))
+    }
+
+    #[test]
+    fn load_invoke_unload_round_trip() {
+        let Some((_dir, fixture)) = compile_fixture_cdylib() else {
+            eprintln!("skipping load_invoke_unload_round_trip: fixture cdylib unavailable");
+            return;
+        };
+        let mut loader = DynamicToolLoader::new();
+        assert!(!loader.is_loaded("host.fixture_echo"));
+        assert_eq!(loader.loaded_count(), 0);
+
+        loader
+            .load(CdylibLoadDirective::new("host.fixture_echo", &fixture))
+            .expect("load fixture cdylib");
+        assert!(loader.is_loaded("host.fixture_echo"));
+        assert_eq!(loader.loaded_count(), 1);
+
+        let result = loader
+            .invoke(
+                "host.fixture_echo",
+                serde_json::json!({"x": 2, "name": "monty"}),
+            )
+            .expect("invoke fixture echo");
+
+        assert_eq!(result["echoed"], serde_json::json!(true));
+        assert_eq!(result["request"]["tool"], serde_json::json!("host.fixture_echo"));
+        assert_eq!(result["request"]["args"]["x"], serde_json::json!(2));
+        assert_eq!(result["request"]["args"]["name"], serde_json::json!("monty"));
+
+        loader.unload("host.fixture_echo").expect("unload fixture");
+        assert!(!loader.is_loaded("host.fixture_echo"));
+        assert_eq!(loader.loaded_count(), 0);
+    }
+
+    #[test]
+    fn load_replaces_existing_binding() {
+        let Some((_dir, fixture)) = compile_fixture_cdylib() else {
+            eprintln!("skipping load_replaces_existing_binding: fixture cdylib unavailable");
+            return;
+        };
+        let mut loader = DynamicToolLoader::new();
+        loader
+            .load(CdylibLoadDirective::new("host.fixture_echo", &fixture))
+            .expect("first load");
+        loader
+            .load(CdylibLoadDirective::new("host.fixture_echo", &fixture))
+            .expect("re-load replaces binding");
+        assert_eq!(loader.loaded_count(), 1);
+        let result = loader
+            .invoke("host.fixture_echo", serde_json::json!({"x": 9}))
+            .expect("invoke after re-load");
+        assert_eq!(result["request"]["args"]["x"], serde_json::json!(9));
+    }
+
+    #[test]
+    fn unload_all_clears_every_loaded_tool() {
+        let Some((_dir, fixture)) = compile_fixture_cdylib() else {
+            eprintln!("skipping unload_all_clears_every_loaded_tool: fixture cdylib unavailable");
+            return;
+        };
+        let mut loader = DynamicToolLoader::new();
+        loader
+            .load(CdylibLoadDirective::new("host.fixture_echo", &fixture))
+            .expect("load echo");
+        loader
+            .load(CdylibLoadDirective::new("host.fixture_echo_alt", &fixture))
+            .expect("load echo alt (same artifact, second name)");
+        assert_eq!(loader.loaded_count(), 2);
+        loader.unload_all();
+        assert_eq!(loader.loaded_count(), 0);
+        assert!(!loader.is_loaded("host.fixture_echo"));
+        assert!(!loader.is_loaded("host.fixture_echo_alt"));
+    }
+
+    #[test]
+    fn invoke_not_loaded_returns_not_loaded_error() {
+        let loader = DynamicToolLoader::new();
+        let err = loader
+            .invoke("host.never_loaded", serde_json::json!({}))
+            .expect_err("invoking an unloaded tool must error");
+        assert!(
+            matches!(err, DynamicToolLoaderError::NotLoaded { .. }),
+            "expected NotLoaded, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn unload_not_loaded_returns_not_loaded_error() {
+        let mut loader = DynamicToolLoader::new();
+        let err = loader
+            .unload("host.never_loaded")
+            .expect_err("unloading an unloaded tool must error");
+        assert!(
+            matches!(err, DynamicToolLoaderError::NotLoaded { .. }),
+            "expected NotLoaded, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn load_missing_file_returns_load_error() {
+        let mut loader = DynamicToolLoader::new();
+        let bogus = Path::new("/nonexistent/brassclaw/does-not-exist-cdylib.dylib");
+        let err = loader
+            .load(CdylibLoadDirective::new("host.bogus", bogus))
+            .expect_err("loading a missing file must error");
+        assert!(
+            matches!(err, DynamicToolLoaderError::Load { .. }),
+            "expected Load, got {err:?}"
+        );
+        assert!(!loader.is_loaded("host.bogus"));
+    }
+}

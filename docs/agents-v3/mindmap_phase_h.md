@@ -1212,3 +1212,22 @@ plumbing.
   no pedantic clippy, no forbid(unsafe_code). `cargo clippy -p brassclaw_host_runtime --all-targets
   -- -D warnings` green BOTH default + `--features postgres`; `cargo test --lib` → 185 passed / 0
   failed (loader has no own tests yet — those are slice 4's fixture cdylib round-trip).
+- **C.3 SLICE 4 — fixture cdylib + loader round-trip unit tests (DONE + shipped `1f093161`/slice-3 then
+  this slice-4 commit).** Added `#[cfg(test)] mod tests` to dynamic_tool_loader.rs. The fixture is a
+  SELF-CONTAINED cdylib (std-only — no serde_json dep, so it compiles with bare `rustc --crate-type
+  cdylib` and no --extern): exports `#[no_mangle] extern "C" fn brassclaw_tool_invoke` +
+  `brassclaw_tool_drop_out` matching the ABI; echoes the request by embedding the raw request JSON as
+  the `"request"` value of a `CdylibResponse::ok` payload via `format!` (no JSON parse needed — the
+  request is already valid JSON so embedding it verbatim yields valid JSON). Allocates the response
+  buffer with `std::alloc::alloc`/`dealloc` (Layout from_size_align(len,1)). `compile_fixture_cdylib`
+  writes the source to a `tempfile::tempdir()`, runs `rustc --edition 2021 --crate-type cdylib -o
+  <fixture_echo.{dylib|so|dll}> <src>`, returns `Option<(TempDir, PathBuf)>` — None (skip) if rustc
+  unavailable or compile fails; the TempDir is held by the test so the artifact survives the dlopen.
+  6 tests: `load_invoke_unload_round_trip` (THE end-to-end proof: dlopen + bind + JSON ABI invoke +
+  assert echoed result + request echo + unload + is_loaded/loaded_count transitions),
+  `load_replaces_existing_binding` (re-load same name → count stays 1 + invoke works),
+  `unload_all_clears_every_loaded_tool` (two names same artifact → count 2 → unload_all → 0),
+  `invoke_not_loaded_returns_not_loaded_error`, `unload_not_loaded_returns_not_loaded_error`,
+  `load_missing_file_returns_load_error` (bogus path → Load variant + not loaded). **ALL 6 PASS** —
+  the real dlopen/bind/invoke/unload mechanics are proven on this host (rustc 1.95, macOS .dylib).
+  clippy --all-targets green (default); lib test count now 191 (185 prior + 6 new).
