@@ -1879,6 +1879,36 @@ plumbing.
   mirroring execute_tier_zero_channel's per-step call — FEASIBLE, no Monty-VM
   change, no new eval primitive. Nesting is safe: execute_code creates its OWN
   MontyRun + tracker (separate from the paused outer orchestrator MontyRun); it
-  shares thread/llm/effects/leases. **NEXT: lock the structure-shape fork
-  (per-step nested run_program over a structured steplist vs single
-  pre-assembled code string) + the slicing fork, then implement C.4.5.17.**
+  shares thread/llm/effects/leases. **STRUCTURE-SHAPE FORK LOCKED = Enhanced-C
+  (2026-09-03):** composer returns BOTH a structured steplist AND a pre-assembled
+  runnable form; the KEY REFINEMENT is the **Skills role**: the `skills` array is
+  handed to Monty as a first-class array that sits in the orchestrator's
+  namespace and is USED/UTILIZED WHILE Monty works through the task's steps.
+  Skills carry the EXACT USAGE of Tools, so a steplist step does NOT need to
+  contain that level of tool-call detail — steps stay high-level (`instructions`
+  + `executable_code` + `tool_bindings`), and the granular "how to call each
+  Tool" lives in the Skills array Monty consults on demand. Canonical
+  `ComposedProgram { skills: Vec<SkillRef>, steplist: Vec<ComposedStep
+  {step_id, instructions, executable_code, tool_bindings}>, rust_directives:
+  Vec<CdylibLoadDirective>, variables: Map, assembled_program: String }`. The
+  Rust `host.compose_orchestrator` handler: fetch recipe/component → IBS
+  `build_instruction` (split rust/orchestrator) → resolve includes → bind
+  variables ({{vars}} baked into executable_code) → build CdylibLoadDirectives
+  (rust_directives → DynamicToolLoader, applied Rust-side before return) →
+  collect referenced Skills → assemble steplist + assembled_program → return
+  ComposedProgram (serialized to a Monty dict). **STILL OPEN (run path +
+  slicing):** (1) does Monty run N `host.run_program(step.executable_code)`
+  calls (iterate steplist, consult skills per step) OR one
+  `host.run_program(assembled_program)` (steplist+skills as structural/ref
+  context)? "working through the tasks steps" leans iterate; "run the returned
+  orchestrator_program directly" (seed) leans single. (2) slicing: one coherent
+  slice w/ per-part commits vs 17a-17e sub-slices w/ fork round-trips. **NEXT:
+  ask these 2, then implement C.4.5.17.** **RUN-PATH FORK LOCKED = A
+  (2026-09-03):** Monty iterates `composed.steplist`, consults
+  `composed.skills[i]` for exact tool usage, and calls
+  `host.run_program(step.executable_code)` ONCE PER STEP (N nested
+  execute_code runs; fresh ISOLATION per step — mirrors
+  execute_tier_zero_channel). **SLICING = A** (per user's repeated steer:
+  one coherent slice, per-part commits, keep going past commits, no inter-part
+  fork round-trips). All C.4.5.17 forks now locked (Enhanced-C structure + A run
+  path + A slicing). **IMPLEMENTING.**
