@@ -309,6 +309,9 @@ pub(crate) async fn seed_builtin_host_components(
     // Slice 7 — Step 27.7.4 host.validate_component (4 components, no Recipe).
     child_ids.extend(seed_host_validate_component(&stores).await?);
 
+    // Slice 8 — Step 27.9.1 host.check_signals (4 components, no Recipe).
+    child_ids.extend(seed_host_check_signals(&stores).await?);
+
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
         .catalogue
@@ -1018,6 +1021,125 @@ async fn seed_host_fetch_component(
                 validation_status: "validated".into(),
             },
             "skill-host-fetch-component",
+        )
+        .await?;
+
+    Ok(vec![tool_id, tool_skill_id, python_code_id, skill_id])
+}
+
+/// Step 27.9.1 — `host.check_signals` (stop/suspend/inject poll).
+///
+/// A 4-component leaf-tool stack (Tool + ToolSkill + PythonCode + leaf Skill —
+/// no Recipe). The ONLY surviving VM-control verb: external signals
+/// (stop/suspend/inject) arrive asynchronously from outside the Orchestrator's
+/// own step sequence, so a poll verb is needed. The five other VM-control verbs
+/// (emit_event, save_checkpoint, transition_to, check_budget, log_budget_warning)
+/// are RETIRED (Q-D) — the Orchestrator owns its own thread/run state.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_check_signals(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let tool_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host.check_signals".to_string(),
+                description: "Poll the thread signal channel. Returns 'stop' on \
+                              stop/suspend, {inject: msg} on an injected message, or \
+                              None when clear."
+                    .to_string(),
+                param_schema: Some(json!({"type": "object", "properties": {}, "required": []})),
+                param_template: Some(json!({})),
+                effect_type: "read".to_string(),
+                preconditions: Some("Signal receiver wired.".to_string()),
+                error_handling: Some("No signal → None; never raises.".to_string()),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "host.check_signals",
+        )
+        .await?;
+
+    let tool_skill_id = stores
+        .upsert_tool_skill(
+            NewPgToolSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "ts-host-check-signals".to_string(),
+                description: "Poll the thread signal channel for stop/suspend/inject."
+                    .to_string(),
+                content: "Call `host.check_signals()` between orchestrator steps. On \
+                          'stop', halt cleanly. On {inject: msg}, fold the message in and \
+                          continue. On None, proceed."
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                tool_name: Some("host.check_signals".to_string()),
+                param_schema: Some(json!([])),
+                param_template: Some(json!({})),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "ts-host-check-signals",
+        )
+        .await?;
+
+    let python_code_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-check-signals".to_string(),
+                description: "Orchestrator step: poll the thread signal channel for \
+                              stop/suspend/inject."
+                    .to_string(),
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
+                          sig = host.check_signals()\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-check-signals",
+        )
+        .await?;
+
+    let skill_id = stores
+        .upsert_skill(
+            NewPgSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "skill-host-check-signals".to_string(),
+                description: "Poll for stop/suspend/inject signals between steps."
+                    .to_string(),
+                body: "Call `ts-host-check-signals` between orchestrator steps. On 'stop', \
+                       halt cleanly. On {inject: msg}, fold the message in and continue. \
+                       On None, proceed."
+                    .to_string(),
+                class_code: 1,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
+                intent_examples: json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "skill-host-check-signals",
         )
         .await?;
 

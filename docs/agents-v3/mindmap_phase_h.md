@@ -1000,3 +1000,21 @@ plumbing.
   resolve_component_by_name / validate_component). **Verified green both configs** (incremental).
   Next: slice 8 = 27.9.1 `host.check_signals` (4-component leaf-tool stack; effect_type `read`; the
   ONLY surviving VM-control verb — stop/suspend/inject poll).
+- **C.2 SLICE 8 — 27.9.1 `host.check_signals` 4-COMPONENT LEAF-TOOL STACK (DONE + shipped).** The
+  ONLY surviving VM-control verb (the five others — emit_event, save_checkpoint, transition_to,
+  check_budget, log_budget_warning — RETIRED Q-D because the Orchestrator owns its own thread/run
+  state; external stop/suspend/inject arrive asynchronously from outside the Orchestrator's step
+  sequence, so a poll verb is genuinely needed). Tool `host.check_signals` effect_type `read`;
+  param_schema `{"type":"object","properties":{},"required":[]}` (no params); param_template `{}`;
+  preconditions "Signal receiver wired." + error_handling "No signal → None; never raises." (both
+  Some); consumer_tags `["00:rusty","02:orchestrator"]`. ToolSkill ts-host-check-signals (tool_name
+  Some, param_schema `[]`, param_template `{}`); PythonCode pc-host-check-signals
+  (`sig = host.check_signals()`); leaf skill skill-host-check-signals (05:validation, class_code 1,
+  body: on 'stop' halt, on {inject: msg} fold+continue, on None proceed). All source=system +
+  validated. `seed_host_check_signals` returns 4 ids, wired after validate_component. **Verified
+  green both configs** (incremental). Next: slice 9 = 27.10.3 `host.kohai_complete` (the LAST
+  net-new host.* Tool — Kohai-mediated LLM completion; 5-component stack incl. a Recipe). This is
+  the LLM surface: Rust↔LLM never communicate directly; the Orchestrator composes the prompt +
+  prefix-placeholder → Kohai saves → optional Sempai optimize → Kohai adds provider prefix → Kohai
+  calls first_party_tools/http → Kohai saves answer → answer back to Orchestrator. Need to read the
+  27.10 + 27.10.3 spec block next.
