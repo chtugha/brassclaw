@@ -222,6 +222,19 @@ export function fetchMontyVmStatus() {
   return apiFetch("/api/settings/monty-vm/status");
 }
 
+// Step C.4 — Operator-level mode-driven security posture (per-layer overrides).
+// Wire type is the bare SecurityModeConfig (six `*_override` fields, each
+// "auto"|"on"|"off"); GET returns it directly, PUT accepts + returns it.
+export function fetchSecuritySettings() {
+  return apiFetch("/api/settings/security");
+}
+export function updateSecuritySettings(payload) {
+  return apiFetch("/api/settings/security", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 // Phase 6 — Chat preferences (ai_before_user etc.).
 export function updateChatPreference(key, value) {
   return apiFetch(`/api/chat/preferences/${encodeURIComponent(key)}`, {

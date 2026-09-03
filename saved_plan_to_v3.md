@@ -5874,6 +5874,27 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   skills-db`) all green. No DB unit test (DB-backed; consistent with the
 >   monty-vm/user-preference precedent — CRUD is exercised at the integration
 >   tier, not here).
+>   **Slice 4 DONE:** WebUI SPA security panel. New
+>   `crates/brassclaw_webui_v2_static/static/js/pages/settings/components/security-tab.js`
+>   — `SecurityTab` renders the six layers as three-state `Auto`/`On`/`Off`
+>   segmented toggles (matching the `monty-vm-tab.js` pattern: `Card` +
+>   `Button` + `useT`, load-on-mount, save-puts-the-whole-config, reset-all-to-Auto,
+>   skeleton + error banner + saved-ok). `settings-api.js` gains
+>   `fetchSecuritySettings`/`updateSecuritySettings` (`GET`/`PUT`
+>   `/api/settings/security` — wire type is the bare `SecurityModeConfig`, no
+>   wrapper). `settings-schema.js` registers the `security` tab; `settings-page.js`
+>   imports `SecurityTab` + mounts it in `tabContent`. i18n keys added to `en.js`
+>   only (`settings.security` + the `security.*` block) — consistent with the
+>   established en-only convention (`montyVm.*` is en-only too); the `translate()`
+>   fallback (`lang → en → raw key`) covers the other 10 locales. `build.rs`
+>   globs `static/` recursively so the new file is auto-embedded via
+>   `include_bytes!`; `cargo check -p brassclaw_webui_v2_static` clean and the
+>   generated asset table contains `security-tab.js`. **C.4 COMPLETE** — data
+>   (V068 + `SecurityModeConfig`/`ResolvedSecurityLayers`/`SecurityConfigSource` +
+>   `LoopSecurityPort`), DB store (`PgSecuritySettingsStore`), WebUI backend
+>   route (`GET`/`PUT /api/settings/security`), and SPA panel all shipped. The
+>   mode-gated wrapper enforcement + bind-time namespace filtering land in C.6
+>   (the driver — the first consumer of the config via `LoopSecurityPort`).
 > - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
 >   (receive input → `host.resolve_intent` → dispatch). Match →
 >   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls

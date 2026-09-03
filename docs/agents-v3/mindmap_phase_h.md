@@ -1351,3 +1351,28 @@ plumbing.
   `brassclaw_reborn_composition` (default + `--features skills-db`). No DB unit test (DB-backed — CRUD
   exercised at the integration tier, consistent with monty-vm/user-preference precedent). Disk
   90%/20Gi — at the line, no clean. Next: C.4 slice 4 (WebUI SPA security panel).
+
+- **C.4 slice 4 — WebUI SPA security panel (DONE; C.4 COMPLETE).** SPA is vanilla JS
+  (ES modules + `html` tagged template + React hooks), not a bundler build — files served
+  straight from `brassclaw_webui_v2_static/static/` (build.rs globs recursively + `include_bytes!`s
+  every file; no JS syntax validation at build time). Precedent: `monty-vm-tab.js` (`Card` +
+  `Button` + `useT`, load-on-mount, save-puts-whole-config, skeleton/error/saved-ok). New
+  `components/security-tab.js` — `SecurityTab` renders the 6 layers as three-state `Auto`/`On`/`Off`
+  segmented toggles (`OVERRIDE_VALUES = ["auto","on","off"]`, active = primary Button, others =
+  secondary), each row = label + desc + toggle, plus Save + Reset-all-to-Auto. `LAYERS` array maps
+  the 6 `*_override` field keys → i18n label/desc keys. Wire type is the BARE `SecurityModeConfig`
+  (handler returns `Json<SecurityModeConfig>`, no `.settings` wrapper) so `fetchSecuritySettings()`
+  → config directly, `updateSecuritySettings(config)` PUTs + returns it. `settings-api.js` adds the
+  2 fns (`/api/settings/security` GET/PUT). `settings-schema.js` registers `{ id: "security",
+  labelKey: "settings.security", icon: "shield" }`. `settings-page.js` imports `SecurityTab`
+  (alphabetical: after ScaffoldTab, before SkillsTab) + `security: html\`<${SecurityTab}
+  searchQuery=${searchQuery} />\`` in tabContent. i18n: added `settings.security` + `security.*`
+  block (title/intro/6 label+desc pairs/auto/on/off/resetAll/saved/failedLoad) to `en.js` ONLY —
+  matches the en-only convention (`montyVm.*` is en-only; verified `montyVm.status` appears in no
+  other locale). `translate()` fallback `packs[lang]?.[key] || packs["en"]?.[key] || key` covers the
+  other 10 locales (ar/de/es/fr/hi/ja/ko/pt-BR/uk/zh-CN) → they show English for the new tab until
+  translated. `cargo check -p brassclaw_webui_v2_static` clean; generated `assets_generated.rs`
+  contains `security-tab.js` (build.rs reglobbed). **C.4 COMPLETE** — all 4 slices shipped (V068 +
+  turns types + port; PgSecuritySettingsStore; backend route; SPA panel). Mode-gated wrapper
+  enforcement + bind-time namespace filtering deferred to C.6 (the driver, first consumer via
+  `LoopSecurityPort`). Next: C.5 (basic-mode orchestrator script).

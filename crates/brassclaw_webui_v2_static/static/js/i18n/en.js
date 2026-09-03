@@ -189,6 +189,7 @@ registerPack("en", {
   "settings.orchestrator": "Orchestrator",
   "settings.scaffold": "Scaffold",
   "settings.montyVm": "Monty VM",
+  "settings.security": "Security",
   "settings.validationQueue": "Validation Queue",
   "settings.reliability": "Reliability",
 
@@ -1001,6 +1002,28 @@ registerPack("en", {
   "montyVm.confirmTitle": "Restart Monty VM?",
   "montyVm.confirmDesc": "Active work may be interrupted. The runtime will return to the running state once the restart completes.",
   "montyVm.confirmOk": "Confirm restart",
+
+  // Settings — Security tab (Step C.4 — mode-driven per-layer overrides).
+  "security.title": "Security layers",
+  "security.intro": "Each layer wraps capability calls. Auto defers to the per-turn mode: Matching (intent matched a validated component) → wrapper off; Non-Matching (an LLM is involved) → wrapper on. On / Off forces the layer regardless of mode. Event emission is on in both modes (observability, not a gate).",
+  "security.policy": "Policy engine",
+  "security.policyDesc": "Capability policy enforcement around each tool call.",
+  "security.leases": "Capability leases",
+  "security.leasesDesc": "Acquire/release leases that gate sensitive capabilities.",
+  "security.gate": "Approval gates",
+  "security.gateDesc": "Interactive approval gates before destructive actions.",
+  "security.eventEmission": "Event emission",
+  "security.eventEmissionDesc": "Emit observability events for capability calls (on in both modes).",
+  "security.sensitiveToolScoping": "Sensitive-tool self-scoping",
+  "security.sensitiveToolScopingDesc": "Tools self-scope their access to sensitive inputs on the LLM path.",
+  "security.namespaceFiltering": "Namespace filtering",
+  "security.namespaceFilteringDesc": "Bind-time filtering of tool namespaces on the LLM path.",
+  "security.auto": "Auto",
+  "security.on": "On",
+  "security.off": "Off",
+  "security.resetAll": "Reset all to Auto",
+  "security.saved": "Saved",
+  "security.failedLoad": "Failed to load security settings: {message}",
 
   // Settings — Validation Queue tab (Phase 6).
   "validationQueue.failedLoad": "Failed to load validation queue: {message}",

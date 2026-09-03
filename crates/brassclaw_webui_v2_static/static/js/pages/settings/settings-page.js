@@ -15,6 +15,7 @@ import { ReliabilityTab } from "./components/reliability-tab.js";
 import { RestartBanner } from "./components/restart-banner.js";
 import { SafetyPanel } from "./components/safety-panel.js";
 import { ScaffoldTab } from "./components/scaffold-tab.js";
+import { SecurityTab } from "./components/security-tab.js";
 import { SkillsTab } from "./components/skills-tab.js";
 import { TokensTab } from "./components/tokens-tab.js";
 import { ToolsTab } from "./components/tools-tab.js";
@@ -81,6 +82,7 @@ export function SettingsPage() {
     orchestrator: html`<${OrchestratorTab} searchQuery=${searchQuery} />`,
     scaffold: html`<${ScaffoldTab} searchQuery=${searchQuery} />`,
     "monty-vm": html`<${MontyVmTab} searchQuery=${searchQuery} />`,
+    security: html`<${SecurityTab} searchQuery=${searchQuery} />`,
     "validation-queue": html`<${ValidationQueueTab} searchQuery=${searchQuery} />`,
     reliability: html`<${ReliabilityTab} />`,
     interceptor: html`<${InterceptorTab} searchQuery=${searchQuery} />`,
