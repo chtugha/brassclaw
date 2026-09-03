@@ -306,6 +306,9 @@ pub(crate) async fn seed_builtin_host_components(
     // Slice 6 — Step 27.7.3 host.resolve_component_by_name (4 components, no Recipe).
     child_ids.extend(seed_host_resolve_component_by_name(&stores).await?);
 
+    // Slice 7 — Step 27.7.4 host.validate_component (4 components, no Recipe).
+    child_ids.extend(seed_host_validate_component(&stores).await?);
+
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
         .catalogue
@@ -1015,6 +1018,158 @@ async fn seed_host_fetch_component(
                 validation_status: "validated".into(),
             },
             "skill-host-fetch-component",
+        )
+        .await?;
+
+    Ok(vec![tool_id, tool_skill_id, python_code_id, skill_id])
+}
+
+/// Step 27.7.4 — `host.validate_component` (kohai/sempai → Q1 pending queue).
+///
+/// A 4-component leaf-tool stack (Tool + ToolSkill + PythonCode + leaf Skill —
+/// no Recipe). The Tool row deliberately KEEPS the `05:validator` consumer tag:
+/// it is greyed OUT of the LLM tool list (`NOT ('05:validator' = ANY(
+/// consumer_tags))`) because `validate_component` is a kohai/sempai-path tool
+/// that must not be advertised to the LLM — yet it remains bindable BY NAME via
+/// a recipe's `rust_steps` (by-name compose keys on `validation_status=
+/// 'validated'`, NOT the consumer-tag grey-out). The leaf skill uses the fork-1
+/// `05:validation` tag (the distinct retrievable validated-builtin marker).
+#[allow(clippy::too_many_lines)]
+async fn seed_host_validate_component(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let tool_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host.validate_component".to_string(),
+                description: "Intercept a self-improvement component write. Protected \
+                              titles (orchestrator:main, prompt:codeact_preamble) become a \
+                              Q1 pending update-candidate (llm_audit_required for class \
+                              10/50) instead of a direct write. Returns {queued, reason?, \
+                              candidate_id?}."
+                    .to_string(),
+                param_schema: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "Component title"},
+                        "content": {"type": "string", "description": "Proposed component content"},
+                        "doc_type": {"type": "string", "description": "skill|recipe|tool_skill|lesson|spec|plan|note"},
+                        "metadata": {"type": "object", "description": "Extra metadata (non-overriding on validation fields)"}
+                    },
+                    "required": ["title", "content"]
+                })),
+                param_template: Some(json!({"title": "", "content": "", "doc_type": "note", "metadata": {}})),
+                effect_type: "write".to_string(),
+                preconditions: Some("Store wired.".to_string()),
+                error_handling: Some(
+                    "Empty payload → {queued:false,reason:'empty payload'}; no store → \
+                     {queued:false,reason:'no_store'}."
+                        .to_string(),
+                ),
+                // KEEPS `05:validator` — greyed out of the LLM tool list, bindable by
+                // name via a recipe's rust_steps.
+                consumer_tags: vec![
+                    "00:rusty".into(),
+                    "02:orchestrator".into(),
+                    "05:validator".into(),
+                ],
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "host.validate_component",
+        )
+        .await?;
+
+    let tool_skill_id = stores
+        .upsert_tool_skill(
+            NewPgToolSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "ts-host-validate-component".to_string(),
+                description: "Route a self-improvement component proposal into the \
+                              validation queue."
+                    .to_string(),
+                content: "Call `host.validate_component(title=<title>, content=<content>, \
+                          doc_type=<type>, metadata=<obj>)` when the kohai/sempai system \
+                          proposes a new/updated component. Inspect `queued`; protected \
+                          components go to Q1 pending with an LLM-audit gate before Q2 \
+                          manual validation."
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                tool_name: Some("host.validate_component".to_string()),
+                param_schema: Some(json!([
+                    {"name": "title", "param_type": "string", "required": true, "description": "Component title"},
+                    {"name": "content", "param_type": "string", "required": true, "description": "Proposed component content"},
+                    {"name": "doc_type", "param_type": "string", "required": false, "description": "skill|recipe|tool_skill|lesson|spec|plan|note"},
+                    {"name": "metadata", "param_type": "object", "required": false, "description": "Extra metadata"}
+                ])),
+                param_template: Some(json!({"title": "{{title}}", "content": "{{content}}", "doc_type": "{{doc_type}}", "metadata": "{{metadata}}"})),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "ts-host-validate-component",
+        )
+        .await?;
+
+    let python_code_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-validate-component".to_string(),
+                description: "Orchestrator step: route a self-improvement component \
+                              proposal into the validation queue."
+                    .to_string(),
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
+                          res = host.validate_component(title=\"{{vars.slot0}}\", content=\"{{vars.slot1}}\", doc_type=\"{{vars.slot2}}\", metadata={{vars.slot3}})\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-validate-component",
+        )
+        .await?;
+
+    let skill_id = stores
+        .upsert_skill(
+            NewPgSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "skill-host-validate-component".to_string(),
+                description: "Route a self-improvement component proposal into the \
+                              validation queue."
+                    .to_string(),
+                body: "When the kohai/sempai system proposes a new/updated component, call \
+                       `ts-host-validate-component` with title, content, doc_type, and any \
+                       extra metadata. Inspect `queued`; protected components go to Q1 \
+                       pending with an LLM-audit gate before Q2 manual validation."
+                    .to_string(),
+                class_code: 1,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
+                intent_examples: json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "skill-host-validate-component",
         )
         .await?;
 
