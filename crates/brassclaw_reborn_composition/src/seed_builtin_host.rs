@@ -81,7 +81,7 @@ const BUILTIN_HOST_CATALOGUE_NAME: &str = "builtin-host";
 
 /// Errors raised by the builtin-host seed.
 #[derive(Debug, Error)]
-pub(crate) enum SeedBuiltinHostError {
+pub enum SeedBuiltinHostError {
     #[error("pool error: {reason}")]
     Pool { reason: String },
     #[error("database error: {reason}")]
@@ -219,7 +219,7 @@ impl HostStores {
 /// seeds each `host.*` tool's 5-component stack (slices 2–12) and appends the
 /// minted ids to `builtin-host.child_component_ids`. All builtins are
 /// `source = "system"` + `validation_status = "validated"` (bypassing Q1).
-pub(crate) async fn seed_builtin_host_components(
+pub async fn seed_builtin_host_components(
     pool: Arc<PgPool>,
     tenant_id: &str,
 ) -> Result<(), SeedBuiltinHostError> {

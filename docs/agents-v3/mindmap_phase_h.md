@@ -1111,3 +1111,24 @@ plumbing.
   post_reply + 1 5-component resolve_intent + 3 Recipes). Next: slice 13 = final verify both configs
   (`cargo clippy --all` + `cargo test --lib` + integration assert) + mark C.2 complete → proceed to
   C.3 cdylib dynamic loading.
+- **C.2 SLICE 13 — FINAL VERIFICATION + C.2 COMPLETE (DONE + clippy green both configs, commit/push
+  pending).** Locally-verifiable gates GREEN: clippy `-p brassclaw_reborn_composition --all-targets
+  -D warnings` (default + skills-db) green; `cargo test --lib` → 682 passed / 0 failed. Wrote the
+  seed regression test `tests/builtin_host_seed.rs` (the ONLY automated assertion that the seed
+  produces correct rows — the boot path swallows seed errors as `tracing::warn!`, so a regression
+  would not fail the webui E2E suite). To reach the `pub(crate)` seed fn from the `tests/` tier,
+  minimally exposed it: `pub mod seed_builtin_host` + `pub async fn seed_builtin_host_components` +
+  `pub enum SeedBuiltinHostError` (private helpers `HostStores`/`seed_host_*`/consts stay hidden).
+  The test mirrors `fetch_component.rs`'s self-contained testcontainer harness (Postgres-16, skip
+  when Docker unavailable), calls the seed, and asserts: 8 `host.*` Tools, 8 `ts-host-*` ToolSkills,
+  12 `pc-host-*` PythonCodes (8 tool handoffs + 4 recipe formatters), 8 `skill-host-*` leaf Skills,
+  6 `host-*` Recipes — all `source=system` + `validated` under the marker scope
+  `(tenant, SYSTEM_RESERVED_ID="\x1fSYSTEM\x1f", "default", "system")` (NOTE: SYSTEM_RESERVED_ID is
+  the text sentinel, NOT a UUID — bound as a SQL param, not a nil-UUID literal); the `builtin-host`
+  catalogue row is `validated` + `system` with non-empty `child_component_ids` that all resolve via
+  `reborn_components`; + a re-seed proves idempotency (counts unchanged). Compiles green under
+  skills-db (`--no-run`); runs + skips cleanly locally (no Docker → early pass). Marked **C.2 DONE**
+  in `saved_plan_to_v3.md` (matches the "**B DONE**" style). **C.2 COMPLETE.** Next: **C.3 — Two Tool
+  Systems: cdylib dynamic loading** (built-in tools stay precompiled; add the `dlopen` load/unload
+  path for kohai/sempai-minted Tools+ToolSkills, bound into the same namespace on demand by a recipe
+  and unloaded at main-process task end).

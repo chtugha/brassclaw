@@ -141,7 +141,7 @@ pub(crate) mod retrieval_lookup_impl;
 mod runtime;
 mod runtime_input;
 #[cfg(feature = "postgres")]
-pub(crate) mod seed_builtin_host;
+pub mod seed_builtin_host;
 #[cfg(feature = "postgres")]
 pub mod secrets_master;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]

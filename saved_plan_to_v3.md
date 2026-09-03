@@ -5725,6 +5725,15 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   `pc-host-execute-parallel` is STALE (retired entirely) → correct to RETIRED, don't
 >   seed. **Subplan doc:**
 >   `./docs/agents-v3/subplan_problem_stepC2_builtin_seed_of_saved_plan_to_v3.md`
+>
+>   **C.2 DONE** (slices 0–13; both configs clippy green; 682 lib tests green;
+>   new `tests/builtin_host_seed.rs` integration assertion compiles + skips
+>   locally where Docker is unavailable, runs in CI). All 8 net-new `host.*`
+>   Tools + 8 ToolSkills + 12 PythonCodes + 8 leaf Skills + 6 Recipes + the
+>   `builtin-host` catalogue seeded idempotently as `source=system` +
+>   `validated`. Shipped across commits `382ec75a` → `c256702d` (this slice 13
+>   commit adds the assertion test + exposes `seed_builtin_host_components` as
+>   `pub` for the `tests/`-tier regression check). Proceed to C.3.
 > - **C.3 — Two Tool Systems: cdylib dynamic loading.** Built-in tools stay
 >   precompiled; add the cdylib load/unload path (`dlopen`) for
 >   kohai/sempai-minted Tools+ToolSkills, bound into the same namespace on demand
