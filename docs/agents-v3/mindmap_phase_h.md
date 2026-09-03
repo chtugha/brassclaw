@@ -915,3 +915,18 @@ plumbing.
   `-p brassclaw_reborn_composition --all-targets -D warnings` (default + `--features skills-db`),
   incremental (disk 79%/40Gi). Next: slice 3 = 27.2 `host.compose_orchestrator` 5-component stack
   (the compose rewrite is separate Rust work; C.2 β = data-only seed of its component rows).
+- **C.2 SLICE 3 — 27.2 `host.compose_orchestrator` 5-COMPONENT STACK (DONE + shipped `b439d3d7`).**
+  Fork A (user-locked): the spec's recipe `orchestrator_steps` lists a 2nd `<composed-program-
+  placeholder>` (the program returned at runtime by compose_orchestrator, not a stored component) →
+  seed ONLY the real component `[{python_code: "pc-host-compose-orchestrator"}]`; the composed
+  program is run at runtime by the C.5 basic-mode script (not a static step); `step_descriptions`
+  keeps both the compose (step 0) + run (step 1) steps as docs. Recipe name =
+  `host-compose-and-run-orchestrator`; `rust_steps`=[{tool: host.compose_orchestrator, tool_skill:
+  ts-host-compose-orchestrator}]; tier 0; llm_call_required false; intent_examples=["(internal
+  Matching-Mode driver — not user-routed)"]. Tool effect_type `read`; param_schema {component_id
+  (string, required), class_code (integer)}; preconditions + error_handling seeded (Some). Leaf
+  skill `05:validation` (fork 1). Added `seed_host_compose_orchestrator` (~180 lines,
+  `#[allow(clippy::too_many_lines)]`) wired into the main fn after resolve_intent. **Verified green
+  both configs:** clippy `-p brassclaw_reborn_composition --all-targets -D warnings` (default +
+  `--features skills-db`), incremental (~10s each). Next: slice 4 = 27.3 `host.post_reply`
+  (effect_type `write`; spec already read lines 12748-12810).
