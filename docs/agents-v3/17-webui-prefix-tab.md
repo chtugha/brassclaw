@@ -10,21 +10,25 @@
 > companion to `09-sempai-kohai.md` and `10-prefix-base-prompt.md`.
 > **Grounded in:** `crates/brassclaw_webui_v2/AGENTS.md` + `CLAUDE.md`
 > (route table, boundary rules, streaming model), `crates/brassclaw_webui_v2/src/lib.rs`
-> (router exports), `src/descriptors.rs` (`reassemble_interceptor_descriptor:938`,
-> `prewarm_interceptor_descriptor:953`), `src/handlers.rs`
-> (`get_interceptor_config:1338`, `reassemble_interceptor:1365`,
-> `prewarm_interceptor:1381`), `crates/brassclaw_webui_v2_static/static/js/pages/settings/`
-> (`settings-page.js`, `lib/settings-schema.js`, `lib/settings-api.js`,
+> (router exports), `src/descriptors.rs` (`get_interceptor_config_descriptor:915`,
+> `list_prefixes_descriptor:943`, `regenerate_prefix_descriptor:957`; patterns
+> `/api/webchat/v2/prefixes:78` + `…/prefixes/{name}/regenerate:79`),
+> `src/handlers.rs` (`get_interceptor_config:1340`, `update_interceptor_config:1351`,
+> `list_prefixes:1366`, `regenerate_prefix:1387`), `crates/brassclaw_webui_v2_static/static/js/pages/settings/`
+> (`lib/settings-schema.js` (`prefix` tab:17), `lib/settings-api.js`
+> (`fetchPrefixes:176`, `regeneratePrefix:179`), `hooks/usePrefixes.js`,
 > `components/interceptor-tab.js`, `components/validation-queue-tab.js`,
-> `components/skills-tab.js`), `static/js/app/routes.js`
-> (`SETTINGS_SUB_ROUTES`), `crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`
-> (`do_reassemble:204`, `reassemble_base_prompt:356`, `prewarm:395`,
-> `KEY_BASE_PROMPT:34`, `build_snapshot:146`), `crates/brassclaw_reborn_webui_ingress/AGENTS.md`,
-> `saved_plan_to_v3.md` §0.13 (KV-Cache / LMCache-Aware Design,
-> lines 1487-1500), Phase K.1 (BasicPromptStore, lines 5856-5882),
-> the migration table (line 6771), and the user's Task item 8 (Prefix Tab
-> under settings; generate/regenerate each prefix; shift the existing
-> base-prompt implementation into the Prefix Tab section).
+> `components/skills-tab.js`), `static/js/app/routes.js` (`prefix` route:51),
+> `crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`
+> (`do_assemble_bundle:193`, `get_system_bundle:334`, `snapshot:346`,
+> `list_prefix_entries:397`, `regenerate_prefix:442`, `KEY_PERSONA:47`),
+> `crates/brassclaw_reborn_composition/src/pg_basic_prompt_store.rs`
+> (`PgBasicPromptStore::{new,get_for_scope,store,mark_stale,compute_fingerprint,
+> minimal_base_prompt_fallback}` + crate `get_system_bundle:285`, migration
+> **V063** `reborn_basic_prompt_store`), `crates/brassclaw_reborn_webui_ingress/AGENTS.md`,
+> `saved_plan_to_v3.md` §0.13 (KV-Cache / LMCache-Aware Design), and the user's
+> Task item 8 (Prefix Tab under settings; generate/regenerate each prefix; the
+> existing base-prompt implementation shifted into the Prefix Tab — **shipped**).
 
 ## 1. Purpose
 
@@ -43,17 +47,17 @@ The WebUI is the only human surface on the agent. It does three jobs:
    PythonCode/Actions (the v3 component catalog of `15-component-catalog.md`)
    and reviewing them through the validation queue (`14-validation-queue.md`).
 
-The **Prefix Tab** is a new v3 settings tab (item 8) that consolidates
+The **Prefix Tab** is the v3 settings tab (item 8) that consolidates
 **prefix compilation** — the act of assembling a long, stable prompt
 prefix and shipping it to the LLM once so its KV cache holds it, after
 which every turn only sends a small patch. Today there is exactly one
-prefix — the **base prompt** — and its assemble+prewarm flow already
-exists, but it lives under the Interceptor tab. The plan's instruction
-is explicit: that implementation must be **shifted into a dedicated
-Prefix Tab** that lists prefixes (one now, more later) and gives each a
-generate/regenerate button. The Sempai-Kohai system then substitutes the
-real prefix content for the `base-prompt` placeholder line at the very end
-of prompt creation (`09-sempai-kohai.md`, `10-prefix-base-prompt.md`).
+prefix — the **base prompt** — and its assemble+regenerate flow is
+**shipped** as a dedicated Prefix Tab (`prefix` route in the settings
+schema, `usePrefixes` hook, `fetchPrefixes`/`regeneratePrefix` SPA API)
+that lists prefixes (one now, more later) and gives each a
+generate/regenerate button. The Sempai-Kohai system substitutes the real
+prefix content for the `base-prompt` placeholder line at the very end of
+prompt creation (`09-sempai-kohai.md`, `10-prefix-base-prompt.md`).
 
 ## 2. Location
 
@@ -156,7 +160,16 @@ Sidebar visibility (`SETTINGS_SUB_ROUTES` in `routes.js`) unhides only
 the tabs whose api libs call real endpoints; stubs stay hidden until
 their contract lands.
 
-### 3.3 The existing base-prompt compile path (to be shifted to the Prefix Tab)
+### 3.3 The shipped base-prompt compile path (Prefix Tab)
+
+> **Symbol note.** This section was first grounded against an older layout
+> where the compile flow lived under `interceptor/reassemble|prewarm` routes
+> (`do_reassemble`, `reassemble_base_prompt`, `prewarm`, `build_snapshot`). That
+> path has since been **renamed + shifted into dedicated prefix routes** backed
+> by `PgBasicPromptStore` (V063): `do_reassemble`→`do_assemble_bundle:193`,
+> `reassemble_base_prompt`→`get_system_bundle:334`, `prewarm`→`regenerate_prefix:442`,
+> `build_snapshot`→`snapshot:346`. The bundle format and SEC-01 validated-gate
+> logic below are unchanged; only the names/routes/storage moved.
 
 The Interceptor tab (`interceptor-tab.js`) currently owns three cards:
 
@@ -195,17 +208,16 @@ Backend (`interceptor_config_service.rs`):
   sempai_connected, persona, base_prompt_assembled_at,
   base_prompt_size_chars, components_since_rebuild, prewarm_last_at).
 
-**Today the bundle is stored as a `brassclaw_config` key-value string** —
-a single row per tenant, not per `(tenant,user,agent,project)` scope, and
-not versioned. Phase K.1 replaces this with a proper per-scope store.
+**The bundle is stored in `reborn_basic_prompt_store` (V063)** via
+`PgBasicPromptStore` — per `(tenant,user,agent,project)` scope, `fingerprint`
++ `bundle_json` JSONB + `is_stale` + `assembled_at`. The prior
+`brassclaw_config` key-value string layout was retired with the V063 shift.
 
-### 3.4 The v3 Prefix Tab target (Phase K.1)
+### 3.4 The Prefix Tab (shipped)
 
-Phase K.1 (`saved_plan_to_v3.md:5856-5882`) adds a dedicated store and
-the user's item 8 adds the tab:
+The dedicated store + the tab (user item 8) are both **shipped**:
 
-**Migration V056** (`V056__reborn_basic_prompt_store.sql`, was V055
-before Decision 2):
+**Migration V063** `reborn_basic_prompt_store`:
 
 ```sql
 CREATE TABLE reborn_basic_prompt_store (
@@ -223,32 +235,28 @@ CREATE TABLE reborn_basic_prompt_store (
 );
 ```
 
-New `PgBasicPromptStore` facade: `get_for_scope`, `store`, `mark_stale`,
-`delete`. Wire into the Interceptor to **prepend the stored bundle before
-LLM shipment**. On any component `validated` transition →
-`mark_stale(scope)`. Tests (K.1): `store` → `get_for_scope` returns the
-bundle; component `validated` → `is_stale = true`; Interceptor prepends the
-stored bundle before LLM shipment.
+`PgBasicPromptStore` facade (`pg_basic_prompt_store.rs`): `get_for_scope:108`,
+`store:151`, `mark_stale:208`, `compute_fingerprint:257`,
+`minimal_base_prompt_fallback:307`, + crate-level `get_system_bundle:285`
+(per-turn read). Any component `validated` transition → `mark_stale(scope)`.
 
-The **Prefix Tab** (item 8) is the UI over this store + the existing
-assemble/prewarm actions, generalized from one prefix to a list:
+The **Prefix Tab** (item 8) is the shipped UI over this store + the
+assemble/regenerate actions, generalized from one prefix to a list:
 
 - A list of prefixes. Today: one row, `base-prompt`. The schema is
   designed for more ("more will be added in the future" — item 8).
 - Each row shows: name, fingerprint, `assembled_at`, `is_stale`,
   size, and last-compiled timestamp.
 - A **Generate / Regenerate** button per prefix that, on click,
-  (1) assembles that prefix's bundle from validated components (the
-  `do_reassemble` logic) and (2) ships it to the LLM for compilation
-  (the `prewarm` logic) — i.e. the existing reassemble+prewarm flow,
-  exposed as one button per prefix and moved out of the Interceptor tab.
-- The existing base-prompt assemble/prewarm endpoints
-  (`/interceptor/reassemble`, `/interceptor/prewarm`) and their backend
-  are **shifted** into prefix-named routes (e.g.
-  `/api/webchat/v2/prefixes` list + `/api/webchat/v2/prefixes/{name}/regenerate`),
-  backed by `PgBasicPromptStore` instead of the `brassclaw_config`
-  key-value string. The Interceptor tab keeps the mode/persona/status
-  surface but loses the Reassemble/Pre-warm ControlCard.
+  (1) assembles that prefix's bundle from validated components
+  (`do_assemble_bundle:193`) and (2) ships it to the LLM for compilation
+  (`regenerate_prefix:442`) — one button per prefix, moved out of the
+  Interceptor tab.
+- The base-prompt compile endpoints are the prefix-named routes
+  `GET /api/webchat/v2/prefixes` (list, `list_prefixes:1366`) +
+  `POST /api/webchat/v2/prefixes/{name}/regenerate` (`regenerate_prefix:1387`),
+  backed by `PgBasicPromptStore`. The Interceptor tab keeps the
+  mode/persona/status surface but no longer owns the compile buttons.
 
 ### 3.5 The base-prompt placeholder substitution (§0.13)
 
@@ -395,26 +403,26 @@ catalog, the prefix is stale and the operator regenerates.
   the Prefix Tab is a Product-surface control over a Loop/Kernel
   subsystem (prefix caching).
 
-## 6. Today vs v3
+## 6. Status — shipped vs. pending
 
-| Aspect | Today | v3 (Phase K.1 + item 8) |
-|--------|-------|------------------------|
-| Prefix list UI | none — base prompt is one button pair inside the Interceptor tab | dedicated **Prefix Tab** listing prefixes (one now, more later), each with Generate/Regenerate |
-| Base-prompt compile UI location | Interceptor tab ControlCard (Reassemble + Pre-warm) | **shifted** to the Prefix Tab; Interceptor tab keeps mode/persona/status |
-| Base-prompt storage | `brassclaw_config` key `interceptor.sempai_base_prompt` (one string per tenant, not per scope, not versioned) | `reborn_basic_prompt_store` (V056): per `(tenant,user,agent,project)` scope, `fingerprint`, `bundle_json` JSONB, `is_stale`, `assembled_at` |
-| Staleness signal | `components_since_rebuild` hint in snapshot (not authoritative) | `is_stale` column, set by `mark_stale(scope)` on any component `validated` transition (authoritative, event-driven) |
-| Compile action | two buttons (Reassemble, then Pre-warm) | one Generate/Regenerate button per prefix (assemble + ship to LLM) |
-| Placeholder substitution | not yet wired (Phase K.1) — `base-prompt` placeholder line + Sempai-Kohai replacement + minimal-context fallback | same target |
-| SKILL.md export | not implemented (no v2 endpoint) | on-demand `SKILL.md` export from DB-stored skill parts (item 5.1) |
-| Settings tabs | 17 (`SETTINGS_TABS`), no `prefix` | 18 — add `prefix` (and unhide it in `SETTINGS_SUB_ROUTES` once the prefix routes land) |
+| Aspect | Shipped | Pending |
+|--------|---------|---------|
+| Prefix Tab UI | dedicated **Prefix Tab** (`prefix` route, `usePrefixes` hook, `fetchPrefixes`/`regeneratePrefix` SPA API) listing prefixes (one now, more later), each with Generate/Regenerate | more prefixes beyond `base-prompt` |
+| Base-prompt compile UI location | **shifted** to the Prefix Tab; Interceptor tab keeps mode/persona/status | — |
+| Base-prompt storage | `reborn_basic_prompt_store` (V063): per `(tenant,user,agent,project)` scope, `fingerprint`, `bundle_json` JSONB, `is_stale`, `assembled_at` | — |
+| Staleness signal | `is_stale` column, set by `mark_stale(scope)` on any component `validated` transition | — |
+| Compile action | one Generate/Regenerate button per prefix (`do_assemble_bundle` + `regenerate_prefix` ships to LLM) | — |
+| Compile routes | `GET /api/webchat/v2/prefixes` + `POST /api/webchat/v2/prefixes/{name}/regenerate` | — |
+| Placeholder substitution | `base-prompt` placeholder line + Sempai-Kohai replacement + `minimal_base_prompt_fallback` (per-turn `get_system_bundle`) | — |
+| SKILL.md export | — | on-demand `SKILL.md` export from DB-stored skill parts (item 5.1) — no endpoint yet |
+| Settings tabs | 18 (`SETTINGS_TABS` incl. `prefix`) | — |
 
-**What is real today:** the Interceptor tab, the
-`/interceptor/config|reassemble|prewarm` routes, `do_reassemble`, the
-`prewarm` Sempai-gateway shipment, and the `brassclaw_config` key-value
-storage. **What is v3-only:** the Prefix Tab UI, the
-`reborn_basic_prompt_store` table + `PgBasicPromptStore` facade, the
-`mark_stale`-on-graduation wire, the `base-prompt` placeholder
-substitution, and the SKILL.md export endpoint.
+**What is shipped:** the Interceptor tab (mode/persona/status), the Prefix
+Tab UI + `prefixes` routes, `do_assemble_bundle`/`regenerate_prefix`/
+`get_system_bundle`, `reborn_basic_prompt_store` (V063) +
+`PgBasicPromptStore`, `mark_stale`-on-graduation, and the `base-prompt`
+placeholder substitution. **What is pending:** the SKILL.md export endpoint
+(item 5.1) and additional prefixes beyond `base-prompt`.
 
 ## 7. LLM-summary (machine-convertible)
 
@@ -424,36 +432,28 @@ substitution, and the SKILL.md export endpoint.
   handlers dispatch only to `RebornServicesApi`; the host runs
   bearer/CORS/body/rate-limit middleware; all errors are redacted via
   `WebUiV2HttpError`.
-- The settings page has 17 tabs (`SETTINGS_TABS`); the sidebar unhides
-  only those with real endpoints. Real today: inference/LLM, tools,
-  skills, validation-queue, interceptor, safety, tokens (per-provider),
-  language. Stubbed: users. Phase 6 v1-endpoint: actions, orchestrator,
-  scaffold, monty-vm, reliability.
-- The **base-prompt compile path already exists** under the Interceptor
-  tab: `POST /interceptor/reassemble` (`do_reassemble` — query validated
-  components, render the bundle) and `POST /interceptor/prewarm` (ship the
-  bundle to the Sempai LLM as a System message to warm its KV cache). It
-  is stored as a `brassclaw_config` key-value string, 1/min rate-limited.
-- The **v3 Prefix Tab** (item 8 + Phase K.1) shifts that path into a
-  dedicated tab that lists prefixes (one now, more later), each with a
-  Generate/Regenerate button, and backs it with `reborn_basic_prompt_store`
-  (V056: per-scope, fingerprinted, `is_stale`, `bundle_json`) +
-  `PgBasicPromptStore` (`get_for_scope`/`store`/`mark_stale`/`delete`).
-  Any component Q2-graduation → `mark_stale(scope)` → the regenerate
-  button lights up.
+- The settings page has 18 tabs (`SETTINGS_TABS`) incl. `prefix`; the
+  sidebar unhides only those with real endpoints.
+- The **Prefix Tab** (item 8) is shipped: `GET /api/webchat/v2/prefixes`
+  (`list_prefixes`) lists prefix-cache entries; `POST
+  /api/webchat/v2/prefixes/{name}/regenerate` (`regenerate_prefix`)
+  assembles the bundle from validated components (`do_assemble_bundle`) +
+  ships it to the Sempai LLM as a System message to warm its KV cache.
+  Backed by `reborn_basic_prompt_store` (V063: per-scope, fingerprinted,
+  `is_stale`, `bundle_json`) + `PgBasicPromptStore`
+  (`get_for_scope`/`store`/`mark_stale`/`compute_fingerprint`/
+  `minimal_base_prompt_fallback`). Any component Q2-graduation →
+  `mark_stale(scope)` → the regenerate button lights up. 1/min rate-limited.
 - At turn time the prompt carries a `base-prompt` placeholder line; the
   Sempai-Kohai system substitutes the real prefix content at the very end
-  of prompt creation (§0.13), or emits a short minimal-context fallback if
-  the prefix was never compiled (the LLM computes only ~200 new
-  tokens/s; prefix tokens are cached). The per-turn patch must not repeat
-  base-prompt content; `basic_prompt_section_refs` are pointers; patch
-  target < 4k tokens; orchestrator = PRIORITY 2, memory = PRIORITY 3,
-  Rust context delivered by `RecipeStage` (not in the bundle).
+  of prompt creation (§0.13) via per-turn `get_system_bundle`, or emits a
+  short minimal-context fallback (`minimal_base_prompt_fallback`) if the
+  prefix was never compiled (the LLM computes only ~200 new tokens/s;
+  prefix tokens are cached). The per-turn patch must not repeat base-prompt
+  content; `basic_prompt_section_refs` are pointers; patch target < 4k
+  tokens; orchestrator = PRIORITY 2, memory = PRIORITY 3, Rust context
+  delivered by `RecipeStage` (not in the bundle).
 - **SKILL.md export** (item 5.1): Classic skills are DB-stored parts with
-  no `SKILL.md` file; export-on-demand is a v3 addition with no endpoint
-  today.
-- Open v3 work: add the `prefix` tab + prefix-named routes
-  (`/api/webchat/v2/prefixes`, `.../{name}/regenerate`) backed by
-  `PgBasicPromptStore`; move Reassemble/Pre-warm out of the Interceptor
-  tab; wire `mark_stale` on graduation; wire the `base-prompt` placeholder
-  substitution; add the SKILL.md export endpoint.
+  no `SKILL.md` file; export-on-demand is pending (no endpoint yet).
+- Open work: add the SKILL.md export endpoint; additional prefixes beyond
+  `base-prompt`.

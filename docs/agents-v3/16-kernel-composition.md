@@ -258,7 +258,7 @@ This stack is the composition-layer expression of the kernel's
 | Validation queue | `reborn_validation_queue` (V051) + Q1 scan (`brassclaw_safety` + `component_validator`) | — |
 | Loop host ports | `LoopRetrievalPort` + `LoopOrchestratorPort` host impls (H.0) — 15 ports now | — |
 | Composition wiring | `factory`/`runtime`/`webui` facades + `PgRetrievalLookup`/`PgOrchestratorLookup` | — |
-| WebUI middleware | full security stack live (headers/CORS/body/WS-origin/bearer/rate) | Prefix Tab routes under the same stack |
+| WebUI middleware | full security stack live (headers/CORS/body/WS-origin/bearer/rate); Prefix Tab routes (`/api/webchat/v2/prefixes`) run under the same stack | — |
 | Kernel boundaries | non-negotiable, unchanged | — |
 
 **The kernel is not a v3 migration target.** v3 adds subsystems (validation

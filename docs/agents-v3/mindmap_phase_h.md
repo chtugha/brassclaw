@@ -2330,3 +2330,52 @@ grounded every claim against shipped source/migrations before committing.
   deletion (Phase K.3) + Prefix Tab routes pending. Reinforced "kernel is not a
   v3 migration target — v3 adds subsystems *inside* the existing authority
   model (Q1 queue, DB-row prefixes, SEC-01 validated gate)".
+
+- **d16 §6 row fix** (this portion): caught that the d16 §6 row I wrote
+  ("Prefix Tab routes under the same stack" = Pending) was WRONG — the Prefix
+  Tab is shipped. Fixed to "Prefix Tab routes (`/api/webchat/v2/prefixes`) run
+  under the same [security] stack" = Shipped.
+
+- **d17** `17-webui-prefix-tab` (this portion): the doc was grounded against
+  an OLDER layout where the base-prompt compile flow lived under
+  `interceptor/reassemble|prewarm` routes (`do_reassemble`/`reassemble_base_prompt`/
+  `prewarm`/`build_snapshot`, V056, "Prefix Tab = Phase K.1 target, not yet
+  implemented"). GROUNDING found the Prefix Tab is **FULLY SHIPPED** (backend +
+  SPA UI): routes `/api/webchat/v2/prefixes` (GET list, `list_prefixes:1366`)
+  + `/api/webchat/v2/prefixes/{name}/regenerate` (POST, `regenerate_prefix:1387`)
+  (descriptors.rs:74-79,943,957); service `do_assemble_bundle:193`/
+  `get_system_bundle:334`/`snapshot:346`/`list_prefix_entries:397`/
+  `regenerate_prefix:442`; store `PgBasicPromptStore` + `reborn_basic_prompt_store`
+  **V063** (NOT V056) — `get_for_scope:108`/`store:151`/`mark_stale:208`/
+  `compute_fingerprint:257`/`minimal_base_prompt_fallback:307`/crate
+  `get_system_bundle:285`; SPA `prefix` route (routes.js:51, settings-schema.js:17),
+  `usePrefixes` hook, `fetchPrefixes:176`/`regeneratePrefix:179` (settings-api.js),
+  i18n prefix.* (en.js:1090-1100). `do_reassemble` has ZERO live callers in
+  crates/ (fully retired/renamed). Targeted de-stale (not a full 460-line
+  rewrite): header grounded-in block → current symbols+line numbers+V063;
+  §1 Purpose "must be shifted"→"shipped"; §3.3 heading + a symbol-rename note
+  (do_reassemble→do_assemble_bundle, reassemble_base_prompt→get_system_bundle,
+  prewarm→regenerate_prefix, build_snapshot→snapshot) covering the remaining
+  §3.3 body details; §3.3 storage paragraph brassclaw_config→reborn_basic_prompt_store
+  V063; §3.4 "v3 Prefix Tab target (Phase K.1)"+V056→"Prefix Tab (shipped)"+V063+
+  shipped routes; §6 "Today vs v3"→"Status — shipped vs. pending" (Prefix Tab/
+  routes/store/mark_stale/placeholder-substitution/18 tabs = SHIPPED; only
+  SKILL.md export + more prefixes PENDING); §7 LLM summary → shipped framing.
+  PENDING: SKILL.md export (item 5.1, no endpoint); additional prefixes beyond
+  base-prompt.
+
+- **README** `docs/agents-v3/README.md` (this portion): the index was STALE.
+  De-staled: preamble "v3-oriented: (a) today, (b) v3 adds"→"v3-grounded: (a)
+  shipped, (b) pending"; structure-convention point 6 "Status: today vs.
+  v3"→"Status — shipped vs. pending"; taxonomy table rows 06 (V057→V071
+  capability_id + dropped cdylib_artifact_path/5 legacy cols), 07 (V059→shipped
+  V052/V069 placeholder-grammar gate), 09 (base-prompt substitution Phase K.1→
+  shipped + f8), 10 (V056/do_reassemble→V063/do_assemble_bundle/PgBasicPromptStore),
+  11 (INVERTED RamSource-current/PostgresSource-dormant → PostgresSource ACTIVE
+  prod/RamSource dormant Phase K.3 + class 22/23 shipped), 12 (13-port/
+  DRIVER-GAP/RecipeStage-stub → 15-port/real RecipeStage/canonical pipeline IS
+  prod driver via PlannedDriver/engine VM dormant C.5/C.6), 13 (default.py
+  current production → Orchestrator/Executioner split, default.py retired),
+  16 (Goal 2 partial → done, Postgres always + shipped subsystems), 17 (V056/
+  do_reassemble/not-yet-implemented → Prefix Tab SHIPPED V063 + prefixes routes
+  + SPA UI; SKILL.md export pending).
