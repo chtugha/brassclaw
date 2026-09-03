@@ -161,18 +161,11 @@ pub struct UnifiedExtension {
     pub consumer_tags: Vec<String>,
     /// Intent examples array (JSON).
     pub intent_examples: Option<Value>,
-    /// Current validation status.
+    /// Current validation status. The full validation lifecycle (errors,
+    /// review feedback, queue state) is centralised on
+    /// `reborn_validation_queue` (V051); this table only carries the
+    /// graduated `validation_status` (V075 / C.4.5.14).
     pub validation_status: String,
-    /// Accumulated validation errors from the last auto-check pass.
-    pub validation_errors: Vec<String>,
-    /// Latest human reviewer note.
-    pub review_feedback: Option<String>,
-    /// Number of review cycles this row has gone through.
-    pub review_attempts: i16,
-    /// When the row was last rejected (`rejected` status).
-    pub rejected_at: Option<chrono::DateTime<chrono::Utc>>,
-    /// Queue code for WebUI grouping.
-    pub queue_code: Option<String>,
     /// Provenance source label.
     pub source: String,
     pub content_hash: Option<String>,
@@ -284,8 +277,9 @@ pub trait UnifiedExtensionStore: Send + Sync {
         consumer_tag: &str,
     ) -> Result<Vec<UnifiedExtension>, UnifiedStoreError>;
 
-    /// Update the validation status of a row.  `review_feedback` is stored as
-    /// the latest reviewer note; `review_attempts` is managed by the caller.
+    /// Update the validation status of a row. Only `validation_status` is
+    /// written; the full lifecycle (errors, review feedback, queue state) is
+    /// centralised on `reborn_validation_queue` (V051).
     async fn update_validation_status(
         &self,
         tenant_id: &str,
@@ -333,12 +327,14 @@ pub trait UnifiedExtensionStore: Send + Sync {
 }
 
 /// Grouped parameters for [`UnifiedExtensionStore::update_validation_status`].
+///
+/// Only the graduated `validation_status` is written to
+/// `reborn_extensions_unified` (V075 / C.4.5.14); the full validation
+/// lifecycle (errors, review feedback, queue state) is centralised on
+/// `reborn_validation_queue` (V051).
 #[derive(Debug)]
 pub struct ValidationStatusUpdate<'a> {
     pub validation_status: &'a str,
-    pub validation_errors: Vec<String>,
-    pub review_feedback: Option<String>,
-    pub queue_code: Option<String>,
 }
 
 /// Grouped parameters for [`UnifiedExtensionStore::update_payload`].
@@ -384,20 +380,15 @@ fn decode_row(row: &tokio_postgres::Row) -> Result<UnifiedExtension, UnifiedStor
     let consumer_tags: Vec<String> = row.get(13);
     let intent_examples: Option<Value> = row.get(14);
     let validation_status: String = row.get(15);
-    let validation_errors: Vec<String> = row.get(16);
-    let review_feedback: Option<String> = row.get(17);
-    let review_attempts: i16 = row.get(18);
-    let rejected_at: Option<chrono::DateTime<chrono::Utc>> = row.get(19);
-    let queue_code: Option<String> = row.get(20);
-    let source: String = row.get(21);
-    let content_hash: Option<String> = row.get(22);
-    let similarity_parent_id: Option<Uuid> = row.get(23);
-    let replaces_id: Option<Uuid> = row.get(24);
-    let parent_version: Option<String> = row.get(25);
-    let last_audit_at: Option<chrono::DateTime<chrono::Utc>> = row.get(26);
-    let audit_failure_count: i16 = row.get(27);
-    let created_at: chrono::DateTime<chrono::Utc> = row.get(28);
-    let updated_at: chrono::DateTime<chrono::Utc> = row.get(29);
+    let source: String = row.get(16);
+    let content_hash: Option<String> = row.get(17);
+    let similarity_parent_id: Option<Uuid> = row.get(18);
+    let replaces_id: Option<Uuid> = row.get(19);
+    let parent_version: Option<String> = row.get(20);
+    let last_audit_at: Option<chrono::DateTime<chrono::Utc>> = row.get(21);
+    let audit_failure_count: i16 = row.get(22);
+    let created_at: chrono::DateTime<chrono::Utc> = row.get(23);
+    let updated_at: chrono::DateTime<chrono::Utc> = row.get(24);
 
     let class = ExtensionClass::try_from_str(&class_str)?;
 
@@ -418,11 +409,6 @@ fn decode_row(row: &tokio_postgres::Row) -> Result<UnifiedExtension, UnifiedStor
         consumer_tags,
         intent_examples,
         validation_status,
-        validation_errors,
-        review_feedback,
-        review_attempts,
-        rejected_at,
-        queue_code,
         source,
         content_hash,
         similarity_parent_id,
@@ -441,8 +427,7 @@ const SELECT_COLS: &str = "
     name, description, class::TEXT, payload,
     prior_knowledge_content, override_prompt_creation,
     class_code, prompt_uid, consumer_tags, intent_examples,
-    validation_status, validation_errors, review_feedback, review_attempts,
-    rejected_at, queue_code, source, content_hash,
+    validation_status, source, content_hash,
     similarity_parent_id, replaces_id, parent_version,
     last_audit_at, audit_failure_count,
     created_at, updated_at
@@ -637,18 +622,12 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
         client
             .execute(
                 "UPDATE reborn_extensions_unified
-                 SET validation_status = $1,
-                     validation_errors = $2,
-                     review_feedback   = COALESCE($3, review_feedback),
-                     queue_code        = $4
-                 WHERE id = $5
-                   AND tenant_id = $6 AND user_id = $7
-                   AND agent_id  = $8 AND project_id = $9",
+                 SET validation_status = $1
+                 WHERE id = $2
+                   AND tenant_id = $3 AND user_id = $4
+                   AND agent_id  = $5 AND project_id = $6",
                 &[
                     &update.validation_status,
-                    &update.validation_errors,
-                    &update.review_feedback,
-                    &update.queue_code,
                     &id,
                     &tenant_id,
                     &user_id,
@@ -740,8 +719,7 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
             "UPDATE reborn_extensions_unified
              SET source             = 'wiped',
                  content_hash       = NULL,
-                 similarity_parent_id = NULL,
-                 review_feedback    = NULL
+                 similarity_parent_id = NULL
              WHERE id = $1
                AND tenant_id = $2 AND user_id = $3
                AND agent_id  = $4 AND project_id = $5",
