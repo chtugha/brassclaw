@@ -523,13 +523,13 @@ pub async fn execute_orchestrator(
     llm: &Arc<dyn LlmBackend>,
     effects: &Arc<dyn EffectExecutor>,
     leases: &Arc<LeaseManager>,
-    _policy: &Arc<PolicyEngine>,
+    policy: &Arc<PolicyEngine>,
     signal_rx: &mut SignalReceiver,
     event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
     retrieval: Option<&RetrievalEngine>,
     store: Option<&Arc<dyn Store>>,
     platform_info: Option<&crate::executor::prompt::PlatformInfo>,
-    _gate_controller: &Arc<dyn crate::gate::GateController>,
+    gate_controller: &Arc<dyn crate::gate::GateController>,
     persisted_state: &serde_json::Value,
     #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
     _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
@@ -808,6 +808,26 @@ pub async fn execute_orchestrator(
                             store,
                             #[cfg(feature = "skills-db")]
                             pg_pool,
+                        )
+                        .await
+                    }
+
+                    // C.4.5.17: host.run_program(code) — run a dynamically-provided
+                    // Python code string via a NESTED execute_code (fresh
+                    // isolation per call — mirrors execute_tier_zero_channel).
+                    // Monty iterates composed.steplist and calls this once per
+                    // step's executable_code. Returns {ok, return_value, stdout,
+                    // error}.
+                    "run_program" if call.method_call => {
+                        handle_run_program(
+                            &args[1..],
+                            thread,
+                            llm,
+                            effects,
+                            leases,
+                            policy,
+                            gate_controller,
+                            event_tx,
                         )
                         .await
                     }
@@ -1468,6 +1488,87 @@ async fn handle_fetch_component(
 
     #[cfg(not(feature = "skills-db"))]
     ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+}
+
+/// Handle `host.run_program(code)` (C.4.5.17). Runs a dynamically-provided
+/// Python code string via a NESTED [`execute_code`] — a fresh
+/// [`ThreadExecutionContext`] + `persisted_state = {}` per call (ISOLATION
+/// invariant; mirrors `execute_tier_zero_channel`). Monty iterates
+/// `composed.steplist` and calls this once per step's `executable_code`; the
+/// orchestrator driver (e.g. `default.py`) consumes the returned dict to decide
+/// whether to continue to the next step.
+///
+/// Returns a Monty dict `{ok, return_value, stdout, error}`:
+/// - `ok=true` + `return_value` (the code's Python return value) + `stdout` on
+///   success (`error` is `null`).
+/// - `ok=false` + `error` when `execute_code` errors, the result carries a
+///   classified `failure`, or execution paused on an approval gate
+///   (`error="approval_required"`).
+#[allow(clippy::too_many_arguments)]
+async fn handle_run_program(
+    args: &[MontyObject],
+    thread: &Thread,
+    llm: &Arc<dyn LlmBackend>,
+    effects: &Arc<dyn EffectExecutor>,
+    leases: &Arc<LeaseManager>,
+    policy: &Arc<PolicyEngine>,
+    gate_controller: &Arc<dyn crate::gate::GateController>,
+    event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
+) -> ExtFunctionResult {
+    let code = args.first().map(monty_to_string).unwrap_or_default();
+    let exec_ctx =
+        thread_execution_context(thread, StepId::new(), None, gate_controller.clone());
+    let fresh_state = serde_json::json!({});
+
+    match Box::pin(execute_code(
+        &code,
+        thread,
+        llm,
+        effects,
+        leases,
+        policy,
+        &exec_ctx,
+        &[],
+        &fresh_state,
+    ))
+    .await
+    {
+        Ok(result) => {
+            for event_kind in &result.events {
+                if let Some(tx) = event_tx {
+                    let _ = tx.send(ThreadEvent::new(thread.id, event_kind.clone()));
+                }
+            }
+            if let Some(failure) = result.failure {
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    "ok": false,
+                    "return_value": serde_json::Value::Null,
+                    "stdout": result.stdout,
+                    "error": format!("{failure:?}"),
+                })));
+            }
+            if result.need_approval.is_some() {
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    "ok": false,
+                    "return_value": serde_json::Value::Null,
+                    "stdout": result.stdout,
+                    "error": "approval_required",
+                })));
+            }
+            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                "ok": true,
+                "return_value": result.return_value,
+                "stdout": result.stdout,
+                "error": serde_json::Value::Null,
+            })))
+        }
+        Err(e) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "ok": false,
+            "return_value": serde_json::Value::Null,
+            "stdout": "",
+            "error": e.to_string(),
+        }))),
+    }
 }
 
 /// Handle `__resolve_component_by_name__(name, class_code)` (v3 Phase G.2 /
