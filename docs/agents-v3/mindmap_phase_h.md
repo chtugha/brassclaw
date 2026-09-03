@@ -2314,3 +2314,19 @@ grounded every claim against shipped source/migrations before committing.
   FINDING B retained (DocType deprecated/frozen; integer-only dispatch; no
   weight arms — §0.11 historical only). §6 shipped-vs-pending (next migration
   V076 = Phase N recipes legacy-col drop + decoder re-index); §7 LLM summary.
+
+- **d16** `16-kernel-composition` (this portion): a newer doc, largely accurate
+  but had stale `do_reassemble` references + a §6 "Today vs v3" table framing
+  shipped work as future. Targeted edits (no full rewrite): (1) interceptor
+  section — retired `do_reassemble` → `do_assemble_bundle` /
+  `SystemBundleSource::get_system_bundle`; (2) "Composition → Retrieval/prefix"
+  relation — `PostgresSource` (Phase E.0 SHIPPED, active prod backend via
+  `PgRetrievalLookup`) + `PgBasicPromptStore` (V063 SHIPPED); clarified
+  `RamSource`(`PgMemoryDocStore`, keyword-over-Postgres) engine-internal/dormant
+  → deleted Phase K.3; (3) §6 table → "Status — shipped vs. pending" matching
+  the other docs: PostgresSource/PgBasicPromptStore/LoopRetrievalPort+
+  LoopOrchestratorPort(15 ports)/ValidationQueueStore(V051)+Q1/composition
+  facades+PgRetrievalLookup/PgOrchestratorLookup = all SHIPPED; only RamSource
+  deletion (Phase K.3) + Prefix Tab routes pending. Reinforced "kernel is not a
+  v3 migration target — v3 adds subsystems *inside* the existing authority
+  model (Q1 queue, DB-row prefixes, SEC-01 validated gate)".

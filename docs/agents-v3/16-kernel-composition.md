@@ -84,8 +84,9 @@ The user's higher goals land here concretely:
   `local_dev_runtime_policy`, `local_dev_yolo_runtime_policy`.
 - `profile.rs` / `readiness.rs` — production/migration-dry-run profile
   validation for required handles.
-- `interceptor_config_service.rs` — the Sempai base-prompt reassembler
-  (`do_reassemble`, see `10-prefix-base-prompt.md`).
+- `interceptor_config_service.rs` — the Sempai base-prompt assembler
+  (`do_assemble_bundle` / `SystemBundleSource::get_system_bundle`, see
+  `10-prefix-base-prompt.md`).
 
 ## 3. Kernel Authority Model
 
@@ -232,9 +233,13 @@ This stack is the composition-layer expression of the kernel's
   provider) is consumed by `RebornLoopDriverHost` on every turn to decide
   routing vs rerouting (see `09-sempai-kohai.md`).
 - **Composition → Retrieval/prefix:** composition wires
-  `PostgresSource` (v3 Phase E.0) and `PgBasicPromptStore` (Phase K.1);
-  `interceptor_config_service::do_reassemble` builds the Sempai base
-  prompt from `COMPONENT_TABLES` (see `10`/`11`).
+  `PostgresSource` (Phase E.0 — shipped, the active production retrieval
+  backend via `PgRetrievalLookup`) and `PgBasicPromptStore` (V063 — shipped);
+  `interceptor_config_service::do_assemble_bundle` /
+  `SystemBundleSource::get_system_bundle` builds the Sempai base prompt from
+  `COMPONENT_TABLES` (see `10`/`11`). `RamSource` (`PgMemoryDocStore`,
+  keyword-over-Postgres) is engine-internal and dormant in production —
+  deleted in Phase K.3.
 - **Kernel → Validation queue:** `brassclaw_safety` is the Q1 injection
   scan; `gate1_pass` visibility (`pub(crate)` in composition) enforces
   the state-2 write invariant (see `14-validation-queue.md`).
@@ -242,24 +247,27 @@ This stack is the composition-layer expression of the kernel's
   trigger-worker-owned request minting + conversation-owned trusted
   inbound construction; product adapters use untrusted inbound only.
 
-## 6. Today vs v3
+## 6. Status — shipped vs. pending
 
-| Aspect | Today | v3 target |
-|--------|------|-----------|
-| Installation profiles | `RebornCompositionProfile` removed; `BRASSCLAW_REBORN_PROFILE` hard-error; `BRASSCLAW_RUNTIME_PROFILE` retained as capability policy only (Goal 1 **done**) | unchanged — kernel/composition layer needs no profile work |
-| Storage backend | Postgres always; silent in-memory production fallbacks removed; filesystem fallback annihilated; production retrieval postgres-backed (`PgMemoryDocStore`) | `RamSource` deleted (Phase K.3); `PostgresSource` wired (Phase E.0) — Goal 2 Step 14 deferred to v3 |
-| Goal 2 remainder | e2e postgres-less build (Step 13) deferred; keyword→intent swap (Step 14) → v3 Phase K | Phase E.0 + K.3 complete Goal 2 |
-| Kernel boundaries | non-negotiable, unchanged | unchanged — v3 adds subsystems *inside* the existing authority model (validation queue, prefixes, recipes) without weakening it |
-| Composition wiring | `factory`/`runtime`/`webui` facades live | + `PostgresSource` wiring (E.0), + `PgBasicPromptStore` (K.1), + `ValidationQueueStore`/`q1_orchestrator` (A.5), + `LoopRetrievalPort`/`LoopOrchestratorPort` host impls (H.0) |
-| WebUI middleware | full security stack live (headers/CORS/body/WS-origin/bearer/rate) | + Prefix Tab routes (K.1) under the same stack |
+| Aspect | Shipped | Pending |
+|--------|---------|---------|
+| Installation profiles | `RebornCompositionProfile` removed; `BRASSCLAW_REBORN_PROFILE` hard-error; `BRASSCLAW_RUNTIME_PROFILE` retained as capability policy only (Goal 1 **done**) | — |
+| Storage backend | Postgres always; silent in-memory production fallbacks removed; filesystem fallback annihilated | — |
+| Retrieval backend | `PostgresSource` wired (Phase E.0) — the active production backend via `PgRetrievalLookup` | `RamSource` (`PgMemoryDocStore`, keyword-over-Postgres) dormant in prod — deleted Phase K.3 |
+| Base-prompt store | `PgBasicPromptStore` (V063) + `do_assemble_bundle`/`get_system_bundle` | — |
+| Validation queue | `reborn_validation_queue` (V051) + Q1 scan (`brassclaw_safety` + `component_validator`) | — |
+| Loop host ports | `LoopRetrievalPort` + `LoopOrchestratorPort` host impls (H.0) — 15 ports now | — |
+| Composition wiring | `factory`/`runtime`/`webui` facades + `PgRetrievalLookup`/`PgOrchestratorLookup` | — |
+| WebUI middleware | full security stack live (headers/CORS/body/WS-origin/bearer/rate) | Prefix Tab routes under the same stack |
+| Kernel boundaries | non-negotiable, unchanged | — |
 
-**The kernel is not a v3 migration target.** v3 adds subsystems
-(validation queue, prefix/base-prompt store, recipe/IBS, intent upgrade)
-*inside* the existing authority model — every new component enters the Q1
-queue, every new prefix is a DB row, every new retrieval path goes through
-the SEC-01 `validation_status = 'validated'` gate. The composition layer
-gains wiring for these subsystems but the facade shape and the security
-middleware stack are already production-grade.
+**The kernel is not a v3 migration target.** v3 adds subsystems (validation
+queue, prefix/base-prompt store, recipe/IBS, intent upgrade) *inside* the
+existing authority model — every new component enters the Q1 queue, every new
+prefix is a DB row, every new retrieval path goes through the SEC-01
+`validation_status = 'validated'` gate. The composition layer gains wiring for
+these subsystems but the facade shape and the security middleware stack are
+already production-grade.
 
 ## 7. LLM Summary (machine-convertible)
 
