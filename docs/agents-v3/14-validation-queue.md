@@ -10,20 +10,20 @@
 > retrieval gate every consumer (`RetrievalSource`, `do_reassemble`) already
 > filters on. Wilson score lower bounds + maturity tiers gate *Tier-0 direct
 > execution* on top of validation.
-> **Grounded in:** `saved_plan_to_v3.md` §0.18 (lines 1945-2104), Phase A.5
-> (lines 2778-2870), Phase N (lines 6294-6700), the migration table (lines
-> 22-29), and the live code that already exists:
-> `crates/brassclaw_engine/src/memory/component_validator.rs` (Gate 1 pure
-> logic), `crates/brassclaw_pg/migrations/V031__reborn_validation_config.sql`
-> + `V033__reborn_recipes.sql` (current on-table validation columns),
+> **Grounded in:** `saved_plan_to_v3.md` §0.18, Phase A.5, Phase N, and the
+> shipped code: `crates/brassclaw_engine/src/memory/component_validator.rs`
+> (Gate 1 pure logic + the C.4.5.1–5 common-syntax placeholder-grammar gates),
+> `crates/brassclaw_reborn_composition/src/validation_queue.rs`
+> (`ValidationQueueStore`) + `q1_orchestrator.rs` (`run_q1_validation`),
+> `crates/brassclaw_pg/migrations/V031__reborn_validation_config.sql` +
+> `V051__reborn_validation_queue.sql` (queue table, shipped) + `V072`/`V073`/
+> `V074`/`V075` (drop the 5 legacy columns off skills/actions/memory/extensions),
 > `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`
-> (`record_outcome:464`, `is_tier0_eligible:140`, `RECIPE_SELECT:208`),
-> `crates/brassclaw_agent_loop/src/plan_scoring.rs`
-> (`wilson_lower_bound:201`, `classify_tier:230`),
-> `crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs`
-> (`upsert:108` — the INSERT…ON CONFLICT pattern the graduation trigger
-> mirrors). Findings `FIND-P9-01/05/08`, `FIND-P6-04/08`, `FIND-P7-11`,
-`SCHEMA-01`, `FINDING D`, `FIND-13`.
+> (`record_outcome`, `is_tier0_eligible`), `crates/brassclaw_agent_loop/src/plan_scoring.rs`
+> (`wilson_lower_bound`, `classify_tier`), `crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs`.
+> Findings `FIND-P9-01/05/08`, `FIND-P6-04/08`, `FIND-P7-11`, `SCHEMA-01`,
+> `FINDING D`, `FIND-13`. This doc is **f3 — the Validation-System** and **f8 —
+> the per-class new-component-creation validation criteria**.
 
 ## 1. Purpose
 
@@ -69,77 +69,69 @@ It already exists today (per-recipe) and is not new in v3 — see §6.
 
 ## 2. Location
 
-### Today (codebase, migrations ≤ V049)
+### Shipped
 
-The validation lifecycle is **not yet centralized**. The pre-validation
-columns live directly on every component table, and the Q1 logic is a
-pure function:
+The validation lifecycle **is centralized** on the queue table; the Q1 logic
+is a pure function and the cross-crate Q1 sequence has a dedicated owner:
 
 - **Gate 1 logic:** `crates/brassclaw_engine/src/memory/component_validator.rs`
-  — `ComponentValidator::validate_by_class(class_code, payload, config)`
-  dispatches to the class-appropriate validation path. Pure functions, no
-  I/O, no LLM. Skill classes (01-03) get full agentskills.io validation;
-  Tool (00) gets tool_name + param_schema; Extensions (04-09) get
-  name+description+content+soft budget; Actions (16) get name+content;
-  Recipes (21) delegate to `RecipeValidator`; former-DocType classes
-  (12-15, 17-20) get name+description+content+soft budget.
+  — `ComponentValidator::validate_by_class(class_code, payload, config,
+  available_tools, existing_skill_names)` dispatches to the class-appropriate
+  validation path (per-class criteria in §4b). Pure functions, no I/O, no LLM.
+  The C.4.5.1–5 common-syntax `{{ ... }}` placeholder-grammar gates
+  (`validate_placeholder_grammar`, `validate_python_code_placeholders`,
+  `validate_tool_skill_placeholders`, `validate_includes_non_nil_uuids`,
+  `check_variant_descriptions`) ride alongside the per-class structural checks.
 - **Per-class config:** `reborn_validation_config` (V031) — supplies
   `name_min_len`, `token_budget`, `token_budget_hard_error`,
   `require_tool_name`, etc. `ComponentValidator` reads a `ValidationConfig`
   at call time and falls back to compile-time defaults when the row is
   absent.
-- **On-table lifecycle columns** (V033 recipes, identical shape on the 13
-  component tables): `validation_status` (`'pending'` / `'validated'` /
-  `'upgrade_queued'` / `'rejected'` / `'garbage'` / `'auto_passed'` /
-  `'auto_failed'` / `'review_requested'`), `validation_errors TEXT[]`,
-  `review_feedback TEXT`, `review_attempts` (SMALLINT on 10 tables, INT on
-  3 — `SCHEMA-01`), `rejected_at TIMESTAMPTZ`, `queue_code TEXT`.
+- **Queue table (shipped, V051):** `reborn_validation_queue` — DDL + indexes
+  (scope+state, scope+class, partial `WHERE state = 4`).
+- **Queue store (shipped):** `crates/brassclaw_reborn_composition/src/validation_queue.rs`
+  — `ValidationQueueStore` (`submit`, `gate1_pass`/`gate1_fail` `pub(crate)`,
+  `approve`, `reject`, `purge_deletion_candidates`, `list`).
+- **Q1 orchestration (shipped):** `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs`
+  — `run_q1_validation(...)` owns the cross-crate call sequence
+  (`ComponentValidator::validate_by_class` → `gate1_pass`/`gate1_fail`)
+  because `gate1_pass` is `pub(crate)` and the engine cannot call across
+  crate boundaries (`FIND-P9-01`).
+- **Legacy columns dropped (shipped):** the five pre-validation columns
+  (`queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
+  `validation_errors`) were dropped off the component tables across
+  `V072` (skills), `V073` (actions), `V074` (memory classes 12/14/17–20),
+  `V075` (extensions 4–9). `reborn_python_code` (V052, class 22) and
+  `reborn_extension_catalogues` (V053, class 23) were created **without**
+  them from day one — they use the queue natively. Each table retains only
+  `validation_status` (the post-validation runtime identity).
 - **Wilson scoring (live):**
   - `crates/brassclaw_agent_loop/src/plan_scoring.rs` —
-    `wilson_lower_bound(successes, failures, z)` (:201) and
-    `classify_tier(usage_count, w_lower, promotion_threshold)` (:230).
+    `wilson_lower_bound(successes, failures, z)` and
+    `classify_tier(usage_count, w_lower, promotion_threshold)`.
   - `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs` —
-    `PgRecipeStore::record_outcome` (:464) increments `usage_count` +
+    `PgRecipeStore::record_outcome` increments `usage_count` +
     `success_count`/`failure_count` in one transaction, recomputes
-    `wilson_lower` + `tier`, and writes both back (`:528`).
+    `wilson_lower` + `tier`, and writes both back.
   - `reborn_recipes` (V033) carries `tier` (`seedling`/`growing`/`mature`/
     `candidate`), `usage_count`, `success_count`, `failure_count`,
     `wilson_lower`.
 - **Tier-0 eligibility (live, incomplete):** `PgRecipe::is_tier0_eligible`
-  (`pg_recipe_store.rs:140`) — checks `is_deliverable() && tier ∈
-  {mature, candidate}` but **omits the `wilson_lower >= 0.70` guard**
-  (`FIND-P7-11`). The engine-domain `Recipe::is_tier0_eligible()` also
-  checks a `has_validation` (validation-hook-wired) field that `PgRecipe`
-  does not carry (`FIND-P9-09`).
+  — checks `is_deliverable() && tier ∈ {mature, candidate}` but **omits the
+  `wilson_lower >= 0.70` guard** (`FIND-P7-11`).
 
-### v3 target (migrations V051, V058/V059 — none exist yet)
+### Pending (Phase N)
 
-The plan centralizes the pre-validation lifecycle onto a single queue
-table and adds the graduation cache-invalidation signal:
-
-- **Queue table:** `reborn_validation_queue` — created in **V051**
-  (Phase A.5; `was V050 before Decision 2`). DDL + indexes only.
-- **Queue store:** `crates/brassclaw_reborn_composition/src/validation_queue.rs`
-  — `ValidationQueueStore` (created in Phase A.5 per Decision 2; **not yet
-  present in the codebase**).
-- **Q1 orchestration:** `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs`
-  — `run_q1_validation(...)` owns the cross-crate call sequence
-  (`ComponentValidator::validate_by_class` → `gate1_pass`/`gate1_fail`)
-  because `gate1_pass` is `pub(crate)` and the engine cannot call across
-  crate boundaries (`FIND-P9-01`). **Not yet present.**
-- **Populate + drop migration:** `V059__reborn_validation_queue_populate.sql`
-  (`was V058 before Decision 2`) — populates the queue from existing
-  component rows, adds `last_graduation_at`, wires the graduation trigger,
-  drops the five legacy columns off the 13 tables.
-- **Scope cursor:** `last_graduation_at TIMESTAMPTZ` added to
-  `reborn_monty_vm_settings` (V034) — written by an `AFTER DELETE` trigger
-  on the queue.
-- **Cache hook:** `PostgresSource` SplitResult memo-cache checks
-  `last_graduation_at` on every hit (Phase N.3).
+- **Graduation cache-invalidation:** the `last_graduation_at` scope cursor on
+  `reborn_monty_vm_settings` + the `AFTER DELETE` graduation trigger are NOT
+  yet shipped (no migration creates them). Until then graduation does not
+  event-evict the `PostgresSource` SplitResult memo-cache (retrieval re-queries).
+- **Tier-0 Wilson guard:** add `wilson_lower >= 0.70` to `is_tier0_eligible`
+  (`FIND-P7-11`).
 
 ## 3. Data Model
 
-### `reborn_validation_queue` (V051 — planned)
+### `reborn_validation_queue` (V051 — shipped)
 
 ```sql
 CREATE TABLE reborn_validation_queue (
@@ -186,7 +178,7 @@ filters `WHERE validation_status = 'validated'`. `'upgrade_queued'` means
 a validated component is re-entering the queue after an edit. This column
 is **not** moved to the queue — it is the post-validation runtime identity.
 
-### Columns that move to the queue (V059 — planned)
+### Columns that moved to the queue (shipped across V072–V075)
 
 | Removed from component table | Becomes on queue | Notes |
 |------------------------------|------------------|-------|
@@ -196,8 +188,8 @@ is **not** moved to the queue — it is the post-validation runtime identity.
 | `rejected_at TIMESTAMPTZ` | (queue `updated_at`) | row's updated_at serves |
 | `validation_errors TEXT[]` | `validation_errors TEXT[]` | moved; cleared on Q1 pass |
 
-After V059, every component table loses 4-5 columns; `decode_recipe_row`
-must be re-indexed (§6, `FIND-P6-04`).
+After V072–V075, every component table has lost these 4-5 columns; the
+per-table decoders were re-indexed at each drop (`FIND-P6-04`).
 
 ## 4. Behavior
 
@@ -207,7 +199,10 @@ must be re-indexed (§6, `FIND-P6-04`).
 (in `q1_orchestrator.rs`, composition crate) owns the sequence:
 
 1. Load `ValidationConfig` from `reborn_validation_config` for `class_code`.
-2. Call `ComponentValidator::validate_by_class(...)` (engine, pure fn).
+2. Call `ComponentValidator::validate_by_class(...)` (engine, pure fn) —
+   the per-class structural checks (§4b) **plus** the C.4.5.1–5 common-syntax
+   `{{ ... }}` placeholder-grammar / non-nil-includes / variant-description
+   gates that apply to the code-bearing classes (0, 10/50, 13, 21, 22).
 3. On pass → `ValidationQueueStore::gate1_pass(scope, id, &[])` (state
    1→2). On fail → `gate1_fail(scope, id, &errors)` (stays state 1,
    `validation_errors` populated, counter untouched).
@@ -234,7 +229,8 @@ invariant.
      `fetch_component_by_id`; unknown class → error *before* the
      transaction.
   3. `DELETE FROM reborn_validation_queue WHERE component_id=$1 AND scope`
-     — the graduation trigger fires here (bumps `last_graduation_at`).
+     — (the graduation trigger that bumps `last_graduation_at` is Phase N,
+     not yet shipped; graduation currently does not event-evict the cache).
   4. `COMMIT`
   
   **Ordering: UPDATE before DELETE** so the component is validated before
@@ -305,6 +301,42 @@ execution**: a recipe may short-circuit the LLM only when
 `is_deliverable() && tier ∈ {mature, candidate} && wilson_lower >= 0.70`
 — see §6 for the missing-guard fix.
 
+## 4b. Per-class Q1 validation criteria (f8 — new-component-creation)
+
+This is the **f8** content: the exact Q1 (Gate 1) criteria each component
+class must satisfy at creation. `ComponentValidator::validate_by_class`
+dispatches on `class_code`; Q1 is structural + injection-only (no LLM, no DB
+pool) — cross-reference checks (UUIDs resolve, step-order, S7) land in Phase
+I/N. The C.4.5.1–5 common-syntax `{{ ... }}` placeholder-grammar gates apply
+to the code-bearing classes and are marked **PH** below.
+
+| Class | Code | Payload | Q1 criteria |
+|-------|------|---------|-------------|
+| Skill (rusty/monty/llm) | 1–3 | `ToolSkill` / Generic | full agentskills.io validation (`validate_tool_skill`: name, description, token budget, activation criteria) + config overrides. **No** placeholder gate — skills are pure narrative. |
+| Tool | 0 | `ToolSkill` | `validate_tool_skill` (tool_name = `capability_id` non-empty + param_schema) **PH** + `validate_tool_skill_placeholders` (grammar + non-nil includes). `§capability-id`: system rows need a valid `capability_id`. |
+| Extension | 4–9 | Generic / `ToolSkill` | name + description + content + soft **standard** budget. No placeholder gate. |
+| Orchestrator / Scaffold | 10 / 50 | Generic / `ToolSkill` / Recipe | soft **orchestrator** budget **PH** + `validate_placeholder_grammar` (the composed script carries `{{vars.NAME}}`/`{{vars.slotN}}`/`{{user_input}}`/`{{component_name}}`). Q1 never bakes — the composer is the sole baker. |
+| Action | 16 | Generic / `ToolSkill` / Recipe | name + description + content, **no** token budget. (ActionShortCircuit is vestigial under Q2; the retired step-machine was deleted in C.1.) |
+| Recipe | 21 | `Recipe` | `RecipeValidator::validate_recipe` (existing_skill_names) + `check_variant_descriptions` **PH** (v3 variants require a non-empty human-readable `description`; legacy `step_link==None` exempt). |
+| PythonCode | 22 | Generic | soft **10k** budget + `validate_python_code_body` (shell-injection scan) **PH** + `validate_python_code_placeholders` (grammar + non-nil includes). |
+| ExtensionCatalogue | 23 | Generic (`extra`) | soft standard budget + `validate_extension_catalogue_extras`: name format + non-empty `overview_doc` + ≥1 `task_group` + valid UUID syntax in `child_component_ids`. |
+| Notes | 15 | Generic / `ToolSkill` / Recipe | soft **2000** budget. |
+| ToolSkill | 13 | `ToolSkill` | full `validate_tool_skill` (same canonical validator as class 0 + 1–3) **PH** + `validate_tool_skill_placeholders` (grammar + non-nil includes). Generic/Recipe payloads rejected. |
+| Memory (spec/lesson/issue/summary/plan) | 12, 14, 17–20 | Generic / `ToolSkill` / Recipe | name + description + content + soft **10000** budget. |
+| Unknown | other | Generic / `ToolSkill` / Recipe | lightweight generic soft-standard-budget check. |
+
+**Common-syntax placeholder grammar** (C.4.5.1): the recognised `{{ ... }}`
+kinds are `{{vars.NAME}}`, `{{vars.slotN}}`, `{{user_input}}`,
+`{{component_name}}` (and `{{component_id}}`/`{{step_link}}` for the
+compose-orchestrator seed). An unbalanced `{{` with no closing `}}`, or an
+unrecognised placeholder kind, is a Q1 hard error. Q1 checks **grammar
+only** — referential placeholder↔include matching (each include consumed by
+a placeholder) is deferred to Phase I/N (requires a pool).
+
+**System-authored bypass:** builtin seeds (`source='system'`) skip Q2 but
+**not** Q1 — Q1 still runs inside the seeder; a Q1 failure there is a
+build-time/CI bug, not a runtime failure.
+
 ## 5. Relations
 
 - **Component authoring paths → queue:** WebUI save (skill/recipe/tool/
@@ -317,44 +349,35 @@ execution**: a recipe may short-circuit the LLM only when
 - **`ValidationQueueStore` → component tables:** `approve` dispatches on
   `component_class` to the right table (same map as
   `fetch_component_by_id`).
-- **Graduation → retrieval/prefix cache:** queue DELETE → trigger →
-  `last_graduation_at` → SplitResult cache eviction; a newly-validated
-  component appears in the next `fetch_for_turn` / `do_reassemble`.
-- **Graduation → base-prompt store:** on any `validated` transition, v3
-  Phase K.1 calls `PgBasicPromptStore::mark_stale(scope)` so the base
-  prompt is reassembled with the new component (see
-  `10-prefix-base-prompt.md`).
-- **Wilson scoring → Tier 0:** `record_recipe_outcome` →
-  `is_tier0_eligible` → `RecipeStage` / `execute_recipe_orchestrator_channel`
+- **Graduation → retrieval/prefix cache (Phase N, pending):** queue DELETE →
+  trigger → `last_graduation_at` → SplitResult cache eviction; a
+  newly-validated component appears in the next `fetch_for_turn` /
+  `do_reassemble`. The trigger + cursor are not yet shipped — until then
+  graduation does not event-evict the cache.
+- **Graduation → base-prompt store:** on any `validated` transition, Phase
+  K.1 calls `PgBasicPromptStore::mark_stale(scope)` so the base prompt is
+  reassembled with the new component (see `10-prefix-base-prompt.md`).
+- **Wilson scoring → Tier 0:** `record_recipe_outcome` → `is_tier0_eligible`
+  → the Orchestrator Matching-/Non-Matching-Mode decision
   (see `12-agent-loop.md`, `13-orchestrator-default-py.md`).
-- **Two Phase B/C tables** (`reborn_python_code` V052, class 22;
-  `reborn_extension_catalogues` V053, class 23) are created *after* the
-  queue exists and are designed **without** the five legacy columns from
-  day one — they use the queue natively.
+- **The Phase B/C tables** (`reborn_python_code` V052, class 22;
+  `reborn_extension_catalogues` V053, class 23) are designed **without** the
+  five legacy columns from day one — they use the queue natively.
 
-## 6. Today vs v3
+## 6. Shipped vs pending
 
-| Aspect | Today (≤ V049) | v3 target (V051 / V058 / V059) |
-|--------|----------------|--------------------------------|
-| Pre-validation lifecycle | 5 columns **on each component table** (`queue_code`, `review_attempts`, `review_feedback`, `rejected_at`, `validation_errors`) | centralized on `reborn_validation_queue`; columns dropped off component tables |
-| Queue store | — | `ValidationQueueStore` (`validation_queue.rs`, Phase A.5) |
-| Q1 orchestration | `ComponentValidator` pure fn called ad hoc | `run_q1_validation` in `q1_orchestrator.rs` owns the cross-crate sequence (`FIND-P9-01`) |
-| State-2 write invariant | (no queue state) | `gate1_pass` `pub(crate)`; only Gate 1 reaches it |
-| Q2 approve | (manual SQL / API) | `approve()` one-tx UPDATE-then-DELETE, class-dispatched (`FIND-P9-05`) |
-| Cache invalidation on graduation | none (retrieval re-queries every turn) | `last_graduation_at` cursor + `AFTER DELETE` trigger → SplitResult cache eviction |
-| Wilson scoring | **live** (`record_outcome`, `wilson_lower_bound`, `classify_tier`) | unchanged mechanism; consumed by Tier 0 |
-| Tier-0 eligibility guard | `is_tier0_eligible` checks `deliverable && tier∈{mature,candidate}` — **missing `wilson_lower >= 0.70`** (`FIND-P7-11`) | add the Wilson guard (Phase A) |
-| `decode_recipe_row` indices | 0-30 (31 cols); Phase A appends 31/32/33 | after V059 drops 5 mid-list cols, re-index to 0-28 (`FIND-P6-04`) |
-| `review_attempts` type | SMALLINT (10 tables) / INT (3 tables) — `SCHEMA-01` | populate arm casts `COALESCE(review_attempts::INT, 0)` uniformly |
-| V059 populate class_code | — | `class_code::SMALLINT` for variable-class tables (skills 1/2/3, extensions 4-9), literal for fixed-class (recipes 21, actions 16, tools 0) — `FIND-P6-08`; Phase B/C tables substitute literal defaults for the missing columns |
-
-**Two-phase deploy (zero-downtime, `FIND-P5-08`):** V059 drops columns. A
-rolling deploy where the old binary still runs when V059 applies would
-`SELECT` dropped columns → runtime panic. Order: (1) deploy new binary with
-the dropped fields as `Option<T>` + `#[serde(default)]`; (2) run V059; (3)
-remove the `Option` wrappers in a follow-up. Run `cargo check --all`
-immediately after removing the struct fields — the compiler is the audit
-that finds every dead reference, not a manual inspection.
+| Aspect | Shipped | Pending (Phase N) |
+|--------|---------|-------------------|
+| Pre-validation lifecycle | centralized on `reborn_validation_queue` (V051); the 5 legacy columns dropped off component tables (V072–V075) | — |
+| Queue store | `ValidationQueueStore` (`validation_queue.rs`) | — |
+| Q1 orchestration | `run_q1_validation` in `q1_orchestrator.rs` owns the cross-crate sequence (`FIND-P9-01`) | — |
+| Q1 common-syntax gates | C.4.5.1–5 placeholder-grammar / non-nil-includes / variant-description gates on classes 0/10/50/13/21/22 | referential placeholder↔include matching (Phase I/N — requires a pool) |
+| State-2 write invariant | `gate1_pass` `pub(crate)`; only Gate 1 reaches it | — |
+| Q2 approve | `approve()` one-tx UPDATE-then-DELETE, class-dispatched (`FIND-P9-05`) | — |
+| Cache invalidation on graduation | — | `last_graduation_at` cursor + `AFTER DELETE` trigger → SplitResult cache eviction |
+| Wilson scoring | **live** (`record_outcome`, `wilson_lower_bound`, `classify_tier`) | — |
+| Tier-0 eligibility guard | `is_tier0_eligible` checks `deliverable && tier∈{mature,candidate}` | add the `wilson_lower >= 0.70` guard (`FIND-P7-11`) |
+| Per-table decoders | re-indexed at each V072–V075 column drop (`FIND-P6-04`) | — |
 
 **Boot integrity check (§0.18):** every component with
 `validation_status != 'validated'` must have a queue row; a component with
@@ -372,20 +395,21 @@ invariant, enforced by `gate1_pass` being `pub(crate)` and reachable only
 through `q1_orchestrator.rs`). **Q2** is a human reviewer who approves
 (graduation: `validation_status` becomes `'validated'`, queue row deleted)
 or rejects (state 3, increments a permanent `counter`; at threshold → state
-4 deletion candidate). The `reborn_validation_queue` table (V051, planned)
-centralizes pre-validation lifecycle; the five legacy columns
+4 deletion candidate). The `reborn_validation_queue` table (V051, shipped)
+centralizes the pre-validation lifecycle; the five legacy columns
 (`queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/
-`validation_errors`) move off the 13 component tables in V059, which
-re-indexes `decode_recipe_row`. Graduation fires an `AFTER DELETE` trigger
-that bumps `last_graduation_at` on `reborn_monty_vm_settings` via
-`INSERT … ON CONFLICT DO UPDATE` (mirrors `PgMontyVmSettingsStore::upsert`),
-evicting the `PostgresSource` SplitResult memo-cache for the scope. Wilson
-score lower bounds (live today via `record_outcome` → `wilson_lower_bound` +
-`classify_tier`) gate Tier-0 direct execution on top of validation;
-`PgRecipe::is_tier0_eligible` currently omits the `wilson_lower >= 0.70`
-guard and is fixed in v3 Phase A. Builtins (Phase L) bypass the queue with
-`validation_status='validated'` + system-level validation bypass; external
-MCP imports and Sempai proposals always enter Q1. **Status:** Gate 1 pure
-logic + Wilson scoring exist in the codebase; the queue table, store,
-orchestrator, trigger, and column drops are all v3 (V051/V058/V059), none
-present yet.
+`validation_errors`) were dropped off the component tables across V072–V075
+(classes 22/23 were created without them). Q1 also runs the C.4.5.1–5
+common-syntax `{{ ... }}` placeholder-grammar / non-nil-includes /
+variant-description gates on the code-bearing classes (0/10/50/13/21/22);
+the per-class criteria are in §4b (f8). Graduation's `AFTER DELETE` trigger
++ `last_graduation_at` cursor (evicting the `PostgresSource` SplitResult
+memo-cache) are Phase N, not yet shipped. Wilson score lower bounds (live via
+`record_outcome` → `wilson_lower_bound` + `classify_tier`) gate Tier-0
+direct execution on top of validation; `PgRecipe::is_tier0_eligible`
+currently omits the `wilson_lower >= 0.70` guard (Phase N fix). Builtins
+(`source='system'`) bypass Q2 but not Q1; external MCP imports and Sempai
+proposals always enter Q1. **Status:** Gate 1 pure logic + common-syntax
+gates + Wilson scoring + the queue table/store/orchestrator + the legacy
+column drops are all shipped; the graduation cache-invalidation trigger +
+the Tier-0 Wilson guard remain (Phase N).
