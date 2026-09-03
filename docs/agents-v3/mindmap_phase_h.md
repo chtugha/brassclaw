@@ -943,4 +943,24 @@ plumbing.
   portion 102 (`a6bdbd03`) — C.2 is the DB-seed of the 5 component rows (distinct). **Verified green
   both configs.** Slice map reminder: 2=27.1, 3=27.2, 4=27.3, 5=27.7.2, 6=27.7.3, 7=27.7.4,
   8=27.9.1, 9=27.10.3, 10=27.4 (save-history: 2 components, reuses builtin.memory_write), 11=27.10.1,
-  12=27.10.2. Next: slice 5 = 27.7.2 (read its spec).
+  12=27.10.2.
+- **C.2 SLICE 5 — 27.7.2 `host.fetch_component` 4-COMPONENT LEAF-TOOL STACK (DONE + shipped).** Key
+  discovery: 27.7.2/7.3/7.4 are **4-component stacks** (Tool + ToolSkill + PythonCode + leaf Skill —
+  NO Recipe; they're leaf tools called by other recipes' `rust_steps` by name, not top-level recipes).
+  `seed_host_fetch_component` returns `Vec<Uuid>` in `[tool,tool_skill,python_code,skill]` order (4,
+  not 5). Tool `host.fetch_component` effect_type `read`; param_schema {uuid (string,required),
+  class_code (integer,required)}; preconditions "skills-db pool wired (returns null without it)." +
+  error_handling "Missing/invalid/absent → null; never raises." (both Some). ToolSkill
+  ts-host-fetch-component (tool_name Some); PythonCode pc-host-fetch-component
+  (`host.fetch_component(uuid="{{vars.slot0}}", class_code={{vars.slot1}})`); leaf skill
+  skill-host-fetch-component (05:validation, class_code 1, intent_examples json!([])). All 4 components
+  `source:"system"` + `validation_status:"validated"`. Tool+ToolSkill `["00:rusty","02:orchestrator"]`
+  (discoverable); PythonCode `["01:monty","02:orchestrator"]`; leaf skill `["02:orchestrator",
+  "05:validation"]`. Wired into the main fn after post_reply via `child_ids.extend(seed_host_fetch_
+  component(&stores).await?)`. Field-set verified identical to the shipped post_reply fn (same store
+  structs). NOTE recorded earlier: 27.7.4 `validate_component` Tool KEEPS `05:validator` (intentional
+  grey-out from the LLM tool list — bindable by name via `rust_steps`; by-name compose keys on
+  `validation_status='validated'`, NOT the consumer-tag grey-out) — that's slice 7. **Verified green
+  both configs:** clippy `-p brassclaw_reborn_composition --all-targets -D warnings` (default +
+  `--features skills-db`), incremental (disk 82%/35Gi, no clean needed). Next: slice 6 = 27.7.3
+  `host.resolve_component_by_name` (read its spec — also a 4-component leaf-tool stack).

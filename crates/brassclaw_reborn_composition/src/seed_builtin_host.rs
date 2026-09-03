@@ -17,6 +17,9 @@
 //!   by the C.5 basic-mode script (not a static step — fork A).
 //! - 4  — Step 27.3 `host.post_reply`: the 5-component stack (effect `write`);
 //!   the single end-of-turn emit for both Matching- and Non-Matching-Mode.
+//! - 5  — Step 27.7.2 `host.fetch_component`: the 4-component stack (Tool +
+//!   ToolSkill + PythonCode + leaf Skill — no Recipe; a leaf tool called by
+//!   other recipes). SEC-01 validated fetch by UUID + class code.
 //!
 //! `child_component_ids` is appended to incrementally across slices 2–12 as
 //! each `host.*` tool / ToolSkill / PythonCode / leaf-Skill / Recipe id is
@@ -296,6 +299,9 @@ pub(crate) async fn seed_builtin_host_components(
 
     // Slice 4 — Step 27.3 host.post_reply (5 components).
     child_ids.extend(seed_host_post_reply(&stores).await?);
+
+    // Slice 5 — Step 27.7.2 host.fetch_component (4 components, no Recipe).
+    child_ids.extend(seed_host_fetch_component(&stores).await?);
 
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
@@ -873,4 +879,141 @@ async fn seed_host_post_reply(
         skill_id,
         recipe_id,
     ])
+}
+
+/// Step 27.7.2 — `host.fetch_component` (SEC-01 validated fetch by UUID).
+///
+/// A 4-component leaf-tool stack (Tool + ToolSkill + PythonCode + leaf Skill —
+/// no Recipe; called by other recipes' `rust_steps` by name). Returns the
+/// minted ids in `[tool, tool_skill, python_code, skill]` order. The Tool row
+/// carries `["00:rusty","02:orchestrator"]` (discoverable); the leaf skill
+/// carries the fork-1 `05:validation` tag (retrievable validated-builtin
+/// marker).
+#[allow(clippy::too_many_lines)]
+async fn seed_host_fetch_component(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let tool_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host.fetch_component".to_string(),
+                description: "Fetch a single validated component by UUID + class code \
+                              (SEC-01 gate). Returns {id,class_code,name,description,\
+                              content,override_prompt_creation,steps?,allowed_tools?} \
+                              or null."
+                    .to_string(),
+                param_schema: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "uuid": {"type": "string", "description": "Component UUID"},
+                        "class_code": {"type": "integer", "description": "Component class code"}
+                    },
+                    "required": ["uuid", "class_code"]
+                })),
+                param_template: Some(json!({"uuid": "", "class_code": 0})),
+                effect_type: "read".to_string(),
+                preconditions: Some(
+                    "skills-db pool wired (returns null without it).".to_string(),
+                ),
+                error_handling: Some(
+                    "Missing/invalid/absent → null; never raises.".to_string(),
+                ),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "host.fetch_component",
+        )
+        .await?;
+
+    let tool_skill_id = stores
+        .upsert_tool_skill(
+            NewPgToolSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "ts-host-fetch-component".to_string(),
+                description: "Fetch a validated component by UUID + class code (SEC-01 gate)."
+                    .to_string(),
+                content: "Call `host.fetch_component(uuid=<UUID>, class_code=<int>)` to fetch \
+                          a single validated component. Returns {id,class_code,name,description,\
+                          content,override_prompt_creation,steps?,allowed_tools?} or null. A \
+                          null result means the component is absent or not validated — do not \
+                          invent one."
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                tool_name: Some("host.fetch_component".to_string()),
+                param_schema: Some(json!([
+                    {"name": "uuid", "param_type": "string", "required": true, "description": "Component UUID"},
+                    {"name": "class_code", "param_type": "number", "required": true, "description": "Component class code"}
+                ])),
+                param_template: Some(json!({"uuid": "{{uuid}}", "class_code": "{{class_code}}"})),
+                consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "ts-host-fetch-component",
+        )
+        .await?;
+
+    let python_code_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-fetch-component".to_string(),
+                description: "Orchestrator step: fetch a validated component by UUID + \
+                              class code (§0.9 Option A)."
+                    .to_string(),
+                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
+                          comp = host.fetch_component(uuid=\"{{vars.slot0}}\", class_code={{vars.slot1}})\n"
+                    .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-fetch-component",
+        )
+        .await?;
+
+    let skill_id = stores
+        .upsert_skill(
+            NewPgSkill {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "skill-host-fetch-component".to_string(),
+                description: "Fetch a validated component by UUID for nested call_action \
+                              lookups (§0.9 Option A)."
+                    .to_string(),
+                body: "Use `ts-host-fetch-component` when you hold a component UUID + class \
+                       code. A null result means the component is absent or not validated — \
+                       do not invent one."
+                    .to_string(),
+                class_code: 1,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validation".into()],
+                intent_examples: json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+            },
+            "skill-host-fetch-component",
+        )
+        .await?;
+
+    Ok(vec![tool_id, tool_skill_id, python_code_id, skill_id])
 }
