@@ -11,6 +11,7 @@ pub mod context;
 pub mod db_skill_loader;
 pub mod composition_port;
 pub mod dynamic_tool_port;
+pub mod kohai_port;
 pub mod loop_engine;
 pub mod orchestrator;
 pub mod prompt;
@@ -23,6 +24,7 @@ pub mod trace;
 pub use loop_engine::ExecutionLoop;
 pub use composition_port::{CompositionPort, CompositionPortError};
 pub use dynamic_tool_port::{DynamicToolPort, DynamicToolPortError};
+pub use kohai_port::{KohaiPort, KohaiPortError};
 pub use orchestrator::{
     PkrAssemblyResult, TierZeroChannelResult, assemble_prior_knowledge_with_hint,
     execute_tier_zero_channel,

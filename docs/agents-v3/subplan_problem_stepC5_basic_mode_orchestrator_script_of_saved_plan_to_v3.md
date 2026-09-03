@@ -76,14 +76,64 @@
   verification is done in **C.6** when the driver runs it. Keep going into C.6
   without stopping.
 
+## Realization fork (user-locked 2026-09-03) — FULL flow
+
+The interceptor ingress (Kohai→Sempai→provider-prefix→http→save) does NOT exist
+as a callable today — `host.kohai_complete` is net-new logic. User locked
+**FULL**: build the complete flow now. Grounding confirmed the pieces:
+
+- `ForensicPacket::new(run_id, iteration, CapturedPrompt)` → `AwaitingKohai` →
+  `InterceptorStore::save` (PgInterceptorStore → `brassclaw_forensic_packets`).
+- Optional Sempai: `with_sempai_review(SempaiReviewOutcome)` → `SempaiReviewed`
+  (SempaiProposalSink — `NoopProposalSink`/`PgSempaiProposalSink`).
+- Provider prefix chunk: `get_system_bundle(store, user_id, project_id) -> String`
+  (`pg_basic_prompt_store.rs:285`, with `minimal_base_prompt_fallback`) — the
+  System-message prefix to swap in for `prefix_placeholder`.
+- Provider call: `LlmBackend::complete` (the existing ModelStage/"Kohai" call
+  path — `handle_llm_complete` :962). Reused inside the port; Monty drives it via
+  the host fn (satisfying "Monty, not the Rust agent-loop, drives the LLM"). The
+  "via first_party_tools/http" in the seed is the conceptual route — `LlmBackend`
+  reaches the provider over http internally.
+- Close: `with_kohai_response(text, usage)` → `Complete` → `InterceptorStore::save`.
+
+**Layering:** the interceptor store + basic-prompt store live in
+`brassclaw_reborn_composition` (downstream of engine), so the handler (engine)
+reaches them via a new engine port — the same pattern as `CompositionPort`
+(C.4.5.17). The engine's `LlmBackend` is passed INTO the port call (the port impl
+does not own an LLM backend).
+
 ## Slices (one-by-one; clippy green both configs + commit + push each)
 
-- **Slice 1 — `host.kohai_complete` Rust handler + dispatch arm.** Ground the
-  `brassclaw_interceptor` LLM-completion ingress entry (Kohai→Sempai→provider
-  prefix→http→save). Add `handle_kohai_complete(args, thread, …)` + the
-  `"kohai_complete" if call.method_call =>` arm (:~804). Returns the provider
-  answer (Monty dict). Narrow unit tests (mock interceptor ingress) mirroring the
-  other `host.*` handler tests. clippy green both configs.
+- **Slice 1a — engine `KohaiPort` trait + types.** New `executor/kohai_port.rs`:
+  `trait KohaiPort: Send + Sync { async fn complete(&self, prompt: serde_json::Value,
+  ctx: KohaiCallCtx, llm: &dyn LlmBackend) -> Result<KohaiAnswer, KohaiPortError>; }`
+  + `KohaiCallCtx { run_id, iteration, user_id, project_id, tenant_id }` +
+  `KohaiAnswer { content: String, usage: {input_tokens, output_tokens, cost_usd} }`
+  + `KohaiPortError`. Registered in `executor/mod.rs`. No impl yet (no callers).
+  clippy green both configs.
+- **Slice 1b — wire `KohaiPort` into the engine + dispatch arm + handler
+  skeleton.** `ExecutionLoop` (`loop_engine.rs`) + `execute_orchestrator` param
+  (`orchestrator.rs`) carry `kohai_port: Option<Arc<dyn KohaiPort>>` (like
+  `composition_port`). Add `"kohai_complete" if call.method_call =>` arm (:~804)
+  → `handle_kohai_complete(&args[1..], thread, llm, kohai_port)`. Handler: parse
+  `prompt` kwarg + build `KohaiCallCtx` from thread; `None` port →
+  `{ok:false, error:"kohai_unavailable"}`; `Some` → `port.complete(prompt, ctx,
+  &**llm)` → `{ok:true, answer, usage}`. Narrow unit tests (MockKohaiPort +
+  no-port degrade) mirroring `compose_orchestrator` handler tests (:3677+).
+  clippy green both configs.
+- **Slice 1c — `PgKohaiPort` impl in composition (the FULL flow).** New
+  `pg_kohai_port.rs`: `complete` does (1) build `CapturedPrompt` from the prompt
+  dict (messages from `chat_history`+`user_query`; segments; token accounting);
+  (2) `ForensicPacket::new` → `PgInterceptorStore::save` [AwaitingKohai]; (3) if
+  a Sempai is configured (rerouting), run the Sempai audit (LLM call to the
+  Sempai model) → `with_sempai_review` → save [SempaiReviewed] — start with
+  routing (no Sempai) + add Sempai behind the same path; (4) resolve provider
+  prefix via `get_system_bundle(user_id, project_id)` → swap `prefix_placeholder`;
+  (5) build final messages (system prefix + chat_history + user_query) →
+  `llm.complete()`; (6) `with_kohai_response(text, usage)` → save [Complete];
+  (7) return `KohaiAnswer`. `#[cfg(feature="skills-db")]` on the DB struct; pure
+  helpers ungated + unit tests both configs. Registered in composition `lib.rs`.
+  clippy green both configs.
 - **Slice 2 — author `orchestrator/basic_mode.py`.** The v3 basic-mode script:
   receive input (last user msg in `context`) → `host.resolve_intent(user_input=)`
   → dispatch. Match → `host.compose_orchestrator(component_id, step_link,
@@ -108,5 +158,9 @@
 
 ## Status
 
-[ ] C.5 slice 1 — `host.kohai_complete` handler. [ ] C.5 slice 2 — `basic_mode.py`.
-[ ] C.5 slice 3 — `DEFAULT_ORCHESTRATOR` swap + both-configs green. Then C.6.
+[x] C.5 slice 1a DONE (2026-09-03 — engine `KohaiPort` trait + `KohaiCallCtx`/
+    `KohaiAnswer`/`KohaiUsage` types + `KohaiPortError` in `executor/kohai_port.rs`,
+    registered in `executor/mod.rs`; mirrors `CompositionPort`; both configs
+    clippy-clean, 0 warnings). [ ] 1b — wiring + handler skeleton + tests.
+    [ ] 1c — `PgKohaiPort` FULL flow impl. [ ] slice 2 — `basic_mode.py`.
+    [ ] slice 3 — `DEFAULT_ORCHESTRATOR` swap + both-configs green. Then C.6.
