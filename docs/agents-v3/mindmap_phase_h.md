@@ -874,3 +874,44 @@ plumbing.
   `brassclaw_reborn_composition` (default + `--features skills-db`) `--all-targets -D warnings`,
   incremental (no clean — artifacts cached from slice 1d; disk stable 10Gi). Next: define the
   fork-4 canonical `steps` shape + seed slice 2 (27.1 `host.resolve_intent` 5-component stack).
+- **C.2 FORK-4 CANONICAL `steps` SHAPE — USER CONFIRMED.** The Recipe `steps` JSON for all seeded
+  stacks: `{ "llm_call_required": <bool>, "tier": <0|1>, "rust_steps": [ { "tool": "<host.* name>",
+  "tool_skill": "<ts-* name>" } ], "orchestrator_steps": [ { "python_code": "<pc-* name>" } ] }`.
+  `rust_steps` = ToolSkills the host pre-binds into the Monty namespace; `tool` = `host.*` name
+  (Rust dispatch for builtin; bound-after-`dlopen` for cdylib) — name-based → works for builtin +
+  dynamic tools. Optional `"source":"cdylib"` + `"crate":"<name>"` for dynamic tools. `orchestrator_
+  steps` = PythonCode component names Monty runs in order as one continuous program (IBS bakes
+  `{{vars.slotN}}`). `llm_call_required`+`tier` = LLM-tier (0=none, 1=Kohai-mediated). `NewPgRecipe.
+  step_descriptions` = spec's array; `trigger` = None; `intent_examples` = spec's list. Per-component
+  `consumer_tags` (confirmed): Tool `["00:rusty","02:orchestrator"]`; ToolSkill same; PythonCode
+  `["01:monty","02:orchestrator"]`; Leaf Skill `["02:orchestrator","05:validation"]` (fork 1);
+  Recipe `["02:orchestrator"]`. None carry `05:validator`. All `source:"system"`+
+  `validation_status:"validated"`.
+- **C.2 SLICE 2 — 27.1 `host.resolve_intent` 5-COMPONENT STACK (DONE + shipped `7a2439b3`).**
+  Slice-2 grounding first: verified V030 (`reborn_tools`) + V037 (`reborn_tool_skills`) DDL —
+  slice-1c stores set all NOT NULL cols correctly; NO `capability_id` col on reborn_tools (spec's
+  `capability_id` = `name`); NO `preconditions`/`error_handling`/`category` cols on reborn_tool_skills
+  (spec lists them but the store rightly omits — V037 has `preconditions`/`error_handling`? NO: V037
+  has no such cols; the store's NewPgToolSkill has no preconditions/error_handling/category ✓).
+  `reborn_tool_skills.intent_examples` is nullable JSONB (Option<Value> OK ✓). Name regexes verified:
+  tools allow dots (`host.resolve_intent` ✓); tool_skills/skills/recipes use `^[a-z0-9]([a-z0-9-]*[a-
+  z0-9])?$` (hyphens ✓); python_code name = length-only (no regex). `reborn_skills.intent_examples`
+  = JSONB NOT NULL DEFAULT '[]' (V027:67) → NewPgSkill models `Value` (seed passes `json!([])` ✓).
+  `reborn_recipes.intent_examples` nullable (V033:86) → Option<Value> ✓. `reborn_python_code.
+  intent_examples` nullable (V052:43) → Option<Value> ✓. Existing `pg_python_code_store::insert`
+  (returns Uuid, query_one, NO ON CONFLICT) + `pg_recipe_store::insert` (returns Uuid, NO ON
+  CONFLICT) are NOT idempotent — both have `get_by_name` → seed uses get-then-insert for those two;
+  slice-1c stores (tool/tool_skill/skill) use ON-CONFLICT-insert → get_id_by_name. Refactored
+  `seed_builtin_host.rs`: added `HostStores` facade (5 stores + catalogue, one pool, tenant stored) +
+  per-component `upsert_*` helpers (tool/tool_skill/skill = ON-CONFLICT-then-get_id_by_name;
+  python_code/recipe = get_by_name-then-insert) + a local `map` closure per helper typed to the
+  concrete store error (avoids generic-fn map_err ambiguity + clippy redundant_closure). Main fn
+  restructured: get-or-insert catalogue → `cat_id`; `let mut child_ids` + `extend(seed_host_resolve_
+  intent)`; append_child_component_ids(cat_id, &child_ids). `seed_host_resolve_intent` (5 components,
+  ~175 lines, `#[allow(clippy::too_many_lines)]` per repo convention) returns `Vec<Uuid>` in
+  [tool,tool_skill,python_code,skill,recipe] order. Recipe `steps` = fork-4 canonical shape; `tier`:0;
+  `llm_call_required`:false. Doc-comment continuation lines used 8 spaces → clippy
+  `doc_overindented_list_items` fired → fixed to 2 spaces. **Verified green both configs:** clippy
+  `-p brassclaw_reborn_composition --all-targets -D warnings` (default + `--features skills-db`),
+  incremental (disk 79%/40Gi). Next: slice 3 = 27.2 `host.compose_orchestrator` 5-component stack
+  (the compose rewrite is separate Rust work; C.2 β = data-only seed of its component rows).
