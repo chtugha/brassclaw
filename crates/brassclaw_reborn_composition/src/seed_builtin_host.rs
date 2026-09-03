@@ -324,6 +324,12 @@ pub(crate) async fn seed_builtin_host_components(
     // 2 components: pc-host-fallback-prior-knowledge + the Recipe).
     child_ids.extend(seed_host_assemble_prior_knowledge(&stores).await?);
 
+    // Slice 12 — Step 27.10.2 host-non-match-llm-answer (Non-Matching-Mode Recipe;
+    // 2 components: pc-host-assemble-non-match-prompt + the Recipe. Reuses
+    // pc-host-kohai-complete seeded in slice 9 via orchestrator_steps + the
+    // host.kohai_complete tool via rust_steps.)
+    child_ids.extend(seed_host_non_match_llm_answer(&stores).await?);
+
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
         .catalogue
@@ -1425,6 +1431,119 @@ bundle = {
         .await?;
 
     Ok(vec![pc_fallback_id, recipe_id])
+}
+
+/// Step 27.10.2 — `host-non-match-llm-answer` (Non-Matching-Mode Recipe, Tier 2).
+///
+/// A Recipe-only component set (no new Tool): one NEW PythonCode assembler
+/// (`pc-host-assemble-non-match-prompt`) + the `host-non-match-llm-answer`
+/// Recipe (Tier 2). Reuses `pc-host-kohai-complete` (seeded in slice 9) via
+/// `orchestrator_steps` and binds the existing `host.kohai_complete` tool
+/// (`host.kohai_complete` + `ts-host-kohai-complete`) via `rust_steps`. NO
+/// `host.llm_complete` — Rust↔LLM never talk directly; the Orchestrator
+/// assembles the prompt (chat history + user question + a prefix-PLACEHOLDER)
+/// and hands it to Kohai, which does the save / optional-Sempai /
+/// provider-prefix / `first_party_tools/http` / save-answer dance and returns
+/// the answer. Recipe-driven so prompt additions / prefixes / query-type
+/// routing evolve with no code changes. Returns the minted ids in
+/// `[pc-host-assemble-non-match-prompt, recipe]` order.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_non_match_llm_answer(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let pc_assemble_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-assemble-non-match-prompt".to_string(),
+                description: "Orchestrator step: assemble the Non-Matching-Mode prompt \
+                              (chat history + user question + a prefix-PLACEHOLDER). \
+                              Pure-logic assembler — no host call; Kohai swaps the \
+                              placeholder for the provider prefix last."
+                    .to_string(),
+                // Multi-line indented Python — raw string preserves the `\n`
+                // and the literal dict indentation (not `\`-continuation, which
+                // would strip leading whitespace). IBS binds chat_history /
+                // user_query / placeholder into slots 0 / 1 / 2.
+                content: r###"# Channel: orchestrator | Class: 22 | No I/O, no imports.
+# Non-Matching-Mode prompt assembly (Kohai swaps the placeholder last).
+chat_history = "{{vars.slot0}}"
+user_query   = "{{vars.slot1}}"
+placeholder  = "{{vars.slot2}}"
+prompt = {
+  "chat_history": chat_history,
+  "user_query": user_query,
+  "prefix_placeholder": placeholder
+}
+"###
+                .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-assemble-non-match-prompt",
+        )
+        .await?;
+
+    let recipe_id = stores
+        .upsert_recipe(
+            NewPgRecipe {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host-non-match-llm-answer".to_string(),
+                description: "Non-Matching-Mode (Tier 2): no intent matched. The \
+                              Orchestrator assembles the standard prompt (chat history \
+                              + user question + a prefix-PLACEHOLDER) and hands it to \
+                              Kohai. Kohai saves the prompt; if a Sempai is connected, \
+                              adds an optimization-prefix → Sempai optimizes → returns \
+                              without prefix → Kohai saves the optimized prompt beside \
+                              the original; Kohai adds the provider-LLM prefix for that \
+                              placeholder and sends the prompt to the provider LLM by \
+                              calling first_party_tools/http; Kohai receives the answer, \
+                              saves it beside its prompt, and returns it. NO \
+                              host.llm_complete — Rust↔LLM never talk directly."
+                    .to_string(),
+                trigger: None,
+                steps: json!({
+                    "llm_call_required": true,
+                    "tier": 2,
+                    "rust_steps": [
+                        {"tool": "host.kohai_complete", "tool_skill": "ts-host-kohai-complete"}
+                    ],
+                    "orchestrator_steps": [
+                        {"python_code": "pc-host-assemble-non-match-prompt"},
+                        {"python_code": "pc-host-kohai-complete"}
+                    ]
+                }),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into()],
+                intent_examples: Some(json!([
+                    "(internal Non-Matching-Mode fallback — not user-routed)"
+                ])),
+                source: "system".into(),
+                step_descriptions: Some(json!([
+                    {"step": 0, "action": "assemble_prompt", "desc": "Assemble chat history + user question + a prefix-PLACEHOLDER into the prompt (kohai swaps the placeholder for the provider prefix last)."},
+                    {"step": 1, "action": "kohai_complete", "desc": "Hand the assembled prompt to Kohai via host.kohai_complete; Kohai saves, optional Sempai optimize, adds provider prefix, calls first_party_tools/http, saves the answer, and returns it."}
+                ])),
+                variants: None,
+                dependency_registry: None,
+            },
+            "host-non-match-llm-answer",
+        )
+        .await?;
+
+    Ok(vec![pc_assemble_id, recipe_id])
 }
 
 /// Step 27.9.1 — `host.check_signals` (stop/suspend/inject poll).

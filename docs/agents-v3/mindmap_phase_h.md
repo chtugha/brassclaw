@@ -1090,3 +1090,24 @@ plumbing.
   answer` (Tier-2 Non-Matching-Mode Recipe; 2 NEW components — pc-host-assemble-non-match-prompt + the
   Recipe; reuses pc-host-kohai-complete already seeded in slice 9; binds host.kohai_complete via
   rust_steps [{tool:"host.kohai_complete", tool_skill:"ts-host-kohai-complete"}]).
+- **C.2 SLICE 12 — 27.10.2 `host-non-match-llm-answer` NON-MATCHING-MODE RECIPE (DONE + clippy green,
+  commit/push pending).** Tier-2 Recipe (the Non-Matching-Mode LLM routine) = **2 NEW components**
+  (NO new Tool — `host.kohai_complete` was seeded in slice 9; the Recipe REUSES it). (1)
+  pc-host-assemble-non-match-prompt (class 22, raw-string multi-line assembler — `chat_history` /
+  `user_query` / `placeholder` bound from slots 0/1/2; builds `prompt = {chat_history, user_query,
+  prefix_placeholder}`; NO host call — Kohai swaps the placeholder for the provider prefix last).
+  (2) Recipe host-non-match-llm-answer (tier 2, llm_call_required **true**; rust_steps
+  `[{tool:"host.kohai_complete", tool_skill:"ts-host-kohai-complete"}]`; orchestrator_steps
+  `[{python_code:"pc-host-assemble-non-match-prompt"}, {python_code:"pc-host-kohai-complete"}]`;
+  step_descriptions [assemble_prompt step 0, kohai_complete step 1]; intent_examples ["(internal
+  Non-Matching-Mode fallback — not user-routed)"]). The pc-host-kohai-complete row referenced in
+  orchestrator_steps is the slice-9-seeded row (`answer = host.kohai_complete(prompt=prompt)` — `prompt`
+  is the in-scope var from the prior assembler step; Option 2 = one continuous program). PythonCode
+  `["01:monty","02:orchestrator"]`; Recipe `["02:orchestrator"]`. All source=system + validated.
+  `seed_host_non_match_llm_answer` returns 2 ids, wired after slice 11. NO `host.llm_complete` —
+  Rust↔LLM never talk directly; Kohai does the save / optional-Sempai / provider-prefix /
+  first_party_tools/http / save-answer dance. **Verified green both configs** (incremental). This
+  COMPLETES all 12 slices (8 host.* Tools × 4-component stacks + 1 5-component compose + 1 5-component
+  post_reply + 1 5-component resolve_intent + 3 Recipes). Next: slice 13 = final verify both configs
+  (`cargo clippy --all` + `cargo test --lib` + integration assert) + mark C.2 complete → proceed to
+  C.3 cdylib dynamic loading.
