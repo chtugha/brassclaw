@@ -255,10 +255,33 @@ is never baked into raw code — only into string-literal positions.
     Phase I/N — Fork 2-B=B); 6 engine gate tests + composition store round-trip
     (non-empty includes assertion, docker-gated) + column-count pin (26 cols);
     both configs clippy-clean (engine + composition, default + --features
-    skills-db); 9 class22 + 47 recipe + 6 composition tests green). **Remaining:
-    C.4.5.3–C.4.5.19 not implemented** (IBS core exists Phase A but Recipe-only;
-    compose_orchestrator is a C.2 placeholder; host.run_program net-new;
-    per-class syntax upgrades + predefined structure + rust-plugin directives
-    all pending). Next slice C.4.5.3 (`tool_skill`(13)).
+    skills-db); 9 class22 + 47 recipe + 6 composition tests green). [x]
+    **C.4.5.3 DONE** (2026-09-03 — `tool_skill`(13) + DB-structure standardization
+    (item g): migration V070 drops the 2 legacy pre-centralization remnants
+    `queue_code`+`validation_errors` from `reborn_tool_skills` (V051 documents
+    them as slated-for-V059/Phase-N drop; no Rust reader — retrieval_source
+    selects neither, pg_tool_skill_store has no decode SELECT) + adds JSONB
+    `includes` (machine form of `{{component_name}}` structural-include
+    placeholders, mirrors PythonCode V069 + recipe `StepEntry.include`, DEFAULT
+    '[]' keeps pre-existing rows valid); `ToolSkill` struct gains
+    `#[serde(default)] includes: Vec<Uuid>` + 5 test fixtures; `NewPgToolSkill`
+    + INSERT → 17 params ($17 includes) + 8 `ts-host-*` seed sites (`includes:
+    vec![]`); no decode SELECT → read path untouched (composer C.4.5.17 fetches
+    includes separately); explicit Q1 gate — catch-all `12..=14 | 17..=20` →
+    `12 | 14 | 17..=20`, new dedicated `13 =>` arm = `validate_tool_skill` +
+    `validate_tool_skill_placeholders` (Generic/Recipe → error); extracted shared
+    `validate_placeholder_grammar` helper (python_code refactored to use it,
+    behavior-preserving) + `validate_includes_non_nil_uuids`; placeholder grammar
+    scanned on description/preconditions/error_handling/code_snippet/serialized
+    param_template/each param_schema[].description; 6 engine gate tests (valid
+    4-kind + non-nil include passes; unbalanced / unrecognised `{{bogus}}` /
+    nil-include / Generic-payload-errors / empty-tool_name-fails — proves
+    `validate_tool_skill` is called). ToolSkill has NO `variable_patterns`
+    (vars from recipe/caller; `{{vars.name}}` lives in param_template). Both
+    configs clippy-clean; engine 567 + composition 682/689 lib tests green).
+    **Remaining: C.4.5.4–C.4.5.19 not implemented** (IBS core exists Phase A but
+    Recipe-only; compose_orchestrator is a C.2 placeholder; host.run_program
+    net-new; per-class syntax upgrades + predefined structure + rust-plugin
+    directives all pending). Next slice C.4.5.4 (`tool`(0)).
     This subplan is the canonical one (the prior `subplan_problem_phaseHI_…md`
     is a redirect stub).

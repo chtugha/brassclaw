@@ -1551,3 +1551,66 @@ plumbing.
   NO `variable_patterns` field (vars flow from recipe/caller). Both configs
   clippy-clean (engine + composition, default + --features skills-db); 9 class22
   + 47 recipe + 6 composition tests green. Next: C.4.5.3 `tool_skill`(13).
+
+- **C.4.5.3 — `tool_skill`(13) COMPLETE + shipped `83e7919c` (2026-09-03).**
+  Forks LOCKED via ask_user: **3-A=A** (dedicated `13 =>` arm calling the
+  canonical `validate_tool_skill` — full agentskills.io validation: name format,
+  desc actionable, token budget, tool_name non-empty+in `available_tools`,
+  param_template object, param_schema entries, tool-name-count warning; closes
+  the prior `12..=14` catch-all gap that ran soft-budget only — Generic/Recipe
+  payloads → error, mirrors class 0); **3-B=A** (after the dead-column
+  investigation: V051 lines 8-9 explicitly document `queue_code`/
+  `validation_errors` as pre-centralization remnants slated for V059/Phase N
+  drop — the central `reborn_validation_queue` tracks lifecycle via `state`
+  (1-4) + its OWN `validation_errors` (V051:72), NOT via the component-table
+  `queue_code`; no Rust reader touches `reborn_tool_skills.{queue_code,
+  validation_errors}` — retrieval_source selects neither, pg_tool_skill_store
+  has no decode SELECT, only DDL defaults ever populated them; recipes/skills/
+  extensions keep theirs (still live in their stores) → out of scope; the
+  workspace-wide legacy drop is V059/Phase N; V059 does NOT exist yet so the
+  future V059 uses `DROP COLUMN IF EXISTS` and no-ops on this table → V070 drops
+  the 2 legacy cols from `reborn_tool_skills` ONLY now); **3-C=A + full includes
+  functionality** (validate `{{...}}` grammar on Q1 across all ToolSkill text
+  fields + serialized `param_template` + `param_schema[].description`; AND
+  ToolSkill gets the FULL includes mechanism — `{{component_name}}` structural-
+  include recognition + `includes` column, mirroring PythonCode C.4.5.2).
+  Deliverable: (1) migration **V070** `reborn_tool_skills_syntax` — `DROP COLUMN
+  IF EXISTS queue_code`, `DROP COLUMN IF EXISTS validation_errors`, `ADD COLUMN
+  IF NOT EXISTS includes JSONB NOT NULL DEFAULT '[]'`; (2) `ToolSkill` struct
+  (`recipe.rs:295`) gains `#[serde(default)] pub includes: Vec<uuid::Uuid>`
+  (backward-compatible — old JSON without includes → `vec![]`); **5 ToolSkill
+  test constructions** updated (`includes: vec![]` after `category:` — one
+  literal each in recipe.rs, recipe_matcher.rs, recipe_validator.rs,
+  component_validator.rs `base_skill`, recipe_store.rs `sample_skill`); (3) store
+  extend — `NewPgToolSkill` gains `includes: Vec<Uuid>`; `insert()` encodes
+  `serde_json::to_value(&row.includes)` + binds `$17`; INSERT column list +
+  VALUES → 17 params; **8 seed `NewPgToolSkill` sites** in seed_builtin_host.rs
+  updated (`includes: vec![]`, each anchored on its unique `ts-host-*` name); no
+  decode SELECT exists (store only INSERTs + name→id lookup) so the read path
+  (retrieval_source UNION) is untouched — the composer (C.4.5.17) fetches
+  includes separately; (4) Q1 gate — `component_validator.rs` catch-all
+  `12..=14 | 17..=20` → `12 | 14 | 17..=20`; new dedicated `13 =>` arm =
+  `RecipeValidator::validate_tool_skill(skill, available_tools)` +
+  `validate_tool_skill_placeholders(skill, &mut result)`; Generic/Recipe →
+  "ToolSkill class requires a ToolSkill payload"; extracted shared
+  **`validate_placeholder_grammar(content, label, result)`** (the balanced-`{{}}`
+  + recognised-kind scan loop); refactored `validate_python_code_placeholders` to
+  call it (behavior-preserving — label="PythonCode body" keeps the exact
+  "unbalanced"/"not a recognised kind"/"`{{`" substrings the 6 shipped class22
+  tests assert; unbalanced early-return is now per-field but the class22
+  unbalanced test uses `extra:None` so the includes check returns immediately);
+  added **`validate_includes_non_nil_uuids(&[Uuid], label, result)`** (parsed
+  form; PythonCode keeps its own JSON-string-parse loop); added
+  `validate_tool_skill_placeholders` scanning `description`, `preconditions`,
+  `error_handling`, `code_snippet` (if Some), serialized `param_template`, each
+  `param_schema[].description` + `skill.includes`; (5) **6 engine gate tests**
+  (valid 4-kind across fields + non-nil include passes; unbalanced / unrecognised
+  `{{bogus}}` / nil-include / Generic-payload-errors / empty-tool_name-fails —
+  the last proves `validate_tool_skill` IS called, since the prior catch-all
+  only did soft-budget and would NOT error on empty tool_name). ToolSkill has NO
+  `variable_patterns` field (vars flow from recipe/caller + `{{vars.name}}`
+  lives in `param_template`). Both configs clippy-clean (engine + composition,
+  default + `--features skills-db`, `-D warnings` after `--`); disk 93%/15Gi →
+  `cargo clean -p brassclaw_engine` before compile (freed 2.1GiB); engine 567 +
+  composition 682/689 lib tests green. **Zenflow step `bc3f81d4` (HI.3, sort 34)
+  marked Completed.** Next: C.4.5.4 `tool`(0).
