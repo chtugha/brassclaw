@@ -15,6 +15,7 @@ const SKILL_MAX_TOKENS: usize = 5000;
 /// Regex compiled-size limit in bytes, preventing ReDoS from LLM-authored patterns.
 const RECIPE_REGEX_SIZE_LIMIT: usize = 10_000;
 
+use crate::memory::instruction_builder::StepDescriptionEntry;
 use crate::types::recipe::{
     Recipe, RecipeSource, RecipeTrigger, RecipeValidation, ToolSkill, ToolSkillParam,
     ValidationStatus,
@@ -148,6 +149,7 @@ impl RecipeValidator {
 
         check_trigger(&recipe.trigger, &recipe.source, &mut result);
         check_variant_descriptions(&recipe.variants, &mut result);
+        check_variant_machine_form(&recipe.variants, &recipe.step_descriptions, &mut result);
 
         if matches!(recipe.tier.as_str(), "growing" | "mature" | "candidate")
             && matches!(recipe.validation, RecipeValidation::None)
@@ -301,6 +303,83 @@ fn check_variant_descriptions(
                 "Recipe variant #{i} ('{}') description exceeds {MAX_CHARS} chars ({len} chars) — keep it concise",
                 v.variant_key
             ));
+        }
+    }
+}
+
+/// Q1 gate for the machine-readable side of the dual-nature recipe syntax
+/// (C.4.5.1 — common-syntax contract, items c/h). Validates the two machine
+/// fields the composer (C.4.5.17) resolves `{{vars.NAME}}` / `{{component_name}}`
+/// placeholders from:
+///   1. `variable_patterns` — each v3 variant's slot rules: name non-empty +
+///      pattern (if present) compiles under the ReDoS size limit. Legacy
+///      (`step_link == None`) variants are exempt (mirrors
+///      `check_variant_descriptions`).
+///   2. `step_descriptions` — when authored, must parse into the IBS
+///      `StepDescriptionEntry` shape and every `include` UUID must be non-nil
+///      (the composer inlines them — F3=A). Absent (`Null`) / empty is allowed
+///      (legacy + variant-only drafts); the IBS parses it again at runtime.
+fn check_variant_machine_form(
+    variants: &[crate::types::recipe::RecipeVariant],
+    step_descriptions: &serde_json::Value,
+    result: &mut ValidationResult,
+) {
+    for (i, v) in variants.iter().enumerate() {
+        if v.step_link.is_none() {
+            continue;
+        }
+        for (j, vp) in v.variable_patterns.iter().enumerate() {
+            if vp.name.trim().is_empty() {
+                result.errors.push(format!(
+                    "Recipe variant #{i} ('{}') variable_patterns[{j}] has empty name — required for {{{{vars.NAME}}}} binding",
+                    v.variant_key
+                ));
+                continue;
+            }
+            if let Some(p) = vp.pattern.as_deref().map(str::trim).filter(|s| !s.is_empty())
+                && let Err(error) = regex::RegexBuilder::new(p)
+                    .size_limit(RECIPE_REGEX_SIZE_LIMIT)
+                    .build()
+            {
+                result.errors.push(format!(
+                    "Recipe variant #{i} ('{}') variable_patterns[{j}] regex invalid: {error}",
+                    v.variant_key
+                ));
+            }
+        }
+    }
+
+    if step_descriptions.is_null() {
+        return;
+    }
+    let Some(arr) = step_descriptions.as_array() else {
+        result
+            .errors
+            .push("Recipe step_descriptions must be a JSON array (machine form)".into());
+        return;
+    };
+    if arr.is_empty() {
+        return;
+    }
+    let sds: Vec<StepDescriptionEntry> = match serde_json::from_value(step_descriptions.clone()) {
+        Ok(v) => v,
+        Err(error) => {
+            result
+                .errors
+                .push(format!("Recipe step_descriptions malformed: {error}"));
+            return;
+        }
+    };
+    for sd in &sds {
+        for (j, step) in sd.steps.iter().enumerate() {
+            for (k, u) in step.include.iter().enumerate() {
+                if *u == uuid::Uuid::nil() {
+                    result.errors.push(format!(
+                        "StepDescription {} step {j} include[{k}] is the nil UUID — component-include must resolve to a real component",
+                        sd.desc_idx
+                    ));
+                }
+            }
         }
     }
 }
@@ -587,5 +666,94 @@ mod tests {
         )];
         let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
         assert!(result.is_ok(), "expected pass, got {result:?}");
+    }
+
+    fn vp(name: &str, pattern: Option<&str>) -> crate::types::ibs::VariablePattern {
+        crate::types::ibs::VariablePattern {
+            name: name.into(),
+            pattern: pattern.map(str::to_string),
+            description: None,
+        }
+    }
+
+    fn sd_json(include_uuids: &[&str]) -> serde_json::Value {
+        serde_json::json!([
+            {
+                "desc_idx": 0,
+                "label": "sd0",
+                "yaml_source": "steps: []",
+                "steps": [
+                    {
+                        "stepnumber": 1,
+                        "knowledge": "orchestrator",
+                        "goal": "g",
+                        "content": "c",
+                        "type": "component",
+                        "include": include_uuids
+                    }
+                ]
+            }
+        ])
+    }
+
+    #[test]
+    fn v3_variant_with_valid_machine_form_passes_q1() {
+        let mut r = base_recipe();
+        let mut v = v3_variant("ls-la", Some("List a directory including hidden files."));
+        v.variable_patterns = vec![vp("dir", Some("^[a-z0-9/]+$"))];
+        r.variants = vec![v];
+        r.step_descriptions = sd_json(&["11111111-1111-1111-1111-111111111111"]);
+        let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
+        assert!(result.is_ok(), "expected pass, got {result:?}");
+    }
+
+    #[test]
+    fn v3_variant_with_invalid_variable_pattern_regex_fails_q1() {
+        let mut r = base_recipe();
+        let mut v = v3_variant("ls-la", Some("List a directory including hidden files."));
+        v.variable_patterns = vec![vp("dir", Some("("))];
+        r.variants = vec![v];
+        let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
+        assert!(
+            result.errors.iter().any(|e| e.contains("regex invalid")),
+            "expected regex invalid error, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn v3_variant_with_empty_variable_pattern_name_fails_q1() {
+        let mut r = base_recipe();
+        let mut v = v3_variant("ls-la", Some("List a directory including hidden files."));
+        v.variable_patterns = vec![vp("  ", None)];
+        r.variants = vec![v];
+        let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
+        assert!(
+            result.errors.iter().any(|e| e.contains("empty name")),
+            "expected empty-name error, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn v3_variant_with_nil_include_uuid_fails_q1() {
+        let mut r = base_recipe();
+        r.variants = vec![v3_variant("ls-la", Some("List a directory including hidden files."))];
+        r.step_descriptions = sd_json(&["00000000-0000-0000-0000-000000000000"]);
+        let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
+        assert!(
+            result.errors.iter().any(|e| e.contains("nil UUID")),
+            "expected nil UUID error, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn v3_variant_with_malformed_step_descriptions_fails_q1() {
+        let mut r = base_recipe();
+        r.variants = vec![v3_variant("ls-la", Some("List a directory including hidden files."))];
+        r.step_descriptions = serde_json::json!([{"not": "the step_description shape"}]);
+        let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
+        assert!(
+            result.errors.iter().any(|e| e.contains("step_descriptions malformed")),
+            "expected malformed step_descriptions error, got {result:?}"
+        );
     }
 }

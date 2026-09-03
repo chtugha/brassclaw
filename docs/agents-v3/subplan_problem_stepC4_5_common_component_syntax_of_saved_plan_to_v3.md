@@ -138,6 +138,32 @@ shape for the common syntax.
   contract: who bakes what, when, with what escaping.
 - **i) Everything else clever/necessary** — added per-slice as discovered.
 
+## Placeholder grammar (items c + h — F-HI-2=A; formalised C.4.5.1)
+
+The composer (C.4.5.17) bakes three placeholder kinds into orchestrator-side
+content (PythonCode bodies + recipe orchestrator-side step content). All are
+`{{ ... }}` mustache-style; the machine-readable form (`StepEntry.include` +
+`VariablePattern`) is the unambiguous source the composer resolves them from.
+
+- **`{{vars.NAME}}`** — slot-variable substitution. `NAME` matches a
+  `RecipeVariant.variable_patterns[].name`; the composer bakes the extracted
+  slot value. `{{vars.slotN}}` (N = 1-based ordinal) is the positional form
+  used when `variable_patterns` is empty (positional auto-extraction, §0.17.3).
+  Data substitution only — never code.
+- **`{{user_input}}`** — the raw user input string (data substitution only).
+- **`{{component_name}}`** — structural include. The composer inlines the
+  referenced mini-PythonCode component's body (one function each, like an
+  include) at that slot. The machine form carries the resolved component as a
+  UUID in `StepEntry.include` (recipe) or the PythonCode include list; the
+  `{{component_name}}` template is the human-readable authoring surface that
+  resolves to that UUID at compose time. F3=A.
+
+**Baking rules (h):** the composer (C.4.5.17) is the sole baker; Q1 validates
+structure only (`variable_patterns` regex compileability + non-nil include
+UUIDs — C.4.5.1 gate), never bakes. Escaping: baked slot values are inserted
+as Python string literals (JSON-encoded) to prevent injection. `{{user_input}}`
+is never baked into raw code — only into string-literal positions.
+
 ## Composition system contract (`host.compose_orchestrator` rewrite)
 
 - **Input:** `component_id` (UUID or well-known name) + `user_input` (carries
@@ -204,14 +230,20 @@ shape for the common syntax.
 
 ## Status
 
-[ ] Pending — F1–F5 locked (F1=A universal IBS form; F2=C recipe-first; F3=A
+[x] C.4.5.0 DONE (contract spec + F1–F5 locks). [x] C.4.5.1 DONE (2026-09-03 —
+    `recipe`(21) aligned: `{{...}}` placeholder grammar formalised in the
+    contract (items c/h); explicit Q1 gate `check_variant_machine_form` added
+    to recipe_validator.rs (variable_patterns name+regex + non-nil include
+    UUIDs + step_descriptions parse, legacy exempt); 5 gate tests + 1 IBS
+    round-trip; no schema change; both configs clippy-clean + 47 recipe tests
+    green). F1–F5 locked (F1=A universal IBS form; F2=C recipe-first; F3=A
     template-vars + component-includes; F4=A-modified + F4-refinement
     composer-returns-parts / IBS-IS-the-composition-system /
     compose_orchestrator-is-a-Skill-over-IBS / predefined output structure;
-    F5=B folded into Step C as C.4.5). C.4.5.0 = this doc (contract spec)
-    finalised. **Grounded 2026-09-03: none of C.4.5.1–C.4.5.19 is implemented
-    yet** (IBS core exists Phase A but Recipe-only; compose_orchestrator is a
-    C.2 placeholder; host.run_program net-new; per-class syntax upgrades +
+    F5=B folded into Step C as C.4.5). **Remaining: C.4.5.2–C.4.5.19 not
+    implemented** (IBS core exists Phase A but Recipe-only; compose_orchestrator
+    is a C.2 placeholder; host.run_program net-new; per-class syntax upgrades +
     predefined structure + rust-plugin directives all pending). Next slice
-    C.4.5.1 (`recipe` alignment — F2=C recipe-first). This subplan is the
-    canonical one (the prior `subplan_problem_phaseHI_…md` is a redirect stub).
+    C.4.5.2 (`python_code`(22) + placeholder/include mechanism — c/h, F3=A).
+    This subplan is the canonical one (the prior `subplan_problem_phaseHI_…md`
+    is a redirect stub).

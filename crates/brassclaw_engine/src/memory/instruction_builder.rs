@@ -1118,6 +1118,37 @@ mod tests {
     }
 
     #[test]
+    fn recipe_machine_form_round_trips_through_ibs() {
+        // C.4.5.1 conformance: a v3 recipe variant's machine form (step_link +
+        // variable_patterns + step include UUIDs) compiles via the IBS into the
+        // universal BuildInstruction and serde-round-trips — the reference shape
+        // every other component class will conform to (F1=A).
+        let includes = vec![uuid(7), uuid(8)];
+        let sds = vec![sd(
+            0,
+            vec![entry(
+                1,
+                StepOwner::Both,
+                RecipeStepType::Component,
+                includes.clone(),
+                vec![],
+            )],
+        )];
+        let vps = vec![crate::types::ibs::VariablePattern {
+            name: "dir".into(),
+            pattern: Some("^[a-z]+$".into()),
+            description: None,
+        }];
+        let bi = build_instruction("0:0-0:E", &sds, &vps, true).unwrap();
+        assert_eq!(bi.variable_patterns, vps);
+        assert_eq!(bi.rust_steps[0].include, includes);
+        assert_eq!(bi.orchestrator_steps[0].include, includes);
+        let v = serde_json::to_value(&bi).unwrap();
+        let back: BuildInstruction = serde_json::from_value(v).unwrap();
+        assert_eq!(bi, back);
+    }
+
+    #[test]
     fn build_instruction_rejects_non_monotonic_stepnumbers() {
         let sds = vec![sd(
             0,

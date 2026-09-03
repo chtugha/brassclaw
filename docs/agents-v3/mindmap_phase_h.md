@@ -1508,3 +1508,21 @@ plumbing.
   is a C.2 seed placeholder (no handler in orchestrator.rs); host.run_program
   net-new; per-class syntax upgrades + predefined structure + rust-plugin
   directives all pending. Next: C.4.5.1 (recipe alignment, F2=C recipe-first).
+- **C.4.5.1 — Recipe (class 21) alignment DONE (2026-09-03).** Recipe is the
+  reference class (F2=C) + already carried the Step B dual-nature machine form
+  (RecipeVariant.step_link → IBS build_instruction → BuildInstruction; UUID
+  StepEntry.include = component-include; RecipeVariant.variable_patterns =
+  variable spec; check_variant_descriptions Q1 gate). User chose fork option C
+  (B + explicit gate). Deliverable: (1) formalised the `{{...}}` placeholder
+  grammar in the stepC4_5 contract (items c/h) — `{{vars.NAME}}`/`{{vars.slotN}}`
+  slot-var substitution, `{{user_input}}` raw input, `{{component_name}}`
+  structural include (composer inlines mini-PythonCode body; machine form =
+  UUID include); composer (C.4.5.17) is the sole baker, Q1 validates structure
+  only, baked values are JSON-string-literal-escaped; (2) added explicit Q1 gate
+  `check_variant_machine_form` in recipe_validator.rs — validates
+  variable_patterns (name non-empty + pattern regex compiles under
+  RECIPE_REGEX_SIZE_LIMIT) for v3 variants + parses step_descriptions when
+  authored + rejects nil include UUIDs / malformed JSONB (legacy Null/empty
+  exempt); wired into validate_recipe; (3) 5 gate tests + 1 IBS round-trip test
+  (`recipe_machine_form_round_trips_through_ibs`). No schema change. Both
+  configs clippy-clean (default + --features skills-db); 47 recipe tests green.
