@@ -2122,3 +2122,32 @@ grounded every claim against shipped source/migrations before committing.
   bridge); WebUI disambiguation UX; Phase J `intent_examples` formalization.
   Retired `default.py` references → Monty. Migration filenames confirmed:
   `V028__reborn_intent_inputs.sql` + `V054__reborn_intent_inputs_step_link.sql`.
+
+- **d03** `03-recipe-system` (this portion): rewrite to shipped state.
+  Grounded vs `pg_recipe_store.rs` + `recipe.rs` + migrations. Shipped facts
+  corrected: `RECIPE_SELECT` is now **34 cols** (indices 0–33) — the three V050
+  authoring cols (`step_descriptions`=31, `variants`=32, `dependency_registry`=33)
+  appended after the 31-col base; `decode_recipe_row` reads `row.get(0..=33)`;
+  `INSERT` writes them at `$14/$15/$16`. `Recipe` struct carries
+  `variants: Vec<RecipeVariant>` + `step_descriptions` + `dependency_registry`
+  (raw JSONB); `RecipeVariant` has `description: Option<String>` (Phase HI) +
+  `step_link`. **CRITICAL**: `reborn_recipes` was NOT touched by V072–V075 — the
+  5 legacy queue cols (`validation_errors`=22/`review_feedback`=23/
+  `review_attempts`=24/`rejected_at`=25/`queue_code`=26) are STILL PRESENT
+  (V072–V075 dropped them only from skills/actions/memory-classes/
+  extensions_unified). Their drop + decoder re-index = **Phase N (V076+)**,
+  still pending. V066 widened the `source` CHECK on `reborn_tools`/
+  `reborn_skills` ONLY — `reborn_recipes` never had a source CHECK, so
+  `'system'` works for the C.2 seeder. RETIRED the stale agent-loop `RecipeStep`
+  stage-enum / `RecipeStage`-stub framing (C.1 retired the step machine; the
+  loop now uses `TierZeroStep`/`TierZeroExecutionStage`). Rewrote §4 behavior to
+  the Monty `host.resolve_intent` → `host.compose_orchestrator(component_id,
+  step_link, user_input)` → composition system (`compose_program`/
+  `PgCompositionPort`) splits into `rust_directives` (cdylib, C.5/C.6) +
+  per-step orchestrator program + **skills array Monty consults while stepping**
+  → `host.run_program` per step. Added the production-path note: Tier-0 active
+  via turns `PgOrchestratorLookup` bridge; engine Monty VM `execute_orchestrator`
+  host-call path wired at host-call layer but VM dormant in prod (no
+  `ThreadManager`/`ConversationManager` in `build_reborn_runtime`) → C.5/C.6
+  driver activates it. Migrations: V033 create, V046 Solution Override cols,
+  V050 authoring cols, V061/V064 registry touch-ups.
