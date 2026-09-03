@@ -1,37 +1,80 @@
-# 04 — Instruction Builder System (IBS)
+# 04 — Instruction Builder System (IBS) = the Composition System
 
-> **Subsystem:** The Instruction Builder System — compiles a recipe's human-editable
-> `step_descriptions` into a machine-optimized `BuildInstruction` at intent-match time and
-> splits it into two typed channels (Rust / Orchestrator).
-> **Grounded in:** `saved_plan_to_v3.md` §0.4 / §0.4.1 / §0.6 / §0.7 / §0.8 / §0.20, Phases A, E, H.
-> **Status:** **v3-only — does not exist in the current codebase.** Both
-> `crates/brassclaw_engine/src/memory/instruction_builder.rs` and
-> `crates/brassclaw_engine/src/types/ibs.rs` are absent today (FIND-NEW-PASS14-03).
+> **Subsystem:** the Instruction Builder System — compiles a recipe's
+> human-editable `step_descriptions` into a machine-optimized `BuildInstruction`
+> at intent-match time and splits it into two typed channels (Rust /
+> Orchestrator). Per the F4 lock, **the IBS IS the composition system**: the
+> `host.compose_orchestrator` host call thin-calls the IBS, which composes the
+> matched recipe + variant into the predefined Monty-facing structure
+> `{ skills, steplist, rust_directives, variables, assembled_program, tier }`.
+> The composer never runs anything and never bakes a single program string —
+> Monty iterates the `steplist` and runs each step's `executable_code` via
+> `host.run_program` (see `13-orchestrator-default-py.md`, f2).
+> **Grounded in:** `crates/brassclaw_engine/src/memory/instruction_builder.rs`,
+> `crates/brassclaw_engine/src/types/ibs.rs`,
+> `crates/brassclaw_engine/src/memory/composition.rs` (`ComposedProgram`/
+> `compose_program`/`ComponentResolver`), `crates/brassclaw_engine/src/executor/
+> composition_port.rs` (`CompositionPort` trait),
+> `crates/brassclaw_reborn_composition/src/pg_composition_port.rs`
+> (`PgCompositionPort`); `saved_plan_to_v3.md` §0.4 / §0.4.1 / §0.6 / §0.7 /
+> §0.8 / §0.20, Phases A, E, H, Step C / C.4.5.17.
+> **Status:** **shipped.** The IBS core (`instruction_builder.rs` + `types/ibs.rs`)
+> landed in Phase A (V050); the composition system (`composition.rs` +
+> `CompositionPort` + `PgCompositionPort` + `host.compose_orchestrator`/
+> `host.run_program`) landed in C.4.5.17. Live activation is C.5/C.6 (driver).
 
 ## 1. Purpose
 
-The IBS is the sole producer of `BuildInstruction`s. It **compiles** a recipe's
-`step_descriptions` (a JSONB array of human-authored YAML steps) into a typed, two-channel
-instruction at the moment the intent system matches a recipe. BuildInstructions are never
-hand-authored or pre-stored: assembling on match (rather than pre-storing) always reads current,
-validated component UUIDs with zero staleness risk — a PythonCode revision does not require a
-cascade rebuild. The two channels are read by two different runtimes: the **Rust execution
-layer** (ToolSkill bodies + tool bindings) and the **Python orchestrator** (Skill + PythonCode
-bodies serialized into `orchestrator_content`).
+The IBS is the sole producer of `BuildInstruction`s and — per the F4 lock — **the composition
+system**. It does two things:
+
+1. **Compile** a recipe's `step_descriptions` (a JSONB array of human-authored YAML steps) into a
+   typed, two-channel `BuildInstruction` at the moment the intent system matches a recipe.
+   BuildInstructions are never hand-authored or pre-stored: assembling on match (rather than
+   pre-storing) always reads current, validated component UUIDs with zero staleness risk — a
+   PythonCode revision does not require a cascade rebuild.
+2. **Compose** that `BuildInstruction` (+ the matched variant's `variable_patterns` + the resolved
+   included components) into the predefined Monty-facing `ComposedProgram`:
+   `{ skills[], steplist[{step_id, instructions, executable_code, tool_bindings}],
+   rust_directives[], variables{}, assembled_program, tier }`. This is what
+   `host.compose_orchestrator(component_id, step_link, user_input)` returns to Monty.
+
+The two `BuildInstruction` channels are read by two different runtimes in the
+Orchestrator/Executioner split: the **Rust Executioner** (`rust_steps` → ToolSkill bodies + tool
+bindings, materialised as `rust_directives`/`tool_bindings` in the composed program) and the
+**Python Orchestrator** (`orchestrator_steps` → Skill + PythonCode bodies, materialised as
+`skills` + each `steplist` step's `executable_code`). The composer itself **never runs anything**
+and **never bakes a single program string** — Monty iterates the `steplist`, consults `skills`
+for exact tool usage, and runs each step's `executable_code` via `host.run_program`.
 
 ## 2. Location
 
-- **New module (builder):** `crates/brassclaw_engine/src/memory/instruction_builder.rs` — pure
-  Rust, no async, no DB calls. Exposed as `crate::memory::instruction_builder::build_instruction`.
-- **New module (data types):** `crates/brassclaw_engine/src/types/ibs.rs` — `VariablePattern`,
-  `ToolBinding`, `ErrorPolicy` (JSONB-persisted data-model types). `types/mod.rs` gains
-  `pub mod ibs`.
-- **Caller:** `PostgresSource::fetch_for_turn` (`crates/brassclaw_engine/src/memory/retrieval_source.rs`)
-  — calls `build_instruction` synchronously after an intent match resolves to a recipe (class 21),
-  then immediately calls `fetch_component_by_id` for every emitted UUID.
-- **Storage:** `step_descriptions` JSONB on `reborn_recipes` (V050, Phase A); `step_link` TEXT on
-  `reborn_intent_inputs` (V054, Phase D); `variants` JSONB (V050) carrying nested `variable_patterns`.
-- Both modules are **absent** today and must be created by Phase A.
+- **IBS builder (shipped, Phase A):** `crates/brassclaw_engine/src/memory/instruction_builder.rs`
+  — pure Rust, no async, no DB calls. Exposed as
+  `crate::memory::instruction_builder::build_instruction` (+ `capture_variables`/`substitute_vars`).
+- **IBS data types (shipped, Phase A):** `crates/brassclaw_engine/src/types/ibs.rs` —
+  `VariablePattern`, `ToolBinding`, `ErrorPolicy` (JSONB-persisted data-model types).
+- **Composition core (shipped, C.4.5.17):** `crates/brassclaw_engine/src/memory/composition.rs`
+  — `ComposedProgram`, `ComposedStep`, `RustDirective`, `SkillRef`, `ComponentResolver` (trait),
+  `ResolvedComponent`, `compose_program` (pure; binds `{{vars.NAME}}`).
+- **Composition port — engine side (shipped, C.4.5.17):**
+  `crates/brassclaw_engine/src/executor/composition_port.rs` — the `CompositionPort` trait +
+  `CompositionPortError` (`Unavailable`/`RecipeNotFound`/`NoVariantMatch`/`Failure`).
+- **Composition impl — the IBS over Postgres (shipped, C.4.5.17):**
+  `crates/brassclaw_reborn_composition/src/pg_composition_port.rs` — `PgCompositionPort` (owns
+  `Arc<PgPool>`); runs the recipe SELECT → variant match by `step_link` → `build_instruction` →
+  `capture_variables` → resolve include/tool UUIDs → `compose_program` pipeline.
+- **Host-call handlers (shipped, C.2/C.4.5.17):** `crates/brassclaw_engine/src/executor/orchestrator.rs`
+  — `host.compose_orchestrator` (thin-calls `CompositionPort::compose`) + `host.run_program`
+  (nested `execute_code`).
+- **Callers:** `PostgresSource::fetch_for_turn` / `fetch_recipe_split_result`
+  (`crates/brassclaw_engine/src/memory/retrieval_source.rs`) call `build_instruction` synchronously
+  after an intent match resolves to a recipe (class 21), then `fetch_component_by_id` for every
+  emitted UUID. `PgCompositionPort::compose` is the composition-system entry called by the
+  `host.compose_orchestrator` handler.
+- **Storage:** `step_descriptions` JSONB on `reborn_recipes` (V050); `step_link` TEXT on
+  `reborn_intent_inputs` (V054); `variants` JSONB (V050) carrying nested `variable_patterns`.
+  Per-class DB-structure standardisation through V075 (C.4.5.0–C.4.5.16).
 
 ## 3. Data model
 
@@ -279,58 +322,130 @@ pub enum IbsError {
 }
 ```
 
+## 4a. The composition system (C.4.5.17 — the IBS IS the composition system)
+
+`build_instruction` produces the typed two-channel `BuildInstruction`. The **composition system**
+turns that into the predefined Monty-facing `ComposedProgram` that
+`host.compose_orchestrator(component_id, step_link, user_input)` returns.
+
+### `ComposedProgram` (`memory/composition.rs`)
+
+```
+ComposedProgram
+├── skills: Vec<SkillRef>            ← first-class array Monty consults while stepping
+│   └── SkillRef { id, class_code, name, body }   (Skill / ToolSkill bodies)
+├── steplist: Vec<ComposedStep>      ← Monty iterates this; runs each executable_code
+│   └── ComposedStep { step_id, instructions, executable_code, tool_bindings }
+├── rust_directives: Vec<RustDirective>  ← cdylib load directives for the Executioner
+│   └── RustDirective { tool_id, tool_name, artifact_path }
+├── variables: Vec<(String, String)> ← {{vars.NAME}} slots bound from user_input
+├── assembled_program: String        ← the human-readable assembled view (NOT run as one program)
+└── tier: String                     ← "tier0" | "tier1" …
+```
+
+### `ComponentResolver` (trait, `memory/composition.rs`)
+
+A **sync** trait: `resolve(&self, id: Uuid) -> Option<ResolvedComponent>`. The composition impl
+pre-populates a `MapComponentResolver` (`HashMap`-backed) with every included component fetched
+in one batched `fetch_components_by_ids` pass, so `compose_program` resolves includes with no DB
+round-trip. `ResolvedComponent` carries the component's `class_code` + `effective_content`;
+`compose_program` routes by class: PythonCode (22) → `executable_code`; Skill/ToolSkill (1/2/3/13)
+→ `skills`; Tool (0) → `rust_directives`.
+
+### `compose_program` (pure, `memory/composition.rs`)
+
+Takes the `BuildInstruction` + a `ComponentResolver` + captured `variables` and produces the
+`ComposedProgram`. It **binds `{{vars.NAME}}`** (data substitution only; baked as JSON-encoded
+Python string literals to prevent injection) and **inlines `{{component_name}}` includes**
+(structural include — the referenced mini-PythonCode component's body, one function each).
+It never runs anything and never bakes a single program string: `assembled_program` is a
+human-readable view, not the run unit — Monty runs each `steplist` step's `executable_code`
+individually via `host.run_program`.
+
+### `CompositionPort` + `PgCompositionPort` (the live pipeline)
+
+- **Engine side** (`executor/composition_port.rs`): the `CompositionPort` trait —
+  `compose(&self, scope, component_id, step_link, user_input) -> BoxFuture<Result<ComposedProgram,
+  CompositionPortError>>`. `CompositionPortError`: `Unavailable` (no bridge wired),
+  `RecipeNotFound`, `NoVariantMatch`, `Failure`. The `host.compose_orchestrator` handler
+  thin-calls this; `None` port → `{ok:false, error:"composition_unavailable"}` (degrade to
+  Non-Matching-Mode).
+- **Composition impl** (`pg_composition_port.rs`): `PgCompositionPort` owns `Arc<PgPool>` and
+  runs: recipe SELECT (scope) → `tier0_eligible` (tier/validation/wilson ≥ 0.70) →
+  `llm_call_required` → variant match by `step_link` (`NoVariantMatch` if none) →
+  `build_instruction` → `capture_variables(user_input, …)` → collect orchestrator+rust include
+  UUIDs + rust `tool_bindings` tool_ids → `lookup_component_class` + `fetch_components_by_ids`
+  (batched) → `MapComponentResolver` → `compose_program` → `ComposedProgram`.
+  `RustDirective.artifact_path` is empty until the C.5/C.6 loader applies `rust_directives`
+  (V071 dropped `cdylib_artifact_path`; class-0 tools carry no prompt text).
+
+### Activation
+
+The engine Monty VM `execute_orchestrator` host-call path (and thus `host.compose_orchestrator` /
+`PgCompositionPort`) is constructed + unit-tested but **inert in production until the C.5/C.6
+driver** wires `PgCompositionPort` into `ThreadManager` and applies `rust_directives` via the C.3
+`DynamicToolLoader`. The live Tier-0/Tier-1 path today runs through the turns
+`PgOrchestratorLookup` bridge. `#![allow(dead_code)]` covers the inert window.
+
 ## 5. Relations
 
 - **Recipe System** (`03-recipe-system.md`): owns `step_descriptions`/`variants`/`dependency_registry`;
   the IBS is the consumer.
 - **Intent System** (`02-intent-system.md`): `step_link` lives on `reborn_intent_inputs` (Phase D);
-  a `Match` (class 21) with a non-NULL `step_link` triggers the IBS.
-- **Retrieval System** (`11-retrieval-system.md`): `PostgresSource::fetch_for_turn` is the caller;
-  `SplitResult` is the new `FetchForTurnResult` variant (Phase E).
+  a `Match` (class 21) with a non-NULL `step_link` triggers the IBS; `host.resolve_intent` surfaces
+  `component_id` + `step_link` to `host.compose_orchestrator`.
+- **Retrieval System** (`11-retrieval-system.md`): `PostgresSource::fetch_for_turn` /
+  `fetch_recipe_split_result` is the legacy caller; `PgCompositionPort::compose` is the
+  composition-system entry; `SplitResult` is the `FetchForTurnResult` variant.
 - **Skills / PythonCode** (`05`/`07`): `orchestrator_steps` carry Skill + PythonCode UUIDs;
-  `codesnippet` creates PythonCode (class 22) pending Q1/Q2.
+  `codesnippet` creates PythonCode (class 22) pending Q1/Q2; `skills` + `executable_code` are the
+  composed materialisations.
 - **Actions** (`08-actions-system.md`): `ActionShortCircuit` (class 16) is the no-LLM sibling of
   `SplitResult`.
 - **Validation Queue** (`14-validation-queue.md`): `snippet`→`component` promotion is gated by
   Q1/Q2 (Phase N); the memo cache evicts on component `updated_at`/`last_graduation_at`.
 
-## 6. Status — today vs. v3
+## 6. Status — shipped vs. pending
 
-**Today:** the IBS **does not exist**. `instruction_builder.rs` and `types/ibs.rs` are absent
-(FIND-NEW-PASS14-03); `step_descriptions`/`variants`/`dependency_registry` columns do not exist on
-`reborn_recipes`; `step_link` does not exist on `reborn_intent_inputs`; `FetchForTurnResult` has
-only `Components`/`Disambiguation`; the production backend is `RamSource` (no intent path), so the
-IBS would never be reached even if it existed. `RecipeStep` in `types/recipe.rs` is the legacy
-`{skill, tool, params, description}` Tier-1/2 fallback shape — unrelated to `IbsRecipeStep`.
-
-**v3 plan adds:**
-- **Phase A (V050):** create `instruction_builder.rs` + `types/ibs.rs` (`VariablePattern`/
-  `ToolBinding`/`ErrorPolicy`); add `step_descriptions`/`variants`/`dependency_registry` to
-  `reborn_recipes`; extend `PgRecipe`/`NewPgRecipe`/`RECIPE_SELECT`/`decode_recipe_row`/`INSERT`
-  for the store round-trip (H1).
-- **Phase D (V054):** add `step_link TEXT` to `reborn_intent_inputs` (nullable; NULL ⇒ legacy
+**Shipped:**
+- **Phase A (V050):** `instruction_builder.rs` + `types/ibs.rs` (`VariablePattern`/`ToolBinding`/
+  `ErrorPolicy`); `step_descriptions`/`variants`/`dependency_registry` on `reborn_recipes`; the
+  `PgRecipe`/`NewPgRecipe`/`RECIPE_SELECT`/`decode_recipe_row`/`INSERT` store round-trip.
+- **Phase D (V054):** `step_link TEXT` on `reborn_intent_inputs` (nullable; NULL ⇒ legacy
   fall-through). `resolve_intent` returns `step_link` + `component_name` on a `Match`.
 - **Phase E:** `PostgresSource::fetch_for_turn` calls `build_instruction`, deserializes
-  `variants → Vec<RecipeVariant>` to extract `variable_patterns` (FIND-P6-06), fetches each UUID,
-  and returns `SplitResult` with the full `TurnRoutingSignals` (incl. correct `tier0_eligible`).
-- **Phase H:** `RecipeStage` (engine path A) / `TierZeroExecutionStage` (agent-loop path B/C)
-  consume `SplitResult` — apply `rust_items` silently; stash `orchestrator_items` as
-  `orchestrator_content`; Tier 0 returns without an LLM call (`tier_zero: true`), Tier 1 proceeds to
-  `PromptStage`→`InterceptorStage`→`ModelStage`.
+  `variants → Vec<RecipeVariant>` to extract `variable_patterns`, fetches each UUID, and returns
+  `SplitResult` with the full `TurnRoutingSignals` (incl. correct `tier0_eligible`).
+- **Phase H:** `RecipeStage` / `TierZeroExecutionStage` consume `SplitResult`; Tier 0 returns
+  without an LLM call, Tier 1 proceeds to `PromptStage`→`InterceptorStage`→`ModelStage`.
+- **C.4.5.17:** the composition system — `composition.rs` (`ComposedProgram`/`compose_program`/
+  `ComponentResolver`), `CompositionPort` trait, `PgCompositionPort` impl, `host.compose_orchestrator`
+  + `host.run_program` handlers. Per-class DB-structure standardisation through V075
+  (C.4.5.0–C.4.5.16). DB-less mode removed.
+
+**Pending:**
+- **C.5/C.6:** the driver that wires `PgCompositionPort` into `ThreadManager` + applies
+  `rust_directives` via the C.3 `DynamicToolLoader`, activating the engine Monty VM host-call path
+  as the primary driver (today inert; the turns `PgOrchestratorLookup` bridge is the live path).
+- **C.7 / Phase A (reshaped H.12.6):** final cleanup after C.
 
 ## 7. LLM-relevant summary
 
-The IBS compiles a recipe's `step_descriptions` JSONB (V050) into a two-channel `BuildInstruction`
-at intent-match time, synchronously inside `fetch_for_turn`. Channel R (Rust) gets `rust_steps`
-with ToolSkill UUIDs + `ToolBinding`s (`{tool_id, tool_name, params, error_policy}`); Channel O
-(orchestrator) gets `orchestrator_steps` with Skill/PythonCode UUIDs, serialized by
-`handle_assemble_prior_knowledge` into self-describing `orchestrator_content` (headers derived
-from `class_code` via `StepContextSpec`). `step_link` (`{desc}:{start}-{desc}:{end}+…`, on
-`reborn_intent_inputs` V054) selects the steps; `variable_patterns` (nested in `variants`) drive
-`{{vars.NAME}}` substitution. BuildInstructions are never pre-stored (zero staleness) and memoised
-by `sha256(step_link | step_descriptions_hash | variable_patterns_hash)` (DESIGN-02 fixed the
-circular key). The S7 guard enforces that rust tool_bindings always come with an orchestrator
-channel (Skill for Tier 1; PythonCode for Tier 0). Result is `FetchForTurnResult::SplitResult`
-{ `rust_items`, `orchestrator_items`, `TurnRoutingSignals` } — rust delivered to the execution
-context with no DB round-trip. The IBS, `types/ibs.rs`, and all three recipe columns are v3-only
-(Phase A); `step_link` is Phase D; the caller wiring is Phase E; the consumers are Phase H.
+The IBS — **the composition system** (F4) — compiles a recipe's `step_descriptions` JSONB (V050)
+into a two-channel `BuildInstruction` at intent-match time, then composes it (+ the matched
+variant's `variable_patterns` + resolved includes) into the predefined `ComposedProgram`
+`{ skills, steplist, rust_directives, variables, assembled_program, tier }` returned by
+`host.compose_orchestrator(component_id, step_link, user_input)`. Channel R (Rust Executioner) gets
+`rust_steps` → `rust_directives` (ToolSkill UUIDs + `ToolBinding`s
+`{tool_id, tool_name, params, error_policy}`, applied as cdylib load directives by the C.3
+`DynamicToolLoader`); Channel O (Python Orchestrator) gets `orchestrator_steps` → `skills` (the
+first-class array Monty consults while stepping) + each `steplist` step's `executable_code`.
+`step_link` (`{desc}:{start}-{desc}:{end}+…`, on `reborn_intent_inputs` V054) selects the steps;
+`variable_patterns` (nested in `variants`) drive `{{vars.NAME}}` substitution (data only; baked as
+JSON-encoded Python string literals). BuildInstructions are never pre-stored (zero staleness) and
+memoised by `sha256(step_link | step_descriptions_hash | variable_patterns_hash)` (DESIGN-02 fixed
+the circular key). The S7 guard enforces that rust `tool_bindings` always come with an orchestrator
+channel (Skill for Tier 1; PythonCode for Tier 0). The composer never runs anything and never bakes
+a single program string — Monty iterates the `steplist` and runs each step's `executable_code` via
+`host.run_program`. The IBS core is Phase A; `step_link` is Phase D; the caller wiring is Phase E;
+the composition system + `host.*` handlers are C.4.5.17; live activation is C.5/C.6.
