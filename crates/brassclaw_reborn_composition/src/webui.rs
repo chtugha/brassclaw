@@ -286,6 +286,23 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         tracing::debug!("MontyVmSettingsStore wired through PgMontyVmSettingsStore");
     }
 
+    // Wire the security settings store (postgres path).
+    // When the pool is available, GET/PUT /api/settings/security persists to DB.
+    // Tenant-scoped (operator-level); the tenant is captured here at construction.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let tenant_id = runtime.webui_tenant_id();
+        let security_store = crate::pg_security_settings_store::PgSecuritySettingsStore::new(
+            Arc::clone(pool),
+            tenant_id,
+        );
+        api = api.with_security_settings_store(
+            Arc::new(security_store)
+                as Arc<dyn brassclaw_product_workflow::SecuritySettingsStore>,
+        );
+        tracing::debug!("SecuritySettingsStore wired through PgSecuritySettingsStore");
+    }
+
     // Wire the chat preference store (postgres path).
     // When the pool is available, PUT /api/chat/preferences/{key} persists to DB.
     #[cfg(feature = "postgres")]

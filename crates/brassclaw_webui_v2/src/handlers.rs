@@ -35,7 +35,8 @@ use brassclaw_product_workflow::{
     RebornStreamEventsRequest, RebornSubmitTurnResponse, RebornTimelineRequest,
     RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
-    RecordOutcomeRequest, RecordOutcomeResponse, SetActiveLlmRequest, SettingsListResponse,
+    RecordOutcomeRequest, RecordOutcomeResponse, SecurityModeConfig, SetActiveLlmRequest,
+    SettingsListResponse,
     ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
     UpdateChatPreferenceResponse, UpdateInterceptorConfigRequest, UpdateMontyVmSettingsRequest,
     UpdateValidationStatusRequest, UpdateValidationStatusResponse, UpsertLlmProviderRequest,
@@ -1496,6 +1497,36 @@ pub async fn put_settings_monty_vm(
     let response = state
         .services()
         .update_monty_vm_settings(caller, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/security`
+///
+/// Get the operator-level security-settings config — the per-layer
+/// `Auto`/`ForceOn`/`ForceOff` overrides backed by `reborn_security_settings`
+/// (V068). Tenant-scoped (operator-level); the caller is auth-gated only.
+pub async fn get_settings_security(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SecurityModeConfig>, WebUiV2HttpError> {
+    let response = state.services().get_security_settings(caller).await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/settings/security`
+///
+/// Upsert the operator-level security-settings config (full replacement of the
+/// six per-layer overrides). Tenant-scoped (operator-level); the caller is
+/// auth-gated only.
+pub async fn put_settings_security(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(body): Json<SecurityModeConfig>,
+) -> Result<Json<SecurityModeConfig>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .update_security_settings(caller, body)
         .await?;
     Ok(Json(response))
 }

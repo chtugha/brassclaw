@@ -1316,6 +1316,33 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
+    /// Get the operator-level security-settings config (per-layer overrides
+    /// backed by `reborn_security_settings`). Tenant-scoped; caller auth-gated.
+    async fn get_security_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<brassclaw_turns::run_profile::SecurityModeConfig, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Upsert the operator-level security-settings config (full replacement of
+    /// the six per-layer overrides). Tenant-scoped; caller auth-gated.
+    async fn update_security_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _config: brassclaw_turns::run_profile::SecurityModeConfig,
+    ) -> Result<brassclaw_turns::run_profile::SecurityModeConfig, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
     /// Restart the Monty VM. Dispatches through the kernel-owned lifecycle
     /// manager. `force=true` aborts in-flight turns before restart.
     async fn restart_monty_vm(
@@ -1454,6 +1481,9 @@ pub struct RebornServices {
     /// When unwired, compiled-in defaults are served for GET and PUT/POST
     /// return 501.
     monty_vm_settings: Option<Arc<dyn crate::settings::MontyVmSettingsStore>>,
+    /// Security settings store backing `GET/PUT /api/settings/security`.
+    /// When unwired the trait default returns 501.
+    security_settings: Option<Arc<dyn crate::settings::SecuritySettingsStore>>,
     /// Chat preference store backing `PUT /api/chat/preferences/{key}`.
     /// When unwired the trait default returns 501.
     chat_preference_store: Option<Arc<dyn crate::settings::ChatPreferenceStore>>,
@@ -1500,6 +1530,7 @@ impl RebornServices {
             recipe_store: None,
             interceptor_config: None,
             monty_vm_settings: None,
+            security_settings: None,
             chat_preference_store: None,
             intent_inputs_store: None,
         }
@@ -1735,6 +1766,15 @@ impl RebornServices {
         store: Arc<dyn crate::settings::MontyVmSettingsStore>,
     ) -> Self {
         self.monty_vm_settings = Some(store);
+        self
+    }
+
+    /// Wire the security settings store backing `GET/PUT /api/settings/security`.
+    pub fn with_security_settings_store(
+        mut self,
+        store: Arc<dyn crate::settings::SecuritySettingsStore>,
+    ) -> Self {
+        self.security_settings = Some(store);
         self
     }
 
@@ -3726,6 +3766,27 @@ impl RebornServicesApi for RebornServices {
         Ok(crate::settings::MontyVmSettingsResponse { settings })
     }
 
+    async fn get_security_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<brassclaw_turns::run_profile::SecurityModeConfig, RebornServicesError> {
+        let store = self.security_settings.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 503, false)
+        })?;
+        store.get().await.map_err(map_security_error)
+    }
+
+    async fn update_security_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        config: brassclaw_turns::run_profile::SecurityModeConfig,
+    ) -> Result<brassclaw_turns::run_profile::SecurityModeConfig, RebornServicesError> {
+        let store = self.security_settings.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 503, false)
+        })?;
+        store.upsert(&config).await.map_err(map_security_error)
+    }
+
     async fn restart_monty_vm(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -5106,6 +5167,33 @@ fn map_monty_vm_error(error: crate::settings::MontyVmSettingsError) -> RebornSer
         }
         crate::settings::MontyVmSettingsError::Internal(reason) => {
             tracing::error!("❌ monty_vm_settings: internal error: {reason}");
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Internal,
+                RebornServicesErrorKind::Internal,
+                500,
+                false,
+            )
+        }
+    }
+}
+
+fn map_security_error(error: crate::settings::SecuritySettingsError) -> RebornServicesError {
+    match error {
+        crate::settings::SecuritySettingsError::Invalid(reason) => {
+            tracing::debug!("security_settings: invalid request: {reason}");
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
+        }
+        crate::settings::SecuritySettingsError::Unavailable(reason) => {
+            tracing::debug!("security_settings: store unavailable: {reason}");
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        }
+        crate::settings::SecuritySettingsError::Internal(reason) => {
+            tracing::error!("❌ security_settings: internal error: {reason}");
             RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Internal,
                 RebornServicesErrorKind::Internal,

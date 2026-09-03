@@ -25,18 +25,12 @@ mod inner {
     use tracing::debug;
 
     /// Postgres-backed operator-level security-config store.
-    ///
-    /// `#[allow(dead_code)]` until slice 3 wires the WebUI route (the first
-    /// caller) and C.6 wires the driver — the store is data + plumbing only
-    /// this slice.
-    #[allow(dead_code)]
     #[derive(Clone)]
     pub(crate) struct PgSecuritySettingsStore {
         pool: Arc<PgPool>,
         tenant_id: String,
     }
 
-    #[allow(dead_code)]
     impl PgSecuritySettingsStore {
         pub(crate) fn new(pool: Arc<PgPool>, tenant_id: impl Into<String>) -> Self {
             Self {
@@ -134,8 +128,42 @@ mod inner {
             self.load().await
         }
     }
+
+    #[async_trait]
+    impl brassclaw_product_workflow::SecuritySettingsStore for PgSecuritySettingsStore {
+        async fn get(
+            &self,
+        ) -> Result<SecurityModeConfig, brassclaw_product_workflow::SecuritySettingsError> {
+            self.load().await.map_err(map_security_settings_error)
+        }
+
+        async fn upsert(
+            &self,
+            config: &SecurityModeConfig,
+        ) -> Result<SecurityModeConfig, brassclaw_product_workflow::SecuritySettingsError> {
+            self.save(config)
+                .await
+                .map_err(map_security_settings_error)
+        }
+    }
+
+    /// Map the turns-layer [`SecurityConfigError`] (pool/pg + deserialize) into
+    /// the product-workflow [`SecuritySettingsError`] surface the WebUI route
+    /// consumes. `Load` (pool/query) → `Internal`; `Deserialize` (bad override
+    /// text) → `Invalid`.
+    fn map_security_settings_error(
+        error: SecurityConfigError,
+    ) -> brassclaw_product_workflow::SecuritySettingsError {
+        match error {
+            SecurityConfigError::Load(reason) => {
+                brassclaw_product_workflow::SecuritySettingsError::Internal(reason)
+            }
+            SecurityConfigError::Deserialize(reason) => {
+                brassclaw_product_workflow::SecuritySettingsError::Invalid(reason)
+            }
+        }
+    }
 }
 
 #[cfg(feature = "postgres")]
-#[allow(unused_imports)]
 pub(crate) use inner::PgSecuritySettingsStore;

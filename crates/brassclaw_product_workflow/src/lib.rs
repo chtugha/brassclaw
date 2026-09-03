@@ -160,7 +160,8 @@ pub use settings::{
     ChatPreferenceStore, IntentInputListResponse, IntentInputRow, IntentInputsStore,
     MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsError,
     MontyVmSettingsResponse, MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse,
-    SettingsComponentSummary, SettingsListResponse, UpdateChatPreferenceRequest,
+    SecuritySettingsError, SecuritySettingsStore, SettingsComponentSummary,
+    SettingsListResponse, UpdateChatPreferenceRequest,
     UpdateChatPreferenceResponse, UpdateMontyVmSettingsRequest, UpsertIntentInputRequest,
     default_monty_vm_settings,
 };
@@ -172,6 +173,11 @@ pub use token_settings_store::TokenSettingsStore;
 // a direct dependency on `brassclaw_product_adapters` — the single-facade
 // boundary is enforced by `brassclaw_architecture`.
 pub use brassclaw_llm::ProviderRole;
+// The security-settings wire DTO is turns-native (`SecurityModeConfig`), but
+// `brassclaw_webui_v2` consumes turns types through this facade crate (it only
+// depends on `brassclaw_turns` as a dev-dependency). Re-export so the route
+// handler can name the same type the `RebornServicesApi` methods return.
+pub use brassclaw_turns::run_profile::SecurityModeConfig;
 pub use brassclaw_product_adapters::{
     AuthPromptView, CapabilityActivityStatusView, CapabilityActivityView,
     CapabilityDisplayPreviewView, FinalReplyView, GatePromptView, ProductOutboundEnvelope,

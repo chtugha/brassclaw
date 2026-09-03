@@ -197,6 +197,43 @@ pub fn default_monty_vm_settings() -> MontyVmSettings {
     }
 }
 
+// ── SecuritySettingsStore ────────────────────────────────────────────────────
+
+/// Storage error for operator-level security-settings operations.
+#[derive(Debug, thiserror::Error)]
+pub enum SecuritySettingsError {
+    #[error("store unavailable: {0}")]
+    Unavailable(String),
+    #[error("invalid request: {0}")]
+    Invalid(String),
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+
+/// Persistence port for `reborn_security_settings` (V068).
+///
+/// Operator-level and tenant-scoped: the tenant is captured at construction by
+/// the backing `PgSecuritySettingsStore` in composition, so the trait carries no
+/// tenant argument. A missing row yields
+/// [`brassclaw_turns::run_profile::SecurityModeConfig::default`] (all `Auto`).
+/// The C.6 cross-turn driver consumes the same row through the turns-layer
+/// [`brassclaw_turns::run_profile::SecurityConfigSource`] port; this trait is
+/// the WebUI CRUD surface over it.
+#[async_trait]
+pub trait SecuritySettingsStore: Send + Sync {
+    /// Load the operator-level security config for the store's tenant.
+    async fn get(
+        &self,
+    ) -> Result<brassclaw_turns::run_profile::SecurityModeConfig, SecuritySettingsError>;
+
+    /// Upsert the operator-level security config for the store's tenant.
+    /// Returns the full updated config (re-read after write).
+    async fn upsert(
+        &self,
+        config: &brassclaw_turns::run_profile::SecurityModeConfig,
+    ) -> Result<brassclaw_turns::run_profile::SecurityModeConfig, SecuritySettingsError>;
+}
+
 // ── IntentInputsStore ─────────────────────────────────────────────────────────
 
 /// A single row from `reborn_intent_inputs`, returned by the Settings UI API.

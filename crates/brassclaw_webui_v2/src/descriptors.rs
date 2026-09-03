@@ -91,6 +91,8 @@ pub const WEBUI_V2_ROUTE_POST_SETTINGS_MONTY_VM_RESTART: &str =
     "webui.v2.post_settings_monty_vm_restart";
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_MONTY_VM_STATUS: &str =
     "webui.v2.get_settings_monty_vm_status";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_SECURITY: &str = "webui.v2.get_settings_security";
+pub const WEBUI_V2_ROUTE_PUT_SETTINGS_SECURITY: &str = "webui.v2.put_settings_security";
 pub const WEBUI_V2_ROUTE_PUT_CHAT_PREFERENCE: &str = "webui.v2.put_chat_preference";
 pub const WEBUI_V2_ROUTE_LIST_INTENT_INPUTS: &str = "webui.v2.list_intent_inputs";
 pub const WEBUI_V2_ROUTE_UPSERT_INTENT_INPUT: &str = "webui.v2.upsert_intent_input";
@@ -105,6 +107,7 @@ pub const WEBUI_V2_PATTERN_SETTINGS_SCAFFOLDS: &str = "/api/settings/scaffolds";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM: &str = "/api/settings/monty-vm";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART: &str = "/api/settings/monty-vm/restart";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS: &str = "/api/settings/monty-vm/status";
+pub const WEBUI_V2_PATTERN_SETTINGS_SECURITY: &str = "/api/settings/security";
 pub const WEBUI_V2_PATTERN_CHAT_PREFERENCE: &str = "/api/chat/preferences/{key}";
 pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS: &str = "/api/settings/intent-inputs";
 pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE: &str =
@@ -249,6 +252,8 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         put_settings_monty_vm_descriptor(),
         post_settings_monty_vm_restart_descriptor(),
         get_settings_monty_vm_status_descriptor(),
+        get_settings_security_descriptor(),
+        put_settings_security_descriptor(),
         put_chat_preference_descriptor(),
         // Phase 6 — intent inputs CRUD (GET/PUT/DELETE /api/settings/intent-inputs).
         list_intent_inputs_descriptor(),
@@ -1102,6 +1107,34 @@ fn get_settings_monty_vm_status_descriptor() -> IngressRouteDescriptor {
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProjectionOnly,
             StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_security_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_SECURITY,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_SECURITY,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn put_settings_security_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_PUT_SETTINGS_SECURITY,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_SETTINGS_SECURITY,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
         ),
     )
 }

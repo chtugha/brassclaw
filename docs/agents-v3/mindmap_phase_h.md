@@ -1321,3 +1321,33 @@ plumbing.
   turns tests). Disk 89%/22-21Gi throughout — no clean needed. Next: C.4 slice 3 (WebUI backend route
   GET/PUT `/security-settings` — constructs the store per session, calls `load`/`save`, removes the
   `#[allow(dead_code)]`/`#[allow(unused_imports)]`).
+
+- **C.4 slice 3 — WebUI backend route GET/PUT `/api/settings/security` (DONE).** 3-crate slice, the
+  first caller of `PgSecuritySettingsStore`. Architecture: composition's `webui.rs` only *wires* stores
+  (constructs `Pg*Store`, wraps `Arc<dyn Trait>`, calls `api.with_*_store(...)`); the route handler + store
+  trait + service methods live in `brassclaw_product_workflow` + `brassclaw_webui_v2`. Key difference from
+  monty-vm: the security store is **tenant-scoped (no user_id/project_id)** — the trait's `get`/`upsert`
+  take only `&self` (tenant captured at construction); service methods take `caller` for auth-gating only.
+  Edits: (1) `brassclaw_product_workflow/src/settings.rs` — `SecuritySettingsError{Unavailable,Invalid,
+  Internal}` (thiserror) + `#[async_trait] SecuritySettingsStore` (`get`/`upsert` returning fully-qualified
+  `brassclaw_turns::run_profile::SecurityModeConfig`); re-exported via `lib.rs`; `RebornServicesApi` 501
+  stubs + real impls in `reborn_services.rs` + `security_settings` field + `new()` + builder +
+  `map_security_error` (Invalid→400, Unavailable→503, Internal→500). (2) `brassclaw_webui_v2` —
+  `get/put_settings_security` handlers + consts + descriptor fns (GET=read_policy, PUT=mutation_policy
+  body_limit_kib(4)) + list registration + `.route(...)` mount. (3) `brassclaw_reborn_composition/src/
+  webui.rs` — wires `PgSecuritySettingsStore::new(Arc::clone(pool), runtime.webui_tenant_id())` via
+  `.with_security_settings_store(...)` under `#[cfg(feature="postgres")]`; `pg_security_settings_store.rs`
+  gains `#[async_trait] impl SecuritySettingsStore` (`get`→`load`, `upsert`→`save`) +
+  `map_security_settings_error` (`Load`→`Internal`, `Deserialize`→`Invalid`) and the `#[allow(dead_code)]`/
+  `#[allow(unused_imports)]` are removed (store now has callers). **Import fix:** `SecurityModeConfig` is
+  turns-native; `brassclaw_webui_v2` only has `brassclaw_turns` as a **dev-dependency** (line 41, under
+  `[dev-dependencies]`), so `use brassclaw_turns::run_profile::SecurityModeConfig;` in the lib `handlers.rs`
+  failed with E0433. Resolution matching the `pub use brassclaw_llm::ProviderRole;` precedent: re-export
+  `pub use brassclaw_turns::run_profile::SecurityModeConfig;` in `brassclaw_product_workflow/src/lib.rs`,
+  import it from `brassclaw_product_workflow::{...}` in the handler (same type the `RebornServicesApi`
+  methods return — types unify). Also added `WEBUI_V2_PATTERN_SETTINGS_SECURITY,` to the `router.rs`
+  descriptor import block (was missing → E0425). Clippy green: `brassclaw_product_workflow` +
+  `brassclaw_webui_v2` (single config each — neither has a `skills-db` feature) +
+  `brassclaw_reborn_composition` (default + `--features skills-db`). No DB unit test (DB-backed — CRUD
+  exercised at the integration tier, consistent with monty-vm/user-preference precedent). Disk
+  90%/20Gi — at the line, no clean. Next: C.4 slice 4 (WebUI SPA security panel).

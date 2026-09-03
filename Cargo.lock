@@ -1871,6 +1871,7 @@ dependencies = [
  "hex",
  "jsonschema",
  "libc",
+ "libloading",
  "rust_decimal",
  "secrecy",
  "serde",

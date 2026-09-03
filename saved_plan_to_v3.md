@@ -5841,6 +5841,39 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   `-p brassclaw_reborn_composition --all-targets -- -D warnings` green BOTH
 >   default + `--features skills-db`. No DB unit test (DB-backed; consistent with
 >   the precedent stores — resolver logic is covered by the slice-1 turns tests).
+>   **Slice 3 DONE:** WebUI backend route GET/PUT `/api/settings/security` across
+>   three crates. `brassclaw_product_workflow` — `SecuritySettingsError`
+>   (thiserror `Unavailable`/`Invalid`/`Internal`) + `#[async_trait]
+>   SecuritySettingsStore` (`get`/`upsert` returning `SecurityModeConfig`,
+>   tenant captured at the backing store, no tenant arg) in `settings.rs`;
+>   re-exported via `lib.rs` alongside the settings types; `RebornServicesApi`
+>   trait 501 stubs `get_security_settings`/`update_security_settings` + real
+>   impls in `reborn_services.rs` (503-if-unwired, `map_security_error`) +
+>   `security_settings: Option<Arc<dyn SecuritySettingsStore>>` field +
+>   `new()` + `with_security_settings_store` builder. `brassclaw_webui_v2` —
+>   `get_settings_security`/`put_settings_security` handlers
+>   (`Json<SecurityModeConfig>`), `WEBUI_V2_ROUTE_GET/PUT_SETTINGS_SECURITY` +
+>   `WEBUI_V2_PATTERN_SETTINGS_SECURITY` consts + descriptor fns
+>   (GET=read_policy, PUT=mutation_policy body_limit_kib(4)) + list
+>   registration in `descriptors.rs`, `.route(...)` mount in `router.rs`.
+>   `brassclaw_reborn_composition` — `webui.rs` wires
+>   `PgSecuritySettingsStore::new(Arc::clone(pool), runtime.webui_tenant_id())`
+>   via `.with_security_settings_store(...)` under `#[cfg(feature="postgres")]`;
+>   `pg_security_settings_store.rs` gains `#[async_trait] impl
+>   SecuritySettingsStore` (`get`→`load`, `upsert`→`save`) +
+>   `map_security_settings_error` (`Load`→`Internal`, `Deserialize`→`Invalid`)
+>   and the `#[allow(dead_code)]`/`#[allow(unused_imports)]` are removed (the
+>   store now has callers). `SecurityModeConfig` is turns-native; re-exported
+>   through `brassclaw_product_workflow` (`pub use
+>   brassclaw_turns::run_profile::SecurityModeConfig;`, matching the
+>   `brassclaw_llm::ProviderRole` precedent) so `brassclaw_webui_v2` consumes
+>   it via the facade crate — it only depends on `brassclaw_turns` as a
+>   dev-dependency. Clippy `-p brassclaw_product_workflow` /
+>   `brassclaw_webui_v2` (single config each — neither has a `skills-db`
+>   feature) + `brassclaw_reborn_composition` (default + `--features
+>   skills-db`) all green. No DB unit test (DB-backed; consistent with the
+>   monty-vm/user-preference precedent — CRUD is exercised at the integration
+>   tier, not here).
 > - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
 >   (receive input → `host.resolve_intent` → dispatch). Match →
 >   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls
