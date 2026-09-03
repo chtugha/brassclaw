@@ -5629,6 +5629,28 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `./docs/agents-v3/subplan_problem_stepB_recipe_syntax_of_saved_plan_to_v3.md`.
 > **B DONE** (B.1–B.5; both configs green; shipped in commit `91d57716`).
 >
+> **Phase HI — Common Component Syntax + Composition System (user steer,
+> 2026-09-03; inserted between Step B and Step C.5):** Step B delivered the
+> dual-nature syntax for `Recipe` (class 21) only. Phase HI extends that
+> dual-nature common syntax to **every** component class (Tool/ToolSkill/
+> Skill/PythonCode/Recipe + memory classes + ExtensionCatalogue) + builds the
+> **composition-system**: a Rust engine that reads a component's machine-readable
+> form, **splits rust / orchestrator**, composes what the Rust executioner needs,
+> and **emits exact, reproducible per-step Python** for the orchestrator. This is
+> the basis of the `host.compose_orchestrator` rewrite (C.5/C.6), so Phase HI is a
+> **prerequisite for C.5** — compose_orchestrator can only emit exact python once
+> every class shares one unambiguous machine-readable syntax + the composition
+> rules. **Monty runs the assembled code itself** via `host.run_program` (Monty
+> 0.0.16 has no `exec`/`eval`/`compile` builtin — verified in the git checkout);
+> the composer **gathers** materials, **Monty writes + runs** (skills are
+> instructions Monty uses to write code for itself). One component class at a
+> time to avoid OOM. Full approach + HI.0–HI.10 slices + open forks F-HI-1…F-HI-5
+> in `./docs/agents-v3/subplan_problem_phaseHI_common_component_syntax_of_saved_plan_to_v3.md`
+> (Zenflow step `d61dca66` — "Phase HI - Syntax Invention"; original Step-B scope
+> DONE + superseded by this expanded scope). Resolve forks → HI.0 spec → HI.1
+> audit → HI.2–HI.9 per-class → HI.7 composition-system → HI.10 docs → resume
+> C.5/C.6/C.7 → **A**.
+>
 > **Step C — REFRAMED (Orchestrator + Executioner, LOCKED 2026-09-02):**
 > Supersedes both "Model A retirement" and the prior "Option 2 / HostSkill"
 > framing. BrassClaw has an **Orchestrator** (Monty/Python — brain; one

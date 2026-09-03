@@ -97,10 +97,15 @@ parts), chat-post (`__post_reply__`), history-save (`__save_history__`).
   new input) rather than start→exit per turn. State checkpointing already exists
   (`__save_checkpoint__`/`__transition_to__`); cross-turn persistence layers a
   VM-session handle keyed by conversation on top.
-- **D-C2 (basic-mode orchestrator source) = RESTRUCTURE `default.py`.** Keep the
-  host-call idioms (the Python→Rust intrinsic call sites); drop the LLM-driven
-  `run_loop` outer loop + the dead Model-A step-0; add an intent/recipe-driven
-  structure. `default.py` becomes the built-in basic-mode orchestrator.
+- **D-C2 (basic-mode orchestrator source) = NEW built-in orchestrator (NOT a
+  restructure of `default.py`).** A new `crates/brassclaw_engine/orchestrator/
+  basic_mode.py` + `BASIC_MODE_ORCHESTRATOR` const (`include_str!`) is the
+  built-in Phase-1 basic-mode orchestrator. The old `default.py`/
+  `DEFAULT_ORCHESTRATOR` stay untouched and are DELETED in C.7 (sole caller of
+  the retired meta-primitives). Resolution locked 2026-09-03 (corrects the
+  earlier "restructure `default.py`" note, which contradicted C.7). Sequenced
+  AFTER Phase HI (common component syntax + composition-system, prerequisite
+  for the `host.compose_orchestrator` rewrite C.5 depends on).
 - **D-C2-addition (SUPERSEDED — HostSkill interface dropped):** the
   `__host_call__` surface is NOT wrapped in a uniform HostSkill trait. Instead
   tools are **first-class callables in the Monty namespace** — recipe PythonCode

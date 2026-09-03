@@ -253,10 +253,14 @@ plumbing.
   Subplan rewritten
   `subplan_problem_stepC_model_a_retirement_of_saved_plan_to_v3.md`.
   Locked sub-decisions: D-C1 = **cross-turn persistent** (one VM/conversation) +
-  D-C2 = **restructure `default.py`** + **componentize host calls into
-  orchestrator skills** behind a uniform **HostSkill interface** (future
-  MCP-extension exposes them as MCP tools to an LLM helper; Rust loads
-  tools/toolskills on demand). Run after B (done).
+  D-C2 = **NEW built-in basic-mode orchestrator** `crates/brassclaw_engine/
+  orchestrator/basic_mode.py` + `BASIC_MODE_ORCHESTRATOR` const (NOT a restructure
+  of `default.py` — `default.py` is deleted in C.7 as the sole caller of the
+  retired meta-primitives; the old `default.py`/`DEFAULT_ORCHESTRATOR` stay
+  untouched until C.7). Host calls are **first-class `host.*` callables** bound
+  into the Monty namespace (C.1) — NO `HostSkill` interface (dropped). Run after
+  B (done) → Phase HI (common syntax + composition-system, prerequisite for
+  C.5) → C.5/C.6/C.7 → A.
 - [ ] **A — reshaped H.12.6** (collapse R1/R4/R6/R11, Tier-1 single injection)
   then **H.12.7**. Run after C.
 
@@ -317,9 +321,13 @@ plumbing.
   sequencing. Reworks shipped H.10–H.12. Grounded: host-fn surface (existing +
   missing: `__resolve_intent__`/`__fetch_recipe__`/`__compose_orchestrator__`/
   `__post_reply__`/`__save_history__`); current driver `TurnRunnerWorker` →
-  agent-loop stages (`canonical.rs`). CLAUDE.md + C subplan rewritten. Pending
-  sub-decisions D-C1 (per-turn vs cross-turn Monty session) + D-C2 (restructure
-  `default.py` vs new built-in orchestrator).
+  agent-loop stages (`canonical.rs`). CLAUDE.md + C subplan rewritten. Sub-
+  decisions LOCKED: D-C1 = **cross-turn persistent** (one VM/conversation) +
+  D-C2 = **NEW built-in basic-mode orchestrator** (`basic_mode.py`, NOT a
+  restructure of `default.py`; `default.py` deleted in C.7). [Earlier this line
+  recorded D-C1/D-C2 as pending + D-C2 as "restructure `default.py`" — corrected
+  2026-09-03 per the user's new-orchestrator lock; see the Phase HI redirect
+  block at the end of this mindmap.]
 - **Host-call dissection (this turn — for C.1 / builtin_stuff_v3 Step 27):** the
   19 existing `__host_call__` intrinsics + 4 missing (`__resolve_intent__`/
   `__compose_orchestrator__`/`__post_reply__`/`__save_history__`) dissected into
@@ -1384,3 +1392,61 @@ plumbing.
   turns types + port; PgSecuritySettingsStore; backend route; SPA panel). Mode-gated wrapper
   enforcement + bind-time namespace filtering deferred to C.6 (the driver, first consumer via
   `LoopSecurityPort`). Next: C.5 (basic-mode orchestrator script).
+
+- **C.5 grounding + 3 locked forks (SUPERSEDED by the Phase HI redirect below).**
+  C.5 = the built-in Phase-1 basic-mode orchestrator harness (receive input →
+  `host.resolve_intent` → dispatch; match → `host.compose_orchestrator` + run
+  the assembled recipe program; no-match → prompt-assembly recipe +
+  `host.kohai_complete`; answer → `host.post_reply` → `host-save-history` →
+  kohai/sempai). Forks LOCKED: **Fork1=A** (compose_orchestrator returns ONE
+  assembled self-contained Python program string; the script runs it; Tier 0/1
+  logic lives inside the assembled program), **Fork2=B** (restructure
+  `default.py` — SUPERSEDED, see below), **Fork3=A** (script exposes a per-turn
+  entry fn `handle_turn(user_input)`; the C.6 cross-turn persistent VM session
+  calls it each turn).
+- **New orchestrator, NOT restructure `default.py` (user correction).** Mindmap
+  line ~321 records D-C2 as a pending fork; line ~256 records the lock as
+  "restructure `default.py`" — but that contradicts C.7 ("delete `default.py`
+  — sole caller of the retired meta-primitives"). Resolution locked: a **NEW**
+  built-in basic-mode orchestrator script `crates/brassclaw_engine/orchestrator/
+  basic_mode.py` + a new `BASIC_MODE_ORCHESTRATOR` const (`include_str!`); the
+  old `default.py`/`DEFAULT_ORCHESTRATOR` stay untouched → C.7 deletes them.
+  Fix mindmap D-C2 + the C subplan accordingly (pending).
+- **Monty exec DISCOVERY — material mechanism blocker, resolved.** Monty
+  0.0.16 (git checkout `/Users/ollama/.cargo/git/checkouts/monty-…142807b/`) has
+  **NO `exec`/`eval`/`compile` builtin** (zero matches). Fork1=A said "the
+  script execs the assembled program" — but Python `exec` isn't in Monty.
+  Resolution (user): the basic Monty calls `host.compose_orchestrator` → gets
+  the assembled self-contained Python (skills + prompt variables like a path
+  baked in by the composer) → **Monty runs that code string itself** via a host
+  callable **`host.run_program`**; the composer does NOT run it (Monty needs the
+  skill info + variables); the driver is NOT in the middle. Feasible —
+  precedent: the retired `__execute_code_step__` + `execute_code`
+  (scripting.rs:519) both create a `MontyRun` from a code string + drive it.
+- **Skills reframe (user).** Skills are **instructions Monty uses to write code
+  for itself + run it** (not static code baked into a program). The composer
+  **gathers** materials (skill instructions + PythonCode pieces + prompt
+  variables); **Monty writes/assembles the python + runs it** via
+  `host.run_program`.
+- **MAJOR REDIRECT — Phase HI "Common Component Syntax + Composition System"
+  (user steer, 2026-09-03; the new primary work, prerequisite for C.5).** Step B
+  delivered the dual-nature syntax for `Recipe` (class 21) ONLY. Phase HI extends
+  it to **ALL** component classes + builds the **composition-system** (read a
+  component's machine form → split rust/orchestrator → compose the rust side →
+  emit exact reproducible per-step python) + **thorough docs** (items a–i /
+  f1–f8). `host.compose_orchestrator` can only emit exact python once every
+  class shares one unambiguous machine-readable syntax + the composition rules,
+  so **Phase HI is a prerequisite for C.5/C.6** — C.5 implementation is deferred
+  until Phase HI lands. Component-class landscape grounded from
+  `doc_type_to_class_code` (retrieval_source.rs:1449) + `db_tool_source.rs`:
+  Tool=0, Skill=3, Spec=12, ToolSkill=13, Plan=14, Summary=15, Lesson=18,
+  Issue=19, Note=20, Recipe=21, PythonCode=22, ExtensionCatalogue=23 (extra
+  codes from `intent_system::class_label` audited in HI.1). Nested subplan:
+  `./docs/agents-v3/subplan_problem_phaseHI_common_component_syntax_of_saved_plan_to_v3.md`
+  (HI.0 design → HI.1 audit → HI.2–HI.9 per-class → HI.7 composition-system →
+  HI.10 docs; 5 open forks F-HI-1…F-HI-5). Pre-existing Zenflow step
+  `d61dca66-…` ("Phase HI - Syntax Invention", sort_order 30, Pending) is the
+  tracker — original Step-B scope DONE + superseded by this expanded scope.
+  Parent-plan reference inserted into `saved_plan_to_v3.md` between Step B and
+  Step C.5. **Sequence: resolve forks → HI.0 spec → HI.1 audit → HI.2–HI.9
+  per-class → HI.7 composition-system → HI.10 docs → resume C.5/C.6/C.7 → A.**
