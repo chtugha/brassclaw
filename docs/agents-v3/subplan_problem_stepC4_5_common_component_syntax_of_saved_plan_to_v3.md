@@ -354,10 +354,38 @@ is never baked into raw code — only into string-literal positions.
     NO dedicated Zenflow step exists for action(16) — the plan jumps HI.5 skill
     → C.4.5.1 recipe → HI.7 composition; tracked in this subplan + mindmap
     only). V073 shipped `ca276c16`.
-    **Remaining: C.4.5.7–C.4.5.19 not implemented** (IBS core exists Phase A but
+    **Remaining: C.4.5.14–C.4.5.19 not implemented** (IBS core exists Phase A but
     Recipe-only; compose_orchestrator is a C.2 placeholder; host.run_program
     net-new; per-class syntax upgrades + predefined structure + rust-plugin
-    directives all pending). Next slice C.4.5.7 (`spec`(12), first of HI.8
-    memory/instruction classes 12/14/15/18/19/20 + docu(17)).
+    directives all pending). [x]
+    **C.4.5.7 DONE** (2026-09-03 — memory/instruction classes (12/14/15/17/18/19/20)
+    DB-structure standardization (item g), F7=A BATCHED all 7 uniform narrative
+    classes into one slice (C.4.5.8–C.4.5.13 COLLAPSE into C.4.5.7): migration
+    V074 `reborn_memory_classes_syntax` drops the 5 legacy pre-centralization
+    lifecycle cols (validation_errors, review_feedback, review_attempts,
+    rejected_at, queue_code) from all 7 tables — reborn_specs(12)/reborn_plans(14)/
+    reborn_summaries(15)/reborn_docus(17)/reborn_lessons(18)/reborn_issues(19)/
+    reborn_notes(20); `parent_mission_id` already dropped by V064; all 7 tables'
+    `queue_code` is plain `TEXT` with NO inline CHECK (verified V036–V043), so no
+    explicit constraint drop. The 5 cols have ZERO Rust readers/writers — NO paired
+    Rust refactor + NO test changes: the class `12|14|17..=20` Q1 gate
+    (component_validator.rs:301 `validate_soft_budget_named`) touches no DB col;
+    retrieval SELECTs read id/class_code/prompt_uid/name/description/
+    effective_content (none of the 5); component_import.rs INSERT names only
+    scope/name/description/content/content_hash/consumer_tags/intent_examples/
+    source/validation_status; the only literal INSERT (validation_queue.rs:954 into
+    reborn_notes) names only scope/name/validation_status; the legacy-col names
+    elsewhere in .rs (similarity_checker/recipe_matcher/recipe_validator) are the
+    RETIRING `MemoryDoc` struct (types/memory.rs confirms legacy), NOT reads of
+    these tables. Q1 GATE UNCHANGED — the catch-all `12|14|17..=20` soft-budget
+    (10k) is correct for narrative memory content; these classes carry NO `{{ }}`
+    placeholders (authored text, not assembled code) → no placeholder-grammar gate
+    (unlike class 10/13/22); narrative-formatting conventions (item b) +
+    command-syntax references (item e) are docs-only (C.4.5.18). `cargo check -p
+    brassclaw_pg` confirms V074 embeds cleanly via `refinery::embed_migrations!`
+    (zero Rust touched; DB integration tests skip locally — no Docker). V074
+    shipped `ca8a12b7`. **Zenflow step `cbd206ef` (HI.8, sort 39) marked
+    Completed.** Next slice C.4.5.14 (extensions 4–9 + ExtensionCatalogue 23 +
+    `scaffold`(50)).
     This subplan is the canonical one (the prior `subplan_problem_phaseHI_…md`
     is a redirect stub).

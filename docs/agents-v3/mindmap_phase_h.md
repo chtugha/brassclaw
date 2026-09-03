@@ -1758,3 +1758,41 @@ plumbing.
   37) → HI.7 (composition); C.4.5.6 tracked in subplan + mindmap only. Next:
   C.4.5.7 `spec`(12) — first of HI.8 memory/instruction classes
   (12/14/15/18/19/20 + docu(17)).
+
+- **C.4.5.7 — memory/instruction classes (12/14/15/17/18/19/20) COMPLETE +
+  shipped `ca8a12b7` (2026-09-03).** Fork LOCKED via ask_user (1 question):
+  **F7=A** (batch all 7 uniform narrative classes into ONE slice C.4.5.7 with
+  ONE migration V074; C.4.5.8–C.4.5.13 collapse into C.4.5.7 — minimal churn).
+  Grounding: the 7 memory tables (reborn_specs V036/12, reborn_plans V038/14,
+  reborn_summaries V039/15, reborn_docus V040/17, reborn_lessons V041/18,
+  reborn_issues V042/19, reborn_notes V043/20) are uniform narrative memory
+  components, each carrying the SAME 5 legacy lifecycle cols
+  (validation_errors/review_feedback/review_attempts/rejected_at/queue_code);
+  `parent_mission_id` already dropped by V064; all 7 `queue_code` cols are plain
+  `TEXT` with NO inline CHECK (verified V036–V043, unlike reborn_actions V029).
+  Decisive: the 5 legacy cols have ZERO Rust readers/writers — NO paired Rust
+  refactor + NO test changes (unlike V072's DbSkillStore): the class
+  `12|14|17..=20` Q1 gate (component_validator.rs:301
+  `validate_soft_budget_named`) touches no DB col; retrieval SELECTs read
+  id/class_code/prompt_uid/name/description/effective_content (none of the 5);
+  `component_import.rs` (MemoryDoc→class-table migration) INSERT names only
+  scope/name/description/content/content_hash/consumer_tags/intent_examples/
+  source/validation_status; the only literal INSERT (validation_queue.rs:954 into
+  reborn_notes) names only scope/name/validation_status; the legacy-col names
+  elsewhere in .rs (similarity_checker/recipe_matcher/recipe_validator) are the
+  RETIRING `MemoryDoc` struct (types/memory.rs confirms it is legacy, being
+  replaced by these class tables) — NOT reads of these tables. Q1 GATE
+  UNCHANGED — the catch-all `12|14|17..=20` soft-budget (10k) is correct for
+  narrative memory content; these classes carry NO `{{ }}` placeholders
+  (authored text, not assembled code) → no placeholder-grammar gate (unlike class
+  10/13/22); narrative-formatting conventions (item b) + command-syntax
+  references (item e) are docs-only (C.4.5.18). Deliverable: migration **V074**
+  `reborn_memory_classes_syntax` — 7×5 `DROP COLUMN IF EXISTS` (35 statements);
+  detailed comments explain the no-reader uniformity + the F7=A batching.
+  Verification: `cargo check -p brassclaw_pg` confirms V074 embeds cleanly via
+  `refinery::embed_migrations!` (zero Rust touched → no clippy needed; DB
+  integration tests skip locally — no Docker). **Zenflow step `cbd206ef` (HI.8,
+  sort 39) marked Completed** — HI.8's full scope (12/14/15/18/19/20 + extras=
+  docu/17) is satisfied by V074 + the existing catch-all Q1 gate. Next: C.4.5.14
+  (extensions 4–9 + ExtensionCatalogue 23 + `scaffold`(50)) → C.4.5.15–16 →
+  C.4.5.17 composition → C.4.5.18 docs → C.4.5.19 green → resume C.5/C.6/C.7 → A.
