@@ -1834,3 +1834,51 @@ plumbing.
   V053/V072. Next: C.4.5.17 (composition system — IBS IS the composition
   system) → C.4.5.18 docs → C.4.5.19 both-configs-green → resume C.5/C.6/C.7
   → A.
+
+- **C.4.5.17 grounding (IN PROGRESS, 2026-09-03).** The compose_orchestrator
+  contract is clear from the C.2 seed (`seed_builtin_host.rs:560-720`): the seed
+  already created the 3-component stack `ts-host-compose-orchestrator` (ToolSkill
+  13, `tool_name="host.compose_orchestrator"`, params `[component_id,
+  class_code]`) + `pc-host-compose-orchestrator` (PythonCode 22, body
+  `composed = host.compose_orchestrator(component_id="{{vars.slot0}}")`) +
+  `skill-host-compose-orchestrator` (Skill 1). The seed's contract:
+  `host.compose_orchestrator(component_id, class_code)` is a `host.*` MethodCall
+  → a Rust handler in `orchestrator.rs` that thin-calls the IBS
+  `build_instruction` (fetch recipe, split rust vs orchestrator, resolve
+  component-includes, bind variables, build `CdylibLoadDirective`s →
+  `DynamicToolLoader`) → returns `{orchestrator_program, rust_inputs,
+  recipe_hint, tier}` to Monty. Monty then runs the returned program directly.
+  The subplan's richer predefined shape `{skills, steplist[{step_id,
+  instructions, executable_code, tool_bindings}], rust_directives, variables}`
+  is the target superset of the seed's simpler shape (`orchestrator_program` =
+  {skills, steplist}, `rust_inputs` = rust_directives, `recipe_hint`+`tier` =
+  variables+metadata). Current state: `BuildInstruction` (instruction_builder.rs:
+  153) already partitions `rust_steps`/`orchestrator_steps` (Vec<IbsRecipeStep>);
+  `build_instruction` (553) is Recipe-step-driven (parse step_link → select →
+  partition). `orchestrator.rs` host.* dispatch (:765+) has resolve_intent/
+  post_reply/fetch_component/resolve_component_by_name/validate_component/
+  check_signals/regex_match/skill_list + the C.3 cdylib fallthrough — NO
+  `compose_orchestrator`/`run_program` handler yet (comment :763 defers
+  compose_orchestrator to this slice). `DynamicToolLoader::CdylibLoadDirective
+  {tool_name, artifact_path}` (dynamic_tool_loader.rs:28) is explicitly
+  documented as "built by the host.compose_orchestrator rewrite" — the
+  rust_directives target. **FEASIBILITY RESOLVED (host.run_program, 2026-09-03):**
+  the subplan says Monty 0.0.16 has NO exec/eval/compile; the precedent
+  `scripting.rs::execute_code` (:519) needs the FULL execution context (llm,
+  effects, leases, policy, context, capability_policies, persisted_state). The
+  dispatch loop `execute_orchestrator` (orchestrator.rs:520) — where `host.*`
+  MethodCalls land (the :765 match) — HAS all of that context IN SCOPE (thread,
+  llm, effects, leases, policy, event_tx, pg_pool, dynamic_tools, etc.); the
+  narrow handler arg-lists are a convenience, not a hard limit. The DIRECT
+  precedent is `execute_tier_zero_channel` (orchestrator.rs:2095): it already
+  runs each dynamic PythonCode step via `execute_code(step.body, thread, llm,
+  effects, leases, policy, &fresh_ctx, &[], &{})` with a FRESH context per step
+  (ISOLATION invariant — no vars shared between steps, only IBS-baked literals
+  from `{{vars.slotN}}` substitution; persisted_state={}). So `host.run_program
+  (code)` = a `host.*` handler that spawns a NESTED `execute_code(code, ...)`
+  mirroring execute_tier_zero_channel's per-step call — FEASIBLE, no Monty-VM
+  change, no new eval primitive. Nesting is safe: execute_code creates its OWN
+  MontyRun + tracker (separate from the paused outer orchestrator MontyRun); it
+  shares thread/llm/effects/leases. **NEXT: lock the structure-shape fork
+  (per-step nested run_program over a structured steplist vs single
+  pre-assembled code string) + the slicing fork, then implement C.4.5.17.**
