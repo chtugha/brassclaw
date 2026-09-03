@@ -5945,6 +5945,18 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   `./docs/agents-v3/subplan_problem_stepC4_5_common_component_syntax_of_saved_plan_to_v3.md`
 >   (Zenflow nested substep under the Step C subplan). Execute one-by-one
 >   before resuming C.5.
+>
+>   **C.4.5 COMPLETE (2026-09-03):** C.4.5.0–C.4.5.19 all DONE. Per-class common
+>   syntax + DB-structure standardisation shipped via V066–V075 (placeholder
+>   grammar gates, `includes` JSONB, `capability_id`, legacy 5-col drops except
+>   `reborn_recipes` → Phase N V076+). Composition system shipped (C.4.5.17:
+>   `composition.rs` core + `host.run_program` handler + engine `CompositionPort`
+>   + `PgCompositionPort` + seed-stack refinement to the
+>   `compose_orchestrator(component_id, step_link, user_input)` contract).
+>   Architecture docs shipped (C.4.5.18: all 17 docs `01`–`17` + `README`
+>   grounded to shipped state). Both configs clippy-clean (C.4.5.19: engine +
+>   composition default & skills-db, extensions postgres, skills). Zenflow step
+>   `94a810b6` (HI.10) Completed. **Resume C.5.**
 > - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
 >   (receive input → `host.resolve_intent` → dispatch). Match →
 >   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls

@@ -223,10 +223,32 @@ is never baked into raw code — only into string-literal positions.
   (Phase A, Recipe-only `step_link`→`BuildInstruction`); `compose_orchestrator`
   is a C.2 seed placeholder (no handler in orchestrator.rs); `host.run_program`
   is net-new.
-- **C.4.5.18** — Comprehensive docs (d, f1–f8, g).
-- **C.4.5.19** — Both configs green (default + `--features skills-db`); DB-
-  schema standardisation verification; mark C.4.5 done; commit + push; resume
-  C.5 (basic-mode orchestrator script, now that compose_orchestrator exists).
+- **C.4.5.18** — Comprehensive docs (d, f1–f8, g). **DONE** (2026-09-03 — all 17
+  numbered docs `01`–`17` + `README` rewritten/de-staled to shipped state across
+  portions 127–131: `01-architecture-overview`, `13-orchestrator` (full rewrite to
+  Orchestrator/Executioner split), `04-ibs`, `05-skills`, `06-tools` (f5
+  Rust-Executioner), `14-validation-queue` (f3), `09-sempai-kohai` (f7+f8),
+  `10-prefix-base-prompt` (f6, V063 shipped), `02-intent-system` (f1),
+  `03-recipe-system`, `07-pythoncode-system` (V052/V069 shipped), `08-actions`
+  (vestigial-honest), `11-retrieval` (PostgresSource ACTIVE prod, class 22/23),
+  `12-agent-loop` (canonical pipeline IS prod driver via PlannedDriver, 15 ports,
+  real RecipeStage/TierZero), `15-component-catalog` (f4, integer dispatch,
+  dependency_registry on 3 tables only, legacy cols V070-V075, recipes Phase N),
+  `16-kernel-composition` (shipped-vs-pending), `17-webui-prefix-tab` (Prefix Tab
+  FULLY shipped: prefixes routes + SPA UI + PgBasicPromptStore V063; retired
+  `do_reassemble`/`reassemble_base_prompt`/`prewarm`), `README` index de-staled.
+  Every doc uses the "Status — shipped vs. pending" convention; retired
+  `default.py`/`do_reassemble`/`__execute_action__`/DRIVER-GAP/RecipeStage-stub
+  framing purged).
+- **C.4.5.19** — Both configs green; DB-schema standardisation verification; mark
+  C.4.5 done; commit + push; resume C.5. **DONE** (2026-09-03 — both configs
+  clippy-clean: `brassclaw_engine` + `brassclaw_reborn_composition` default AND
+  `--features brassclaw_engine/skills-db,brassclaw_reborn_composition/skills-db`
+  (`cargo clippy -p … --all-targets -- -D warnings`, 0 warnings); +
+  `brassclaw_extensions --features postgres` + `brassclaw_skills` clean. DB-schema
+  standardisation verified per-slice V066–V075 (each embeds cleanly via
+  `refinery::embed_migrations!("migrations")`; `brassclaw_pg` compiles). **C.4.5
+  COMPLETE.** Zenflow step `94a810b6` (HI.10) marked Completed. Resume C.5.).
 
 ## Status
 
@@ -354,10 +376,11 @@ is never baked into raw code — only into string-literal positions.
     NO dedicated Zenflow step exists for action(16) — the plan jumps HI.5 skill
     → C.4.5.1 recipe → HI.7 composition; tracked in this subplan + mindmap
     only). V073 shipped `ca276c16`.
-    **Remaining: C.4.5.17–C.4.5.19 not implemented** (IBS core exists Phase A but
-    Recipe-only; compose_orchestrator is a C.2 placeholder; host.run_program
-    net-new; per-class syntax upgrades + predefined structure + rust-plugin
-    directives all pending). [x]
+    **C.4.5.17–C.4.5.19 DONE** (C.4.5.17 composition system shipped portions
+    124–126 — `composition.rs` core + `host.run_program` handler + engine
+    `CompositionPort` + `PgCompositionPort` + seed-stack refinement; C.4.5.18
+    architecture docs shipped portions 127–131; C.4.5.19 both-configs-green
+    shipped this portion). [x]
     **C.4.5.7 DONE** (2026-09-03 — memory/instruction classes (12/14/15/17/18/19/20)
     DB-structure standardization (item g), F7=A BATCHED all 7 uniform narrative
     classes into one slice (C.4.5.8–C.4.5.13 COLLAPSE into C.4.5.7): migration

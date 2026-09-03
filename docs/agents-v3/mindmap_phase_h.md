@@ -2379,3 +2379,20 @@ grounded every claim against shipped source/migrations before committing.
   16 (Goal 2 partial → done, Postgres always + shipped subsystems), 17 (V056/
   do_reassemble/not-yet-implemented → Prefix Tab SHIPPED V063 + prefixes routes
   + SPA UI; SKILL.md export pending).
+
+- **C.4.5.19 DONE / C.4.5 COMPLETE** (this portion): both-configs clippy-green
+  gate PASSED — `cargo clippy -p brassclaw_engine -p brassclaw_reborn_composition
+  --all-targets -- -D warnings` clean (default 33s) AND
+  `--features brassclaw_engine/skills-db,brassclaw_reborn_composition/skills-db`
+  clean (40s); + `brassclaw_extensions --features postgres` + `brassclaw_skills`
+  clean (5.6s). 0 warnings all. DB-schema standardisation verified per-slice
+  V066–V075 (each embeds via `refinery::embed_migrations!("migrations")`;
+  `brassclaw_pg` compiles). Disk was 14Gi/93% (above clean threshold) but
+  C.4.5.18 was docs-only → incremental no-op clippy (no recompile needed).
+  Subplan C.4.5.18/19 lines + "Remaining" line marked DONE; saved_plan Step C
+  block got a "C.4.5 COMPLETE (2026-09-03)" summary. **Zenflow step `94a810b6`
+  (HI.10/C.4.5.18-19) marked Completed.** C.4.5.0–C.4.5.19 all DONE → **C.4.5
+  COMPLETE.** Next: resume **C.5** (basic-mode orchestrator script — receive
+  input → `host.resolve_intent` → dispatch; Match → `host.compose_orchestrator`
+  + run assembled recipe program; No-match → prompt-assembly + `host.kohai_complete`
+  → answer → `host.post_reply` → save-history → kohai/sempai).
