@@ -2207,3 +2207,40 @@ grounded every claim against shipped source/migrations before committing.
   __list_skills__/working_messages/step-0-shim framing. Hard limits 256KB/500
   steps/50 allowed_tools; recursion depth 5/1000-step budget; SEC-08
   spawn_subprocess via host-runtime sandbox only — retained as spec.
+
+- **d11** `11-retrieval-system` (this portion): rewrite — **`PostgresSource`
+  is the ACTIVE production retrieval backend** (the doc's "RamSource active /
+  PostgresSource not wired" §6 table was STALE). Grounded vs
+  `retrieval_source.rs` + `retrieval_lookup_impl.rs` +
+  `orchestrator_lookup_impl.rs` + `runtime.rs:2556-2611`. Shipped facts: the
+  `RetrievalSource` trait (`fetch_for_consumer` keyword-scan + `fetch_for_turn`
+  intent-first, overridden by PostgresSource). `ComponentItem` class_code range
+  = 0–23, 50 (incl 22 python_code, 23 extension_catalogue). `ComponentScope`
+  4-part tenant/user/agent/project. `FetchForTurnResult` ALL 4 variants shipped
+  (Components/Disambiguation/ActionShortCircuit-vestigial/SplitResult-IBS).
+  `PostgresSource::fetch_for_consumer` = single UNION ALL across ALL validated
+  class tables 1–23 (PERF-05), each sub-SELECT SEC-01-gated
+  (`validation_status='validated' AND '05:validator' != ALL(consumer_tags) AND
+  $consumer_tag = ANY(consumer_tags)`), ORDER BY (class_code, prompt_uid),
+  token-budget-truncated whole-rows (never split). Class 22+23 BOTH in the
+  UNION + `fetch_component_by_id` arms + `class_code_to_table` (shipped);
+  class 0 (tools) excluded (no prompt text — reached via ToolSkills).
+  `fetch_for_turn`: `resolve_intent` Match→fetch_component_by_id (atomic score
+  incr PERF-03/SEC-05)→Components; Disambiguation→Disambiguation;
+  NoMatch/Err→full-scan fallback. `RamSource` = keyword-over-Store,
+  engine-internal, **DORMANT in prod** (ThreadManager/ExecutionLoop not
+  constructed by build_reborn_runtime; no external callers) → deleted Phase K.3.
+  Production wiring: `PgRetrievalLookup(PostgresSource)` = the turns
+  `RetrievalLookup` slot (`runtime.rs:2562-2570`, skills-db+pg_pool);
+  `PgOrchestratorLookup(TierZeroOrchestrator+PgThreadEngineStore+
+  TierZeroEffectExecutorBuilder+TierZeroLlmGuard-always-erroring)` =
+  `runtime.rs:2585-2608` = ACTIVE Tier-0 prod path (skills-db off → both None
+  → NoOrchestrator → Tier-2 degrade). Monty reaches retrieval via
+  `host.resolve_intent` + `host.fetch_component(uuid,class_code)` (C.2). Retired
+  default.py/__assemble_prior_knowledge__/__retrieve_docs__/working_messages/
+  do_reassemble framing → Monty + `do_assemble_bundle`/`get_system_bundle`.
+  §5 relations updated to Monty/host-calls + SplitResult→IBS +
+  ActionShortCircuit→vestigial + base-prompt via
+  SystemBundleSource::get_system_bundle. §6 shipped-vs-pending; §7 LLM summary.
+  Wire-then-delete: PostgresSource already wired → Phase K.3 = pure deletion
+  (RamSource + retrieval_dbless + handle_retrieve_docs + retrieve_context).
