@@ -5645,11 +5645,15 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > the composer **gathers** materials, **Monty writes + runs** (skills are
 > instructions Monty uses to write code for itself). One component class at a
 > time to avoid OOM. Full approach + HI.0–HI.10 slices + open forks F-HI-1…F-HI-5
-> in `./docs/agents-v3/subplan_problem_phaseHI_common_component_syntax_of_saved_plan_to_v3.md`
+> in `./docs/agents-v3/subplan_problem_stepC4_5_common_component_syntax_of_saved_plan_to_v3.md`
+> (Phase HI folded into Step C as C.4.5 — F5=B; the prior `subplan_problem_phaseHI_…md`
+> is a redirect stub)
 > (Zenflow step `d61dca66` — "Phase HI - Syntax Invention"; original Step-B scope
 > DONE + superseded by this expanded scope). Resolve forks → HI.0 spec → HI.1
 > audit → HI.2–HI.9 per-class → HI.7 composition-system → HI.10 docs → resume
-> C.5/C.6/C.7 → **A**.
+> C.5/C.6/C.7 → **A**. [2026-09-03: Phase HI is **folded into Step C as
+> C.4.5** (F5=B) — forks F1–F5 locked; renamed subplan at
+> `./docs/agents-v3/subplan_problem_stepC4_5_common_component_syntax_of_saved_plan_to_v3.md`.]
 >
 > **Step C — REFRAMED (Orchestrator + Executioner, LOCKED 2026-09-02):**
 > Supersedes both "Model A retirement" and the prior "Option 2 / HostSkill"
@@ -5917,6 +5921,30 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   route (`GET`/`PUT /api/settings/security`), and SPA panel all shipped. The
 >   mode-gated wrapper enforcement + bind-time namespace filtering land in C.6
 >   (the driver — the first consumer of the config via `LoopSecurityPort`).
+> - **C.4.5 — Common Component Syntax + Composition System (user steer,
+>   2026-09-03; Phase HI, folded into Step C, keeps C.5/C.6/C.7 numbering).**
+>   Step B delivered the dual-nature syntax for `Recipe` (class 21) only.
+>   C.4.5 extends that common syntax to **every** component class (Tool/
+>   ToolSkill/Skill/PythonCode/Recipe + memory classes + extensions + scaffold)
+>   + builds the **composition-system**: a Rust engine that reads a component's
+>   machine-readable form (IBS `BuildInstruction` — the universal form, F1=A),
+>   **splits rust / orchestrator**, compiles what the Rust executioner needs,
+>   and returns the **parts** (skills + PythonCode pieces + variable bindings)
+>   to Monty. Monty receives them, assembles, writes code (LLM-helped via
+>   `host.kohai_complete`), and runs it via `host.run_program` (Monty 0.0.16 has
+>   no `exec`/`eval`/`compile` — a host callable is the only way to run a
+>   dynamic code string). **All orchestration is inside Monty, not the
+>   composer/driver** (F4=A-modified). Structural PythonCode-component includes
+>   are resolved at compose time (F3=A); `{{vars.slotN}}`/`{{user_input}}` carry
+>   variable substitution. This is the basis of the `host.compose_orchestrator`
+>   rewrite (C.4.5.17), which C.5 depends on — so C.4.5 is sequenced before
+>   C.5. Locked forks: F1=A (IBS universal), F2=C (recipe-first slice order),
+>   F3=A (structural includes), F4=A-modified (composer returns parts, Monty
+>   writes+runs), F5=B (fold into C.4.5). Full approach + C.4.5.0–C.4.5.19
+>   slices in
+>   `./docs/agents-v3/subplan_problem_stepC4_5_common_component_syntax_of_saved_plan_to_v3.md`
+>   (Zenflow nested substep under the Step C subplan). Execute one-by-one
+>   before resuming C.5.
 > - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
 >   (receive input → `host.resolve_intent` → dispatch). Match →
 >   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls
