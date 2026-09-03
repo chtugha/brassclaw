@@ -161,6 +161,17 @@ does not own an LLM backend).
 [x] C.5 slice 1a DONE (2026-09-03 — engine `KohaiPort` trait + `KohaiCallCtx`/
     `KohaiAnswer`/`KohaiUsage` types + `KohaiPortError` in `executor/kohai_port.rs`,
     registered in `executor/mod.rs`; mirrors `CompositionPort`; both configs
-    clippy-clean, 0 warnings). [ ] 1b — wiring + handler skeleton + tests.
+    clippy-clean, 0 warnings). [x] 1b DONE (2026-09-03 — wired `kohai_port:
+    Option<Arc<dyn KohaiPort>>` into `ExecutionLoop` (`loop_engine.rs`: struct
+    field + constructor + `with_kohai_port` builder + call-site arg) +
+    `execute_orchestrator` (`orchestrator.rs`: signature param +
+    `"kohai_complete" if call.method_call =>` dispatch arm + `handle_kohai_complete`
+    async fn: parse `prompt` kwarg/positional, validate `is_object`,
+    None-port → `{ok:false,error:"kohai_unavailable"}`, invalid-prompt →
+    `{ok:false,error:"invalid prompt: missing or not a dict"}`, build `KohaiCallCtx`
+    from thread (run_id/iteration/user_id/project_id/tenant_id),
+    `port.complete(prompt,ctx,&**llm)` → `{ok:true,answer,usage}`/err;
+    5 `MockKohaiPort` unit tests (no-port, missing-prompt, non-dict-prompt,
+    mock-success, port-failure); both configs clippy-clean + 10 handler tests green).
     [ ] 1c — `PgKohaiPort` FULL flow impl. [ ] slice 2 — `basic_mode.py`.
     [ ] slice 3 — `DEFAULT_ORCHESTRATOR` swap + both-configs green. Then C.6.

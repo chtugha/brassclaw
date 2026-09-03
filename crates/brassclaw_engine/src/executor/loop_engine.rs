@@ -148,6 +148,12 @@ pub struct ExecutionLoop {
     /// gracefully to `{ok:false, error:"composition_unavailable"}`). Passed to
     /// `execute_orchestrator` each turn.
     composition_port: Option<Arc<dyn crate::executor::CompositionPort>>,
+    /// Step C.5 — port over the interceptor ingress (the Kohai LLM handoff).
+    /// `Some` when the composition layer has wired a `PgKohaiPort`-backed impl;
+    /// `None` leaves the `host.kohai_complete` handler dormant (degrades
+    /// gracefully to `{ok:false, error:"kohai_unavailable"}`). Passed to
+    /// `execute_orchestrator` each turn.
+    kohai_port: Option<Arc<dyn crate::executor::KohaiPort>>,
     /// DB-backed max wall-clock budget override for the Monty orchestrator VM.
     /// `Some` overrides `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` (Step 9.3).
     /// `None` falls back to the env-var / compiled-in DB-less default.
@@ -185,6 +191,7 @@ impl ExecutionLoop {
             retrieval_source: None,
             dynamic_tools: None,
             composition_port: None,
+            kohai_port: None,
             max_duration_secs: None,
         }
     }
@@ -264,6 +271,18 @@ impl ExecutionLoop {
         port: Arc<dyn crate::executor::CompositionPort>,
     ) -> Self {
         self.composition_port = Some(port);
+        self
+    }
+
+    /// Step C.5 — attach the interceptor-ingress port (the Kohai LLM handoff).
+    /// The impl (composition) backs `host.kohai_complete`: forensic-packet
+    /// capture → optional Sempai → provider-prefix swap → `LlmBackend::complete`
+    /// → packet close. Without this the host-call degrades gracefully.
+    pub fn with_kohai_port(
+        mut self,
+        port: Arc<dyn crate::executor::KohaiPort>,
+    ) -> Self {
+        self.kohai_port = Some(port);
         self
     }
 
@@ -530,6 +549,7 @@ impl ExecutionLoop {
             self.retrieval_source.as_ref(),
             self.dynamic_tools.as_ref(),
             self.composition_port.as_ref(),
+            self.kohai_port.as_ref(),
             max_duration_override,
         )
         .await;
