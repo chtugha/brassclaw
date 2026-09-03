@@ -2244,3 +2244,44 @@ grounded every claim against shipped source/migrations before committing.
   SystemBundleSource::get_system_bundle. §6 shipped-vs-pending; §7 LLM summary.
   Wire-then-delete: PostgresSource already wired → Phase K.3 = pure deletion
   (RamSource + retrieval_dbless + handle_retrieve_docs + retrieve_context).
+
+- **d12** `12-agent-loop` (this portion): rewrite — **the canonical pipeline
+  IS the production turn driver** (the doc's "skeleton / not the production
+  driver / DRIVER-GAP / RecipeStage stub / Model A engine path = production
+  default.py" framing was STALE). Grounded vs
+  `brassclaw_agent_loop/src/executor/{canonical,pipeline,recipe,tier_zero}.rs`
+  + `brassclaw_turns/src/run_profile/{driver,host,orchestrator_lookup,
+  retrieval_lookup}.rs` + `brassclaw_reborn/src/{planned_driver,
+  loop_driver_host}.rs` + `brassclaw_engine/src/executor/{loop_engine,
+  tier_zero_orchestrator}.rs`. Shipped facts: production path = turns trusted
+  runner → `AgentLoopDriver::run` (driver.rs:88) → `PlannedDriver::run`
+  (planned_driver.rs:110, holds `Arc<CanonicalAgentLoopExecutor>` + opaque
+  `LoopFamily`) → `executor.execute_family(family,host,state)` →
+  `DefaultExecutorPipeline::execute` (canonical.rs:20). Host =
+  `RebornLoopDriverHost` (loop_driver_host.rs:1890). Pipeline stages
+  (pipeline.rs:30-43): budget/input/recipe/**tier_zero**(TierZeroExecutionStage,
+  NEW)/prompt/interceptor/model/reply_admission/assistant_reply/capabilities/
+  stop/exit; CheckpointStage = inline helper. `AgentLoopDriverHost` (host.rs:2292)
+  = **15 ports** now (orig 13 + `LoopRetrievalPort`+`LoopOrchestratorPort` v3
+  opt-in, mirroring LoopRecipePort/NoRecipeLookup). `RecipeStep` = 2 variants
+  (Continue Tier1/2 + TierZero Tier-0 no-LLM) — NOT a stub. `RecipeStage` (H.9)
+  wired live: SEC-02 clears stash at start; when RetrievalLookup wired +
+  last_user_text present → `fetch_for_turn` vs PostgresSource (resolve_intent +
+  SEC-01 fetch) → stash recipe_hint(orchestrator_items)+recipe_rust_context
+  (rust_items); returns TierZero (Wilson threshold crossed, no LLM) or Continue;
+  retrieval errors soft-fail. `TierZeroStep` = Reply(skip PromptStage/ModelStage
+  → assistant_reply)/Degrade(fall through). canonical.rs H.10 branch (97-128):
+  recipe → Continue → prompt/model; TierZero → tier_zero → Reply(break 'turn to
+  assistant_reply)/Degrade(→ prompt). Tier-0 = TierZeroExecutionStage →
+  LoopOrchestratorPort::run_tier_zero → PgOrchestratorLookup →
+  TierZeroOrchestrator::run_tier_zero → execute_tier_zero_channel (Rust
+  deterministic, no LLM). Tier-1 = run_step_zero prior-knowledge injection.
+  Tier-2 = full LLM via ModelStage. **Engine Monty VM path (ExecutionLoop::run
+  loop_engine.rs:456 → execute_orchestrator :514) = DORMANT in prod** (no
+  external caller constructs ThreadManager; build_reborn_runtime doesn't) →
+  activated C.5/C.6 as composed-program runner host.run_program (Orchestrator/
+  Executioner split, Monty drives Rust via host.<tool>(...)). Retired
+  default.py/__llm_complete__/__assemble_prior_knowledge__/__retrieve_docs__/
+  working_messages/DRIVER-GAP/RecipeStage-stub-structural-debt framing. §5
+  relations → 13-orchestrator (not -default-py) + do_assemble_bundle +
+  16-kernel-composition. §6 shipped-vs-pending; §7 LLM summary.
