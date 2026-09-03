@@ -10,6 +10,7 @@
 //! - [`intent_system`] — unified intent resolution (§3.12, V028)
 
 pub mod component_validator;
+pub mod composition;
 pub mod instruction_builder;
 pub mod intent_system;
 pub mod metric_outcome;
@@ -24,6 +25,9 @@ pub mod store;
 
 pub use component_validator::{
     ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig,
+};
+pub use composition::{
+    ComposedProgram, ComposedStep, ComponentResolver, ResolvedComponent, RustDirective, SkillRef,
 };
 pub use metric_outcome::MetricRecorder;
 pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillMatch};
