@@ -2396,3 +2396,65 @@ grounded every claim against shipped source/migrations before committing.
   input → `host.resolve_intent` → dispatch; Match → `host.compose_orchestrator`
   + run assembled recipe program; No-match → prompt-assembly + `host.kohai_complete`
   → answer → `host.post_reply` → save-history → kohai/sempai).
+
+### C.5 grounding (2026-09-03, post-compaction portion)
+
+**C.4.5 COMPLETE → resume C.5.** Grounded the C.5 reality against live source
+(saved_plan Step C block lines 5948-5972 = authoritative; the
+`subplan_problem_stepC_of_saved_plan_to_v3.md` is the OLD test-rig subplan, NOT
+C.5 detail; `subplan_problem_stepC_model_a_retirement…` is "to be rewritten to
+match C.1-C.7"):
+
+- **Host-callable surface (executor/orchestrator.rs `execute_orchestrator`
+  dispatch, :634-862)** — WIRED: `FINAL`, `__llm_complete__`, `__check_signals__`,
+  `__emit_event__`, `__save_checkpoint__`, `__transition_to__`, `__retrieve_docs__`,
+  `__check_budget__`, `__log_budget_warning__`, `__get_reduction_rules__`,
+  `__get_actions__`, `__list_skills__`, `__record_skill_usage__`, `__regex_match__`,
+  `__validate_component__`, `__fetch_component__`, `__resolve_component_by_name__`;
+  C.1 `host.*` arms: `resolve_intent`(:766), `post_reply`(:776), `fetch_component`,
+  `resolve_component_by_name`, `validate_component`, `check_signals`, `regex_match`,
+  `skill_list`; C.4.5.17 `run_program`(:822), `compose_orchestrator`(:845); C.3
+  dynamic-tool fallthrough (:856). **NOT wired:** `kohai_complete` (only a comment
+  at :764), `save_history` host arm (absent — "host-save-history" is a RECIPE
+  cl.21, not a host fn). `__assemble_prior_knowledge__` handler RETIRED (H8.4) →
+  pub fn `assemble_prior_knowledge_with_hint` (:1974) — NOT a host fn.
+- **SUMMARY CLAIM RECONCILED:** the prior summary's "shipped slices 9-12
+  (host.kohai_complete `e6e65da5` / host-save-history `35c87c52` /
+  host-assemble-prior-knowledge `954a4e84` / host-non-match-llm-answer
+  `c256702d`)" are NOT in the live tree — those commit hashes are absent from
+  `git log`, and the arms don't exist. **Live tree is authoritative:** those
+  arms were never actually wired (the C.2 subplan confirms `host.kohai_complete`
+  handler = "deferred (new logic)"; `host-save-history`/`host-non-match-llm-answer`
+  are seeded RECIPES, not host fns).
+- **Driver reality (per C.2 subplan + portion-126 finding):** `execute_orchestrator`
+  (executor/orchestrator.rs:520) is **Model-A / DORMANT** — its sole caller is
+  `ExecutionLoop::run` (loop_engine.rs:514), and `ThreadManager::with_*` builders
+  have NO external callers; composition `build_reborn_runtime` does NOT construct
+  `ThreadManager`. Active prod driver = canonical.rs stage pipeline
+  (RecipeStage→TierZeroExecutionStage→execute_tier_zero_channel Rust per-step
+  loop). **C.2 subplan locks:** the `host.*` arms + `host` namespace live in
+  `execute_orchestrator` only because it's the sole Monty-driver fn with a
+  FunctionCall match today; they are DORMANT and **MOVE to the C.6 driver fn**;
+  C.2 does NOT touch execute_orchestrator. **C.7 deletes execute_orchestrator.**
+- **Orchestrator script = `orchestrator:main` (class 10, protected, self-modifiable).**
+  Compiled-in v0 = `DEFAULT_ORCHESTRATOR = include_str!("../../orchestrator/default.py")`
+  (orchestrator.rs:71); `ORCHESTRATOR_TITLE = "orchestrator:main"` (:74). Loaded by
+  `load_orchestrator_from_docs(&system_docs, allow_self_modify)` (:351) — reads
+  shared memory docs for an `orchestrator:main` override, falls back to compiled-in
+  v0 when self-modify off / no doc / store error. `ORCHESTRATOR_SELF_MODIFY=true`
+  gates the DB override.
+- **Current `default.py` (1637 lines) = OLD Model-A** — uses retired
+  `__execute_action__`/`__execute_actions_parallel__`/`__assemble_prior_knowledge__`
+  meta-primitives. Sibling: `segment_reduction.py`. **C.5 authors the NEW v3
+  basic-mode script** (host.resolve_intent → compose_orchestrator → run_program →
+  kohai_complete → post_reply → save-history). C.7 deletes default.py.
+
+**C.5 forks to ask:** (A) where the new script lives + load mechanism (new
+`basic_mode.py` compiled-in vs rewrite default.py in place vs seed as cl.10 DB
+component); (B) does C.5 wire the `host.kohai_complete` Rust handler now or defer
+to C.6; (C) how the script reaches Tier-1 prior-knowledge
+(`assemble_prior_knowledge_with_hint` pub fn) + the no-match
+`host-non-match-llm-answer` recipe — new host fn vs inside compose_orchestrator's
+returned program vs dedicated arms; (D) C.5 verification strategy (unit test
+driving execute_orchestrator with mock composition_port+LLM vs script+seed only,
+verify in C.6).

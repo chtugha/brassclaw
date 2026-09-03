@@ -5983,6 +5983,24 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `./docs/agents-v3/subplan_problem_stepC_model_a_retirement_of_saved_plan_to_v3.md`
 > to be rewritten to match C.1–C.7.
 >
+> **C.5 nested subplan (2026-09-03):**
+> `./docs/agents-v3/subplan_problem_stepC5_basic_mode_orchestrator_script_of_saved_plan_to_v3.md`
+> — basic-mode orchestrator script (`orchestrator:main` v3). Locked forks:
+> C.5-A = new `orchestrator/basic_mode.py` compiled-in as `DEFAULT_ORCHESTRATOR`
+> (default.py deleted in C.7; DB override retained for self-modify); C.5-B = wire
+> `host.kohai_complete` handler in C.5; C.5-C = `compose_orchestrator` embeds
+> prior-knowledge via `tier`, no-match is a separate compose call, no new host
+> fns (script calls only resolve_intent/compose_orchestrator/run_program/
+> kohai_complete/post_reply + resolve_component_by_name for recipe UUIDs);
+> C.5-D = combine C.5 verification with C.6 (script+handler land now, end-to-end
+> verify in C.6; keep going into C.6). Slice 1 = `host.kohai_complete` handler,
+> slice 2 = `basic_mode.py`, slice 3 = `DEFAULT_ORCHESTRATOR` swap + both-configs
+> green. **OPEN (asked 2026-09-03):** the interceptor ingress (Kohai→Sempai→
+> provider-prefix→http→save) does NOT exist as a callable today — `host.kohai_
+> complete` is net-new logic, not the seed's "wiring only"; awaiting the
+> realization fork (minimal = reuse the Rust `llm` backend under the hood vs
+> full = build the interceptor HTTP/provider-prefix flow now).
+>
 > **H.12.5 spawned a further nested subplan — real PG-backed engine
 > `Store::load_thread`.** Grounding H.12.5 surfaced that no production engine
 > `Store::load_thread` exists (only stubs/test mocks), so `PgOrchestratorLookup`
