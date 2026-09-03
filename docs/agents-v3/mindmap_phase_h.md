@@ -1261,3 +1261,36 @@ plumbing.
   `cargo clippy -p brassclaw_engine --all-targets -- -D warnings` green BOTH default +
   `--features skills-db` (the change is feature-agnostic — no cfg gates). **C.3 COMPLETE.** Next: C.4
   (mode-driven security + WebUI panel).
+
+- **C.4 slice 1 — V068 migration + `brassclaw_turns::run_profile::security` types + `LoopSecurityPort`
+  (DONE).** Forks LOCKED all A (F1=A six layers individually toggleable; F2=A new tenant-scoped
+  `reborn_security_settings` table; F3=A mode auto-detected per-turn from `host.resolve_intent` +
+  per-layer Auto/ForceOn/ForceOff overrides; F4=A data+UI+port ONLY — enforcement deferred to C.6 the
+  driver). Durability steer: build nothing C.7 deletes (C.7 = engine Model-A retirement only —
+  `execute_orchestrator`/`ExecutionLoop`/`ThreadManager`/`brassclaw_engine::runtime`+`default.py`; none
+  of which C.4 touches). Driver = C.6; C.7 = retirement only. **No DB-less mode** — Postgres always used;
+  DROP the V034 `'__system__'` seed-row pattern (a missing tenant row →
+  `SecurityModeConfig::default()` all-Auto; WebUI PUT upserts on first save). Slice 1 artifacts: (a)
+  `crates/brassclaw_pg/migrations/V068__reborn_security_settings.sql` — `reborn_security_settings`
+  table, `tenant_id TEXT NOT NULL` + UNIQUE(tenant_id) (operator-level, no user_id), 6 override TEXT cols
+  `policy/leases/gate/event_emission/sensitive_tool_scoping/namespace_filtering_override` each
+  `NOT NULL DEFAULT 'auto' CHECK IN ('auto','on','off')`, created_at/updated_at + `set_updated_at()`
+  trigger, NO seed row; (b) `crates/brassclaw_turns/src/run_profile/security.rs` — `SecurityMode{Matching,
+  NonMatching}` + `SecurityLayer{Policy,Leases,Gate,EventEmission,SensitiveToolScoping,NamespaceFiltering}`
+  (+ `ALL_SECURITY_LAYERS` const) + `SecurityLayerOverride{Auto,ForceOn,ForceOff}` (serde rename to
+  `auto`/`on`/`off` + `as_str`/`FromStr`/`Display` for DB TEXT) + `ResolvedSecurityLayers` (6 bools +
+  `is_active(layer)`) + `SecurityModeConfig` (6 override fields + `default()`=all-Auto + `override_for` +
+  `resolve(layer,mode)` + `resolve_all(mode)`) + `SecurityConfigError{Load,Deserialize}` (manual
+  Display/Error — turns-crate convention, no thiserror in-module) + `#[async_trait] SecurityConfigSource::
+  load_config`; auto-default table: Matching→policy/leases/gate/sensitive/namespace=false,
+  event_emission=true; Non-Matching→all six=true; ForceOn→true / ForceOff→false win regardless of mode;
+  (c) `LoopSecurityPort: Send + Sync` + `NoSecurityConfig` default in `host.rs` mirroring
+  `LoopRetrievalPort`/`NoRetrieval` (sync accessor `security_config_source()->Option<&dyn
+  SecurityConfigSource>`); (d) `mod security;` + `pub use security::{...}` + host `pub use` additions
+  (`LoopSecurityPort`, `NoSecurityConfig`) in `mod.rs`. 9 unit tests PASS (default all-Auto; Matching
+  defaults; Non-Matching defaults; ForceOn/ForceOff override; override str round-trip; config serde
+  round-trip; is_active accessor; 6-entry const). `cargo clippy -p brassclaw_turns --all-targets -- -D
+  warnings` green (single config — turns has NO skills-db feature). `cargo check -p brassclaw_reborn` clean
+  (purely additive — agent_loop/host_runtime/loop_support all check). Two clippy fixes: struct-literal
+  `..Default::default()` instead of `let mut cfg = ...; cfg.x = ...` (`field_reassign_with_default`).
+  Next: C.4 slice 2 (`PgSecuritySettingsStore` + `impl SecurityConfigSource` in composition).

@@ -5795,7 +5795,37 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > - **C.4 — Mode-driven security + WebUI panel.** Matching-Mode = all security
 >   off (Q2+ validated components execute as intended); Non-Matching-Mode =
 >   wrapper on; bind-time namespace filtering for the LLM path; add the global
->   security-settings WebUI panel (per-layer toggles).
+>   security-settings WebUI panel (per-layer toggles). **Forks locked (all A):**
+>   F1=A all six wrapper layers individually toggleable (Policy, Leases, Gate,
+>   EventEmission, SensitiveToolScoping, NamespaceFiltering); F2=A new
+>   tenant-scoped `reborn_security_settings` table (V068) + `PgSecuritySettingsStore`
+>   (one row per tenant, operator-level — no user_id); F3=A mode auto-detected
+>   per-turn from `host.resolve_intent` (match→Matching/wrapper-off,
+>   no-match→Non-Matching/wrapper-on), panel toggles are per-layer
+>   `Auto`/`ForceOn`/`ForceOff` OVERRIDES; F4=A C.4 ships ONLY data + UI +
+>   `SecurityModeConfig` port/type — the actual mode-gated wrapper enforcement +
+>   bind-time namespace filtering land in C.5/C.6 (the driver = C.6, the first
+>   consumer of the config/port); no throwaway wrapper code in
+>   `execute_orchestrator`. **No DB-less mode** — Postgres always used; a missing
+>   tenant row yields `SecurityModeConfig::default()` (all `Auto`), the WebUI PUT
+>   upserts on first save; NO `'__system__'` seed row. **Slices:** 1 = V068
+>   migration + `brassclaw_turns::run_profile::security` types
+>   (`SecurityMode`/`SecurityLayer`/`SecurityLayerOverride`/`SecurityModeConfig`/
+>   `ResolvedSecurityLayers` + `resolve_all` resolver) + `SecurityConfigSource`
+>   async trait + `LoopSecurityPort`/`NoSecurityConfig` port + unit tests; 2 =
+>   `PgSecuritySettingsStore` + `impl SecurityConfigSource` in composition; 3 =
+>   WebUI backend route (GET/PUT `/security-settings`); 4 = WebUI SPA panel.
+>   **Slice 1 DONE:** V068 migration (`reborn_security_settings`, 6 override TEXT
+>   cols `auto|on|off`, tenant UNIQUE, `set_updated_at()` trigger, no seed row);
+>   `crates/brassclaw_turns/src/run_profile/security.rs` with the full type set +
+>   `resolve`/`resolve_all` (Matching→policy/leases/gate/sensitive/namespace=false,
+>   event_emission=true; Non-Matching→all six=true; ForceOn/ForceOff override) +
+>   `SecurityConfigError` (manual `Display`/`Error`, turns-crate convention) +
+>   `#[async_trait] SecurityConfigSource::load_config`; `LoopSecurityPort` +
+>   `NoSecurityConfig` in `host.rs` mirroring `LoopRetrievalPort`/`NoRetrieval`;
+>   `mod security;` + `pub use security::{...}` + host `pub use` additions in
+>   `mod.rs`. 9 unit tests pass; clippy `-p brassclaw_turns --all-targets -- -D
+>   warnings` green; `cargo check -p brassclaw_reborn` clean (purely additive).
 > - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
 >   (receive input → `host.resolve_intent` → dispatch). Match →
 >   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls

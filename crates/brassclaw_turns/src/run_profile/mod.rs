@@ -26,6 +26,7 @@ mod recipe_lookup;
 mod refs;
 mod resolver;
 mod retrieval_lookup;
+mod security;
 mod skill_context;
 mod snapshot;
 mod snippet_ref;
@@ -63,8 +64,8 @@ pub use host::{
     LoopOrchestratorPort, LoopProcessRef, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
     LoopPromptBundleAuthority, LoopPromptBundleGrant, LoopPromptBundleRef, LoopPromptBundleRequest,
     LoopPromptPort, LoopRecipePort, LoopRetrievalPort, LoopRunContext, LoopRunInfoPort,
-    LoopSafeSummary, LoopTranscriptPort, ModelStreamChunk, NoInterceptor, NoOrchestrator,
-    NoRecipeLookup, NoRetrieval, ParentLoopOutput, ProcessHandleSummary, PromptMode,
+    LoopSafeSummary, LoopSecurityPort, LoopTranscriptPort, ModelStreamChunk, NoInterceptor, NoOrchestrator,
+    NoRecipeLookup, NoRetrieval, NoSecurityConfig, ParentLoopOutput, ProcessHandleSummary, PromptMode,
     ProviderToolCall, ProviderToolCallCapabilityIds, ProviderToolCallReference,
     ProviderToolCallReplay, ProviderToolDefinition, StageCheckpointPayloadRequest,
     UpdateAssistantDraft, VisibleCapabilityRequest, VisibleCapabilitySurface,
@@ -80,6 +81,10 @@ pub use memory_context::{
     EmptyMemoryPromptContextService, MemoryPromptContextRequest, MemoryPromptContextService,
 };
 pub use message_text_resolver::MessageTextResolver;
+pub use security::{
+    ALL_SECURITY_LAYERS, ResolvedSecurityLayers, SecurityConfigError, SecurityConfigSource,
+    SecurityLayer, SecurityLayerOverride, SecurityMode, SecurityModeConfig,
+};
 pub use milestones::{
     HookDecisionSummary, HookMilestoneSink, InMemoryHookMilestoneSink,
     InMemoryLoopHostMilestoneSink, LoopHostMilestone, LoopHostMilestoneEmitter,

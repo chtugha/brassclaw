@@ -2149,6 +2149,31 @@ impl LoopRetrievalPort for NoRetrieval {
     }
 }
 
+/// Bridge to the operator-level security configuration (v3 Step C.4).
+///
+/// Opt-in port mirroring [`LoopRetrievalPort`] / [`LoopOrchestratorPort`]: the
+/// accessor returns a [`crate::run_profile::SecurityConfigSource`] trait object
+/// the C.6 cross-turn driver consults to load the per-tenant
+/// [`crate::run_profile::SecurityModeConfig`] (the `reborn_security_settings`
+/// row, migration V068) and resolve the per-turn security posture from the
+/// `host.resolve_intent`-derived [`crate::run_profile::SecurityMode`]. Hosts
+/// without a security-config source inherit [`NoSecurityConfig`] and the
+/// accessor returns `None` — the driver then falls back to
+/// [`crate::run_profile::SecurityModeConfig::default()`] (all `Auto`).
+pub trait LoopSecurityPort: Send + Sync {
+    /// Returns `None` if no security-config source is wired into this host.
+    fn security_config_source(&self) -> Option<&dyn crate::run_profile::SecurityConfigSource>;
+}
+
+/// Default no-op implementation so hosts without a security-config source still
+/// satisfy the trait bound.
+pub struct NoSecurityConfig;
+impl LoopSecurityPort for NoSecurityConfig {
+    fn security_config_source(&self) -> Option<&dyn crate::run_profile::SecurityConfigSource> {
+        None
+    }
+}
+
 /// Bridge from agent-loop stages to the engine orchestrator (v3 Phase H.7).
 ///
 /// Opt-in port mirroring [`LoopRetrievalPort`] / [`LoopRecipePort`]: the
