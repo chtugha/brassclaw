@@ -4,7 +4,7 @@
 > Classic Claude-style skills (SKILL.md format, DB-stored), ToolSkills (for the Rust executor),
 > Orchestrator Skills (narrative task-pattern guidance), and ExtensionCatalogues (the
 > documentation namespace, class 23).
-> **Grounded in:** `crates/brassclaw_skills/` (types, parser, v2, selector), `crates/brassclaw_engine/src/types/recipe.rs` (`ToolSkill`), `crates/brassclaw_engine/src/memory/skill_tracker.rs`, `crates/brassclaw_pg/migrations/V027`/`V037`/`V053`, `saved_plan_to_v3.md` §0.1/§0.2/§0.16, Phases C/L.
+> **Grounded in:** `crates/brassclaw_skills/` (types, parser, v2 — selector/gating/registry/catalog v1-only+dormant), `crates/brassclaw_engine/src/types/recipe.rs` (`ToolSkill`), `crates/brassclaw_engine/src/memory/composition.rs` (`SkillRef`, `ComposedProgram.skills`), `crates/brassclaw_reborn_composition/src/pg_composition_port.rs` + `db_skill_store.rs` + `db_skill_loader.rs`, `crates/brassclaw_reborn_composition/src/seed_builtin_host.rs`, `crates/brassclaw_pg/migrations/V053`/`V070`/`V071`/`V072`, `saved_plan_to_v3.md` §0.1/§0.2/§0.16, Steps C.2/C.4.5.
 
 ## 1. Purpose
 
@@ -34,12 +34,17 @@ different class code, storage table, runtime reader, and authoring grain:
 - **ToolSkill type:** `crates/brassclaw_engine/src/types/recipe.rs` (`ToolSkill`, `ToolSkillParam`,
   `tool_skill_to_memory_doc`).
 - **Engine skill tracking:** `crates/brassclaw_engine/src/memory/skill_tracker.rs`.
-- **Python orchestrator selection:** `orchestrator/default.py` `select_skills()` / `__list_skills__()`
-  (v2 selection happens in Python, not Rust — `brassclaw_skills` is used only for types + parsing).
+- **Composition (skill delivery):** `crates/brassclaw_engine/src/memory/composition.rs`
+  (`SkillRef`, `ComposedProgram.skills`) + `crates/brassclaw_reborn_composition/src/pg_composition_port.rs`
+  — the IBS composes the matched recipe's Skills into the `program.skills` array Monty consults
+  while stepping. The retired `default.py` `select_skills()`/`__list_skills__()` scored-keyword
+  path is gone; selection is exact (UUIDs from the recipe's `orchestrator_steps[].include`).
 - **Migrations:** `V027__reborn_skills.sql` (classes 1–3), `V037__reborn_tool_skills.sql` (class 13),
-  `V053__reborn_extension_catalogues.sql` (class 23 — Phase C, **not yet created**).
-- **Stores (production):** `crates/brassclaw_reborn_composition/src/pg_skill_store.rs`,
-  `pg_tool_skill_store.rs`, `pg_extension_catalogue_store.rs` (Phase C, new).
+  `V053__reborn_extension_catalogues.sql` (class 23 — shipped Phase C). Per-class DB-structure
+  standardisation through V075 (C.4.5.0–C.4.5.16; the 5 legacy columns dropped from
+  `reborn_skills`/`reborn_tool_skills`).
+- **Stores (production):** `crates/brassclaw_reborn_composition/src/pg_skill_store.rs`
+  (`DbSkillStore`), `pg_tool_skill_store.rs`, `pg_extension_catalogue_store.rs`.
 - **Plan:** §0.1 (component hierarchy), §0.2 (ExtensionCatalogue design), §0.16 (builtin
   bootstrap), §0.16.1 (recipe list), Phase C, Phase L.
 
@@ -176,29 +181,34 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
 1. **Authoring:** a Classic skill is authored in the WebUI (frontmatter fields + markdown body) →
    `reborn_skills`; a ToolSkill in `reborn_tool_skills`; an ExtensionCatalogue in
    `reborn_extension_catalogues`. On save the WebUI submits each new component to the validation
-   queue (`ValidationQueueStore::submit(scope, component_id, class)`); the ExtensionCatalogue
-   Phase-C save path must call `submit(scope, id, 23)` on creation.
-2. **Selection (today, Tier 2):** `default.py` step 0 calls `__list_skills__()` then
-   `select_skills(all_skills, goal, ...)` — keyword scoring. The Rust `selector` (`prefilter_skills`)
-   is v1-only and deprecated for v2. Activation criteria (keywords/patterns/tags) gate candidates;
-   installed skills are lower-trust than user/workspace skills (tool-ceiling attenuation).
-3. **v3 selection (intent-driven):** a `Match` → recipe → the IBS emits `orchestrator_steps[]`
-   whose `include` UUIDs fetch the exact Skills + PythonCode; `matched_component_ids` drives
-   `_set_active_skills`. Selection is **exact** (UUIDs), not scored — the intent system already
-   resolved the match.
-4. **ToolSkill at runtime:** the IBS routes ToolSkill UUIDs to `rust_steps[]`; `RecipeStage` applies
-   them silently to the Rust execution context; the orchestrator never sees the body.
+   queue (`ValidationQueueStore::submit(scope, component_id, class)`); the ExtensionCatalogue save
+   path calls `submit(scope, id, 23)` on creation.
+2. **Selection (intent-driven, exact):** `host.resolve_intent` → a `Match` carries the recipe
+   `component_id` + `step_link`. `host.compose_orchestrator` composes the recipe: the IBS reads
+   `orchestrator_steps[].include` UUIDs and fetches the exact Skills + PythonCode + ToolSkills.
+   Selection is **exact (UUIDs), not scored** — the intent system already resolved the match; the
+   retired `default.py` `select_skills()`/`__list_skills__()` keyword-scoring path is gone.
+3. **Skills as a first-class array (the v3 role):** the composed `program.skills` is a
+   `Vec<SkillRef { id, class_code, name, body }>` Monty **consults while stepping**. Each skill
+   carries the **exact usage of one or more tools**, so a `steplist` step need only name the
+   approach + carry its `executable_code` — the tool-call detail lives in the skills, not the
+   steplist. This is the point of the recycling rule (§3): small leaf skills (one tool each) are
+   reused across many recipes, and the steplist stays lean. Monty does **not** bake skills into a
+   static prefix; it reads the array as it works through the steps.
+4. **ToolSkill at runtime:** the IBS routes ToolSkill UUIDs to `rust_steps[]` → composed as
+   `rust_directives`/`tool_bindings`; the Executioner applies them (cdylib load via the C.3
+   `DynamicToolLoader`); the Orchestrator never sees the ToolSkill body (a ToolSkill UUID in
+   `orchestrator_steps` is a Q1 hard error).
 5. **ExtensionCatalogue at runtime:** surfaced as LLM fallback context (the domain overview) and
    as the grouping for the builtin bootstrap; its `intent_index` is audit-only (never an intent
    input).
 6. **SKILL.md export:** the WebUI reconstructs `SKILL.md` (frontmatter YAML + markdown body) from a
    `reborn_skills` row on demand — no on-disk file exists otherwise.
-7. **Builtin bootstrap (Phase L):** seeds `~23 Tools + 23 ToolSkills + 12–15 Skills + 4–5
-   PythonCode + 18–20 Recipes + 5 ExtensionCatalogues` (≈ 85–90 components), all
-   `source='system'`, `validation_status='validated'`, grouped into **5 ExtensionCatalogues** by
-   cognitive domain (`builtin-filesystem`, `builtin-network`, `builtin-memory`,
-   `builtin-process`, `builtin-management`). Idempotent (only if the scope has no existing
-   builtin components).
+7. **Builtin bootstrap (shipped, C.2):** the builtin host.* seed seeds the system Skills/
+   ToolSkills/PythonCode/Recipes idempotently at boot (`source='system'`,
+   `validation_status='validated'`). The Phase-L `~85–90 component` library across 5 catalogues
+   (`builtin-filesystem`, `builtin-network`, `builtin-memory`, `builtin-process`,
+   `builtin-management`) is the starter set recipes compose from.
 
 ## 5. Relations
 
@@ -214,49 +224,48 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
 - **Component Catalog** (`15`): `reborn_skills`/`reborn_tool_skills`/`reborn_extension_catalogues`
   are the class-code component tables; `DocType` is frozen (no new variants — §0.11 FINDING B).
 
-## 6. Status — today vs. v3
+## 6. Status — shipped vs. pending
 
-**Today:**
-- `brassclaw_skills` crate exists with `SkillManifest`, `parse_skill_md`, `V2SkillMetadata`,
-  `selector`, `gating`, `registry`, `catalog` — but `lib.rs` notes `selector`/`gating`/`registry`/
-  `catalog` are **v1-only** (remove after migration); v2 selection lives in `default.py`.
-- The `ToolSkill` struct exists (`types/recipe.rs`); `reborn_skills` (V027) and
-  `reborn_tool_skills` (V037) tables are live and structurally ready but contain **zero builtin
-  rows** (Phase L seeds them).
-- `reborn_skills.source` CHECK has **no `'system'`** (V057 adds it — FIND-P7-12).
-- **ExtensionCatalogue does not exist** — `V053` migration and `pg_extension_catalogue_store.rs`
-  are Phase C work.
-- No `capability_id` on `reborn_tools` (Phase L/V057).
-- No SKILL.md DB→file export UI.
-- `DocType` is `#[deprecated]` and frozen — classes 22/23 are integer-class-code only (§0.11
-  FINDING B); `doc_type_weight(DocType)` has no 22/23 arms (obsolete — `ORDER BY class_code ASC`
-  orders automatically).
+**Shipped:**
+- `reborn_skills` (V053 standardisation, dropping the 5 legacy `brassclaw_skills` columns V072),
+  `reborn_tool_skills` (V037, includes column V070), `reborn_extension_catalogues` (V053) are live
+  and carry real rows.
+- **Builtin bootstrap (C.2):** the builtin host.* seed seeds system Skills/ToolSkills/PythonCode/
+  Recipes idempotently at boot (`source='system'`, `validation_status='validated'`). `'system'` is
+  in every `source` CHECK.
+- **`DbSkillStore`** reads the unified `reborn_skills` shape (no legacy-column fallback); the
+  `db_skill_loader` feeds skills into composition. The `brassclaw_skills` v1 `selector`/`gating`/
+  `registry`/`catalog` are v1-only and dormant (the v2 selection they served lived in the retired
+  `default.py`; both are gone).
+- **ExtensionCatalogue** (`pg_extension_catalogue_store.rs`, V053) + class-23 validator arm +
+  `fetch_for_consumer` UNION ALL arm (Phase E) are live.
+- **Skills as a first-class array** is the composed-`program.skills` (`SkillRef`) shape shipped in
+  C.4.5.17 (`ComposedProgram`); Monty consults it while stepping (§4.3).
+- `capability_id` on `reborn_tools` (V071) links each Tool row to its Rust handler.
+- `DocType` is `#[deprecated]` and frozen — classes 22/23 are integer-class-code only; ordering is
+  automatic via `class_code ASC, prompt_uid ASC`.
 
-**v3 plan adds:**
-- **Phase C (V053):** `reborn_extension_catalogues` + `pg_extension_catalogue_store.rs`; the
-  validator gains a class-23 arm using `GenericComponent { name, description, content }` +
-  `extra: Option<serde_json::Value>` for `task_groups` (COMP-04; FIND-P10-03 — `GenericComponent`
-  does NOT need `class_code`, it's implicit from the dispatch arm). `class_label` gains
-  `23 => "extension_catalogue"`.
-- **Phase L (V057):** the builtin bootstrap seeder inserts all system skills/ToolSkills/catalogues
-  (`source='system'`, `validation_status='validated'`); V057 adds `'system'` to the `source` CHECK
-  on `reborn_tools`/`reborn_tool_skills`/`reborn_skills`/`reborn_recipes`.
-- **Phase E:** `fetch_for_consumer` UNION ALL gains class-23 (and 22) arms; `class_code_to_table`
-  includes the `10 | 50` arm (FIND-NEW-AUDIT-03). Ordering is `class_code ASC, prompt_uid ASC`.
+**Pending:**
 - **WebUI (Phase K.1):** SKILL.md export + skill/ToolSkill/ExtensionCatalogue authoring UI.
+- **C.5/C.6 driver wiring:** the composition side is built but the engine Monty VM
+  `execute_orchestrator` host-call path is dormant in production (the active Tier-0/Tier-1 path is
+  the TURNS `PgOrchestratorLookup` bridge). The C.5/C.6 driver activates `host.compose_orchestrator`
+  + `host.run_program` in production and applies `rust_directives` via the `DynamicToolLoader`.
 
 ## 7. LLM-relevant summary
 
 Four skill kinds: **Classic skills** (`SKILL.md` format, `reborn_skills` classes 1–3 —
 `skill_rusty`/`skill_monty`/`skill_llm`, DB-stored frontmatter+body, WebUI-exportable to `SKILL.md`,
-no on-disk file); **ToolSkills** (class 13, `reborn_tool_skills`, < 5000-token tool-usage patterns,
-Rust-channel only, orchestrator never reads them); **Orchestrator Skills** (the narrative task-pattern
-role of a class 1–3 Skill — grain rule: Skill = capability spanning tools, PythonCode = sub-orchestrator
-helper); **ExtensionCatalogues** (class 23, `reborn_extension_catalogues` V053, documentation
-namespace, one per domain, `overview_doc`+`task_groups`+`child_component_ids`, `intent_index`
-audit-only). Selection is deterministic; today it is keyword scoring in `default.py`
-(`brassclaw_skills` selector is v1-only), in v3 it is exact UUID fetch from the IBS. `DocType` is
-frozen (no 22/23 variants); ordering is automatic via `class_code ASC, prompt_uid ASC`. The builtin
-bootstrap (Phase L) seeds ≈ 85–90 system components into 5 ExtensionCatalogues, all
-`source='system'`/`validated`; V057 adds `'system'` to the source CHECKs. Phase C creates the
-ExtensionCatalogue table + store + class-23 validator arm; Phase E adds the retrieval UNION ALL arm.
+no on-disk file); **ToolSkills** (class 13, `reborn_tool_skills`, tool-usage patterns,
+Rust-channel only — composed into `rust_directives`, orchestrator never reads them);
+**Orchestrator Skills** (the narrative task-pattern role of a class 1–3 Skill — grain rule: Skill =
+capability spanning tools, PythonCode = sub-orchestrator helper); **ExtensionCatalogues** (class 23,
+`reborn_extension_catalogues` V053, documentation namespace, one per domain,
+`overview_doc`+`task_groups`+`child_component_ids`, `intent_index` audit-only). Selection is
+**deterministic and exact (UUIDs)** via `host.resolve_intent` → `host.compose_orchestrator`; the
+retired `default.py` keyword-scoring path is gone. Skills ride in `program.skills` as a first-class
+`Vec<SkillRef>` Monty consults while stepping — they carry the exact tool usage so the steplist stays
+lean. `DocType` is frozen (no 22/23 variants); ordering is automatic via `class_code ASC,
+prompt_uid ASC`. The builtin bootstrap (C.2) seeds system components idempotently at boot; the
+Phase-L `~85–90 component` library across 5 ExtensionCatalogues is the starter set recipes compose
+from. C.5/C.6 activates the composition host-calls in production.
