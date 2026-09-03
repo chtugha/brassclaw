@@ -252,8 +252,28 @@ impl ComponentValidator {
                 };
                 validate_soft_budget_named(name, desc, content, config, BUDGET_NOTES, false)
             }
-            // Former DocType classes (12-14, 17-20): soft 10000
-            12..=14 | 17..=20 => {
+            // ToolSkill (13): full agentskills.io validation via the canonical
+            // `validate_tool_skill` (the SAME validator used for class 0 + 1-3),
+            // closing the prior catch-all gap that ran soft-budget only. Plus
+            // the common-syntax placeholder-grammar + non-nil includes Q1 gate
+            // (C.4.5.3, F-HI-2=A). Generic/Recipe payloads are rejected — a
+            // ToolSkill struct is required to validate tool_name + param_schema
+            // (mirrors class 0).
+            13 => match &component {
+                ComponentPayload::ToolSkill(skill) => {
+                    let mut result = RecipeValidator::validate_tool_skill(skill, available_tools);
+                    validate_tool_skill_placeholders(skill, &mut result);
+                    result
+                }
+                ComponentPayload::Generic(_) => ValidationResult::from_error(
+                    "ToolSkill class requires a ToolSkill payload",
+                ),
+                ComponentPayload::Recipe(_) => ValidationResult::from_error(
+                    "ToolSkill class requires a ToolSkill payload",
+                ),
+            },
+            // Former DocType classes (12, 14, 17-20): soft 10000 (13 has its own arm above)
+            12 | 14 | 17..=20 => {
                 let (name, desc, content) = match &component {
                     ComponentPayload::Generic(g) => (g.name, g.description, g.content),
                     ComponentPayload::ToolSkill(s) => (
@@ -400,6 +420,33 @@ fn validate_python_code_body(content: &str, result: &mut ValidationResult) {
     }
 }
 
+/// C.4.5.3 — shared `{{ ... }}` placeholder-grammar gate (F-HI-2=A). Scans
+/// `content` for `{{ ... }}`, enforces balanced braces + a recognised kind
+/// (vars.NAME | vars.slotN | user_input | component_name via
+/// [`is_recognised_python_placeholder`]). `label` names the field in error
+/// messages. Structural-only — the composer (C.4.5.17) is the sole baker.
+fn validate_placeholder_grammar(content: &str, label: &str, result: &mut ValidationResult) {
+    let mut cursor = 0;
+    while let Some(open_rel) = content[cursor..].find("{{") {
+        let open = cursor + open_rel;
+        let Some(close_rel) = content[open + 2..].find("}}") else {
+            result.errors.push(format!(
+                "{label} has an unbalanced `{{{{` placeholder (no closing `}}}}`)"
+            ));
+            return;
+        };
+        let inner = &content[open + 2..open + 2 + close_rel];
+        let trimmed = inner.trim();
+        if !is_recognised_python_placeholder(trimmed) {
+            result.errors.push(format!(
+                "{label} placeholder `{{{{ {trimmed} }}}}` is not a recognised kind \
+                 (expected vars.NAME, vars.slotN, user_input, or component_name)"
+            ));
+        }
+        cursor = open + 2 + close_rel + 2;
+    }
+}
+
 /// C.4.5.2 — validate the `{{ ... }}` placeholder structure in a PythonCode
 /// body (F-HI-2=A) and the non-nil-ness of its declared `includes` UUID list
 /// (Fork 2-B=B). Structural-only: the composer (C.4.5.17) is the sole baker;
@@ -412,28 +459,8 @@ fn validate_python_code_placeholders(
     extra: Option<&Value>,
     result: &mut ValidationResult,
 ) {
-    // Placeholder well-formedness: every `{{ ... }}` must close and name a
-    // recognised kind (vars.NAME | vars.slotN | user_input | component_name).
-    let mut cursor = 0;
-    while let Some(open_rel) = content[cursor..].find("{{") {
-        let open = cursor + open_rel;
-        let Some(close_rel) = content[open + 2..].find("}}") else {
-            result.errors.push(
-                "PythonCode body has an unbalanced `{{` placeholder (no closing `}}`)"
-                    .to_string(),
-            );
-            return;
-        };
-        let inner = &content[open + 2..open + 2 + close_rel];
-        let trimmed = inner.trim();
-        if !is_recognised_python_placeholder(trimmed) {
-            result.errors.push(format!(
-                "PythonCode body placeholder `{{{{ {trimmed} }}}}` is not a recognised kind \
-                 (expected vars.NAME, vars.slotN, user_input, or component_name)"
-            ));
-        }
-        cursor = open + 2 + close_rel + 2;
-    }
+    // Placeholder well-formedness — shared grammar gate (C.4.5.3).
+    validate_placeholder_grammar(content, "PythonCode body", result);
 
     // Includes (carried in `extra` on the Q1 save path): each present UUID must
     // parse and be non-nil. Absent `extra` / absent `includes` is allowed (a
@@ -479,6 +506,50 @@ fn is_recognised_python_placeholder(trimmed: &str) -> bool {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         && !rest.chars().next().is_some_and(|c| c.is_ascii_digit())
+}
+
+/// C.4.5.3 — non-nil check for a parsed `Vec<Uuid>` includes list. PythonCode
+/// parses UUID strings from `extra` itself (so it keeps its own JSON loop with
+/// the parse-error messages); this helper covers the already-parsed struct
+/// field form used by ToolSkill. `label` names the component class in errors.
+fn validate_includes_non_nil_uuids(
+    includes: &[uuid::Uuid],
+    label: &str,
+    result: &mut ValidationResult,
+) {
+    for (j, u) in includes.iter().enumerate() {
+        if *u == uuid::Uuid::nil() {
+            result.errors.push(format!(
+                "{label} includes[{j}] is the nil UUID — component-include must resolve to a real component"
+            ));
+        }
+    }
+}
+
+/// C.4.5.3 — ToolSkill (class 13) placeholder-grammar + non-nil includes Q1
+/// gate. A ToolSkill description may include another description
+/// (`{{component_name}}`); `param_template` carries `{{vars.name}}` for
+/// ToolBinding substitution. Scans every text field + serialized
+/// `param_template` + each `param_schema` entry description for balanced
+/// `{{ }}` + recognised kinds, then checks the struct-field `includes` list
+/// for non-nil UUIDs. Referential placeholder<->include matching is deferred to
+/// Phase I/N (requires a pool); Q1 is structural-only.
+fn validate_tool_skill_placeholders(skill: &ToolSkill, result: &mut ValidationResult) {
+    validate_placeholder_grammar(&skill.description, "ToolSkill description", result);
+    validate_placeholder_grammar(&skill.preconditions, "ToolSkill preconditions", result);
+    validate_placeholder_grammar(&skill.error_handling, "ToolSkill error_handling", result);
+    if let Some(snippet) = &skill.code_snippet {
+        validate_placeholder_grammar(snippet, "ToolSkill code_snippet", result);
+    }
+    validate_placeholder_grammar(
+        &skill.param_template.to_string(),
+        "ToolSkill param_template",
+        result,
+    );
+    for p in &skill.param_schema {
+        validate_placeholder_grammar(&p.description, "ToolSkill param_schema", result);
+    }
+    validate_includes_non_nil_uuids(&skill.includes, "ToolSkill", result);
 }
 
 /// Validate the ExtensionCatalogue-specific extras carried in
@@ -737,6 +808,7 @@ mod tests {
             error_handling: "".into(),
             code_snippet: None,
             category: "files".into(),
+            includes: vec![],
             usage_count: 0,
             success_count: 0,
             failure_count: 0,
@@ -1058,6 +1130,151 @@ mod tests {
             result.errors
         );
         assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn class13_tool_skill_valid_placeholders_and_includes_pass() {
+        // C.4.5.3 — every recognised placeholder kind across every scanned
+        // ToolSkill text field + a non-nil includes list passes the class-13
+        // gate (full validate_tool_skill + placeholder grammar).
+        let mut skill = base_skill();
+        skill.param_template = serde_json::json!({
+            "path": "{{vars.path}}",
+            "label": "{{user_input}}"
+        });
+        skill.param_schema[0].description = "Repo root {{component_name}} path".into();
+        skill.preconditions = "git repo present at {{vars.slot0}}".into();
+        skill.error_handling = "exit non-zero means dirty {{component_name}}".into();
+        skill.code_snippet = Some("process({{user_input}})".into());
+        skill.includes = vec![uuid::Uuid::new_v4()];
+        let result = ComponentValidator::validate_by_class(
+            13,
+            ComponentPayload::ToolSkill(&skill),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors for well-formed ToolSkill, got {:?}",
+            result.errors
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn class13_tool_skill_unbalanced_placeholder_fails() {
+        let mut skill = base_skill();
+        skill.preconditions = "git repo {{vars.slot0".into();
+        let result = ComponentValidator::validate_by_class(
+            13,
+            ComponentPayload::ToolSkill(&skill),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("unbalanced") && e.contains("{{")),
+            "expected an unbalanced-placeholder error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class13_tool_skill_unrecognised_placeholder_fails() {
+        let mut skill = base_skill();
+        skill.preconditions = "see {{bogus}} here".into();
+        let result = ComponentValidator::validate_by_class(
+            13,
+            ComponentPayload::ToolSkill(&skill),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("not a recognised kind") && e.contains("bogus")),
+            "expected an unrecognised-placeholder error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class13_tool_skill_nil_include_fails() {
+        let mut skill = base_skill();
+        skill.includes = vec![uuid::Uuid::nil()];
+        let result = ComponentValidator::validate_by_class(
+            13,
+            ComponentPayload::ToolSkill(&skill),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.iter().any(|e| e.contains("nil UUID")),
+            "expected a nil-include error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class13_tool_skill_generic_payload_errors() {
+        let g = GenericComponent {
+            name: "x",
+            description: "y",
+            content: "z",
+            extra: None,
+        };
+        let result = ComponentValidator::validate_by_class(
+            13,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("requires a ToolSkill payload")),
+            "expected a payload-mismatch error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class13_tool_skill_empty_tool_name_fails() {
+        // C.4.5.3 — proves the dedicated 13 arm runs `validate_tool_skill`: the
+        // prior catch-all only did soft-budget and would NOT error on an empty
+        // tool_name. available_tools=&[] so membership is skipped; the
+        // emptiness check still fires.
+        let mut skill = base_skill();
+        skill.tool_name = "".into();
+        let result = ComponentValidator::validate_by_class(
+            13,
+            ComponentPayload::ToolSkill(&skill),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("tool_name") && e.contains("empty")),
+            "expected a tool_name-empty error from validate_tool_skill, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
     }
 
     #[test]

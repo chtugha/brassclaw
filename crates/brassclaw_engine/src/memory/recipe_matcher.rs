@@ -376,6 +376,7 @@ mod tests {
             error_handling: String::new(),
             code_snippet: None,
             category: "test".to_string(),
+            includes: vec![],
             usage_count: 0,
             success_count: 0,
             failure_count: 0,

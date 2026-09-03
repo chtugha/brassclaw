@@ -435,6 +435,7 @@ async fn seed_host_resolve_intent(
                 intent_examples: None,
                 source: "system".into(),
                 validation_status: "validated".into(),
+                includes: vec![],
             },
             "ts-host-resolve-intent",
         )
@@ -629,6 +630,7 @@ async fn seed_host_compose_orchestrator(
                 intent_examples: None,
                 source: "system".into(),
                 validation_status: "validated".into(),
+                includes: vec![],
             },
             "ts-host-compose-orchestrator",
         )
@@ -809,6 +811,7 @@ async fn seed_host_post_reply(
                 intent_examples: None,
                 source: "system".into(),
                 validation_status: "validated".into(),
+                includes: vec![],
             },
             "ts-host-post-reply",
         )
@@ -990,6 +993,7 @@ async fn seed_host_fetch_component(
                 intent_examples: None,
                 source: "system".into(),
                 validation_status: "validated".into(),
+                includes: vec![],
             },
             "ts-host-fetch-component",
         )
@@ -1140,6 +1144,7 @@ async fn seed_host_kohai_complete(
                 intent_examples: None,
                 source: "system".into(),
                 validation_status: "validated".into(),
+                includes: vec![],
             },
             "ts-host-kohai-complete",
         )
@@ -1617,6 +1622,7 @@ async fn seed_host_check_signals(
                 intent_examples: None,
                 source: "system".into(),
                 validation_status: "validated".into(),
+                includes: vec![],
             },
             "ts-host-check-signals",
         )
@@ -1768,6 +1774,7 @@ async fn seed_host_validate_component(
                 intent_examples: None,
                 source: "system".into(),
                 validation_status: "validated".into(),
+                includes: vec![],
             },
             "ts-host-validate-component",
         )
@@ -1905,6 +1912,7 @@ async fn seed_host_resolve_component_by_name(
                 intent_examples: None,
                 source: "system".into(),
                 validation_status: "validated".into(),
+                includes: vec![],
             },
             "ts-host-resolve-component-by-name",
         )

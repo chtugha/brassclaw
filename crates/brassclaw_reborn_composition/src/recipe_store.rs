@@ -1300,6 +1300,7 @@ mod tests {
             error_handling: "report stderr".to_string(),
             code_snippet: Some("process(cmd)".to_string()),
             category: "shell".to_string(),
+            includes: vec![],
             usage_count: 0,
             success_count: 0,
             failure_count: 0,

@@ -294,6 +294,15 @@ pub struct ToolSkill {
     pub code_snippet: Option<String>,
     pub category: String,
 
+    /// C.4.5.3 — component UUIDs the composer inlines for `{{component_name}}`
+    /// structural-include placeholders in this ToolSkill's description text (a
+    /// description may include another description). Mirrors PythonCode
+    /// `includes` (C.4.5.2) + recipe `StepEntry.include`. Empty for leaf
+    /// descriptions. Referential placeholder<->include matching is deferred to
+    /// Phase I/N; Q1 validates non-nil UUIDs only.
+    #[serde(default)]
+    pub includes: Vec<uuid::Uuid>,
+
     pub usage_count: u64,
     pub success_count: u64,
     pub failure_count: u64,
@@ -545,6 +554,7 @@ mod tests {
             error_handling: "exit non-zero means dirty tree".into(),
             code_snippet: None,
             category: "git".into(),
+            includes: vec![],
             usage_count: 0,
             success_count: 0,
             failure_count: 0,

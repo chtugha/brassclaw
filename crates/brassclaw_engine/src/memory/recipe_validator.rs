@@ -448,6 +448,7 @@ mod tests {
             error_handling: "exit non-zero => dirty".into(),
             code_snippet: None,
             category: "git".into(),
+            includes: vec![],
             usage_count: 0,
             success_count: 0,
             failure_count: 0,

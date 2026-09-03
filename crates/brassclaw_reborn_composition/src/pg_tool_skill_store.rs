@@ -77,6 +77,10 @@ pub(crate) struct NewPgToolSkill {
     pub(crate) intent_examples: Option<Value>,
     pub(crate) source: String,
     pub(crate) validation_status: String,
+    /// C.4.5.3 — component UUIDs the composer inlines for `{{component_name}}`
+    /// structural-include placeholders in this ToolSkill's description. Empty
+    /// for leaf descriptions.
+    pub(crate) includes: Vec<Uuid>,
 }
 
 /// Postgres-backed store for `reborn_tool_skills` (class 13).
@@ -100,6 +104,11 @@ impl PgToolSkillStore {
         &self,
         row: NewPgToolSkill,
     ) -> Result<Option<Uuid>, PgToolSkillStoreError> {
+        let includes_json = serde_json::to_value(&row.includes).map_err(|e| {
+            PgToolSkillStoreError::Db {
+                reason: format!("includes encode failed: {e}"),
+            }
+        })?;
         let client = self.pool.get().await.map_err(map_pool)?;
         let row = client
             .query_opt(
@@ -108,8 +117,9 @@ impl PgToolSkillStore {
                      name, description, content,
                      prior_knowledge_content, override_prompt_creation,
                      tool_name, param_schema, param_template,
-                     consumer_tags, intent_examples, source, validation_status)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                     consumer_tags, intent_examples, source, validation_status,
+                     includes)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",
@@ -130,6 +140,7 @@ impl PgToolSkillStore {
                     &row.intent_examples,
                     &row.source,
                     &row.validation_status,
+                    &includes_json,
                 ],
             )
             .await
