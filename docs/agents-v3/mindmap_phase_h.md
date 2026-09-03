@@ -2285,3 +2285,32 @@ grounded every claim against shipped source/migrations before committing.
   working_messages/DRIVER-GAP/RecipeStage-stub-structural-debt framing. §5
   relations → 13-orchestrator (not -default-py) + do_assemble_bundle +
   16-kernel-composition. §6 shipped-vs-pending; §7 LLM summary.
+
+- **d15** `15-component-catalog` (this portion): rewrite — **classes 22/23
+  SHIPPED** (doc framed them as "v3 target/planned V052/V053" + wrong migration
+  numbers V057/V059 + retired `do_reassemble`). Grounded vs retrieval_source.rs
+  + intent_system.rs:265 + component_validator.rs + interceptor_config_service.rs
+  + migrations V027-V075. Shipped facts: `class_label` authoritative integer
+  dispatch (intent_system.rs:265): 21=>"recipe", 22=>"python_code",
+  23=>"extension_catalogue", 50=>"scaffold". `doc_type_to_class_code`
+  (retrieval_source.rs:1449) = legacy RamSource keyword path (DocType→class,
+  Skill→3) — dormant, deleted Phase K.3. `fetch_for_consumer` = 14-sub-select
+  UNION ALL (PERF-05) incl class 22+23 arms SHIPPED. `fetch_component_by_id`
+  arms 1-3/4-9/10|50/12-21/22/23 SHIPPED. `class_code_to_table` incl 22/23.
+  `dependency_registry` (JSONB) on recipes(V050)+python_code(V052)+catalogues
+  (V053) ONLY — NOT "all 13 tables V055" (doc was WRONG). source CHECK: tools+
+  skills widened to incl 'system' (V066, NOT V057); python_code(V052)+
+  catalogues(V053) incl 'system' from day one; tool_skills(V037)+recipes(V033)
+  have NO CHECK (any value incl 'system'); actions(V029) CHECK
+  authored/extracted/migrated/imported — NO 'system' (system Actions cannot be
+  seeded). Legacy 5 lifecycle cols (validation_errors/review_feedback/
+  review_attempts/rejected_at/queue_code): DROPPED V070-V075 from
+  tools(V071)/skills(V072)/tool_skills(V070)/actions(V073)/memory-classes-12-20
+  (V074)/extensions_unified(V075); python_code/catalogues NEVER had them;
+  **reborn_recipes STILL retains them — Phase N (V076+) pending** (NOT "V059").
+  V071 also dropped tools' cdylib_artifact_path + added capability_id. Retired
+  `do_reassemble` → `SystemBundleSource::get_system_bundle`/`do_assemble_bundle`.
+  Taxonomy table: 22/23 → "v3-shipped"; +V0NN cleanup-migration annotations.
+  FINDING B retained (DocType deprecated/frozen; integer-only dispatch; no
+  weight arms — §0.11 historical only). §6 shipped-vs-pending (next migration
+  V076 = Phase N recipes legacy-col drop + decoder re-index); §7 LLM summary.
