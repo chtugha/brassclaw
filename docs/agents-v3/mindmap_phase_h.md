@@ -1164,3 +1164,27 @@ plumbing.
   the rust part with cdylib directives) is DEFERRED to C.5/C.6 where the Matching-Mode driver is
   built — the loader is unit-testable in isolation meanwhile (load a fixture cdylib, call it, unload).
   Subplan doc: `./docs/agents-v3/subproblem_stepC3_cdylib_dynamic_loading.md` (to write).
+- **C.3 SLICE 2 — `brassclaw_host_api::cdylib_abi` ABI module (DONE + shipped `81a13375`/slice-1
+  grounding then slice-2).** host_api is a CONTRACTS-ONLY crate ("runtime behavior belongs in
+  system-service crates"), so the module defines the ABI contract ONLY — symbol names
+  (`CDYLIB_TOOL_INVOKE_SYMBOL="brassclaw_tool_invoke"`, `CDYLIB_TOOL_DROP_OUT_SYMBOL=
+  "brassclaw_tool_drop_out"`), the `unsafe extern "C"` fn-pointer TYPES (`CdylibToolInvoke =
+  unsafe extern "C" fn(*const c_char, usize, *mut *mut c_char, *mut usize) -> i32`,
+  `CdylibToolDropOut = unsafe extern "C" fn(*mut c_char, usize)`), serde `CdylibRequest{tool,args}`
+  / `CdylibResponse{ok,result,error}` (with `ok()`/`err()` ctors + skip_serializing_if on the
+  Option fields), and a `CdylibAbiError` thiserror enum (InvokeReturned/ResponseNotUtf8/
+  ResponseInvalidJson/ToolError). The actual `unsafe` FFI invoke CALL is deferred to slice 3
+  (the `DynamicToolLoader` in `brassclaw_host_runtime`) — types here, call there, respecting the
+  crate boundary. Registered `pub mod cdylib_abi;` + `pub use cdylib_abi::*;` in lib.rs (matches
+  the flat re-export pattern; `#![warn(unreachable_pub)]` satisfied). ABI buffer protocol:
+  host serializes CdylibRequest→JSON, passes UTF-8 bytes as (payload,payload_len) — cdylib does
+  NOT free the request; cdylib allocates *out + writes *out_len, returns 0=ok/non-zero=fail;
+  host copies bytes, deserializes CdylibResponse, calls brassclaw_tool_drop_out so the cdylib
+  frees its own allocation (callee-allocates/caller-frees-via-provided-destructor). 5 unit tests
+  (request round-trip, response ok round-trip + skip-None, response err round-trip, minimal
+  response tolerates missing fields, error display carries tool+code). `cargo clippy -p
+  brassclaw_host_api --all-targets -- -D warnings` green; `cargo test --lib` → 24 passed / 0
+  failed (5 new + 19 prior). Slice 1 = V067 migration only (column defaults NULL, built-ins stay
+  NULL, store write/read deferred to the dynamic-tool authoring surface); `cargo check -p
+  brassclaw_pg` green (refinery embed_migrations! accepts V067). Commit `81a13375` = grounding +
+  slice 1; slice 2 = this commit.
