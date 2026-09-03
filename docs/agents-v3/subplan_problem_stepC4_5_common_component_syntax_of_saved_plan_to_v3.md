@@ -299,11 +299,37 @@ is never baked into raw code — only into string-literal positions.
     (placeholder grammar + non-nil includes, mirrors class 13; concrete for valid
     tools → no-op); 3 engine gate tests (valid capability_id passes; unbalanced
     `{{` fails; empty capability_id fails). Both configs clippy-clean; engine 570
-    (567+3 new) + composition 689 lib tests green).
-    **Remaining: C.4.5.5–C.4.5.19 not implemented** (IBS core exists Phase A but
+    (567+3 new) + composition 689 lib tests green). [x]
+    **C.4.5.5 DONE** (2026-09-03 — `skill`(1/2/3/10) + command syntax (item e) +
+    DB-structure standardization (item g): migration V072 `reborn_skills_syntax`
+    — drops the 5 legacy pre-centralization lifecycle cols (validation_errors,
+    review_feedback, review_attempts, rejected_at, queue_code; the SAME set V071
+    dropped from reborn_tools, BUT these WERE actively read/written by
+    `DbSkillStore` under the `db-store` feature enabled by composition's
+    `skills-db` feature — so this migration is PAIRED with a `DbSkillStore`
+    refactor that removes all 24 legacy-col references: `DbSkillRow` struct
+    fields, INSERT col+`'q1_auto'` literal, 3 identical SELECT lists,
+    `row_from_pg` decoder, 4 UPDATE sets; `mark_auto_failed` signature drops the
+    now-unused `errors: &[String]` arg — zero callers) + widens the class_code
+    CHECK from `IN (1,2,3)` to `IN (1,2,3,10,50)` (fixes the latent
+    contradiction: `retrieval_source.rs:1052` + V061 registry assumed 10/50 live
+    in `reborn_skills` but V027's CHECK rejected them → class 10 orchestrator
+    scripts can now be INSERTed, enabling C.5/C.6; constraint dropped by
+    Postgres-assigned name `reborn_skills_class_code_check`, `IF EXISTS` guards);
+    `db_skill_loader.rs sample_row()` updated (5 field initializers dropped;
+    `row_to_json` unchanged); Q1 gate — class `10 | 50` arm =
+    `validate_soft_budget_named` (BUDGET_ORCHESTRATOR=50,000) +
+    `validate_placeholder_grammar` (the class-10 orchestrator script carries
+    `{{vars.NAME}}`/`{{vars.slotN}}`/`{{user_input}}`/`{{component_name}}`
+    placeholders; skills 1-3 are pure narrative → NOT gated); command-syntax
+    item e = docs-only (C.4.5.18 documents the `ts-`/`skill-`/`pc-`/`shell-`
+    backtick-name convention; Q1 does NOT enforce narrative); 3 engine gate
+    tests (valid placeholders pass; unbalanced `{{` fails; unrecognised
+    `{{bogus}}` fails). Both configs clippy-clean; engine 573 default / 584
+    skills-db + brassclaw_skills db-store 231 + composition skills-db 689 green).
+    **Remaining: C.4.5.6–C.4.5.19 not implemented** (IBS core exists Phase A but
     Recipe-only; compose_orchestrator is a C.2 placeholder; host.run_program
     net-new; per-class syntax upgrades + predefined structure + rust-plugin
-    directives all pending). Next slice C.4.5.5 (`skill`(1/2/3/10) + command
-    syntax item e).
+    directives all pending). Next slice C.4.5.6 (`action`(16)).
     This subplan is the canonical one (the prior `subplan_problem_phaseHI_…md`
     is a redirect stub).

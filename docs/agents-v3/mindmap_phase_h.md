@@ -1666,3 +1666,61 @@ plumbing.
   engine 570 (567+3 new) + composition 689 lib tests green. **Zenflow step
   `33268a15` (HI.4, sort 35) marked Completed.** Next: C.4.5.5 `skill`(1/2/3/10)
   + command syntax (item e).
+
+- **C.4.5.5 — `skill`(1/2/3/10) + command syntax (item e) COMPLETE + shipped
+  `9a1ccbd5` (2026-09-03).** Forks LOCKED via ask_user (1 round, 4 questions):
+  **5-A=A** (drop all 5 legacy cols via V072 AND refactor `DbSkillStore` to
+  stop referencing them — rely on `validation_status` + central
+  `reborn_validation_queue` for lifecycle, mirroring the reborn_tools V071 path);
+  **5-B=A** (V072 drops the old class_code CHECK + adds `CHECK (class_code IN
+  (1,2,3,10,50))` so the table actually holds 10/50 as the code assumes — enables
+  C.5/C.6 to save the orchestrator script as a class-10 row); **5-C=A**
+  (placeholder-grammar gate on class 10/50 content only; skills 1-3 are pure
+  narrative → no gate); **5-D=A** (command-syntax item e is docs-only — C.4.5.18
+  documents the `ts-`/`skill-`/`pc-`/`shell-` backtick-name convention; Q1 does NOT
+  enforce narrative references). Grounding: read `builtin_stuff_v3.md` skill
+  sections — **Class 1** = leaf skill (`skill-shell-run`/`skill-shell-safe-check`):
+  one tool one concern, `body` is orchestrator narrative referencing a ToolSkill by
+  name, NO `tool_name`/`param_schema`; **Class 2** = domain skill (`skill-shell`)
+  references leaf skills, two-tier (Tier-0 fixed-literal pre-validated / Tier-1
+  custom/user-composed); **Class 3** = higher-level LLM-tier. `intent_examples`
+  carries an intent-system `class` (1/2/3/4 classifier) SEPARATE from the skill's
+  `class_code`. Stale-plan note: PythonCode Tier-0 bodies in builtin_stuff_v3.md
+  still use the retired `__execute_action__("shell", {...})` meta-primitive — that
+  is a PythonCode concern (C.4.5.2-era), not a skill concern. The latent
+  contradiction: `retrieval_source.rs:1052` maps `10 | 50` → `reborn_skills` +
+  V061 trigger comment claims `reborn_skills (classes 1-3, 10, 50)` BUT V027's
+  `CHECK (class_code IN (1,2,3))` EXCLUDES 10/50 and no migration ever widened it
+  (V064 only dropped parent_mission_id; V066 only touched the source check) → class
+  10/50 rows could never be INSERTed. Decisive finding: the 5 legacy cols on
+  `reborn_skills` were ACTIVELY read/written by `DbSkillStore` (compiled under the
+  `db-store` feature, which composition's `skills-db` feature enables via
+  `brassclaw_skills/db-store`), UNLIKE `reborn_tools` (V071, dead) — so dropping
+  them requires refactoring `DbSkillStore`. `DbSkillRow` consumed by
+  `db_skill_loader.rs` (`row_to_json` does NOT serialize the 5; `sample_row()`
+  constructs them). The 3 lifecycle methods (`mark_validated`/`mark_auto_passed`/
+  `mark_auto_failed`) have ZERO callers. Deliverable: (1) migration **V072**
+  `reborn_skills_syntax` — `DROP COLUMN IF EXISTS`
+  validation_errors/review_feedback/review_attempts/rejected_at/queue_code (the 5
+  legacy) + `DROP CONSTRAINT IF EXISTS reborn_skills_class_code_check` + `ADD
+  CONSTRAINT reborn_skills_class_code_check CHECK (class_code IN (1,2,3,10,50))`
+  (constraint name follows the `<table>_<column>_check` pattern V066 relied on for
+  `reborn_skills_source_check`; `IF EXISTS` guards against a rename); (2)
+  `DbSkillStore` refactor (`db_store.rs`) — removed all 24 legacy-col references:
+  `DbSkillRow` struct fields; INSERT `queue_code` col + `'q1_auto'` literal; 3
+  identical SELECT column lists (via `replace_all`); `row_from_pg` decoder; 4
+  UPDATE sets (`update_content`, `mark_validated`, `mark_auto_passed`,
+  `mark_auto_failed`); `mark_auto_failed` signature dropped `errors: &[String]`
+  arg + `err_arr` construction (zero callers → safe); (3) `db_skill_loader.rs`
+  `sample_row()` dropped the 5 field initializers; `row_to_json` needed NO change;
+  (4) Q1 gate — class `10 | 50` arm now `validate_soft_budget_named`
+  (BUDGET_ORCHESTRATOR=50,000) + `validate_placeholder_grammar`; skills 1-3 NOT
+  gated (pure narrative); structural-only — the composer is the sole baker; (5)
+  **3 engine gate tests** (class10 valid `{{user_input}}`+`{{vars.workspace}}`
+  passes; unbalanced `{{vars.slot0` fails; unrecognised `{{bogus}}` fails). Both
+  configs clippy-clean (engine + skills + composition, default + `--features
+  brassclaw_reborn_composition/skills-db`, `-D warnings` after `--`); disk
+  92%/17Gi (>90% line) → `cargo clean -p brassclaw_engine -p brassclaw_skills`
+  before compile (freed 1.8GiB); tests green (engine 573 default / 584 skills-db;
+  brassclaw_skills db-store 231; composition skills-db 689). **Zenflow step
+  `1a94cb6c` (HI.5, sort 36) marked Completed.** Next: C.4.5.6 `action`(16).
