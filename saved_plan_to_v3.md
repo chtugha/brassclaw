@@ -5779,6 +5779,19 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >      in a tempdir; load/invoke/unload/unload_all; skip if rustc unavailable).
 >   5. Executioner dispatch fallthrough (`host.<name>` not in static match →
 >      `DynamicToolLoader` → invoke → JSON result, else `NotFound`) + its test.
+>      **DONE.** The engine↔host_runtime dependency boundary forced a PORT TRAIT:
+>      new `brassclaw_engine::executor::dynamic_tool_port` (`trait
+>      DynamicToolPort: Send + Sync` { `is_loaded`, `invoke` } + a `Clone`
+>      `DynamicToolPortError`); a new `execute_orchestrator` param
+>      `dynamic_tools: Option<&Arc<dyn DynamicToolPort>>`; a match arm
+>      `other if call.method_call =>` before the `other => NotFound` fallthrough
+>      routing unknown `host.<name>` calls to `dispatch_dynamic_tool`; helpers
+>      `dispatch_dynamic_tool` + `dynamic_call_args_to_json`; `ExecutionLoop`
+>      threading via a `with_dynamic_tools` builder (field stays `None` at both
+>      existing callers → dormant until C.5/C.6). The `impl DynamicToolPort for
+>      (Mutex<>)DynamicToolLoader` lands in composition with C.5/C.6. 4 mock-port
+>      unit tests pass; clippy green both default + `--features skills-db`.
+>      **C.3 COMPLETE.**
 > - **C.4 — Mode-driven security + WebUI panel.** Matching-Mode = all security
 >   off (Q2+ validated components execute as intended); Non-Matching-Mode =
 >   wrapper on; bind-time namespace filtering for the LLM path; add the global

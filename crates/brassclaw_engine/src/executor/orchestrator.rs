@@ -43,6 +43,7 @@ use tracing::{debug, warn};
 
 use super::scripting::{execute_code, json_to_monty, monty_to_json, monty_to_string};
 use super::thread_context::thread_execution_context;
+use super::dynamic_tool_port::DynamicToolPort;
 use crate::capability::lease::LeaseManager;
 use crate::capability::policy::PolicyEngine;
 use crate::memory::{ComponentScope, RetrievalEngine, RetrievalSource};
@@ -532,6 +533,7 @@ pub async fn execute_orchestrator(
     persisted_state: &serde_json::Value,
     #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
     _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
+    dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
     max_duration_override: Option<std::time::Duration>,
 ) -> Result<OrchestratorResult, EngineError> {
     let mut total_tokens = TokenUsage::default();
@@ -809,6 +811,18 @@ pub async fn execute_orchestrator(
                         )
                         .await
                     }
+
+                    // ── C.3 dynamic cdylib Tool fallthrough ─────────────────────
+                    // A `host.<name>(...)` call whose name is not a built-in. If a
+                    // dynamic Tool is loaded under that name, route the call through
+                    // the DynamicToolPort (JSON-in/JSON-out); otherwise let Monty
+                    // resolve it (user-defined functions, builtins). The impl lives in
+                    // composition (C.5/C.6) over `DynamicToolLoader`; until then
+                    // `dynamic_tools` is `None` and this arm is dormant.
+                    other if call.method_call => match dynamic_tools {
+                        Some(port) => dispatch_dynamic_tool(&**port, other, &args[1..], kwargs),
+                        None => ExtFunctionResult::NotFound(other.to_string()),
+                    },
 
                     // Unknown — let Monty resolve it (user-defined functions, builtins)
                     other => ExtFunctionResult::NotFound(other.to_string()),
@@ -3253,6 +3267,51 @@ fn extract_i64_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Optio
     None
 }
 
+/// Build the JSON `args` payload for a dynamic cdylib Tool call from the Monty
+/// call's positional args (excluding `self`) and kwargs. Positional args are
+/// keyed `__arg{i}`; kwargs use their string keys (non-string keys are
+/// stringified). The cdylib receives this as `CdylibRequest.args`.
+fn dynamic_call_args_to_json(
+    args: &[MontyObject],
+    kwargs: &[(MontyObject, MontyObject)],
+) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    for (i, arg) in args.iter().enumerate() {
+        map.insert(format!("__arg{i}"), monty_to_json(arg));
+    }
+    for (key, value) in kwargs {
+        let key_str = match key {
+            MontyObject::String(s) => s.clone(),
+            other => monty_to_string(other),
+        };
+        map.insert(key_str, monty_to_json(value));
+    }
+    serde_json::Value::Object(map)
+}
+
+/// Dispatch a `host.<name>(...)` call that is not a built-in to a loaded
+/// dynamic cdylib Tool via the [`DynamicToolPort`]. Returns `NotFound` when the
+/// tool is not loaded (so Monty can resolve user-defined names), `Return` with
+/// the cdylib's JSON result on success, or `Error` on invocation failure.
+fn dispatch_dynamic_tool(
+    port: &dyn DynamicToolPort,
+    tool_name: &str,
+    args: &[MontyObject],
+    kwargs: &[(MontyObject, MontyObject)],
+) -> ExtFunctionResult {
+    if !port.is_loaded(tool_name) {
+        return ExtFunctionResult::NotFound(tool_name.to_string());
+    }
+    let args_json = dynamic_call_args_to_json(args, kwargs);
+    match port.invoke(tool_name, args_json) {
+        Ok(value) => ExtFunctionResult::Return(json_to_monty(&value)),
+        Err(err) => ExtFunctionResult::Error(monty::MontyException::new(
+            monty::ExcType::RuntimeError,
+            Some(format!("dynamic tool '{tool_name}' failed: {err}")),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3265,6 +3324,117 @@ mod tests {
     use crate::types::project::ProjectId;
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
+
+    // ── C.3 slice 5: dynamic cdylib Tool dispatch fallthrough ───────────────
+    use crate::executor::DynamicToolPortError;
+
+    /// A mock [`DynamicToolPort`] for the dispatch-fallthrough unit tests.
+    /// Records the last invoke args and returns a canned result.
+    struct MockDynamicToolPort {
+        loaded: Mutex<bool>,
+        invoke_result: Mutex<Option<Result<serde_json::Value, DynamicToolPortError>>>,
+        last_args: Mutex<Option<serde_json::Value>>,
+    }
+
+    impl MockDynamicToolPort {
+        fn new(loaded: bool) -> Self {
+            Self {
+                loaded: Mutex::new(loaded),
+                invoke_result: Mutex::new(None),
+                last_args: Mutex::new(None),
+            }
+        }
+    }
+
+    impl super::DynamicToolPort for MockDynamicToolPort {
+        fn is_loaded(&self, _tool_name: &str) -> bool {
+            *self.loaded.lock().unwrap()
+        }
+        fn invoke(
+            &self,
+            tool_name: &str,
+            args: serde_json::Value,
+        ) -> Result<serde_json::Value, DynamicToolPortError> {
+            *self.last_args.lock().unwrap() = Some(args.clone());
+            self.invoke_result
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or(Ok(args))
+                .map_err(|mut e| {
+                    // keep the recorded tool name aligned with the call
+                    if let DynamicToolPortError::Invoke { tool, .. } = &mut e {
+                        *tool = tool_name.to_string();
+                    }
+                    e
+                })
+        }
+    }
+
+    #[test]
+    fn dynamic_call_args_to_json_builds_kwargs_object() {
+        let args = vec![monty::MontyObject::String("p".into())];
+        let kwargs = vec![(
+            monty::MontyObject::String("x".into()),
+            monty::MontyObject::String("y".into()),
+        )];
+        let json = super::dynamic_call_args_to_json(&args, &kwargs);
+        assert_eq!(
+            json,
+            serde_json::json!({"__arg0": "p", "x": "y"})
+        );
+    }
+
+    #[test]
+    fn dispatch_dynamic_tool_loaded_returns_json_as_monty() {
+        let port = MockDynamicToolPort::new(true);
+        *port.invoke_result.lock().unwrap() =
+            Some(Ok(serde_json::json!({"echoed": true})));
+        let kwargs = vec![(
+            monty::MontyObject::String("k".into()),
+            monty::MontyObject::String("v".into()),
+        )];
+        let result = super::dispatch_dynamic_tool(
+            &port,
+            "fixture_echo",
+            &[monty::MontyObject::String("p".into())],
+            &kwargs,
+        );
+        match result {
+            monty::ExtFunctionResult::Return(obj) => {
+                assert_eq!(super::monty_to_json(&obj), serde_json::json!({"echoed": true}));
+            }
+            other => panic!("expected Return, got {other:?}"),
+        }
+        // the dispatch forwarded kwargs+positional as the JSON args payload
+        assert_eq!(
+            port.last_args.lock().unwrap().clone(),
+            Some(serde_json::json!({"__arg0": "p", "k": "v"}))
+        );
+    }
+
+    #[test]
+    fn dispatch_dynamic_tool_not_loaded_returns_not_found() {
+        let port = MockDynamicToolPort::new(false);
+        let result =
+            super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
+        assert!(matches!(
+            result,
+            monty::ExtFunctionResult::NotFound(ref n) if n == "fixture_echo"
+        ));
+    }
+
+    #[test]
+    fn dispatch_dynamic_tool_invoke_error_returns_exception() {
+        let port = MockDynamicToolPort::new(true);
+        *port.invoke_result.lock().unwrap() = Some(Err(DynamicToolPortError::Invoke {
+            tool: "fixture_echo".into(),
+            reason: "boom".into(),
+        }));
+        let result =
+            super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
+        assert!(matches!(result, monty::ExtFunctionResult::Error(_)));
+    }
 
     // ── Test constants ──────────────────────────────────────────────────────
     /// Max VM allocations for test helper runs (lower than production).

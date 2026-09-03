@@ -1231,3 +1231,33 @@ plumbing.
   `load_missing_file_returns_load_error` (bogus path → Load variant + not loaded). **ALL 6 PASS** —
   the real dlopen/bind/invoke/unload mechanics are proven on this host (rustc 1.95, macOS .dylib).
   clippy --all-targets green (default); lib test count now 191 (185 prior + 6 new).
+- **C.3 SLICE 5 — executioner dispatch fallthrough via a port trait (DONE + shipped `73a722ac`/slice-4
+  then this slice-5 commit).** KEY FINDING: `brassclaw_engine` does NOT depend on
+  `brassclaw_host_runtime` (host_runtime is a system-service crate DOWNSTREAM of the engine), so the
+  orchestrator cannot hold a `DynamicToolLoader` directly — it needs a PORT TRAIT (the same
+  engine↔composition boundary that produced the `RetrievalSource` mirror). New engine module
+  `executor/dynamic_tool_port.rs` (+ `pub mod` + `pub use {DynamicToolPort, DynamicToolPortError}`
+  from `executor/mod.rs`): `trait DynamicToolPort: Send + Sync` with `is_loaded(&self, name)->bool`
+  + `invoke(&self, name, args: Value)->Result<Value, DynamicToolPortError>` (sync — the loader's
+  invoke is sync; Send+Sync matches the `RetrievalSource: Send + Sync` precedent so composition can
+  wrap the Send-but-not-Sync `DynamicToolLoader` in a `Mutex` for the impl, DEFERRED to C.5/C.6);
+  `DynamicToolPortError` thiserror enum (NotLoaded{tool}/Invoke{tool,reason}, `#[derive(Debug, Clone,
+  Error)]` — Clone is harmless + needed by the test mock's canned-result cell). Orchestrator wiring:
+  new `execute_orchestrator` param `dynamic_tools: Option<&Arc<dyn DynamicToolPort>>` (mirrors
+  `_retrieval_source: Option<&Arc<dyn RetrievalSource>>`); a new match arm `other if call.method_call
+  =>` BEFORE the `other => NotFound` fallthrough routes unknown `host.<name>` calls to
+  `dispatch_dynamic_tool` (Some(port)) or NotFound (None). Helpers `dispatch_dynamic_tool` (is_loaded
+  → NotFound; else build JSON args, invoke, `Return(json_to_monty)` on Ok / `Error(MontyException::
+  RuntimeError)` on Err) + `dynamic_call_args_to_json` (positional args[1..] keyed `__arg{i}` + kwargs
+  under their string keys → JSON object = `CdylibRequest.args`). ExecutionLoop threading via the
+  BUILDER pattern (low-impact — no `new`/caller changes): new field `dynamic_tools: Option<Arc<dyn
+  crate::executor::DynamicToolPort>>` + `with_dynamic_tools(port)` builder + `self.dynamic_tools.
+  as_ref()` passed at the `execute_orchestrator` call site. The two existing `ExecutionLoop::new`
+  callers (scripting.rs child_loop, runtime/manager.rs exec_loop) do NOT call the builder → field stays
+  None → the fallthrough is DORMANT until C.5/C.6 wires a real loader-backed impl. 4 mock-port unit
+  tests (`dynamic_call_args_to_json_builds_kwargs_object`, `dispatch_dynamic_tool_loaded_returns_json_
+  as_monty` + asserts forwarded args payload, `dispatch_dynamic_tool_not_loaded_returns_not_found`,
+  `dispatch_dynamic_tool_invoke_error_returns_exception`) — ALL PASS; 545 prior lib tests filtered out.
+  `cargo clippy -p brassclaw_engine --all-targets -- -D warnings` green BOTH default +
+  `--features skills-db` (the change is feature-agnostic — no cfg gates). **C.3 COMPLETE.** Next: C.4
+  (mode-driven security + WebUI panel).

@@ -136,6 +136,12 @@ pub struct ExecutionLoop {
     /// until the final post-H.8 cleanup removes that fn entirely. The live
     /// Model B/C path consumes retrieval via `RetrievalTurnResult` (H.4).
     retrieval_source: Option<Arc<dyn crate::memory::RetrievalSource>>,
+    /// Step C.3 — port over the Executioner's dynamic cdylib Tool registry.
+    /// `Some` when the composition layer (C.5/C.6) has wired a
+    /// `DynamicToolLoader`-backed impl; `None` leaves the `host.<name>`
+    /// dispatch fallthrough dormant (built-in tools still resolve via the
+    /// static match). Passed to `execute_orchestrator` each turn.
+    dynamic_tools: Option<Arc<dyn crate::executor::DynamicToolPort>>,
     /// DB-backed max wall-clock budget override for the Monty orchestrator VM.
     /// `Some` overrides `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` (Step 9.3).
     /// `None` falls back to the env-var / compiled-in DB-less default.
@@ -171,6 +177,7 @@ impl ExecutionLoop {
             #[cfg(feature = "skills-db")]
             pg_pool: None,
             retrieval_source: None,
+            dynamic_tools: None,
             max_duration_secs: None,
         }
     }
@@ -226,6 +233,18 @@ impl ExecutionLoop {
         source: Arc<dyn crate::memory::RetrievalSource>,
     ) -> Self {
         self.retrieval_source = Some(source);
+        self
+    }
+
+    /// Step C.3 — attach the Executioner's dynamic cdylib Tool port. The impl
+    /// (composition, C.5/C.6) delegates to `DynamicToolLoader`; the engine
+    /// orchestrator's `host.<name>` dispatch fallthrough routes unknown calls
+    /// through it. Without this the fallthrough is dormant.
+    pub fn with_dynamic_tools(
+        mut self,
+        port: Arc<dyn crate::executor::DynamicToolPort>,
+    ) -> Self {
+        self.dynamic_tools = Some(port);
         self
     }
 
@@ -490,6 +509,7 @@ impl ExecutionLoop {
             #[cfg(feature = "skills-db")]
             self.pg_pool.as_deref(),
             self.retrieval_source.as_ref(),
+            self.dynamic_tools.as_ref(),
             max_duration_override,
         )
         .await;

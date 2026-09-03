@@ -9,6 +9,7 @@ pub mod code_audit;
 pub mod context;
 #[cfg(feature = "skills-db")]
 pub mod db_skill_loader;
+pub mod dynamic_tool_port;
 pub mod loop_engine;
 pub mod orchestrator;
 pub mod prompt;
@@ -19,6 +20,7 @@ pub mod tier_zero_orchestrator;
 pub mod trace;
 
 pub use loop_engine::ExecutionLoop;
+pub use dynamic_tool_port::{DynamicToolPort, DynamicToolPortError};
 pub use orchestrator::{
     PkrAssemblyResult, TierZeroChannelResult, assemble_prior_knowledge_with_hint,
     execute_tier_zero_channel,
