@@ -212,11 +212,6 @@ mod inner {
         pub confidence: f64,
         pub source: String,
         pub validation_status: String,
-        pub validation_errors: Vec<String>,
-        pub review_feedback: Option<String>,
-        pub review_attempts: i32,
-        pub rejected_at: Option<DateTime<Utc>>,
-        pub queue_code: Option<String>,
         pub similarity_parent_id: Option<Uuid>,
         pub replaces_id: Option<Uuid>,
         pub parent_version: Option<String>,
@@ -461,7 +456,7 @@ mod inner {
                         consumer_tags,
                         source, content_hash,
                         replaces_id, similarity_parent_id,
-                        validation_status, queue_code
+                        validation_status
                     ) VALUES (
                         $1,$2,$3,$4,
                         $5,$6,$7,$8,$9,
@@ -474,7 +469,7 @@ mod inner {
                         $23,
                         $24,$25,
                         $26,$27,
-                        'pending','q1_auto'
+                        'pending'
                     )
                     RETURNING id",
                     &[
@@ -537,8 +532,7 @@ mod inner {
                         intent_examples, consumer_tags,
                         tier, usage_count, success_count, failure_count,
                         wilson_lower, confidence, source,
-                        validation_status, validation_errors,
-                        review_feedback, review_attempts, rejected_at, queue_code,
+                        validation_status,
                         similarity_parent_id, replaces_id, parent_version,
                         content_hash, last_audit_at, audit_failure_count,
                         created_at, updated_at
@@ -586,8 +580,7 @@ mod inner {
                         intent_examples, consumer_tags,
                         tier, usage_count, success_count, failure_count,
                         wilson_lower, confidence, source,
-                        validation_status, validation_errors,
-                        review_feedback, review_attempts, rejected_at, queue_code,
+                        validation_status,
                         similarity_parent_id, replaces_id, parent_version,
                         content_hash, last_audit_at, audit_failure_count,
                         created_at, updated_at
@@ -631,8 +624,7 @@ mod inner {
                         intent_examples, consumer_tags,
                         tier, usage_count, success_count, failure_count,
                         wilson_lower, confidence, source,
-                        validation_status, validation_errors,
-                        review_feedback, review_attempts, rejected_at, queue_code,
+                        validation_status,
                         similarity_parent_id, replaces_id, parent_version,
                         content_hash, last_audit_at, audit_failure_count,
                         created_at, updated_at
@@ -700,8 +692,6 @@ mod inner {
                         content_hash     = $22,
                         -- Reset validation cycle.
                         validation_status = 'pending',
-                        queue_code        = 'q1_auto',
-                        validation_errors = '{{}}',
                         -- Re-add the validator tag (greys out other consumer tags).
                         consumer_tags = array_append(
                             array_remove(consumer_tags, '{}'),
@@ -811,7 +801,6 @@ mod inner {
                     &format!(
                         "UPDATE reborn_skills SET
                         validation_status = 'validated',
-                        queue_code        = NULL,
                         -- Remove {0} tag to activate consumer tags.
                         consumer_tags = array_remove(consumer_tags, '{0}')
                      WHERE id = $1
@@ -850,9 +839,7 @@ mod inner {
             let affected = client
                 .execute(
                     "UPDATE reborn_skills SET
-                        validation_status = 'auto_passed',
-                        queue_code        = 'q2_manual',
-                        validation_errors = '{}'
+                        validation_status = 'auto_passed'
                      WHERE id = $1
                        AND tenant_id  = $2
                        AND user_id    = $3
@@ -881,16 +868,12 @@ mod inner {
             &self,
             scope: &SkillScope,
             id: Uuid,
-            errors: &[String],
         ) -> Result<(), DbSkillStoreError> {
             let client = self.pool.get().await.map_err(PgError::from)?;
-            let err_arr: Vec<&str> = errors.iter().map(|s| s.as_str()).collect();
             let affected = client
                 .execute(
                     "UPDATE reborn_skills SET
-                        validation_status = 'auto_failed',
-                        queue_code        = 'q1_auto',
-                        validation_errors = $6
+                        validation_status = 'auto_failed'
                      WHERE id = $1
                        AND tenant_id  = $2
                        AND user_id    = $3
@@ -902,7 +885,6 @@ mod inner {
                         &scope.user_id,
                         &scope.agent_id,
                         &scope.project_id,
-                        &err_arr,
                     ],
                 )
                 .await
@@ -989,11 +971,6 @@ mod inner {
             confidence: row.get("confidence"),
             source: row.get("source"),
             validation_status: row.get("validation_status"),
-            validation_errors: row.get("validation_errors"),
-            review_feedback: row.get("review_feedback"),
-            review_attempts: row.get("review_attempts"),
-            rejected_at: row.get("rejected_at"),
-            queue_code: row.get("queue_code"),
             similarity_parent_id: row.get("similarity_parent_id"),
             replaces_id: row.get("replaces_id"),
             parent_version: row.get("parent_version"),

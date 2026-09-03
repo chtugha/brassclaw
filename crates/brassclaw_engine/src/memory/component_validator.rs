@@ -154,7 +154,14 @@ impl ComponentValidator {
                     ValidationResult::from_error("Extension class does not accept a Recipe payload")
                 }
             },
-            // Orchestrator (10): LLM code-audit path — structural check only here
+            // Orchestrator (10) / Scaffold (50): soft orchestrator budget +
+            // common-syntax placeholder-grammar gate (C.4.5.5, F-HI-2=A). The
+            // class-10 orchestrator script is assembled by compose_orchestrator
+            // (C.4.5.17) and run by Monty via host.run_program; it carries
+            // `{{vars.NAME}}`/`{{vars.slotN}}`/`{{user_input}}`/`{{component_name}}`
+            // placeholders. Skills (1-3) are pure narrative (no placeholders)
+            // and are NOT gated. Structural-only — the composer is the sole
+            // baker; Q1 never bakes.
             10 | 50 => {
                 let (name, desc, content) = match &component {
                     ComponentPayload::Generic(g) => (g.name, g.description, g.content),
@@ -165,7 +172,16 @@ impl ComponentValidator {
                     ),
                     ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
                 };
-                validate_soft_budget_named(name, desc, content, config, BUDGET_ORCHESTRATOR, false)
+                let mut result = validate_soft_budget_named(
+                    name,
+                    desc,
+                    content,
+                    config,
+                    BUDGET_ORCHESTRATOR,
+                    false,
+                );
+                validate_placeholder_grammar(content, "Orchestrator/Scaffold content", &mut result);
+                result
             }
             // Actions (16): no token budget
             16 => {
@@ -1352,6 +1368,88 @@ mod tests {
                 .iter()
                 .any(|e| e.contains("tool_name") && e.contains("empty")),
             "expected a tool_name-empty (capability_id) error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class10_orchestrator_valid_placeholders_pass() {
+        // C.4.5.5 — a class-10 Orchestrator Generic payload whose content
+        // carries well-formed common-syntax placeholders (`{{user_input}}`,
+        // `{{vars.NAME}}`) passes the soft-budget + placeholder-grammar gate.
+        let g = GenericComponent {
+            name: "basic-mode-orchestrator",
+            description: "The basic-mode Monty orchestrator script that drives a turn.",
+            content: "user_input = {{user_input}}\npath = {{vars.workspace}}\nhost.post_reply(result)",
+            extra: None,
+        };
+        let result = ComponentValidator::validate_by_class(
+            10,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.is_empty(),
+            "expected no errors for well-formed class-10 Orchestrator content, got {:?}",
+            result.errors
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn class10_orchestrator_unbalanced_placeholder_fails() {
+        // C.4.5.5 — the common-syntax placeholder-grammar gate runs on class 10
+        // (F-HI-2=A): an unbalanced `{{` in the orchestrator content is rejected.
+        let g = GenericComponent {
+            name: "basic-mode-orchestrator",
+            description: "The basic-mode Monty orchestrator script that drives a turn.",
+            content: "data = {{vars.slot0",
+            extra: None,
+        };
+        let result = ComponentValidator::validate_by_class(
+            10,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("unbalanced") && e.contains("{{")),
+            "expected an unbalanced-placeholder error, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class10_orchestrator_unrecognised_placeholder_fails() {
+        // C.4.5.5 — a balanced but unrecognised placeholder `{{bogus}}` is
+        // rejected (expected vars.NAME / vars.slotN / user_input / component_name).
+        let g = GenericComponent {
+            name: "basic-mode-orchestrator",
+            description: "The basic-mode Monty orchestrator script that drives a turn.",
+            content: "data = {{bogus}}",
+            extra: None,
+        };
+        let result = ComponentValidator::validate_by_class(
+            10,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("not a recognised kind")),
+            "expected an unrecognised-placeholder error, got {:?}",
             result.errors
         );
         assert!(!result.is_ok());
