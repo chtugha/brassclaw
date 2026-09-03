@@ -320,6 +320,10 @@ pub(crate) async fn seed_builtin_host_components(
     // 3 components: pc-host-history-format + pc-memory-write + the Recipe).
     child_ids.extend(seed_host_save_history(&stores).await?);
 
+    // Slice 11 — Step 27.10.1 host-assemble-prior-knowledge (fallback Recipe;
+    // 2 components: pc-host-fallback-prior-knowledge + the Recipe).
+    child_ids.extend(seed_host_assemble_prior_knowledge(&stores).await?);
+
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
         .catalogue
@@ -1320,6 +1324,107 @@ for k, v in summary.items():
         .await?;
 
     Ok(vec![pc_history_format_id, pc_memory_write_id, recipe_id])
+}
+
+/// Step 27.10.1 — `host-assemble-prior-knowledge` (fallback Recipe, Tier 1).
+///
+/// A Recipe-only component set (no new Tool): one PythonCode formatter
+/// (`pc-host-fallback-prior-knowledge`) + the `host-assemble-prior-knowledge`
+/// Recipe (Tier 1). Used ONLY when no prefix is present — adds basic "what is
+/// going on" context so the LLM understands the run. Calls NO retrieval verbs
+/// (`retrieve_docs` / `get_reduction_rules` are dropped). The spec's
+/// `rust_steps: []` is widened to bind the existing `builtin.time` tool
+/// (`time` + `ts-time-now`, Step 14) so the formatter can stamp `assembled_at`
+/// — the spec's `__now()` was a phantom (exists nowhere); per user direction the
+/// existing time tool/skill is reused (the stale `pc-exec-time-now` that calls
+/// the RETIRED `__execute_action__` is NOT referenced — the formatter calls
+/// `host.time(operation="now")` as a new-arch first-class callable, consistent
+/// with slice 10's `host.memory_write`). Returns the minted ids in
+/// `[pc-host-fallback-prior-knowledge, recipe]` order.
+#[allow(clippy::too_many_lines)]
+async fn seed_host_assemble_prior_knowledge(
+    stores: &HostStores,
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+    let tenant = stores.tenant.clone();
+
+    let pc_fallback_id = stores
+        .upsert_python_code(
+            NewPgPythonCode {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "pc-host-fallback-prior-knowledge".to_string(),
+                description: "Orchestrator step: FALLBACK prior-knowledge bundle, used \
+                              ONLY when no prefix is present. Adds basic 'what is going \
+                              on' context. Calls NO retrieval verbs."
+                    .to_string(),
+                content: r###"# Channel: orchestrator | Class: 22 | No I/O, no imports.
+# FALLBACK prior-knowledge bundle (used ONLY when no prefix is present).
+# Calls NO retrieval verbs (retrieve_docs / get_reduction_rules are dropped).
+user_query = "{{vars.slot0}}"
+_now = host.time(operation="now")
+bundle = {
+  "context": "You are running inside BrassClaw's orchestrator. Answer the user's request.",
+  "user_query": user_query,
+  "assembled_at": _now
+}
+"###
+                .to_string(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "pc-host-fallback-prior-knowledge",
+        )
+        .await?;
+
+    let recipe_id = stores
+        .upsert_recipe(
+            NewPgRecipe {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "host-assemble-prior-knowledge".to_string(),
+                description: "FALLBACK prior-knowledge bundle, used ONLY when no prefix \
+                              is present. Adds basic 'what is going on' context so the \
+                              LLM understands the run. Calls NO retrieval verbs. \
+                              Recipe-only — one PythonCode formatter; binds builtin.time \
+                              to stamp assembled_at."
+                    .to_string(),
+                trigger: None,
+                steps: json!({
+                    "llm_call_required": false,
+                    "tier": 1,
+                    "rust_steps": [
+                        {"tool": "time", "tool_skill": "ts-time-now"}
+                    ],
+                    "orchestrator_steps": [
+                        {"python_code": "pc-host-fallback-prior-knowledge"}
+                    ]
+                }),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into()],
+                intent_examples: Some(json!([
+                    "(internal Tier-1 prior-knowledge fallback — not user-routed)"
+                ])),
+                source: "system".into(),
+                step_descriptions: Some(json!([
+                    {"step": 0, "action": "fallback_context", "desc": "Add basic 'what is going on' context so the LLM understands (no retrieval)."}
+                ])),
+                variants: None,
+                dependency_registry: None,
+            },
+            "host-assemble-prior-knowledge",
+        )
+        .await?;
+
+    Ok(vec![pc_fallback_id, recipe_id])
 }
 
 /// Step 27.9.1 — `host.check_signals` (stop/suspend/inject poll).

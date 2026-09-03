@@ -1068,3 +1068,25 @@ plumbing.
   the seed stores the component row; runtime wiring is C.6. **Verified green both configs** (incremental).
   Next: slice 11 = 27.10.1 `host-assemble-prior-knowledge` (fallback Recipe, tier 1, rust_steps `[]`,
   one PythonCode formatter pc-host-fallback-prior-knowledge — no tool bindings, no retrieval verbs).
+- **C.2 SLICE 11 — 27.10.1 `host-assemble-prior-knowledge` FALLBACK RECIPE (DONE + clippy green,
+  commit/push pending).** **Phantom-callable fork surfaced + user-answered:** the spec's formatter
+  referenced `__now()` for `assembled_at`, but `__now__` is a PHANTOM (grep: exists nowhere; the only
+  hit is the spec line itself). The time mechanism is the `builtin.time` tool (Step 14: tool `time`,
+  tool_skill `ts-time-now`; the stale `pc-exec-time-now` calls the RETIRED `__execute_action__`).
+  User answer: "there is a skill or tool to fetch the time already in the plan" → REUSE the existing
+  time tool. So: the spec's `rust_steps: []` is WIDENED to bind the existing `time` tool
+  (`[{tool:"time", tool_skill:"ts-time-now"}]`) — time is NOT a "retrieval verb" (retrieve_docs/
+  get_reduction_rules are the dropped ones), so this stays faithful to "no retrieval verbs." The
+  formatter calls `host.time(operation="now")` as a new-arch first-class callable (NOT the stale
+  pc-exec-time-now — consistent with slice 10's `host.memory_write`). Slice 11 = **2 components**:
+  (1) pc-host-fallback-prior-knowledge (class 22, raw-string multi-line: `user_query = {{vars.slot0}}`;
+  `_now = host.time(operation="now")`; `bundle = {context, user_query, assembled_at: _now}`).
+  (2) Recipe host-assemble-prior-knowledge (tier 1, llm_call_required false; rust_steps
+  `[{tool:"time",tool_skill:"ts-time-now"}]`; orchestrator_steps `[{python_code:"pc-host-fallback-
+  prior-knowledge"}]`; step_descriptions [fallback_context]; intent_examples ["(internal Tier-1
+  prior-knowledge fallback — not user-routed)"]). PythonCode `["01:monty","02:orchestrator"]`; Recipe
+  `["02:orchestrator"]`. All source=system + validated. `seed_host_assemble_prior_knowledge` returns
+  2 ids. **Verified green both configs** (incremental). Next: slice 12 = 27.10.2 `host-non-match-llm-
+  answer` (Tier-2 Non-Matching-Mode Recipe; 2 NEW components — pc-host-assemble-non-match-prompt + the
+  Recipe; reuses pc-host-kohai-complete already seeded in slice 9; binds host.kohai_complete via
+  rust_steps [{tool:"host.kohai_complete", tool_skill:"ts-host-kohai-complete"}]).
