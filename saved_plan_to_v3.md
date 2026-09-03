@@ -5738,6 +5738,47 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   precompiled; add the cdylib load/unload path (`dlopen`) for
 >   kohai/sempai-minted Tools+ToolSkills, bound into the same namespace on demand
 >   by a recipe and unloaded at main-process task end.
+>
+>   **Design forks (user-locked 2026-09-03):** **F1=A** in-process `libloading`
+>   dlopen (a Q1 component cannot run at all → every runnable cdylib tool is
+>   already Q2+ validated/trusted → no sidecar/sandbox branch; the
+>   `sandbox_process`/`brassclaw_process_sandbox` docker backend is NOT used for
+>   cdylib tools). **F2=A** JSON `extern "C"` ABI (`brassclaw_tool_invoke` +
+>   `brassclaw_tool_drop_out` symbols; JSON request/response buffers; stable
+>   across rustc versions, language-agnostic). **F3=A** new nullable
+>   `cdylib_artifact_path` TEXT column on `reborn_tools` (NULL for precompiled
+>   built-ins; the cdylib path for kohai/sempai-minted tools) via migration V067.
+>   **F4=B** dedicated `DynamicToolLoader` service in `brassclaw_host_runtime`
+>   owns the dlopen/bind/invoke/unload mechanics + the per-task loaded-tool map;
+>   the composition-mechanism (`host.compose_orchestrator` rewrite, DEFERRED to
+>   C.5/C.6) fetches the matched component, splits instructions into a PYTHON part
+>   (Monty program) + a RUST part, injects the RUST part into the executioner, and
+>   that RUST part carries the cdylib load directives (tool_name → artifact_path)
+>   the loader dlopens on demand and unloads at task end.
+>
+>   **Scope:** C.3 ships the cdylib load/unload PRIMITIVES + the executioner
+>   dispatch fallthrough (the bridge from C.1's static `match` to dynamic tools).
+>   The `host.compose_orchestrator` handler REWRITE (the composition-mechanism)
+>   is DEFERRED to C.5/C.6 — the loader is unit-testable in isolation meanwhile
+>   (compile a fixture cdylib in a tempdir via `rustc --crate-type cdylib`, dlopen,
+>   JSON round-trip, unload). `#[allow(dead_code)]` on the directive-acceptance
+>   API for the gap is acceptable. **Subplan doc:**
+>   `./docs/agents-v3/subproblem_stepC3_cdylib_dynamic_loading.md`.
+>
+>   **Slices (one commit each):**
+>   1. V067 migration (`cdylib_artifact_path` nullable TEXT + partial index)
+>      only — column defaults NULL, built-ins stay NULL; the store write/read
+>      of the path lands with the dynamic-tool authoring surface (deferred).
+>   2. `brassclaw_host_api::cdylib_abi` ABI module (symbols + fn-pointer types +
+>      `CdylibRequest`/`CdylibResponse` + host-side invoke helper + ABI-protocol
+>      unit test).
+>   3. `DynamicToolLoader` service in `brassclaw_host_runtime` (`load` / `invoke`
+>      / `unload` / `unload_all` + `load_directives` directive-acceptance API +
+>      `is_loaded`; `libloading` dep; `thiserror` errors).
+>   4. Fixture cdylib + loader round-trip unit tests (`rustc --crate-type cdylib`
+>      in a tempdir; load/invoke/unload/unload_all; skip if rustc unavailable).
+>   5. Executioner dispatch fallthrough (`host.<name>` not in static match →
+>      `DynamicToolLoader` → invoke → JSON result, else `NotFound`) + its test.
 > - **C.4 — Mode-driven security + WebUI panel.** Matching-Mode = all security
 >   off (Q2+ validated components execute as intended); Non-Matching-Mode =
 >   wrapper on; bind-time namespace filtering for the LLM path; add the global

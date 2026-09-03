@@ -1128,7 +1128,39 @@ plumbing.
   catalogue row is `validated` + `system` with non-empty `child_component_ids` that all resolve via
   `reborn_components`; + a re-seed proves idempotency (counts unchanged). Compiles green under
   skills-db (`--no-run`); runs + skips cleanly locally (no Docker → early pass). Marked **C.2 DONE**
-  in `saved_plan_to_v3.md` (matches the "**B DONE**" style). **C.2 COMPLETE.** Next: **C.3 — Two Tool
-  Systems: cdylib dynamic loading** (built-in tools stay precompiled; add the `dlopen` load/unload
-  path for kohai/sempai-minted Tools+ToolSkills, bound into the same namespace on demand by a recipe
-  and unloaded at main-process task end).
+  in `saved_plan_to_v3.md` (matches the "**B DONE**" style). **C.2 COMPLETE.**
+- **C.3 GROUNDING + DESIGN FORKS (user-locked 2026-09-03).** Grounding: the C.1 dispatch is a STATIC
+  `match call.function_name` in `orchestrator.rs:756-802` with hardcoded `handle_*` arms for the 8
+  precompiled host.* tools; `host.<tool>(...)` compiles to `FunctionCall{function_name, method_call:
+  true, args[0]=self}` (the `host` namespace is a frozen empty-attrs Dataclass — `NameLookup` returns
+  it; the dispatcher matches the bare tool name skipping args[0]). NO dlopen/libloading infra exists
+  anywhere (built fresh in C.3). A sandboxed-subprocess path exists (`brassclaw_host_runtime/src/
+  sandbox_process.rs` + `brassclaw_process_sandbox/` docker backend) but is NOT used for cdylib tools
+  (see F1). **FORKS LOCKED:**
+  - **F1 = A — in-process `libloading` dlopen** (CORRECTED from C: a Q1 component cannot be run at all
+    — it's stuck in the queue — so every runnable cdylib tool is already Q2+ validated/trusted; there
+    is no "less than Q2+" executable tier, so the sidecar/hybrid branch never fires. Pure in-process
+    dlopen; a cdylib segfault does take down the main process, but that's the accepted cost of Q2+
+    trust + Matching-Mode security-off).
+  - **F2 = A — JSON `extern "C"` ABI** (`extern "C" fn tool_invoke(payload: *const c_char, len: usize,
+    out: *mut *mut c_char) -> i32` + a `tool_drop_out`/free); stable across rustc versions, language-
+    agnostic, serialization overhead accepted).
+  - **F3 = A — new `cdylib_artifact_path` column on `reborn_tools`** (+ V067 migration; nullable TEXT
+    — NULL for precompiled built-ins, the cdylib filesystem path for kohai/sempai-minted tools).
+  - **F4 = B — dedicated `DynamicToolLoader` service in `brassclaw_host_runtime`** owns the actual
+    dlopen/bind/unload mechanics. The user-elaborated invocation path: on intent match the
+    Orchestrator sends the intent answer (a component_id) to the composition-mechanism, which fetches
+    the component (host.fetch_component / host.resolve_component_by_name), splits its instructions
+    into a PYTHON part (the orchestrator program for Monty) + a RUST part, INJECTS the rust part into
+    the Rust executioner directly, and that rust part CARRIES the cdylib-tool load directives (which
+    tool names → which cdylib_artifact_path to dlopen). The executioner hands those directives to the
+    DynamicToolLoader, which dlopens + binds them into the `host` namespace on demand, and unloads
+    them at main-process task end.
+  **SCOPE DECISION (surfaced for correction):** C.3 delivers the cdylib load/unload PRIMITIVES — the
+  `DynamicToolLoader` service (F4=B) + the JSON extern "C" ABI (F2=A) + the `cdylib_artifact_path`
+  column+migration (F3=A) + the executioner-side API to accept a "rust part" with cdylib load
+  directives + unit tests with a fixture cdylib. The compose_orchestrator HANDLER REWRITE (the
+  composition-mechanism that fetches the matched component + splits into python/rust parts + injects
+  the rust part with cdylib directives) is DEFERRED to C.5/C.6 where the Matching-Mode driver is
+  built — the loader is unit-testable in isolation meanwhile (load a fixture cdylib, call it, unload).
+  Subplan doc: `./docs/agents-v3/subproblem_stepC3_cdylib_dynamic_loading.md` (to write).
