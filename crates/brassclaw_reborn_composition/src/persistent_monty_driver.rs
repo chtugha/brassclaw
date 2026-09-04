@@ -61,7 +61,7 @@ use brassclaw_engine::{
     },
     gate::GateController,
     runtime::messaging::{signal_channel, SignalReceiver, SignalSender, ThreadSignal},
-    traits::{effect::EffectExecutor, llm::LlmBackend},
+    traits::effect::EffectExecutor,
     types::{
         event::ThreadEvent,
         message::{MessageRole, ThreadMessage},
@@ -139,7 +139,6 @@ pub(crate) struct PersistentMontyDriver {
     /// `PgOrchestratorLookup::thread_store`) AND the shared-memory-docs store
     /// passed to `prepare_monty_session` / `drive_to_yield`.
     store: Arc<dyn Store>,
-    llm: Arc<dyn LlmBackend>,
     effects: Arc<dyn EffectExecutor>,
     leases: Arc<LeaseManager>,
     policy: Arc<PolicyEngine>,
@@ -158,7 +157,6 @@ impl PersistentMontyDriver {
         registry: Arc<MontySessionRegistry>,
         signal_broker: Arc<SignalBroker>,
         store: Arc<dyn Store>,
-        llm: Arc<dyn LlmBackend>,
         effects: Arc<dyn EffectExecutor>,
         leases: Arc<LeaseManager>,
         policy: Arc<PolicyEngine>,
@@ -173,7 +171,6 @@ impl PersistentMontyDriver {
             registry,
             signal_broker,
             store,
-            llm,
             effects,
             leases,
             policy,
