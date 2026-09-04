@@ -1575,6 +1575,93 @@ async fn seed_filesystem_group(
         )
         .await?;
 
+    // 4h. Filesystem Patch Recipes (class 21) — 2 recipes. file-patch is
+    //     Tier-1 (LLM composes old_string/new_string; 4 steps with a `text`
+    //     LLM-annotation step). file-patch-replace-all is Tier-0 (old/new
+    //     strings pre-baked from vars; 2-step dispatch). Transcribed from the
+    //     doc's flat format (Q1 decision A).
+    let recipe_file_patch = stores
+        .seed_recipe(
+            &tenant,
+            "file-patch",
+            "Apply a targeted search-replace edit to a file.",
+            false,
+            RECIPE_FILE_PATCH_YAML,
+            &[
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load read + patch leaf skill context",
+                    "component",
+                    &[skill_read_file, skill_apply_patch_single],
+                ),
+                step_entry(2, "rust", "Pre-load ts-read-file binding", "component", &[ts_read_file]),
+                step_entry(
+                    3,
+                    "orchestrator",
+                    "LLM reads file, determines exact old_string and new_string for the change",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    4,
+                    "rust",
+                    "Pre-load ts-apply-patch binding",
+                    "component",
+                    &[ts_apply_patch],
+                ),
+            ],
+            &[
+                json!({"input": "fix this bug in the function", "class": 3}),
+                json!({"input": "rename variable foo to bar in utils", "class": 3}),
+                json!({"input": "update the default timeout value", "class": 2}),
+                json!({"input": "replace the old error message", "class": 2}),
+                json!({"input": "apply patch to file", "class": 2}),
+                json!({"input": "edit this line in the file", "class": 2}),
+                json!({"input": "change this string to something else", "class": 2}),
+                json!({"input": "search and replace in this file", "class": 2}),
+                json!({"input": "patch this specific section of the file", "class": 2}),
+                json!({"input": "make a targeted edit to this file", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_patch_replace_all = stores
+        .seed_recipe(
+            &tenant,
+            "file-patch-replace-all",
+            "Replace every occurrence of a pre-known string in a file (no LLM — vars pre-baked).",
+            true,
+            RECIPE_FILE_PATCH_REPLACE_ALL_YAML,
+            &[
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-apply-patch ToolSkill binding",
+                    "component",
+                    &[ts_apply_patch],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.apply_patch(path, old_string, new_string, replace_all=true)",
+                    "component",
+                    &[pc_apply_patch],
+                ),
+            ],
+            &[
+                json!({"input": "replace all occurrences of this string in the file", "class": 1}),
+                json!({"input": "global find and replace in this file", "class": 1}),
+                json!({"input": "replace every instance of this text", "class": 1}),
+                json!({"input": "rename this symbol throughout the file", "class": 2}),
+                json!({"input": "patch all occurrences", "class": 1}),
+                json!({"input": "replace all matches in file", "class": 1}),
+                json!({"input": "bulk replace in file", "class": 2}),
+                json!({"input": "apply replace-all patch", "class": 1}),
+                json!({"input": "change every occurrence of this value", "class": 2}),
+            ],
+        )
+        .await?;
+
     // 5. Append the minted tool + toolskill + python_code ids to each per-tool
     //    catalogue (leaf Skill / Recipe ids appended in later chunks).
     stores
@@ -1683,14 +1770,16 @@ async fn seed_filesystem_group(
                 pc_apply_patch,
                 skill_apply_patch_single,
                 skill_apply_patch_all,
+                recipe_file_patch,
+                recipe_file_patch_replace_all,
             ],
         )
         .await?;
 
     // 6. Append all filesystem tool + toolskill + python_code + leaf skill ids
     //    to the primary catalogue (path helpers are cross-capability → primary
-    //    only), plus the filesystem domain skill + the 15 read/write/list/glob/
-    //    grep recipes. Patch recipes land in a later chunk.
+    //    only), plus the filesystem domain skill + all 17 read/write/list/glob/
+    //    grep/patch recipes. The filesystem group is now complete.
     stores
         .append_children(
             cat_filesystem,
@@ -1756,6 +1845,8 @@ async fn seed_filesystem_group(
                 pc_apply_patch,
                 skill_apply_patch_single,
                 skill_apply_patch_all,
+                recipe_file_patch,
+                recipe_file_patch_replace_all,
                 pc_path_join,
                 pc_path_basename,
                 pc_path_dirname,
@@ -1770,7 +1861,7 @@ async fn seed_filesystem_group(
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3c: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 15 read/write/list/glob/grep recipes)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3d: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 17 read/write/list/glob/grep/patch recipes — complete)");
     Ok(())
 }
 
@@ -3257,6 +3348,54 @@ const RECIPE_FILE_GREP_COUNT_YAML: &str = r#"step_descriptions: [
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-grep>"],
     "label":   "PythonCode calls host.grep(pattern, output_mode='count')"
+  }
+]
+"#;
+
+const RECIPE_FILE_PATCH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-read-file>", "<uuid:skill-apply-patch-single>"],
+    "label":   "Load read + patch leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM reads file, determines exact old_string and new_string for the change"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-apply-patch>"],
+    "label":   "Pre-load ts-apply-patch binding"
+  }
+]
+"#;
+
+const RECIPE_FILE_PATCH_REPLACE_ALL_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-apply-patch>"],
+    "label":   "Pre-load ts-apply-patch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-apply-patch>"],
+    "label":   "PythonCode calls host.apply_patch(path, old_string, new_string, replace_all=true)"
   }
 ]
 "#;
