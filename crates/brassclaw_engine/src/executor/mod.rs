@@ -22,7 +22,7 @@ pub mod tier_zero_orchestrator;
 pub mod trace;
 
 pub use loop_engine::ExecutionLoop;
-pub use composition_port::{CompositionPort, CompositionPortError};
+pub use composition_port::{ComponentPort, ComponentPortError};
 pub use dynamic_tool_port::{DynamicToolPort, DynamicToolPortError};
 pub use kohai_port::{KohaiPort, KohaiPortError};
 pub use orchestrator::{

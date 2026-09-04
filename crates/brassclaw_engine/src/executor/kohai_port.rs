@@ -8,7 +8,7 @@
 //! (`PgInterceptorStore`) + the basic-prompt prefix store (`PgBasicPromptStore`)
 //! that the Kohai flow drives live there. The composition layer is the sole crate
 //! that sees both `brassclaw_engine` (for `LlmBackend`) and the interceptor
-//! stores, so it owns the impl. This mirrors the [`crate::executor::CompositionPort`]
+//! stores, so it owns the impl. This mirrors the [`crate::executor::ComponentPort`]
 //! engine↔composition port precedent (C.4.5.17).
 //!
 //! # Contract
@@ -94,7 +94,7 @@ pub struct KohaiAnswer {
 ///
 /// `async` because the backing store + LLM calls drive the DB pool / network —
 /// must not be `block_on()`-ed inside a running Tokio runtime (mirrors
-/// [`crate::executor::CompositionPort`]). Unlike `CompositionPort::compose`
+/// [`crate::executor::ComponentPort`]). Unlike `ComponentPort::compose`
 /// (which clones its inputs into owned data and returns a `'static` future),
 /// `complete` must drive the borrowed [`LlmBackend`] inside the future, so the
 /// single lifetime `'a` ties `&self` and `llm` together — the caller (the engine

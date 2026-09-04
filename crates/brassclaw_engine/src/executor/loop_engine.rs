@@ -126,10 +126,6 @@ pub struct ExecutionLoop {
     /// gates. Required: callers without an inline-await surface use
     /// [`crate::gate::CancellingGateController::arc()`].
     gate_controller: Arc<dyn crate::gate::GateController>,
-    /// Optional Postgres pool used by the `skills-db` feature to load skills
-    /// from `reborn_skills` instead of MemoryDoc filesystem discovery.
-    #[cfg(feature = "skills-db")]
-    pg_pool: Option<std::sync::Arc<brassclaw_pg::PgPool>>,
     /// Phase 5 retrieval source (PostgresSource or RamSource). v3 Phase H8.4
     /// deleted the `__assemble_prior_knowledge__` dispatch arm that consumed
     /// this; the field stays plumbed through the dormant Model A dispatch fn
@@ -142,12 +138,15 @@ pub struct ExecutionLoop {
     /// dispatch fallthrough dormant (built-in tools still resolve via the
     /// static match). Passed to `execute_orchestrator` each turn.
     dynamic_tools: Option<Arc<dyn crate::executor::DynamicToolPort>>,
-    /// Step C.4.5.17 — port over the composition system (the IBS). `Some` when
-    /// the composition layer has wired a `PgCompositionPort`-backed impl; `None`
-    /// leaves the `host.compose_orchestrator` handler dormant (degrades
-    /// gracefully to `{ok:false, error:"composition_unavailable"}`). Passed to
-    /// `execute_orchestrator` each turn.
-    composition_port: Option<Arc<dyn crate::executor::CompositionPort>>,
+    /// Step C.4.5.17 / C.6 slice 4c-prep — port over the component store +
+    /// composition system (the IBS). `Some` when the composition layer has wired
+    /// a `PgCompositionPort`-backed impl; `None` leaves the
+    /// `host.compose_orchestrator` / `host.resolve_intent` /
+    /// `host.fetch_component` / `host.resolve_component_by_name` /
+    /// `host.list_skills` handlers dormant (degrade gracefully to
+    /// `{ok:false, error:"composition_unavailable"}` / `no_match` / Null /
+    /// empty list). Passed to `execute_orchestrator` each turn.
+    component_port: Option<Arc<dyn crate::executor::ComponentPort>>,
     /// Step C.5 — port over the interceptor ingress (the Kohai LLM handoff).
     /// `Some` when the composition layer has wired a `PgKohaiPort`-backed impl;
     /// `None` leaves the `host.kohai_complete` handler dormant (degrades
@@ -186,11 +185,9 @@ impl ExecutionLoop {
             store: None,
             platform_info: None,
             gate_controller,
-            #[cfg(feature = "skills-db")]
-            pg_pool: None,
             retrieval_source: None,
             dynamic_tools: None,
-            composition_port: None,
+            component_port: None,
             kohai_port: None,
             max_duration_secs: None,
         }
@@ -226,13 +223,6 @@ impl ExecutionLoop {
         self
     }
 
-    /// Set a Postgres pool for DB-backed skill loading (`skills-db` feature).
-    #[cfg(feature = "skills-db")]
-    pub fn with_pg_pool(mut self, pool: std::sync::Arc<brassclaw_pg::PgPool>) -> Self {
-        self.pg_pool = Some(pool);
-        self
-    }
-
     /// Set platform metadata for self-awareness in system prompts.
     pub fn with_platform_info(mut self, info: crate::executor::prompt::PlatformInfo) -> Self {
         self.platform_info = Some(info);
@@ -262,15 +252,18 @@ impl ExecutionLoop {
         self
     }
 
-    /// Step C.4.5.17 — attach the composition-system port (the IBS). The impl
-    /// (composition) backs `host.compose_orchestrator`: recipe fetch → IBS
-    /// `build_instruction` → `compose_program` → `ComposedProgram`. Without this
-    /// the host-call degrades gracefully.
-    pub fn with_composition_port(
+    /// Step C.4.5.17 / C.6 slice 4c-prep — attach the component-store +
+    /// composition-system port (the IBS). The impl (composition) backs
+    /// `host.compose_orchestrator` / `host.resolve_intent` /
+    /// `host.fetch_component` / `host.resolve_component_by_name` /
+    /// `host.list_skills`: recipe fetch → IBS `build_instruction` →
+    /// `compose_program` → `ComposedProgram`. Without this the host-calls
+    /// degrade gracefully.
+    pub fn with_component_port(
         mut self,
-        port: Arc<dyn crate::executor::CompositionPort>,
+        port: Arc<dyn crate::executor::ComponentPort>,
     ) -> Self {
-        self.composition_port = Some(port);
+        self.component_port = Some(port);
         self
     }
 
@@ -544,11 +537,9 @@ impl ExecutionLoop {
             self.platform_info.as_ref(),
             &self.gate_controller,
             &checkpoint.persisted_state,
-            #[cfg(feature = "skills-db")]
-            self.pg_pool.as_deref(),
             self.retrieval_source.as_ref(),
             self.dynamic_tools.as_ref(),
-            self.composition_port.as_ref(),
+            self.component_port.as_ref(),
             self.kohai_port.as_ref(),
             max_duration_override,
         )

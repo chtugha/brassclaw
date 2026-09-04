@@ -1,7 +1,7 @@
-//! Step C.4.5.17 Part 3b — composition-side [`CompositionPort`] impl (the IBS).
+//! Step C.4.5.17 Part 3b — composition-side [`ComponentPort`] impl (the IBS).
 //!
 //! [`PgCompositionPort`] is the composition-layer impl of the engine-side
-//! [`brassclaw_engine::executor::CompositionPort`] trait. It owns a Postgres
+//! [`brassclaw_engine::executor::ComponentPort`] trait. It owns a Postgres
 //! pool and performs the full composition pipeline for
 //! `host.compose_orchestrator(component_id, step_link, user_input)`:
 //!
@@ -26,10 +26,11 @@
 //!
 //! # Feature gate
 //!
-//! The DB-bound [`PgCompositionPort`] + its [`CompositionPort`] impl require the
-//! `skills-db` feature (the engine recipe/component free functions it delegates
-//! to are `skills-db`-gated). The pure mapping helpers + their unit tests touch
-//! only always-available engine types and compile/run under both configs,
+//! The DB-bound [`PgCompositionPort`] + its [`ComponentPort`] impl require the
+//! `skills-db` feature (the engine recipe/component/intent free functions it
+//! delegates to are `skills-db`-gated). The pure mapping helpers + their unit
+//! tests touch only always-available engine types and compile/run under both
+//! configs,
 //! mirroring `orchestrator_lookup_impl.rs`. `#![allow(dead_code)]` covers the
 //! unused-until-C.5/C.6-wiring window.
 
@@ -54,7 +55,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 #[cfg(feature = "skills-db")]
-use brassclaw_engine::executor::{CompositionPort, CompositionPortError};
+use brassclaw_engine::executor::{ComponentPort, ComponentPortError};
+#[cfg(feature = "skills-db")]
+use brassclaw_engine::executor::db_skill_loader::{fetch_llm_skills_as_json, scope_from_thread_ids};
+#[cfg(feature = "skills-db")]
+use brassclaw_engine::executor::orchestrator::list_skills_from_store;
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::memory::composition::compose_program;
 #[cfg(feature = "skills-db")]
@@ -62,19 +67,26 @@ use brassclaw_engine::memory::instruction_builder::{
     StepDescriptionEntry, build_instruction, capture_variables,
 };
 #[cfg(feature = "skills-db")]
+use brassclaw_engine::memory::intent_system::{IntentScope, IntentResolution, resolve_intent};
+#[cfg(feature = "skills-db")]
 use brassclaw_engine::memory::retrieval_source::{
-    ComponentScope, fetch_components_by_ids, lookup_component_class,
+    ComponentScope, fetch_component_by_id, fetch_component_by_name,
+    fetch_components_by_ids, lookup_component_class,
 };
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::memory::{ComposedProgram, ResolvedComponent};
 #[cfg(feature = "skills-db")]
+use brassclaw_engine::traits::store::Store;
+#[cfg(feature = "skills-db")]
 use brassclaw_engine::types::recipe::RecipeVariant;
+#[cfg(feature = "skills-db")]
+use brassclaw_engine::types::thread::Thread;
 #[cfg(feature = "skills-db")]
 use brassclaw_pg::PgPool;
 
 /// Match a variant by `step_link` (§7.3). Returns the first variant whose
 /// `step_link` equals the supplied formula, or `None` when no variant matches
-/// (caller surfaces [`CompositionPortError::NoVariantMatch`]).
+/// (caller surfaces [`ComponentPortError::NoVariantMatch`]).
 fn match_variant<'a>(variants: &'a [RecipeVariantUngated], step_link: &str) -> Option<&'a RecipeVariantUngated> {
     variants
         .iter()
@@ -111,19 +123,25 @@ impl<'a> ComponentResolver for MapComponentResolver<'a> {
     }
 }
 
-/// Postgres-backed [`CompositionPort`] (the IBS). Constructed once at runtime
-/// wiring time with the shared `PgPool` and plumbed into the engine
-/// `ThreadManager` via `with_composition_port`; until that C.5/C.6 wiring lands
-/// the engine passes `None` and `host.compose_orchestrator` degrades gracefully.
+/// Postgres-backed [`ComponentPort`] (the IBS). Constructed once at runtime
+/// wiring time with the shared `PgPool` (+ optional `Store` for the
+/// MemoryDoc `list_skills` fallback) and plumbed into the engine
+/// `ThreadManager` via `with_component_port`; until that C.5/C.6 wiring lands
+/// the engine passes `None` and the `host.*` component handlers degrade
+/// gracefully. The pool the SEC-01-validated host fns read lives inside this
+/// port now (C.6 slice 4c-prep collapsed the separate `pg_pool` plumbing).
 #[cfg(feature = "skills-db")]
 pub(crate) struct PgCompositionPort {
     pool: Arc<PgPool>,
+    /// MemoryDoc `Store` fallback for `list_skills` when the skills-db fast
+    /// path is absent / fails. `None` → empty list on fallback.
+    store: Option<Arc<dyn Store>>,
 }
 
 #[cfg(feature = "skills-db")]
 impl PgCompositionPort {
-    pub(crate) fn new(pool: Arc<PgPool>) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Arc<PgPool>, store: Option<Arc<dyn Store>>) -> Self {
+        Self { pool, store }
     }
 
     /// The composition pipeline (steps 1-8 above). Takes the pool by reference
@@ -136,13 +154,13 @@ impl PgCompositionPort {
         component_id: Uuid,
         step_link: &str,
         user_input: &str,
-    ) -> Result<ComposedProgram, CompositionPortError> {
+    ) -> Result<ComposedProgram, ComponentPortError> {
         // 1. Recipe row — scope filter only (§7.2). JSONB read as text +
         //    serde_json::from_str (engine idiom).
         let client = pool
             .get()
             .await
-            .map_err(|e| CompositionPortError::Failure {
+            .map_err(|e| ComponentPortError::Failure {
                 reason: e.to_string(),
             })?;
         let row = client
@@ -166,11 +184,11 @@ impl PgCompositionPort {
                 ],
             )
             .await
-            .map_err(|e| CompositionPortError::Failure {
+            .map_err(|e| ComponentPortError::Failure {
                 reason: e.to_string(),
             })?;
         let Some(row) = row else {
-            return Err(CompositionPortError::RecipeNotFound {
+            return Err(ComponentPortError::RecipeNotFound {
                 component_id: component_id.to_string(),
             });
         };
@@ -193,7 +211,7 @@ impl PgCompositionPort {
         let variants: Vec<RecipeVariant> =
             serde_json::from_str(&variants_text).unwrap_or_default();
         let Some(matched) = match_variant(&variants, step_link) else {
-            return Err(CompositionPortError::NoVariantMatch {
+            return Err(ComponentPortError::NoVariantMatch {
                 step_link: step_link.to_string(),
             });
         };
@@ -209,7 +227,7 @@ impl PgCompositionPort {
         //    error (not the soft-fail the retrieval path takes) — the
         //    orchestrator asked for this exact recipe/variant.
         let instruction = build_instruction(step_link, &step_descs, &variable_patterns, llm_call_required)
-            .map_err(|e| CompositionPortError::Failure {
+            .map_err(|e| ComponentPortError::Failure {
                 reason: e.to_string(),
             })?;
 
@@ -238,7 +256,7 @@ impl PgCompositionPort {
             if let Some(class_code) =
                 lookup_component_class(pool, scope, *id)
                     .await
-                    .map_err(|e| CompositionPortError::Failure {
+                    .map_err(|e| ComponentPortError::Failure {
                         reason: e.to_string(),
                     })?
             {
@@ -247,7 +265,7 @@ impl PgCompositionPort {
         }
         let items = fetch_components_by_ids(pool, scope, &pairs)
             .await
-            .map_err(|e| CompositionPortError::Failure {
+            .map_err(|e| ComponentPortError::Failure {
                 reason: e.to_string(),
             })?;
 
@@ -263,14 +281,109 @@ impl PgCompositionPort {
 }
 
 #[cfg(feature = "skills-db")]
-impl CompositionPort for PgCompositionPort {
+impl ComponentPort for PgCompositionPort {
+    fn resolve_intent(
+        &self,
+        scope: &ComponentScope,
+        user_input: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<IntentResolution, ComponentPortError>> + Send + '_>>
+    {
+        // `ComponentScope` and `IntentScope` share the 4-field scope tuple
+        // (tenant/user/agent/project); convert + clone call args for a
+        // `'static` boxed future.
+        let pool = self.pool.clone();
+        let intent_scope = IntentScope {
+            tenant_id: scope.tenant_id.clone(),
+            user_id: scope.user_id.clone(),
+            agent_id: scope.agent_id.clone(),
+            project_id: scope.project_id.clone(),
+        };
+        let user_input = user_input.to_string();
+        Box::pin(async move {
+            resolve_intent(&pool, &intent_scope, &user_input)
+                .await
+                .map_err(|e| ComponentPortError::Failure {
+                    reason: e.to_string(),
+                })
+        })
+    }
+
+    fn fetch_component(
+        &self,
+        scope: &ComponentScope,
+        component_id: Uuid,
+        class_code: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<ComponentItem>, ComponentPortError>> + Send + '_>>
+    {
+        let pool = self.pool.clone();
+        let scope = scope.clone();
+        Box::pin(async move {
+            let items = fetch_component_by_id(&pool, &scope, component_id, class_code)
+                .await
+                .map_err(|e| ComponentPortError::Failure {
+                    reason: e.to_string(),
+                })?;
+            Ok(items.into_iter().next())
+        })
+    }
+
+    fn resolve_component_by_name(
+        &self,
+        scope: &ComponentScope,
+        name: &str,
+        class_code: i32,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<ComponentItem>, ComponentPortError>> + Send + '_>>
+    {
+        let pool = self.pool.clone();
+        let scope = scope.clone();
+        let name = name.to_string();
+        Box::pin(async move {
+            let items = fetch_component_by_name(&pool, &scope, &name, class_code)
+                .await
+                .map_err(|e| ComponentPortError::Failure {
+                    reason: e.to_string(),
+                })?;
+            Ok(items.into_iter().next())
+        })
+    }
+
+    fn list_skills(
+        &self,
+        thread: &Thread,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<serde_json::Value>, ComponentPortError>> + Send + '_>>
+    {
+        // skills-db fast path: `reborn_skills` sorted by (class_code, prompt_uid)
+        // for deterministic injection order. On any DB error (or absent rows)
+        // fall back to the MemoryDoc `Store` path (`list_skills_from_store`:
+        // shared-skills multi-tenant visibility + setup-marker exclusion). No
+        // store wired → empty list.
+        let pool = self.pool.clone();
+        let store = self.store.clone();
+        let scope = scope_from_thread_ids(
+            thread.tenant_id.clone(),
+            thread.user_id.clone(),
+            thread.agent_id.clone(),
+            thread.project_id.to_string(),
+        );
+        let thread = thread.clone();
+        Box::pin(async move {
+            match fetch_llm_skills_as_json(&pool, &scope).await {
+                Ok(skills) => Ok(skills),
+                Err(_) => match store {
+                    Some(store) => Ok(list_skills_from_store(&store, &thread).await),
+                    None => Ok(Vec::new()),
+                },
+            }
+        })
+    }
+
     fn compose(
         &self,
         scope: &ComponentScope,
         component_id: Uuid,
         step_link: &str,
         user_input: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<ComposedProgram, CompositionPortError>> + Send + '_>>
+    ) -> Pin<Box<dyn Future<Output = Result<ComposedProgram, ComponentPortError>> + Send + '_>>
     {
         // Clone the call args into owned data so the boxed future is `'static`
         // (the trait's `+ '_` return captures only `&self`, which a `'static`

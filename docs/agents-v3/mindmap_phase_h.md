@@ -2811,3 +2811,112 @@ clean (default + skills-db), 7 registry tests pass.
 14 engine-dep `Arc`s + pg_pool; `drive_turn`: load_thread → transition → extract
 last User input → `try_checkout`/`prepare_monty_session` → `drive_to_yield` →
 map `OrchestratorYield`→minimal `LoopExit` → `park`/`drop_session`).**
+
+**Recipe-system conversion investigation (pre-4c, per user redirect):**
+Mapped every `drive_to_yield` dep to its dispatch arms + the Step 27.0 LOCKED
+disposition. Result:
+- **3 deps are dead-walking** (only used by arms C.7 retires): `retrieval`
+  (RetrievalEngine, `__retrieve_docs__` DROPPED), `platform_info`
+  (`__llm_complete__` RETIRED), `_retrieval_source` (already unused, param
+  underscored). They drop with C.7 — NOT a recipe conversion, just deletion.
+  15 deps → 12 in the final version.
+- **10 deps are genuine runtime services** (the Executioner's muscle, not
+  recipe-convertible): `llm`, `effects`, `leases`, `policy`, `gate_controller`
+  (all consumed by `host.run_program`'s nested execute_code), `signal_rx`
+  (`check_signals`), `event_tx` (`post_reply`+`run_program`), `store`
+  (`validate_component` WRITE + `skill_list` + bootstrap `list_shared_memory_docs`
+  — writes/system-docs the composition_port doesn't own), `kohai_port`
+  (`kohai_complete` LLM handoff — the service; the recipe only decides tier),
+  `dynamic_tools` (the `host.<tool>` fallthrough dispatch — the runtime half of
+  `rust_directives`; the LOADING already planned to fold into compose_orchestrator
+  in C.6, but the dispatch port STAYS → no Arc-count reduction).
+- **THE ONE genuine recipe-system consolidation**: `pg_pool` + `composition_port`
+  → a unified `ComponentPort`. The IBS (PgCompositionPort) ALREADY owns a pool +
+  component resolution (`fetch_components_by_ids`/`lookup_component_class`); and
+  `resolve_intent`/`fetch_component`/`resolve_component_by_name`/`skill_list` are
+  ALL component-store reads the IBS naturally owns. Unifying = 2 deps → 1 (12→11)
+  + aligns with "IBS owns components."
+- Net: recipe conversion is a SMALL win (1 dep). The bigger simplification is
+  just completing C.7 (retire 3 dead deps + their arms: 15→12).
+**Fork to user: (A) consolidate pg_pool+composition_port→ComponentPort as a
+dedicated substep BEFORE assembling the driver (driver born 11-dep); (B) defer —
+assemble driver with current 12 deps now, consolidation optional later; (C) skip
+consolidation (bare pg_pool works; focus on driver + C.7 retirement).**
+
+### Portion 142 — option-A ComponentPort consolidation EXECUTED (gate green)
+
+User LOCKED **A**: consolidate `pg_pool`+`composition_port`→unified `ComponentPort`
+BEFORE assembling the `PersistentMontyDriver`. Executed the full consolidation
+this portion; all 4 gates green (engine + composition × default + skills-db),
+tests green both configs. **NO commit yet at turn start** — committed below.
+
+- **Trait (`composition_port.rs`):** renamed `CompositionPort`→`ComponentPort`,
+  `CompositionPortError`→`ComponentPortError`. Kept `compose` (unchanged). Added
+  4 trait methods (each `Pin<Box<dyn Future+Send+'_>>`): `resolve_intent(&ComponentScope,
+  &str)→Result<IntentResolution,…>`; `fetch_component(&ComponentScope, Uuid,
+  i32)→Result<Option<ComponentItem>,…>`; `resolve_component_by_name(&ComponentScope,
+  &str, i32)→Result<Option<ComponentItem>,…>`; `list_skills(&Thread)→Result<Vec<Value>,
+  …>`. **dyn-compat fix:** `resolve_component_by_name` originally took
+  `impl AsRef<str>` → NOT dyn-compatible (generic method) → clippy E0038 on
+  `Arc<dyn ComponentPort>`. Changed to `&str` (handler passes `&name`).
+- **Handlers (`orchestrator.rs`):** `replace_all CompositionPort→ComponentPort` +
+  `composition_port→component_port`; dropped the `#[cfg] pg_pool` param from
+  `drive_to_yield` + `execute_orchestrator` (17→16 params, 15→14 deps); rewired
+  all 7 dispatch arms (list_skills×2 drop store+pg_pool→component_port;
+  fetch_component×2, resolve_component_by_name×2, resolve_intent → component_port);
+  rewrote 4 handler bodies to thin-call the port (shed `#[cfg]` wrappers, degrade
+  to null/no_match/empty when port `None`); extracted the MemoryDoc fallback out
+  of `handle_list_skills` into `pub async fn list_skills_from_store(store, thread)
+  →Vec<Value>` + rewrote `handle_list_skills` to a thin delegate
+  (`port.list_skills(thread).await.unwrap_or_default()`).
+- **Mock + tests:** `MockComponentPort` impls all 5 trait methods (4 new return
+  `Unavailable`/empty). Dropped the `#[cfg] None` pg_pool arg from all 5
+  `drive_to_yield` test call sites (via `replace_all`). Rewrote
+  `handle_list_skills_returns_shared_skills_from_other_projects` →
+  `list_skills_from_store_returns_shared_skills_from_other_projects` (drives the
+  extracted free fn). Added 2 no-port degrade tests:
+  `handle_list_skills_no_port_returns_empty_list` +
+  `handle_resolve_intent_no_port_returns_no_match` (missing-arg + no-port).
+  Fixed a `+ `steps`` doc line rustdoc parsed as a list marker (→ `and`).
+- **Dormant path (`loop_engine.rs` + `runtime/manager.rs`):** renamed field
+  `composition_port`→`component_port` + builder `with_composition_port`→
+  `with_component_port` + `new()` init + the spawn-path/`execute_orchestrator`
+  call site; **REMOVED** the `pg_pool` field + `with_pg_pool` builder + `new()`
+  init + the `#[cfg] self.pg_pool.as_deref()` call arg + the spawn-path
+  `#[cfg]{ if let Some(pool)=self.pg_pool.clone(){exec_loop.with_pg_pool(pool)} }`
+  block. Doc comments updated (component_port now owns the pool the SEC-01 host
+  fns read). Zero external callers of `with_pg_pool`/`with_composition_port`/
+  `PgCompositionPort::new` (dead-until-wiring) → no blast radius outside engine.
+- **Impl (`pg_composition_port.rs`):** `PgCompositionPort` gained
+  `store: Option<Arc<dyn Store>>` (MemoryDoc fallback for `list_skills`);
+  `new(pool)`→`new(pool, store)` (0 callers). Impl'd the 4 new `ComponentPort`
+  methods (all inside `#[cfg(skills-db)]`): `resolve_intent` (ComponentScope→
+  IntentScope field-copy → engine `resolve_intent(pool,&scope,&input)` →
+  err `Failure`); `fetch_component` (`fetch_component_by_id`→first item→
+  `Option<ComponentItem>`); `resolve_component_by_name` (`fetch_component_by_name`,
+  same); `list_skills` (skills-db fast path `fetch_llm_skills_as_json`+
+  `scope_from_thread_ids`; on `Err` fall back to `list_skills_from_store(&store,
+  &thread)` if store present, else empty). All futures `'static` (clone call
+  args; `Thread: Clone`). Imports: `intent_system::{IntentScope,IntentResolution,
+  resolve_intent}`, `retrieval_source::{fetch_component_by_id,by_name}`,
+  `executor::db_skill_loader::{fetch_llm_skills_as_json,scope_from_thread_ids}`,
+  `executor::orchestrator::list_skills_from_store`, `traits::store::Store`,
+  `types::thread::Thread` (all cfg-gated).
+- **Doc drift (deferred):** `04-ibs.md` + `saved_plan_to_v3.md` still say
+  `CompositionPort` (the old trait name). Code-only change this slice; docs sync
+  is a follow-up (the trait is `pub` but only impl'd by composition → internal).
+- **Gates:** `cargo clippy -p brassclaw_engine --all-targets [--features
+  brassclaw_engine/skills-db] -- -D warnings` ✓✓; `cargo clippy -p
+  brassclaw_reborn_composition --all-targets [--features skills-db] -- -D
+  warnings` ✓✓; `cargo test -p brassclaw_engine [--features skills-db]` ✓✓;
+  `cargo test -p brassclaw_reborn_composition [--features skills-db]` ✓✓. Disk
+  23Gi free / 89% (no clean). Base HEAD `34fe82b6` (user advanced concurrently).
+
+**Next: slice 4c = `PersistentMontyDriver` impl (owns `Arc<MontySessionRegistry>` +
+the resolved 14 deps; `drive_turn`: load_thread→Running→extract last User input→
+`try_checkout`/`prepare_monty_session`→`drive_to_yield`→map `OrchestratorYield`→
+minimal `LoopExit::Completed` (empty refs)→park/drop_session). Then 4d =
+`TurnRunnerWorker` always-Monty direct path + composition wiring; 4e = both-configs
+gate + mark slice 4 done; 5 = retire `canonical.rs`; 6 = mark C.6 done → C.7
+(retire `execute_orchestrator` + `default.py` + `ExecutionLoop`/`ThreadManager`/
+`brassclaw_engine::runtime` + stale doc-comments) → mark C done → proceed to A.**

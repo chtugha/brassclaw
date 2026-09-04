@@ -640,10 +640,9 @@ impl MontySession {
         store: Option<&Arc<dyn Store>>,
         platform_info: Option<&crate::executor::prompt::PlatformInfo>,
         gate_controller: &Arc<dyn crate::gate::GateController>,
-        #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
         _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
         dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
-        composition_port: Option<&Arc<dyn crate::executor::CompositionPort>>,
+        component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
         kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
         new_input: Option<MontyObject>,
     ) -> Result<OrchestratorYield, EngineError> {
@@ -784,14 +783,7 @@ impl MontySession {
 
                     // __list_skills__(max_candidates, max_tokens)
                     "__list_skills__" => {
-                        handle_list_skills(
-                            args,
-                            thread,
-                            store,
-                            #[cfg(feature = "skills-db")]
-                            pg_pool,
-                        )
-                        .await
+                        handle_list_skills(args, thread, component_port).await
                     }
 
                     // __record_skill_usage__(doc_id, success)
@@ -819,13 +811,7 @@ impl MontySession {
                     // nested lookups (plan §0.9); Phase G depends on it. v3 Phase F.6
                     // (Q-F3).
                     "__fetch_component__" => {
-                        handle_fetch_component(
-                            args,
-                            thread,
-                            #[cfg(feature = "skills-db")]
-                            pg_pool,
-                        )
-                        .await
+                        handle_fetch_component(args, thread, component_port).await
                     }
 
                     // __resolve_component_by_name__(name, class_code) -> dict | None
@@ -834,13 +820,7 @@ impl MontySession {
                     // `call_action` when it holds a step name, not a UUID.
                     // v3 Phase G.2 (Q-G4).
                     "__resolve_component_by_name__" => {
-                        handle_resolve_component_by_name(
-                            args,
-                            thread,
-                            #[cfg(feature = "skills-db")]
-                            pg_pool,
-                        )
-                        .await
+                        handle_resolve_component_by_name(args, thread, component_port).await
                     }
 
                     // ── C.1 first-class `host.*` callables ───────────────────────
@@ -853,35 +833,16 @@ impl MontySession {
                     // kohai_complete follows next; compose_orchestrator's rewrite lands
                     // with the Recipe/Component rework in a later C substep.
                     "resolve_intent" if call.method_call => {
-                        handle_resolve_intent(
-                            &args[1..],
-                            kwargs,
-                            thread,
-                            #[cfg(feature = "skills-db")]
-                            pg_pool,
-                        )
-                        .await
+                        handle_resolve_intent(&args[1..], kwargs, thread, component_port).await
                     }
                     "post_reply" if call.method_call => {
                         handle_post_reply(&args[1..], kwargs, thread, event_tx)
                     }
                     "fetch_component" if call.method_call => {
-                        handle_fetch_component(
-                            &args[1..],
-                            thread,
-                            #[cfg(feature = "skills-db")]
-                            pg_pool,
-                        )
-                        .await
+                        handle_fetch_component(&args[1..], thread, component_port).await
                     }
                     "resolve_component_by_name" if call.method_call => {
-                        handle_resolve_component_by_name(
-                            &args[1..],
-                            thread,
-                            #[cfg(feature = "skills-db")]
-                            pg_pool,
-                        )
-                        .await
+                        handle_resolve_component_by_name(&args[1..], thread, component_port).await
                     }
                     "validate_component" if call.method_call => {
                         handle_validate_component(&args[1..], thread, store).await
@@ -892,14 +853,7 @@ impl MontySession {
                     // Reused existing tools exposed under the `host.*` namespace.
                     "regex_match" if call.method_call => handle_regex_match(&args[1..]),
                     "skill_list" if call.method_call => {
-                        handle_list_skills(
-                            &args[1..],
-                            thread,
-                            store,
-                            #[cfg(feature = "skills-db")]
-                            pg_pool,
-                        )
-                        .await
+                        handle_list_skills(&args[1..], thread, component_port).await
                     }
 
                     // C.4.5.17: host.run_program(code) — run a dynamically-provided
@@ -932,7 +886,7 @@ impl MontySession {
                     // {ok, program} on success; {ok:false, error} on no bridge
                     // / not found / failure.
                     "compose_orchestrator" if call.method_call => {
-                        handle_compose_orchestrator(&args[1..], thread, composition_port).await
+                        handle_compose_orchestrator(&args[1..], thread, component_port).await
                     }
 
                     // C.5: host.kohai_complete(prompt={chat_history, user_query,
@@ -1123,10 +1077,9 @@ pub async fn execute_orchestrator(
     platform_info: Option<&crate::executor::prompt::PlatformInfo>,
     gate_controller: &Arc<dyn crate::gate::GateController>,
     persisted_state: &serde_json::Value,
-    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
     _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
     dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
-    composition_port: Option<&Arc<dyn crate::executor::CompositionPort>>,
+    component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
     kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
     max_duration_override: Option<std::time::Duration>,
 ) -> Result<OrchestratorResult, EngineError> {
@@ -1144,11 +1097,9 @@ pub async fn execute_orchestrator(
             store,
             platform_info,
             gate_controller,
-            #[cfg(feature = "skills-db")]
-            pg_pool,
             _retrieval_source,
             dynamic_tools,
-            composition_port,
+            component_port,
             kohai_port,
             None,
         )
@@ -1638,90 +1589,82 @@ async fn handle_retrieve_docs(
 
 /// Handle `__fetch_component__(uuid, class_code)` (v3 Phase F.6 / Q-F3).
 ///
-/// Fetches a single validated component by UUID + class code from its
-/// class-specific table, enforcing the SEC-01 validation gate
-/// (`validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`).
-/// Used by `call_action` nested lookups (plan §0.9); Phase G depends on it.
+/// Thin-calls [`ComponentPort::fetch_component`] (the composition-side impl runs
+/// the SEC-01-validated `fetch_component_by_id` class-table SELECT). Used by
+/// `call_action` nested lookups (plan §0.9); Phase G depends on it.
 ///
 /// Returns a Python dict `{ id, class_code, name, description, content,
-/// override_prompt_creation }` for the single matched [`ComponentItem`], or
-/// `None` when: the `skills-db` feature is off, no pool is wired, the UUID or
-/// class-code args are missing/invalid, the component is absent, or the fetch
+/// override_prompt_creation }` (+ `steps` / `allowed_tools` for class-16
+/// Actions) for the single matched [`ComponentItem`], or `None` when: no bridge
+/// is wired (`None` port, e.g. non-skills-db config / unit-test path), the UUID
+/// or class-code args are missing/invalid, the component is absent, or the fetch
 /// errors. The retrieval scope is built from the thread's real identity
 /// (`thread.tenant_id` / `thread.agent_id` — F.1/F.3); the LIVE agent-loop path
 /// sources tenant from `LoopRunContext.scope.tenant_id` (F.4).
 async fn handle_fetch_component(
     _args: &[MontyObject],
     _thread: &Thread,
-    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+    component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
 ) -> ExtFunctionResult {
-    #[cfg(feature = "skills-db")]
-    {
-        use crate::memory::retrieval_source::fetch_component_by_id;
-
-        let uuid_str = _args.first().map(monty_to_string).unwrap_or_default();
-        let Ok(component_id) = uuid::Uuid::parse_str(&uuid_str) else {
+    let uuid_str = _args.first().map(monty_to_string).unwrap_or_default();
+    let Ok(component_id) = uuid::Uuid::parse_str(&uuid_str) else {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+    };
+    let class_code = match _args.get(1) {
+        Some(MontyObject::Int(i)) => *i as i32,
+        _ => {
             return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
-        };
-        let class_code = match _args.get(1) {
-            Some(MontyObject::Int(i)) => *i as i32,
-            _ => {
-                return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
-            }
-        };
-        let Some(pool) = pg_pool else {
-            return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
-        };
+        }
+    };
+    let Some(port) = component_port else {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+    };
 
-        // Build the retrieval scope from the thread's real identity. v3 Phase F
-        // (Q-F2 / FIND-P8-01): mirrors the F.3-fixed `handle_assemble_prior_
-        // knowledge` scope. The LIVE retrieval path sources tenant from
-        // `LoopRunContext.scope.tenant_id` (F.4); this dormant engine handler
-        // reads `thread.tenant_id` / `thread.agent_id` so it is correct if
-        // re-activated.
-        let scope = ComponentScope {
-            tenant_id: _thread.tenant_id.clone(),
-            user_id: _thread.user_id.clone(),
-            agent_id: _thread.agent_id.clone(),
-            project_id: _thread.project_id.to_string(),
-        };
+    // Build the retrieval scope from the thread's real identity. v3 Phase F
+    // (Q-F2 / FIND-P8-01): mirrors the F.3-fixed `handle_assemble_prior_
+    // knowledge` scope. The LIVE retrieval path sources tenant from
+    // `LoopRunContext.scope.tenant_id` (F.4); this dormant engine handler
+    // reads `thread.tenant_id` / `thread.agent_id` so it is correct if
+    // re-activated.
+    let scope = ComponentScope {
+        tenant_id: _thread.tenant_id.clone(),
+        user_id: _thread.user_id.clone(),
+        agent_id: _thread.agent_id.clone(),
+        project_id: _thread.project_id.to_string(),
+    };
 
-        match fetch_component_by_id(pool, &scope, component_id, class_code).await {
-            Ok(items) => {
-                if let Some(item) = items.into_iter().next() {
-                    let mut value = serde_json::json!({
-                        "id": item.id.to_string(),
-                        "class_code": item.class_code,
-                        "name": item.name,
-                        "description": item.description,
-                        "content": item.effective_content,
-                        "override_prompt_creation": item.override_prompt_creation,
-                    });
-                    // Q-G-STUB1: surface the executable `steps` + `allowed_tools`
-                    // for class-16 Actions so `execute_action_procedure` can run
-                    // the real procedure (absent for every other class).
-                    if let Some(obj) = value.as_object_mut() {
-                        if let Some(steps) = item.steps {
-                            obj.insert("steps".to_string(), steps);
-                        }
-                        if let Some(allowed_tools) = item.allowed_tools {
-                            obj.insert("allowed_tools".to_string(), allowed_tools);
-                        }
-                    }
-                    return ExtFunctionResult::Return(json_to_monty(&value));
+    match port.fetch_component(&scope, component_id, class_code).await {
+        Ok(Some(item)) => {
+            let mut value = serde_json::json!({
+                "id": item.id.to_string(),
+                "class_code": item.class_code,
+                "name": item.name,
+                "description": item.description,
+                "content": item.effective_content,
+                "override_prompt_creation": item.override_prompt_creation,
+            });
+            // Q-G-STUB1: surface the executable `steps` + `allowed_tools`
+            // for class-16 Actions so `execute_action_procedure` can run
+            // the real procedure (absent for every other class).
+            if let Some(obj) = value.as_object_mut() {
+                if let Some(steps) = item.steps {
+                    obj.insert("steps".to_string(), steps);
                 }
-                debug!("__fetch_component__: no validated component for uuid {component_id}");
-                ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+                if let Some(allowed_tools) = item.allowed_tools {
+                    obj.insert("allowed_tools".to_string(), allowed_tools);
+                }
             }
-            Err(e) => {
-                debug!("__fetch_component__: fetch failed: {e}");
-                ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
-            }
+            ExtFunctionResult::Return(json_to_monty(&value))
+        }
+        Ok(None) => {
+            debug!("__fetch_component__: no validated component for uuid {component_id}");
+            ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+        }
+        Err(e) => {
+            debug!("__fetch_component__: fetch failed: {e}");
+            ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
         }
     }
-
-    #[cfg(not(feature = "skills-db"))]
-    ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
 }
 
 /// Handle `host.run_program(code)` (C.4.5.17). Runs a dynamically-provided
@@ -1808,84 +1751,78 @@ async fn handle_run_program(
 /// Handle `__resolve_component_by_name__(name, class_code)` (v3 Phase G.2 /
 /// Q-G4 — the §0.9 Option B fallback host function).
 ///
-/// Fetches a single validated component by **name** + class code from its
-/// class-specific table, enforcing the same SEC-01 validation gate as
-/// [`handle_fetch_component`]. Used by `call_action` when it holds a step
-/// **name** rather than a UUID (plan §0.9 Option B).
+/// Thin-calls [`ComponentPort::resolve_component_by_name`] (the composition-side
+/// impl runs the SEC-01-validated `fetch_component_by_name` class-table SELECT).
+/// Used by `call_action` when it holds a step **name** rather than a UUID
+/// (plan §0.9 Option B).
 ///
 /// Returns the same Python dict shape as `handle_fetch_component`
-/// (`{ id, class_code, name, description, content, override_prompt_creation }`)
-/// for the single matched [`ComponentItem`], or `None` when: the `skills-db`
-/// feature is off, no pool is wired, the name or class-code args are
-/// missing/invalid, the component is absent, or the fetch errors. Scope is
-/// built from the thread's real identity (`thread.tenant_id` /
-/// `thread.agent_id` — F.1/F.3), mirroring `handle_fetch_component`.
+/// (`{ id, class_code, name, description, content, override_prompt_creation }`
+/// and `steps` / `allowed_tools` for class-16 Actions) for the single matched
+/// [`ComponentItem`], or `None` when no bridge is wired (`None` port, e.g. a
+/// non-skills-db config or unit-test path), when the name or class-code args
+/// are missing/invalid, when the component is absent, or when the fetch
+/// errors. The scope is built from the thread's real identity
+/// (`thread.tenant_id` / `thread.agent_id` — F.1/F.3), mirroring
+/// `handle_fetch_component`.
 async fn handle_resolve_component_by_name(
     _args: &[MontyObject],
     _thread: &Thread,
-    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+    component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
 ) -> ExtFunctionResult {
-    #[cfg(feature = "skills-db")]
-    {
-        use crate::memory::retrieval_source::fetch_component_by_name;
-
-        let name = _args.first().map(monty_to_string).unwrap_or_default();
-        if name.is_empty() {
+    let name = _args.first().map(monty_to_string).unwrap_or_default();
+    if name.is_empty() {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+    }
+    let class_code = match _args.get(1) {
+        Some(MontyObject::Int(i)) => *i as i32,
+        _ => {
             return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
         }
-        let class_code = match _args.get(1) {
-            Some(MontyObject::Int(i)) => *i as i32,
-            _ => {
-                return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
-            }
-        };
-        let Some(pool) = pg_pool else {
-            return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
-        };
+    };
+    let Some(port) = component_port else {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+    };
 
-        let scope = ComponentScope {
-            tenant_id: _thread.tenant_id.clone(),
-            user_id: _thread.user_id.clone(),
-            agent_id: _thread.agent_id.clone(),
-            project_id: _thread.project_id.to_string(),
-        };
+    let scope = ComponentScope {
+        tenant_id: _thread.tenant_id.clone(),
+        user_id: _thread.user_id.clone(),
+        agent_id: _thread.agent_id.clone(),
+        project_id: _thread.project_id.to_string(),
+    };
 
-        match fetch_component_by_name(pool, &scope, &name, class_code).await {
-            Ok(items) => {
-                if let Some(item) = items.into_iter().next() {
-                    let mut value = serde_json::json!({
-                        "id": item.id.to_string(),
-                        "class_code": item.class_code,
-                        "name": item.name,
-                        "description": item.description,
-                        "content": item.effective_content,
-                        "override_prompt_creation": item.override_prompt_creation,
-                    });
-                    // Q-G-STUB1: surface the executable `steps` + `allowed_tools`
-                    // for class-16 Actions (the §0.9 Option B fallback path),
-                    // mirroring `handle_fetch_component`.
-                    if let Some(obj) = value.as_object_mut() {
-                        if let Some(steps) = item.steps {
-                            obj.insert("steps".to_string(), steps);
-                        }
-                        if let Some(allowed_tools) = item.allowed_tools {
-                            obj.insert("allowed_tools".to_string(), allowed_tools);
-                        }
-                    }
-                    return ExtFunctionResult::Return(json_to_monty(&value));
+    match port.resolve_component_by_name(&scope, &name, class_code).await {
+        Ok(Some(item)) => {
+            let mut value = serde_json::json!({
+                "id": item.id.to_string(),
+                "class_code": item.class_code,
+                "name": item.name,
+                "description": item.description,
+                "content": item.effective_content,
+                "override_prompt_creation": item.override_prompt_creation,
+            });
+            // Q-G-STUB1: surface the executable `steps` + `allowed_tools`
+            // for class-16 Actions (the §0.9 Option B fallback path),
+            // mirroring `handle_fetch_component`.
+            if let Some(obj) = value.as_object_mut() {
+                if let Some(steps) = item.steps {
+                    obj.insert("steps".to_string(), steps);
                 }
-                debug!("__resolve_component_by_name__: no validated component for name {name:?}");
-                ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+                if let Some(allowed_tools) = item.allowed_tools {
+                    obj.insert("allowed_tools".to_string(), allowed_tools);
+                }
             }
-            Err(e) => {
-                debug!("__resolve_component_by_name__: fetch failed: {e}");
-                ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
-            }
+            ExtFunctionResult::Return(json_to_monty(&value))
+        }
+        Ok(None) => {
+            debug!("__resolve_component_by_name__: no validated component for name {name:?}");
+            ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+        }
+        Err(e) => {
+            debug!("__resolve_component_by_name__: fetch failed: {e}");
+            ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
         }
     }
-
-    #[cfg(not(feature = "skills-db"))]
-    ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
 }
 
 /// Handle `host.compose_orchestrator(component_id, step_link, user_input)`
@@ -1906,7 +1843,7 @@ async fn handle_resolve_component_by_name(
 async fn handle_compose_orchestrator(
     args: &[MontyObject],
     thread: &Thread,
-    composition_port: Option<&Arc<dyn crate::executor::CompositionPort>>,
+    component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
 ) -> ExtFunctionResult {
     let component_id_str = args.first().map(monty_to_string).unwrap_or_default();
     let Ok(component_id) = uuid::Uuid::parse_str(&component_id_str) else {
@@ -1923,7 +1860,7 @@ async fn handle_compose_orchestrator(
         })));
     }
     let user_input = args.get(2).map(monty_to_string).unwrap_or_default();
-    let Some(port) = composition_port else {
+    let Some(port) = component_port else {
         return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
             "ok": false,
             "error": "composition_unavailable",
@@ -2013,90 +1950,86 @@ async fn handle_kohai_complete(
 }
 
 /// Handle `host.resolve_intent(user_input=...)` — Phase 2 of the basic-mode
-/// main process. The whole intent system is ONE Tool: this wraps the existing
-/// `intent_system::resolve_intent` SQL fn (`reborn_intent_inputs` lookup) —
+/// main process. The whole intent system is ONE Tool: this thin-calls the
+/// [`ComponentPort::resolve_intent`] port (the composition-side impl wraps the
+/// `intent_system::resolve_intent` SQL fn / `reborn_intent_inputs` lookup) —
 /// wiring, not new logic. Returns a Python dict the orchestrator dispatches on:
 ///   `{"status":"match","component_id":..,"component_class_code":..,
 ///     "step_link":<str|null>,"component_name":..}`
 ///   `{"status":"disambiguation","candidates":[..]}`
 ///   `{"status":"no_match"}`
 ///   `{"status":"error","error":..}`
-/// `skills-db`-gated: no skills DB → no intent table → `no_match` (semantically
-/// correct — the run falls through to Non-Matching-Mode / the LLM path). Scope
-/// is built from the thread's real identity (`thread.tenant_id` /
-/// `thread.agent_id` — F.1/F.3), mirroring `handle_fetch_component`.
+/// No bridge (`None` port, e.g. non-skills-db config / unit-test path) →
+/// `no_match` (semantically correct — the run falls through to Non-Matching-Mode
+/// / the LLM path). Scope is built from the thread's real identity
+/// (`thread.tenant_id` / `thread.agent_id` — F.1/F.3), mirroring
+/// `handle_fetch_component`.
 async fn handle_resolve_intent(
     _args: &[MontyObject],
     _kwargs: &[(MontyObject, MontyObject)],
     _thread: &Thread,
-    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+    component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
 ) -> ExtFunctionResult {
-    #[cfg(feature = "skills-db")]
-    {
-        use crate::memory::intent_system::{IntentResolution, IntentScope, resolve_intent};
+    use crate::memory::intent_system::IntentResolution;
 
-        let user_input = match extract_string_arg(_args, _kwargs, "user_input", 0) {
-            Some(s) => s,
-            None => {
-                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                    "status": "no_match",
-                    "error": "missing user_input",
-                })));
-            }
-        };
-        let Some(pool) = pg_pool else {
-            return ExtFunctionResult::Return(json_to_monty(
-                &serde_json::json!({"status":"no_match"}),
-            ));
-        };
-        let scope = IntentScope {
-            tenant_id: _thread.tenant_id.clone(),
-            user_id: _thread.user_id.clone(),
-            agent_id: _thread.agent_id.clone(),
-            project_id: _thread.project_id.to_string(),
-        };
-        match resolve_intent(pool, &scope, &user_input).await {
-            Ok(IntentResolution::Match {
-                component_id,
-                component_class_code,
-                step_link,
-                component_name,
-            }) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                "status": "match",
-                "component_id": component_id.to_string(),
-                "component_class_code": component_class_code,
-                "step_link": step_link,
-                "component_name": component_name,
-            }))),
-            Ok(IntentResolution::Disambiguation { candidates }) => {
-                let cands: Vec<serde_json::Value> = candidates
-                    .into_iter()
-                    .map(|c| {
-                        serde_json::json!({
-                            "component_id": c.component_id.to_string(),
-                            "component_class_code": c.component_class_code,
-                            "score": c.score,
-                            "class_label": c.class_label,
-                        })
-                    })
-                    .collect();
-                ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                    "status": "disambiguation",
-                    "candidates": cands,
-                })))
-            }
-            Ok(IntentResolution::NoMatch) => ExtFunctionResult::Return(json_to_monty(
-                &serde_json::json!({"status":"no_match"}),
-            )),
-            Err(e) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                "status": "error",
-                "error": e.to_string(),
-            }))),
+    let user_input = match extract_string_arg(_args, _kwargs, "user_input", 0) {
+        Some(s) => s,
+        None => {
+            return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                "status": "no_match",
+                "error": "missing user_input",
+            })));
         }
+    };
+    let Some(port) = component_port else {
+        return ExtFunctionResult::Return(json_to_monty(
+            &serde_json::json!({"status":"no_match"}),
+        ));
+    };
+    let scope = ComponentScope {
+        tenant_id: _thread.tenant_id.clone(),
+        user_id: _thread.user_id.clone(),
+        agent_id: _thread.agent_id.clone(),
+        project_id: _thread.project_id.to_string(),
+    };
+    match port.resolve_intent(&scope, &user_input).await {
+        Ok(IntentResolution::Match {
+            component_id,
+            component_class_code,
+            step_link,
+            component_name,
+        }) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "status": "match",
+            "component_id": component_id.to_string(),
+            "component_class_code": component_class_code,
+            "step_link": step_link,
+            "component_name": component_name,
+        }))),
+        Ok(IntentResolution::Disambiguation { candidates }) => {
+            let cands: Vec<serde_json::Value> = candidates
+                .into_iter()
+                .map(|c| {
+                    serde_json::json!({
+                        "component_id": c.component_id.to_string(),
+                        "component_class_code": c.component_class_code,
+                        "score": c.score,
+                        "class_label": c.class_label,
+                    })
+                })
+                .collect();
+            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                "status": "disambiguation",
+                "candidates": cands,
+            })))
+        }
+        Ok(IntentResolution::NoMatch) => ExtFunctionResult::Return(json_to_monty(
+            &serde_json::json!({"status":"no_match"}),
+        )),
+        Err(e) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "status": "error",
+            "error": e.to_string(),
+        }))),
     }
-
-    #[cfg(not(feature = "skills-db"))]
-    ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"status":"no_match"})))
 }
 
 /// The Capitalized category label for a component `class_code`, used as the
@@ -2941,11 +2874,10 @@ async fn handle_get_actions(
     }
 }
 
-/// Handle `__list_skills__()`.
-///
-/// Loads all `DocType::Skill` MemoryDocs from the project and returns them
-/// as a list of Python dicts. The Python orchestrator handles scoring,
-/// selection, and injection — Rust just provides data access.
+/// Load all `DocType::Skill` MemoryDocs visible to `thread` from the legacy
+/// in-memory `Store` fallback path (`host.skill_list` / `__list_skills__` when
+/// the skills-db fast path is unavailable). The Python orchestrator handles
+/// scoring, selection, and injection — this just provides data access.
 ///
 /// ## Setup-marker exclusion (v2 parity with v1 selector)
 ///
@@ -2962,53 +2894,13 @@ async fn handle_get_actions(
 /// the v1 path. Both paths implement the same rule: a one-time setup
 /// skill whose marker file has been written has finished its job and
 /// should not keep burning activation budget on every subsequent turn.
-async fn handle_list_skills(
-    _args: &[MontyObject],
+///
+/// Extracted (C.6 slice 4c-prep) so the composition-side `ComponentPort` impl
+/// can delegate its MemoryDoc fallback here without duplicating the rule.
+pub async fn list_skills_from_store(
+    store: &Arc<dyn Store>,
     thread: &Thread,
-    store: Option<&Arc<dyn Store>>,
-    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
-) -> ExtFunctionResult {
-    // --- skills-db fast path -----------------------------------------------
-    // When the `skills-db` feature is active and a Postgres pool is available,
-    // load skills from `reborn_skills` (V027) ordered by (class_code, prompt_uid)
-    // for deterministic KV-cache-stable injection.  The MemoryDoc fallback path
-    // below is still used when the pool is absent (e.g. in tests or when the
-    // feature is off).
-    #[cfg(feature = "skills-db")]
-    if let Some(pool) = pg_pool {
-        use crate::executor::db_skill_loader::{fetch_llm_skills_as_json, scope_from_thread_ids};
-        // Build the retrieval scope from the thread's real identity. v3 Phase F
-        // (Q-F2 / FIND-P8-01): `Thread` now carries `tenant_id` + `agent_id`
-        // (F.1); the subagent child inherits the parent's (F.2) and engine
-        // spawn-created threads keep the empty `#[serde(default)]` (Q-F5 -> A).
-        let scope = scope_from_thread_ids(
-            &thread.tenant_id,
-            &thread.user_id,
-            &thread.agent_id,
-            thread.project_id.0.to_string(),
-        );
-        match fetch_llm_skills_as_json(pool, &scope).await {
-            Ok(skills) => {
-                debug!(
-                    user_id = %thread.user_id,
-                    count = skills.len(),
-                    "__list_skills__: loaded from reborn_skills (skills-db)"
-                );
-                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!(skills)));
-            }
-            Err(e) => {
-                // Log and fall through to the MemoryDoc path so a DB error
-                // does not hard-fail the entire orchestrator step.
-                debug!("__list_skills__: skills-db fetch failed, falling back to MemoryDoc: {e}");
-            }
-        }
-    }
-
-    // --- MemoryDoc fallback path --------------------------------------------
-    let Some(store) = store else {
-        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])));
-    };
-
+) -> Vec<serde_json::Value> {
     // User's docs in their project (all doc types — skill filtering happens
     // below in the `filter(|d| d.doc_type == Skill)` pass).
     let mut docs = match store
@@ -3043,8 +2935,7 @@ async fn handle_list_skills(
         .map(|d| d.title.as_str())
         .collect();
 
-    let skills: Vec<serde_json::Value> = docs
-        .iter()
+    docs.iter()
         .filter(|d| d.doc_type == crate::types::memory::DocType::Skill)
         .filter(|d| {
             // Setup-marker exclusion. If the skill's activation
@@ -3076,8 +2967,25 @@ async fn handle_list_skills(
                 "metadata": d.metadata,
             })
         })
-        .collect();
+        .collect()
+}
 
+/// Handle `__list_skills__()` / `host.skill_list()` (C.6 slice 4c-prep).
+///
+/// Thin-calls [`ComponentPort::list_skills`] (the composition-side impl runs the
+/// skills-db fast path — sorted `reborn_skills` — with the MemoryDoc `Store`
+/// fallback above). Returns a Python list of skill dicts; the Python orchestrator
+/// handles scoring, selection, and injection. No bridge (`None` port, e.g.
+/// non-skills-db config / unit-test path with no store) → an empty list.
+async fn handle_list_skills(
+    _args: &[MontyObject],
+    thread: &Thread,
+    component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
+) -> ExtFunctionResult {
+    let skills = match component_port {
+        Some(port) => port.list_skills(thread).await.unwrap_or_default(),
+        None => Vec::new(),
+    };
     ExtFunctionResult::Return(json_to_monty(&serde_json::json!(skills)))
 }
 
@@ -3774,7 +3682,7 @@ fn dispatch_dynamic_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::intent_system::IntentCandidate;
+    use crate::memory::intent_system::{IntentCandidate, IntentResolution};
     use crate::memory::{
         ComponentItem, ComponentScope, FetchForTurnResult, RetrievalEngine, RetrievalSource,
         RetrievalSourceError, TurnRoutingSignals,
@@ -3896,18 +3804,18 @@ mod tests {
     }
 
     // ── C.4.5.17 Part 3a: host.compose_orchestrator handler ────────────────
-    use crate::executor::{CompositionPort, CompositionPortError};
+    use crate::executor::{ComponentPort, ComponentPortError};
     use crate::memory::composition::{ComposedProgram, ComposedStep, RustDirective, SkillRef};
     use std::future::Future;
     use std::pin::Pin;
 
-    /// A mock [`CompositionPort`] for the compose_orchestrator handler tests.
+    /// A mock [`ComponentPort`] for the compose_orchestrator handler tests.
     /// Returns a canned [`ComposedProgram`] (or an injected `Err`).
-    struct MockCompositionPort {
-        result: Mutex<Option<Result<ComposedProgram, CompositionPortError>>>,
+    struct MockComponentPort {
+        result: Mutex<Option<Result<ComposedProgram, ComponentPortError>>>,
     }
 
-    impl MockCompositionPort {
+    impl MockComponentPort {
         fn ok() -> Self {
             Self {
                 result: Mutex::new(Some(Ok(ComposedProgram {
@@ -3934,21 +3842,73 @@ mod tests {
                 }))),
             }
         }
-        fn failing(err: CompositionPortError) -> Self {
+        fn failing(err: ComponentPortError) -> Self {
             Self {
                 result: Mutex::new(Some(Err(err))),
             }
         }
     }
 
-    impl CompositionPort for MockCompositionPort {
+    impl ComponentPort for MockComponentPort {
+        fn resolve_intent(
+            &self,
+            _scope: &ComponentScope,
+            _user_input: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<IntentResolution, ComponentPortError>> + Send + '_>>
+        {
+            Box::pin(async { Err(ComponentPortError::Unavailable) })
+        }
+
+        fn fetch_component(
+            &self,
+            _scope: &ComponentScope,
+            _component_id: uuid::Uuid,
+            _class_code: i32,
+        ) -> Pin<
+            Box<
+                dyn Future<Output = Result<Option<ComponentItem>, ComponentPortError>>
+                    + Send
+                    + '_,
+            >,
+        > {
+            Box::pin(async { Err(ComponentPortError::Unavailable) })
+        }
+
+        fn resolve_component_by_name(
+            &self,
+            _scope: &ComponentScope,
+            _name: &str,
+            _class_code: i32,
+        ) -> Pin<
+            Box<
+                dyn Future<Output = Result<Option<ComponentItem>, ComponentPortError>>
+                    + Send
+                    + '_,
+            >,
+        > {
+            Box::pin(async { Err(ComponentPortError::Unavailable) })
+        }
+
+        fn list_skills(
+            &self,
+            _thread: &Thread,
+        ) -> Pin<
+            Box<
+                dyn Future<Output = Result<Vec<serde_json::Value>, ComponentPortError>>
+                    + Send
+                    + '_,
+            >,
+        > {
+            Box::pin(async { Err(ComponentPortError::Unavailable) })
+        }
+
         fn compose(
             &self,
             _scope: &ComponentScope,
             _component_id: uuid::Uuid,
             _step_link: &str,
             _user_input: &str,
-        ) -> Pin<Box<dyn Future<Output = Result<ComposedProgram, CompositionPortError>> + Send + '_>>
+        ) -> Pin<Box<dyn Future<Output = Result<ComposedProgram, ComponentPortError>> + Send + '_>>
         {
             let result = self.result.lock().unwrap().clone();
             Box::pin(async move { result.expect("mock result must be injected") })
@@ -3975,7 +3935,7 @@ mod tests {
     #[tokio::test]
     async fn compose_orchestrator_invalid_component_id_returns_error() {
         let thread = make_validate_thread();
-        let port: Arc<dyn CompositionPort> = Arc::new(MockCompositionPort::ok());
+        let port: Arc<dyn ComponentPort> = Arc::new(MockComponentPort::ok());
         let args = vec![
             MontyObject::String("not-a-uuid".into()),
             MontyObject::String("0:1".into()),
@@ -3995,7 +3955,7 @@ mod tests {
     #[tokio::test]
     async fn compose_orchestrator_missing_step_link_returns_error() {
         let thread = make_validate_thread();
-        let port: Arc<dyn CompositionPort> = Arc::new(MockCompositionPort::ok());
+        let port: Arc<dyn ComponentPort> = Arc::new(MockComponentPort::ok());
         let args = vec![MontyObject::String(uuid::Uuid::nil().to_string())];
         let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
         let json = match result {
@@ -4009,7 +3969,7 @@ mod tests {
     #[tokio::test]
     async fn compose_orchestrator_mock_port_returns_program() {
         let thread = make_validate_thread();
-        let port: Arc<dyn CompositionPort> = Arc::new(MockCompositionPort::ok());
+        let port: Arc<dyn ComponentPort> = Arc::new(MockComponentPort::ok());
         let args = vec![
             MontyObject::String(uuid::Uuid::nil().to_string()),
             MontyObject::String("0:1".into()),
@@ -4039,8 +3999,8 @@ mod tests {
     #[tokio::test]
     async fn compose_orchestrator_port_failure_surfaces_error() {
         let thread = make_validate_thread();
-        let port: Arc<dyn CompositionPort> = Arc::new(MockCompositionPort::failing(
-            CompositionPortError::RecipeNotFound {
+        let port: Arc<dyn ComponentPort> = Arc::new(MockComponentPort::failing(
+            ComponentPortError::RecipeNotFound {
                 component_id: uuid::Uuid::nil().to_string(),
             },
         ));
@@ -4470,8 +4430,6 @@ mod tests {
                 None,
                 None,
                 &gate,
-                #[cfg(feature = "skills-db")]
-                None,
                 None,
                 None,
                 None,
@@ -4510,8 +4468,6 @@ mod tests {
                 None,
                 None,
                 &gate,
-                #[cfg(feature = "skills-db")]
-                None,
                 None,
                 None,
                 None,
@@ -4540,8 +4496,6 @@ mod tests {
                 None,
                 None,
                 &gate,
-                #[cfg(feature = "skills-db")]
-                None,
                 None,
                 None,
                 None,
@@ -4602,8 +4556,6 @@ mod tests {
                 None,
                 None,
                 &gate,
-                #[cfg(feature = "skills-db")]
-                None,
                 None,
                 None,
                 None,
@@ -4646,8 +4598,6 @@ mod tests {
                 None,
                 None,
                 &gate,
-                #[cfg(feature = "skills-db")]
-                None,
                 None,
                 None,
                 None,
@@ -5046,16 +4996,16 @@ mod tests {
         assert!(matches!(outcome, ThreadOutcome::Stopped));
     }
 
-    /// Regression test for chtugha/brassclaw#2084 — drives the private
-    /// `handle_list_skills` call site end-to-end (not just the
+    /// Regression test for chtugha/brassclaw#2084 — drives the
+    /// `list_skills_from_store` caller end-to-end (not just the
     /// `list_skills_global` helper). This is the caller-level test required by
     /// `.claude/rules/testing.md` ("Test Through the Caller, Not Just the
-    /// Helper"): a future regression that reverts `handle_list_skills` back to
+    /// Helper"): a future regression that reverts the MemoryDoc fallback back to
     /// `list_memory_docs_with_shared(thread.project_id, &thread.user_id)` would
     /// slip past a helper-only unit test but must fail this one, because the
     /// shared skill lives in a different project than the caller's thread.
     #[tokio::test]
-    async fn handle_list_skills_returns_shared_skills_from_other_projects() {
+    async fn list_skills_from_store_returns_shared_skills_from_other_projects() {
         use crate::types::shared_owner_id;
         use crate::types::thread::{ThreadConfig, ThreadType};
 
@@ -5101,23 +5051,9 @@ mod tests {
             ThreadConfig::default(),
         );
 
-        let result = handle_list_skills(
-            &[],
-            &thread,
-            Some(&store),
-            #[cfg(feature = "skills-db")]
-            None,
-        )
-        .await;
-        let ExtFunctionResult::Return(obj) = result else {
-            panic!("handle_list_skills did not return a value");
-        };
-        let json = monty_to_json(&obj);
-        let arr = json
-            .as_array()
-            .expect("handle_list_skills must return a JSON array");
+        let skills = list_skills_from_store(&store, &thread).await;
 
-        let titles: Vec<&str> = arr
+        let titles: Vec<&str> = skills
             .iter()
             .filter_map(|v| v.get("title").and_then(|t| t.as_str()))
             .collect();
@@ -5135,11 +5071,54 @@ mod tests {
             "non-skill docs must be filtered out — got {titles:?}"
         );
         assert_eq!(
-            arr.len(),
+            skills.len(),
             2,
             "expected exactly 2 skills (shared + alice), got {}: {titles:?}",
-            arr.len()
+            skills.len()
         );
+    }
+
+    /// `handle_list_skills` thin-calls `ComponentPort::list_skills`; with no
+    /// port wired (`None`) it degrades to an empty list (C.6 slice 4c-prep).
+    #[tokio::test]
+    async fn handle_list_skills_no_port_returns_empty_list() {
+        let thread = phase_f7_thread("deploy now");
+        let result = handle_list_skills(&[], &thread, None).await;
+        let ExtFunctionResult::Return(obj) = result else {
+            panic!("handle_list_skills did not return a value");
+        };
+        let json = monty_to_json(&obj);
+        let arr = json
+            .as_array()
+            .expect("handle_list_skills must return a JSON array");
+        assert!(arr.is_empty(), "no-port path must return an empty list");
+    }
+
+    /// `handle_resolve_intent` thin-calls `ComponentPort::resolve_intent`; with
+    /// no port wired (`None`) it degrades to `{"status":"no_match"}` (the
+    /// orchestrator's Non-Matching-Mode trigger), and a missing `user_input`
+    /// arg degrades to `{"status":"no_match","error":"missing user_input"}`.
+    #[tokio::test]
+    async fn handle_resolve_intent_no_port_returns_no_match() {
+        let thread = phase_f7_thread("deploy now");
+
+        // Missing user_input arg.
+        let result = handle_resolve_intent(&[], &[], &thread, None).await;
+        let ExtFunctionResult::Return(obj) = result else {
+            panic!("handle_resolve_intent did not return a value");
+        };
+        let json = monty_to_json(&obj);
+        assert_eq!(json["status"], serde_json::json!("no_match"));
+        assert_eq!(json["error"], serde_json::json!("missing user_input"));
+
+        // Present user_input, no port.
+        let args = vec![MontyObject::String("deploy the thing".into())];
+        let result = handle_resolve_intent(&args, &[], &thread, None).await;
+        let ExtFunctionResult::Return(obj) = result else {
+            panic!("handle_resolve_intent did not return a value");
+        };
+        let json = monty_to_json(&obj);
+        assert_eq!(json["status"], serde_json::json!("no_match"));
     }
 
     // ── handle_llm_complete model forwarding ────────────────────
@@ -7475,23 +7454,17 @@ FINAL(batch_error_count)
     }
 
     /// Phase G.2 — `handle_resolve_component_by_name` returns `Value::Null`
-    /// whenever the SEC-01-validated named lookup cannot run: no `pg_pool`
-    /// (non-skills-db config / unit-test path), an empty name, or a missing
-    /// class-code arg. The skills-db-populated (validated component found)
-    /// case is a DB-integration test (composition `tests/`,
+    /// whenever the SEC-01-validated named lookup cannot run: no component port
+    /// (`None` port — non-skills-db config / unit-test path), an empty name, or
+    /// a missing class-code arg. The skills-db-populated (validated component
+    /// found) case is a DB-integration test (composition `tests/`,
     /// skip-if-no-docker) mirroring `fetch_component.rs`.
     #[tokio::test]
     async fn phase_g2_resolve_by_name_returns_null_on_unresolvable_paths() {
         let thread = phase_f7_thread("deploy now");
 
         async fn null_from(args: Vec<MontyObject>, thread: &Thread) -> serde_json::Value {
-            let result = handle_resolve_component_by_name(
-                &args,
-                thread,
-                #[cfg(feature = "skills-db")]
-                None,
-            )
-            .await;
+            let result = handle_resolve_component_by_name(&args, thread, None).await;
             match result {
                 ExtFunctionResult::Return(obj) => monty_to_json(&obj),
                 other => panic!("expected Return, got: {other:?}"),

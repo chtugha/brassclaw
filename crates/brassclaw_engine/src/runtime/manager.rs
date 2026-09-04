@@ -58,21 +58,14 @@ pub struct ThreadManager {
     /// `Some` overrides `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` (Step 9.3).
     /// `None` falls back to the env-var / compiled-in DB-less default.
     max_duration_secs: Option<u64>,
-    /// Postgres pool for DB-backed skill + component loading (`skills-db`
-    /// feature). Plumbed into every spawned `ExecutionLoop` via
-    /// [`Self::with_pg_pool`] so the SEC-01-validated orchestrator host
-    /// functions (`handle_list_skills`, `handle_fetch_component`,
-    /// `handle_resolve_component_by_name`) can read `reborn_skills` /
-    /// `reborn_components` instead of falling back to the legacy in-memory
-    /// `Store`. `None` (the default) keeps the legacy in-memory / `RamSource`
-    /// behaviour.
-    #[cfg(feature = "skills-db")]
-    pg_pool: Option<std::sync::Arc<brassclaw_pg::PgPool>>,
-    /// Step C.4.5.17 — composition-system port (the IBS) backing
-    /// `host.compose_orchestrator`. `Some` once the composition layer wires a
-    /// `PgCompositionPort`-backed impl; `None` leaves the host-call dormant
-    /// (degrades gracefully). Plumbed into every spawned `ExecutionLoop`.
-    composition_port: Option<std::sync::Arc<dyn crate::executor::CompositionPort>>,
+    /// Step C.4.5.17 / C.6 slice 4c-prep — component-store + composition-system
+    /// port (the IBS) backing `host.compose_orchestrator` /
+    /// `host.resolve_intent` / `host.fetch_component` /
+    /// `host.resolve_component_by_name` / `host.list_skills`. `Some` once the
+    /// composition layer wires a `PgCompositionPort`-backed impl; `None` leaves
+    /// the host-calls dormant (degrade gracefully). Plumbed into every spawned
+    /// `ExecutionLoop`.
+    component_port: Option<std::sync::Arc<dyn crate::executor::ComponentPort>>,
 }
 
 impl ThreadManager {
@@ -99,9 +92,7 @@ impl ThreadManager {
             event_tx,
             gate_controller: tokio::sync::RwLock::new(crate::gate::CancellingGateController::arc()),
             max_duration_secs: None,
-            #[cfg(feature = "skills-db")]
-            pg_pool: None,
-            composition_port: None,
+            component_port: None,
         }
     }
 
@@ -115,29 +106,19 @@ impl ThreadManager {
         self
     }
 
-    /// Set a Postgres pool for DB-backed skill + component loading
-    /// (`skills-db` feature). The pool is plumbed into every spawned
-    /// [`ExecutionLoop`] so the SEC-01-validated orchestrator host functions
-    /// (`handle_list_skills`, `handle_fetch_component`,
-    /// `handle_resolve_component_by_name`) can read `reborn_skills` /
-    /// `reborn_components` instead of falling back to the legacy in-memory
-    /// `Store`. Hosts without a pool keep the legacy in-memory behaviour.
-    #[cfg(feature = "skills-db")]
-    pub fn with_pg_pool(mut self, pool: std::sync::Arc<brassclaw_pg::PgPool>) -> Self {
-        self.pg_pool = Some(pool);
-        self
-    }
-
-    /// Step C.4.5.17 — attach the composition-system port (the IBS) backing
-    /// `host.compose_orchestrator`. The impl (composition) performs recipe
-    /// fetch → IBS `build_instruction` → `compose_program`. Plumbed into every
-    /// spawned `ExecutionLoop`; `None` (the default) leaves the host-call
-    /// dormant.
-    pub fn with_composition_port(
+    /// Step C.4.5.17 / C.6 slice 4c-prep — attach the component-store +
+    /// composition-system port (the IBS) backing `host.compose_orchestrator` /
+    /// `host.resolve_intent` / `host.fetch_component` /
+    /// `host.resolve_component_by_name` / `host.list_skills`. The impl
+    /// (composition) performs recipe fetch → IBS `build_instruction` →
+    /// `compose_program` + delegates the component/intent free fns. Plumbed
+    /// into every spawned `ExecutionLoop`; `None` (the default) leaves the
+    /// host-calls dormant.
+    pub fn with_component_port(
         mut self,
-        port: std::sync::Arc<dyn crate::executor::CompositionPort>,
+        port: std::sync::Arc<dyn crate::executor::ComponentPort>,
     ) -> Self {
-        self.composition_port = Some(port);
+        self.component_port = Some(port);
         self
     }
 
@@ -442,22 +423,16 @@ impl ThreadManager {
         .with_retrieval(retrieval)
         .with_store(Arc::clone(&self.store))
         .with_retrieval_source(retrieval_source);
-        // Step C.4.5.17: plumb the composition-system port (the IBS) so the
-        // `host.compose_orchestrator` handler can thin-call it. `None` (the
-        // default until the composition layer wires `PgCompositionPort`) leaves
-        // the host-call dormant — it degrades gracefully.
-        if let Some(port) = self.composition_port.clone() {
-            exec_loop = exec_loop.with_composition_port(port);
-        }
-        // v3 Phase H4.8: plumb the DB pool into the ExecutionLoop so the
-        // SEC-01-validated orchestrator host functions can read
-        // `reborn_skills` / `reborn_components` instead of falling back to
-        // the legacy in-memory `Store`.
-        #[cfg(feature = "skills-db")]
-        {
-            if let Some(pool) = self.pg_pool.clone() {
-                exec_loop = exec_loop.with_pg_pool(pool);
-            }
+        // Step C.4.5.17 / C.6 slice 4c-prep: plumb the component-store +
+        // composition-system port (the IBS) so the `host.compose_orchestrator` /
+        // `host.resolve_intent` / `host.fetch_component` /
+        // `host.resolve_component_by_name` / `host.list_skills` handlers can
+        // thin-call it. `None` (the default until the composition layer wires
+        // `PgCompositionPort`) leaves the host-calls dormant — they degrade
+        // gracefully. The pool the impl reads lives inside the port now (the
+        // separate `pg_pool` plumbing was collapsed into `component_port`).
+        if let Some(port) = self.component_port.clone() {
+            exec_loop = exec_loop.with_component_port(port);
         }
         // Thread DB-backed max duration into the execution loop (Step 9.3).
         if let Some(secs) = self.max_duration_secs {
