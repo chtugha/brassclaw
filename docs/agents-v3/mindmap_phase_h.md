@@ -2532,3 +2532,26 @@ turn driver, replacing the `canonical.rs` stage pipeline; end-to-end verify the
 script drives a turn. Then C.7 retires `execute_orchestrator`/`default.py` +
 updates the stale doc-comments at orchestrator.rs :1946/:2011/:2220/:2240/:2298/
 :3154.
+
+### C.6 grounding + forks LOCKED (2026-09-04)
+C.6 = production driver switch. Current driver: `TurnRunnerWorker`
+(turn_runner.rs:218) → `try_claim_and_run` → `driver_registry` →
+`DefaultExecutorPipeline::execute` (canonical.rs:20 stage pipeline). C.6
+replaces it with a cross-turn-persistent Monty session running basic_mode.py.
+**C6-2 feasibility CONFIRMED:** `MontyRun::start` consumes self →
+`RunProgress<T>`; `RunProgress::FunctionCall(call).resume(value, print)` resumes
+with a FRESH print writer per call; the suspended `call` is owned/`'static`
+(parameterized only by tracker T) and `Send` (execute_orchestrator already holds
+it across `.await`). So a live VM handle CAN be parked across turns in a
+conversation-keyed registry and resumed next turn. Mechanism: a new
+`host.await_next_turn()` arm yields the suspended `call` back to the caller
+(park) instead of resolving+resuming. Forks LOCKED: C6-1=B (direct
+TurnRunnerWorker path, bypass driver_registry), C6-2=B (TRUE VM persistence —
+rework basic_mode.py into a resumable long-running loop + park/resume primitive
++ session registry; heaviest, chosen deliberately), C6-3=B (delete canonical.rs
+stage pipeline outright in C.6; stage logic already in host.* arms),
+C6-4=C (CI/Docker e2e only, skip local). Nested subplan:
+`subplan_problem_stepC6_production_driver_switch_of_saved_plan_to_v3.md`
+(6 slices: 1=engine MontySession+park primitive, 2=rework basic_mode.py, 3=
+session registry, 4=TurnRunnerWorker direct path, 5=retire canonical.rs, 6=
+clippy+tests+mark done).

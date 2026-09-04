@@ -5977,6 +5977,21 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   stages with `TurnRunnerWorker` → one cross-turn persistent Monty session
 >   (D-C1) running the basic-mode orchestrator. Retire `canonical.rs` stage
 >   pipeline as the driver; reuse stage logic as host fns.
+>   **C.6 nested subplan (2026-09-04):**
+>   `./docs/agents-v3/subplan_problem_stepC6_production_driver_switch_of_saved_plan_to_v3.md`.
+>   Locked forks: C6-1=B (direct `TurnRunnerWorker` path, bypass
+>   `driver_registry`); C6-2=B (TRUE VM persistence — live `MontyRun`/
+>   `RunProgress` handle per conversation across turns; rework `basic_mode.py`
+>   into a resumable long-running loop + VM park/resume primitive +
+>   conversation-keyed session registry; feasibility CONFIRMED —
+>   `RunProgress::FunctionCall` is owned/`Send`, resumed with a fresh print
+>   writer, already held across `.await` in `execute_orchestrator`);
+>   C6-3=B (delete `canonical.rs` stage pipeline outright in C.6; stage logic
+>   already in the `host.*` arms); C6-4=C (CI/Docker e2e only, skip local).
+>   Slices: 1=engine `MontySession`+park/resume primitive (`host.await_next_
+>   turn()`), 2=rework `basic_mode.py` into a resumable loop, 3=conversation-
+>   keyed session registry, 4=`TurnRunnerWorker` direct path, 5=retire
+>   `canonical.rs` stages, 6=both configs clippy + tests + mark done.
 > - **C.7 — Retire dead Model-A code + verify both configs green.** Delete
 >   `execute_orchestrator`/`ExecutionLoop`/`ThreadManager`/`brassclaw_engine::
 >   runtime` + `default.py` (the sole caller of the retired meta-primitives);
