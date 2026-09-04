@@ -2895,6 +2895,14 @@ const LEAF_SKILL_TAGS: &[&str] = &["02:orchestrator", "05:validator"];
 /// absent, unlike `LEAF_SKILL_TAGS`.
 const SPAWN_SKILL_TAGS: &[&str] = &["02:orchestrator"];
 
+/// consumer_tags for the main trigger-management skills (list/create/remove leaf
+/// skills + the skill-triggers domain) — transcribed verbatim from the doc. These
+/// are orchestrator-only. Note the variant list skills (skill-trigger-list-active,
+/// skill-trigger-list-scheduled) are an exception: the doc gives them the full
+/// `LEAF_SKILL_TAGS` (`["02:orchestrator","05:validator"]`), so they use
+/// `leaf_skill(...)` rather than this const.
+const TRIGGER_SKILL_TAGS: &[&str] = &["02:orchestrator"];
+
 /// Build a `NewPgSkill` row from the variable parts. `intent_examples` is
 /// `json!([])` because the doc's leaf/domain skill definitions carry no
 /// intent examples (leaf skills are loaded via recipe steps, not direct intent
@@ -8994,8 +9002,299 @@ async fn seed_process_group(
         .append_children(cat_process, &ext_spawn_skill_recipe_children)
         .await?;
 
+    // 10. Trigger PythonCode (class 22) — chunk 6f. Orchestrator executors that
+    //     call host.trigger_list / host.trigger_create / host.trigger_remove. All
+    //     use pc_row (SEC-01-safe consumer_tags ["01:monty","02:orchestrator"]).
+    //     Bodies transcribed verbatim from Step 17.7 / 17.x.1 / 17.x.3.1-2.
+    let pc_exec_trigger_list = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-trigger-list",
+                "Orchestrator executor: calls host.trigger_list to list configured \
+                 triggers. Input: scope (string). Output: [{name, schedule, recipe_name, …}].",
+                PC_EXEC_TRIGGER_LIST_CONTENT,
+            ),
+            "pc-exec-trigger-list",
+        )
+        .await?;
+    let pc_exec_trigger_list_active = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-trigger-list-active",
+                "Orchestrator executor: calls host.trigger_list(scope='active') to list \
+                 only currently active (running/enabled) triggers. No LLM needed.",
+                PC_EXEC_TRIGGER_LIST_ACTIVE_CONTENT,
+            ),
+            "pc-exec-trigger-list-active",
+        )
+        .await?;
+    let pc_exec_trigger_list_scheduled = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-trigger-list-scheduled",
+                "Orchestrator executor: calls host.trigger_list(scope='scheduled') to list \
+                 only scheduled (cron/time-based) triggers. No LLM needed.",
+                PC_EXEC_TRIGGER_LIST_SCHEDULED_CONTENT,
+            ),
+            "pc-exec-trigger-list-scheduled",
+        )
+        .await?;
+    let pc_exec_trigger_resolve_and_remove = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-trigger-resolve-and-remove",
+                "Orchestrator executor: lists all triggers, finds the one matching the \
+                 given name exactly, and removes it. Input: trigger_name (string). Output: \
+                 {removed: bool, trigger_name: string, error?: string}.",
+                PC_EXEC_TRIGGER_RESOLVE_AND_REMOVE_CONTENT,
+            ),
+            "pc-exec-trigger-resolve-and-remove",
+        )
+        .await?;
+
+    // 11. Trigger Leaf Skills (class 1) + Domain Skill (class 2) — chunk 6f.
+    //     Main skills (list/create/remove + domain) carry TRIGGER_SKILL_TAGS
+    //     (["02:orchestrator"]); the variant list skills (active/scheduled) carry
+    //     the full LEAF_SKILL_TAGS per doc verbatim. Bodies verbatim from
+    //     Step 17.8-17.11 / 17.x.3.3-4.
+    let skill_trigger_list = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-trigger-list",
+                "Leaf skill: how to list all configured triggers in the active scope.",
+                SKILL_TRIGGER_LIST_BODY,
+                1,
+                TRIGGER_SKILL_TAGS,
+            ),
+            "skill-trigger-list",
+        )
+        .await?;
+    let skill_trigger_create = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-trigger-create",
+                "Leaf skill: how to create a scheduled trigger for a recipe.",
+                SKILL_TRIGGER_CREATE_BODY,
+                1,
+                TRIGGER_SKILL_TAGS,
+            ),
+            "skill-trigger-create",
+        )
+        .await?;
+    let skill_trigger_remove = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-trigger-remove",
+                "Leaf skill: how to remove a configured trigger.",
+                SKILL_TRIGGER_REMOVE_BODY,
+                1,
+                TRIGGER_SKILL_TAGS,
+            ),
+            "skill-trigger-remove",
+        )
+        .await?;
+    let skill_trigger_list_active = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-trigger-list-active",
+                "Leaf skill: how to list only currently active triggers.",
+                SKILL_TRIGGER_LIST_ACTIVE_BODY,
+            ),
+            "skill-trigger-list-active",
+        )
+        .await?;
+    let skill_trigger_list_scheduled = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-trigger-list-scheduled",
+                "Leaf skill: how to list only scheduled (cron/time-based) triggers.",
+                SKILL_TRIGGER_LIST_SCHEDULED_BODY,
+            ),
+            "skill-trigger-list-scheduled",
+        )
+        .await?;
+    let skill_triggers = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-triggers",
+                "Domain skill: trigger management — list, create, remove scheduled runs.",
+                SKILL_TRIGGERS_BODY,
+                2,
+                TRIGGER_SKILL_TAGS,
+            ),
+            "skill-triggers",
+        )
+        .await?;
+
+    // 12. Trigger Recipes (class 21) — chunk 6f. 3 Tier-0 list recipes
+    //     (trigger-list/active/scheduled — deterministic, scope pre-baked) +
+    //     3 Tier-1 recipes (trigger-create/remove/remove-by-name — ExternalWrite,
+    //     LLM confirmation). step_link synthesized "0:1-0:E"; stepnumber = 1-based
+    //     position; the doc's flat step format is preserved verbatim in the
+    //     RECIPE_TRIGGER_*_YAML constants.
+    let recipe_trigger_list = stores
+        .seed_recipe(
+            &tenant,
+            "trigger-list",
+            "List all configured triggers in the active scope.",
+            true,
+            RECIPE_TRIGGER_LIST_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-trigger-list ToolSkill binding", "component", &[ts_trigger_list]),
+                step_entry(2, "orchestrator", "PythonCode calls host.trigger_list(scope)", "component", &[pc_exec_trigger_list]),
+            ],
+            &[
+                json!({"input": "list my triggers", "class": 1}),
+                json!({"input": "what triggers are configured", "class": 1}),
+                json!({"input": "show scheduled tasks", "class": 1}),
+                json!({"input": "what is scheduled", "class": 1}),
+                json!({"input": "list system triggers", "class": 2}),
+                json!({"input": "trigger list", "class": 1}),
+                json!({"input": "show me all my scheduled runs", "class": 2}),
+                json!({"input": "what recipes are scheduled to run", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_trigger_list_active = stores
+        .seed_recipe(
+            &tenant,
+            "trigger-list-active",
+            "List only currently active triggers (scope='active').",
+            true,
+            RECIPE_TRIGGER_LIST_ACTIVE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-trigger-list ToolSkill binding", "component", &[ts_trigger_list]),
+                step_entry(2, "orchestrator", "PythonCode calls host.trigger_list(scope='active')", "component", &[pc_exec_trigger_list_active]),
+            ],
+            &[
+                json!({"input": "show active triggers", "class": 1}),
+                json!({"input": "what triggers are currently running", "class": 1}),
+                json!({"input": "list enabled triggers", "class": 1}),
+                json!({"input": "what is currently firing", "class": 2}),
+                json!({"input": "show me the active automations", "class": 2}),
+                json!({"input": "active trigger list", "class": 1}),
+                json!({"input": "what triggers are live right now", "class": 1}),
+                json!({"input": "show running triggers", "class": 1}),
+                json!({"input": "which triggers are enabled", "class": 1}),
+                json!({"input": "list triggers that are currently on", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_trigger_list_scheduled = stores
+        .seed_recipe(
+            &tenant,
+            "trigger-list-scheduled",
+            "List only scheduled (cron/time-based) triggers (scope='scheduled').",
+            true,
+            RECIPE_TRIGGER_LIST_SCHEDULED_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-trigger-list ToolSkill binding", "component", &[ts_trigger_list]),
+                step_entry(2, "orchestrator", "PythonCode calls host.trigger_list(scope='scheduled')", "component", &[pc_exec_trigger_list_scheduled]),
+            ],
+            &[
+                json!({"input": "show scheduled triggers", "class": 1}),
+                json!({"input": "what triggers run on a schedule", "class": 1}),
+                json!({"input": "list cron triggers", "class": 1}),
+                json!({"input": "what is scheduled to run", "class": 2}),
+                json!({"input": "show me my scheduled automations", "class": 2}),
+                json!({"input": "scheduled trigger list", "class": 1}),
+                json!({"input": "what runs on a timer", "class": 2}),
+                json!({"input": "list time-based triggers", "class": 1}),
+                json!({"input": "show recurring triggers", "class": 2}),
+                json!({"input": "what will run next based on schedule", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_trigger_create = stores
+        .seed_recipe(
+            &tenant,
+            "trigger-create",
+            "Create a scheduled trigger for a recipe, with user confirmation.",
+            false,
+            RECIPE_TRIGGER_CREATE_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load skill-trigger-create leaf skill body (creation procedure)", "component", &[skill_trigger_create]),
+                step_entry(2, "orchestrator", "LLM translates schedule to cron, confirms with user, calls ts-trigger-create", "text", &[]),
+                step_entry(3, "rust", "Pre-load ToolSkill bindings for list (pre-check) and create", "component", &[ts_trigger_list, ts_trigger_create]),
+            ],
+            &[
+                json!({"input": "create a trigger to run X every morning", "class": 1}),
+                json!({"input": "schedule recipe X every Monday", "class": 1}),
+                json!({"input": "set up a daily trigger", "class": 1}),
+                json!({"input": "run this recipe every hour", "class": 2}),
+                json!({"input": "trigger create", "class": 1}),
+                json!({"input": "schedule this recipe every 15 minutes", "class": 2}),
+                json!({"input": "create a cron trigger for this recipe", "class": 1}),
+                json!({"input": "set up an hourly trigger for X", "class": 1}),
+                json!({"input": "automate this task to run weekly", "class": 2}),
+                json!({"input": "schedule a recurring execution for this recipe", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_trigger_remove = stores
+        .seed_recipe(
+            &tenant,
+            "trigger-remove",
+            "Remove a configured trigger by name, with user confirmation.",
+            false,
+            RECIPE_TRIGGER_REMOVE_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load skill-trigger-remove leaf skill body (removal procedure)", "component", &[skill_trigger_remove]),
+                step_entry(2, "orchestrator", "LLM confirms trigger name with user, warns about stoppage, calls ts-trigger-remove", "text", &[]),
+                step_entry(3, "rust", "Pre-load ToolSkill bindings for list (pre-check) and remove", "component", &[ts_trigger_list, ts_trigger_remove]),
+            ],
+            &[
+                json!({"input": "remove trigger X", "class": 1}),
+                json!({"input": "delete this scheduled task", "class": 1}),
+                json!({"input": "stop running recipe X", "class": 1}),
+                json!({"input": "cancel the daily trigger", "class": 2}),
+                json!({"input": "trigger remove", "class": 1}),
+                json!({"input": "disable this scheduled trigger", "class": 2}),
+                json!({"input": "stop the hourly trigger", "class": 1}),
+                json!({"input": "delete the trigger named X", "class": 1}),
+                json!({"input": "unschedule this recurring recipe", "class": 2}),
+                json!({"input": "deactivate and remove this trigger", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_trigger_remove_by_name = stores
+        .seed_recipe(
+            &tenant,
+            "trigger-remove-by-name",
+            "Remove a trigger by exact name — LLM confirms intent, then PythonCode resolves and removes.",
+            false,
+            RECIPE_TRIGGER_REMOVE_BY_NAME_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load skill-trigger-remove leaf skill body (safety procedure)", "component", &[skill_trigger_remove]),
+                step_entry(2, "orchestrator", "LLM confirms trigger name with user and warns about irreversibility", "text", &[]),
+                step_entry(3, "rust", "Pre-load list + remove ToolSkill bindings", "component", &[ts_trigger_list, ts_trigger_remove]),
+                step_entry(4, "orchestrator", "PythonCode: list triggers, find by exact name, remove — no LLM disambiguation", "component", &[pc_exec_trigger_resolve_and_remove]),
+            ],
+            &[
+                json!({"input": "remove the trigger named X", "class": 1}),
+                json!({"input": "delete trigger X", "class": 1}),
+                json!({"input": "stop the trigger called X", "class": 1}),
+                json!({"input": "cancel trigger by name", "class": 1}),
+                json!({"input": "remove the scheduled trigger X", "class": 2}),
+                json!({"input": "disable and remove trigger named X", "class": 2}),
+                json!({"input": "delete this specific trigger by name", "class": 1}),
+                json!({"input": "trigger remove by name", "class": 1}),
+            ],
+        )
+        .await?;
+
     // Append the 3 trigger tools + 3 toolskills to ext-trigger-management and the
-    // primary (PythonCode + leaf skills + recipes appended in chunk 6f).
+    // primary (dedup-idempotent; seeded in chunk 6a).
     let ext_trigger_children: Vec<Uuid> = vec![
         tool_trigger_create, ts_trigger_create, tool_trigger_list, ts_trigger_list,
         tool_trigger_remove, ts_trigger_remove,
@@ -9003,8 +9302,27 @@ async fn seed_process_group(
     stores.append_children(cat_trigger, &ext_trigger_children).await?;
     stores.append_children(cat_process, &ext_trigger_children).await?;
 
+    // Append the 4 trigger PythonCode + 5 leaf skills + 1 domain + 6 recipes to
+    // ext-trigger-management and the primary (dedup-idempotent). Completes the
+    // ext-trigger-management child set: 3 tools + 3 ts + 4 pc + 5 leaf skills
+    // + 1 domain + 6 recipes.
+    let ext_trigger_pc_skill_recipe_children: Vec<Uuid> = vec![
+        pc_exec_trigger_list, pc_exec_trigger_list_active, pc_exec_trigger_list_scheduled,
+        pc_exec_trigger_resolve_and_remove, skill_trigger_list, skill_trigger_create,
+        skill_trigger_remove, skill_trigger_list_active, skill_trigger_list_scheduled,
+        skill_triggers, recipe_trigger_list, recipe_trigger_list_active,
+        recipe_trigger_list_scheduled, recipe_trigger_create, recipe_trigger_remove,
+        recipe_trigger_remove_by_name,
+    ];
+    stores
+        .append_children(cat_trigger, &ext_trigger_pc_skill_recipe_children)
+        .await?;
+    stores
+        .append_children(cat_process, &ext_trigger_pc_skill_recipe_children)
+        .await?;
+
     tracing::debug!(
-        "seeded process group chunk 6e: spawn subgroup (6 leaf skills + 1 domain + 5 Tier-1 recipes) + catalogue appends (spawn subgroup COMPLETE: 1 tool + 1 ts + 6 leaf skills + 1 domain + 5 recipes)"
+        "seeded process group chunk 6f: trigger subgroup (4 pc + 5 leaf skills + 1 domain + 6 recipes) + catalogue appends (trigger subgroup COMPLETE: 3 tools + 3 ts + 4 pc + 5 leaf skills + 1 domain + 6 recipes; process group COMPLETE: shell + spawn + triggers)"
     );
 
     Ok(())
@@ -11095,6 +11413,229 @@ const RECIPE_SUBAGENT_QUERY_YAML: &str = r#"step_descriptions: [
     "channel": "rust",
     "include": ["<uuid:ts-spawn-subagent>"],
     "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+"#;
+
+// ---------------------------------------------------------------------------
+// Process group chunk 6f — trigger PythonCode bodies + trigger skill bodies
+// (verbatim doc source) + trigger recipe YAML sources (verbatim doc flat format).
+// ---------------------------------------------------------------------------
+
+const PC_EXEC_TRIGGER_LIST_CONTENT: &str = r#"# Orchestrator executor body.
+_scope = "{{vars.slot0}}" if "{{vars.slot0}}" else "all"
+result = host.trigger_list(scope=_scope)
+"#;
+
+const PC_EXEC_TRIGGER_LIST_ACTIVE_CONTENT: &str = r#"# Orchestrator executor body.
+result = host.trigger_list(scope="active")
+"#;
+
+const PC_EXEC_TRIGGER_LIST_SCHEDULED_CONTENT: &str = r#"# Orchestrator executor body.
+result = host.trigger_list(scope="scheduled")
+"#;
+
+const PC_EXEC_TRIGGER_RESOLVE_AND_REMOVE_CONTENT: &str = r#"# Orchestrator executor body. No I/O, no imports, no network.
+# IBS bakes in slot values before execution.
+_trigger_name = "{{vars.slot0}}"
+_list_result  = host.trigger_list()
+_triggers     = _list_result.get("triggers", []) if isinstance(_list_result, dict) else []
+_found        = next((t for t in _triggers if t.get("name") == _trigger_name), None)
+if _found is None:
+    result = {"removed": False, "trigger_name": _trigger_name,
+              "error": f"No trigger named '{_trigger_name}' found"}
+else:
+    _remove_result = host.trigger_remove(trigger_name=_trigger_name)
+    result = {"removed": True, "trigger_name": _trigger_name, "remove_result": _remove_result}
+"#;
+
+const SKILL_TRIGGER_LIST_BODY: &str = r#"Use `ts-trigger-list` (via pc-exec-trigger-list) to retrieve a JSON array of all
+configured triggers. Inspect schedule, recipe_name, last_fired_at, and next_fire_at
+to give the user a clear picture of what is scheduled. Always list before creating
+to avoid name collisions.
+"#;
+
+const SKILL_TRIGGER_CREATE_BODY: &str = r#"Use `ts-trigger-create` to register a recurring or one-off trigger. Always:
+1. List existing triggers first (ts-trigger-list) to check for name conflicts.
+2. Confirm the schedule with the user — translate their natural-language request
+   ('every Monday morning') into a cron expression ('0 9 * * 1') and confirm it.
+3. Confirm the recipe_name exists and is validation_status='validated'.
+4. Optionally confirm any payload vars with the user before creating.
+Triggers have ExternalWrite effect — the user should explicitly approve creation.
+"#;
+
+const SKILL_TRIGGER_REMOVE_BODY: &str = r#"Use `ts-trigger-remove` to permanently remove a scheduled trigger by name. Always:
+1. List triggers first to confirm the trigger exists and show the user its schedule.
+2. Confirm with the user that removal is intended — the trigger stops immediately
+   and cannot be recovered without re-creating it from scratch.
+Triggers have ExternalWrite effect — explicit user approval is required.
+"#;
+
+const SKILL_TRIGGER_LIST_ACTIVE_BODY: &str = r#"Use pc-exec-trigger-list-active to call trigger_list with scope='active'. Returns only
+triggers that are currently running or enabled. Use this when the user wants to know
+what is actively firing right now — not scheduled-but-paused entries.
+Compare with skill-trigger-list (all triggers) and skill-trigger-list-scheduled (cron).
+"#;
+
+const SKILL_TRIGGER_LIST_SCHEDULED_BODY: &str = r#"Use pc-exec-trigger-list-scheduled to call trigger_list with scope='scheduled'. Returns
+only triggers that run on a cron or time-interval basis. Use when the user is asking
+about what is set up to run on a schedule, not manual/event triggers.
+"#;
+
+const SKILL_TRIGGERS_BODY: &str = r#"Triggers are persistent scheduled invocations of recipes. Use the right grain:
+
+LISTING TRIGGERS:
+- skill-trigger-list: list ALL triggers (all scopes) — always start here.
+- skill-trigger-list-active: list ONLY currently active/enabled triggers (Tier-0).
+- skill-trigger-list-scheduled: list ONLY scheduled (cron/time-based) triggers (Tier-0).
+
+Decision: if user says "what triggers do I have" → trigger-list.
+If user says "what is currently active/running" → trigger-list-active.
+If user says "what is scheduled/recurring" → trigger-list-scheduled.
+
+CREATING A TRIGGER:
+- skill-trigger-create: confirm schedule (cron) + recipe_name + payload with user.
+  Translate natural language schedule to cron and verify before committing.
+
+REMOVING A TRIGGER:
+- skill-trigger-remove: confirm name, warn about immediate stoppage, then remove.
+- skill-trigger-list + skill-trigger-remove-by-name: when name is known exactly
+  (use pc-exec-trigger-resolve-and-remove — find by exact name then remove).
+
+Safety rules:
+- trigger_create and trigger_remove both have ExternalWrite effect — require explicit
+  user confirmation for each.
+- Triggers run with the creating session's authority; they cannot escalate privilege.
+- A trigger referencing a recipe that is later removed will fail at fire time —
+  inform the user of this risk when removing recipes.
+"#;
+
+const RECIPE_TRIGGER_LIST_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>"],
+    "label":   "Pre-load ts-trigger-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-trigger-list>"],
+    "label":   "PythonCode calls host.trigger_list(scope)"
+  }
+]
+"#;
+
+const RECIPE_TRIGGER_LIST_ACTIVE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>"],
+    "label":   "Pre-load ts-trigger-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-trigger-list-active>"],
+    "label":   "PythonCode calls host.trigger_list(scope='active')"
+  }
+]
+"#;
+
+const RECIPE_TRIGGER_LIST_SCHEDULED_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>"],
+    "label":   "Pre-load ts-trigger-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-trigger-list-scheduled>"],
+    "label":   "PythonCode calls host.trigger_list(scope='scheduled')"
+  }
+]
+"#;
+
+const RECIPE_TRIGGER_CREATE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-trigger-create>"],
+    "label":   "Load skill-trigger-create leaf skill body (creation procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM translates schedule to cron, confirms with user, calls ts-trigger-create"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>", "<uuid:ts-trigger-create>"],
+    "label":   "Pre-load ToolSkill bindings for list (pre-check) and create"
+  }
+]
+"#;
+
+const RECIPE_TRIGGER_REMOVE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-trigger-remove>"],
+    "label":   "Load skill-trigger-remove leaf skill body (removal procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM confirms trigger name with user, warns about stoppage, calls ts-trigger-remove"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>", "<uuid:ts-trigger-remove>"],
+    "label":   "Pre-load ToolSkill bindings for list (pre-check) and remove"
+  }
+]
+"#;
+
+const RECIPE_TRIGGER_REMOVE_BY_NAME_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-trigger-remove>"],
+    "label":   "Load skill-trigger-remove leaf skill body (safety procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM confirms trigger name with user and warns about irreversibility"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>", "<uuid:ts-trigger-remove>"],
+    "label":   "Pre-load list + remove ToolSkill bindings"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-trigger-resolve-and-remove>"],
+    "label":   "PythonCode: list triggers, find by exact name, remove — no LLM disambiguation"
   }
 ]
 "#;
