@@ -32,7 +32,7 @@ struct Entry<V> {
 /// Conversation-keyed store of parked sessions. The map is guarded by a
 /// [`tokio::sync::Mutex`] so multiple workers can checkout/park sessions for
 /// different conversations concurrently; a session is removed from the map
-/// while being driven (see [`SessionRegistry::checkout_or_create`]) so the
+/// while being driven (see [`SessionRegistry::try_checkout`]) so the
 /// lock is never held across a turn's work.
 pub(crate) struct SessionRegistry<K, V> {
     entries: Mutex<HashMap<K, Entry<V>>>,
@@ -61,26 +61,23 @@ where
     }
 
     /// Remove and return the parked session for `key` if present; otherwise
-    /// invoke `init` to construct a fresh one. The caller owns the returned
-    /// session while driving it (the registry no longer holds it) and must
-    /// either [`park`](Self::park) it (idle, awaiting the next turn) or
+    /// return `None`. The caller owns the returned session while driving it
+    /// (the registry no longer holds it) and must either [`park`](Self::park)
+    /// it (idle, awaiting the next turn) or
     /// [`drop_session`](Self::drop_session) it (the VM completed).
     ///
-    /// When absent, the lock is released before `init` runs so a slow
-    /// constructor does not block other conversations; same-key concurrency is
-    /// prevented by the turn lease (a conversation's turns are claimed one at a
-    /// time), so two checkouts for the same key cannot race.
-    pub(crate) async fn checkout_or_create<E>(
-        &self,
-        key: &K,
-        init: impl FnOnce() -> Result<V, E>,
-    ) -> Result<V, E> {
+    /// When `None` is returned the caller constructs a fresh session itself
+    /// (an async operation — e.g. [`prepare_monty_session`] — that must NOT
+    /// run under the registry lock). Same-key concurrency is prevented by the
+    /// turn lease (a conversation's turns are claimed one at a time), so the
+    /// window between a `None` checkout and the subsequent
+    /// [`park`](Self::park) cannot race with another turn for the same
+    /// conversation.
+    ///
+    /// [`prepare_monty_session`]: brassclaw_engine::executor::orchestrator::prepare_monty_session
+    pub(crate) async fn try_checkout(&self, key: &K) -> Option<V> {
         let mut entries = self.entries.lock().await;
-        if let Some(entry) = entries.remove(key) {
-            return Ok(entry.value);
-        }
-        drop(entries);
-        init()
+        entries.remove(key).map(|entry| entry.value)
     }
 
     /// Park a session for `key`, stamping it idle at `Instant::now()`.
@@ -152,28 +149,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkout_creates_when_absent_and_leaves_map_empty() {
+    async fn try_checkout_returns_none_when_absent_and_leaves_map_empty() {
         let registry: SessionRegistry<Key, MockSession> = SessionRegistry::new();
-        let got = registry
-            .checkout_or_create(&Key(1), || Ok::<MockSession, ()>(make_session(7)))
-            .await
-            .unwrap();
-        assert_eq!(got.id, 7);
+        let got = registry.try_checkout(&Key(1)).await;
+        assert!(got.is_none());
         assert!(!registry.contains(&Key(1)).await);
         assert_eq!(registry.len().await, 0);
     }
 
     #[tokio::test]
-    async fn park_then_checkout_returns_parked_session_without_calling_init() {
+    async fn try_checkout_returns_parked_session_and_removes_it() {
         let registry: SessionRegistry<Key, MockSession> = SessionRegistry::new();
         registry.park(Key(1), make_session(42)).await;
         assert!(registry.contains(&Key(1)).await);
         assert_eq!(registry.len().await, 1);
 
-        let got = registry
-            .checkout_or_create(&Key(1), || Err::<MockSession, ()>(()))
-            .await
-            .unwrap();
+        let got = registry.try_checkout(&Key(1)).await.unwrap();
         assert_eq!(got.id, 42);
         assert!(!registry.contains(&Key(1)).await);
         assert_eq!(registry.len().await, 0);
@@ -214,10 +205,7 @@ mod tests {
         registry.park(Key(1), make_session(1)).await;
         registry.park(Key(1), make_session(2)).await;
         assert_eq!(registry.len().await, 1);
-        let got = registry
-            .checkout_or_create(&Key(1), || Ok::<MockSession, ()>(make_session(99)))
-            .await
-            .unwrap();
+        let got = registry.try_checkout(&Key(1)).await.unwrap();
         assert_eq!(got.id, 2);
     }
 

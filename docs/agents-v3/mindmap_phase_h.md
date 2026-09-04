@@ -2773,3 +2773,41 @@ lives in the composition driver. +2 unit tests
 clean (default + skills-db, `-D warnings`), engine `--lib` 567 passed (565+2).
 **Next: 4b = `MontyTurnDriverPort` trait in turns; 4c = composition impl; 4d =
 worker always-Monty direct path.**
+
+### C.6 slice 4b + 4c-prep (portion 140)
+
+**4b SHIPPED `c3ff7722`:** `MontyTurnDriverPort` trait in
+`brassclaw_turns::run_profile::driver` (re-exported at turns root). One
+`drive_turn(AgentLoopDriverRunRequest, &AgentLoopDriverHost) -> Result<LoopExit,
+AgentLoopDriverError>` method — NO run/resume split (the registry IS the resume;
+every turn is a uniform drive_turn). Reuses the AgentLoopDriver request/host/exit
+types so the worker applies the exit via the existing `LoopExitApplier`. The
+worker will hold `Arc<dyn MontyTurnDriverPort>` and call it directly for every
+turn (F4-4=B always-Monty, bypass driver_registry). Gates: turns clippy clean.
+
+**4c grounding — key findings:**
+- `AgentLoopDriverRunRequest` = `{turn_id, run_id, resolved_run_profile}` only
+  (NO scope, NO input). The driver gets `scope`+`thread_id` from
+  `host.run_context()` (`LoopRunContext` at host.rs:534). Turn input (the new
+  User message) is NOT in the run request — the driver extracts it from the
+  loaded `Thread` (last User message; basic_mode.py drops the last User from
+  seeded history and re-delivers it via `host.await_next_turn()`).
+- The Monty driver does NOT need `AgentLoopDriverHost` ports for the
+  orchestrator's `host.*` work — those dispatch engine-internally via the 14
+  deps (composition_port, kohai_port, store, etc.) inside `drive_to_yield`. The
+  host is only needed for `run_context()` (scope/thread_id) + the worker's
+  model-route snapshot flow.
+- `store.load_thread(thread_id)` loads the Thread (manager.rs:324). Registry
+  holds `MontySession` (VM) only; Thread re-loaded each turn.
+
+**4c-prep SHIPPED (registry):** replaced `checkout_or_create` (sync init) with
+`try_checkout(&key) -> Option<V>` (non-creating). Reason: `prepare_monty_session`
+is async (fetches system_docs) and must NOT run under the registry lock; the turn
+lease makes the `try_checkout`-then-`prepare_monty_session` window safe; and on
+turn N a parked session returns via `try_checkout` WITHOUT wasteful code/doc
+loading (prepare runs only on turn 1). Updated 3 tests. Gates: composition clippy
+clean (default + skills-db), 7 registry tests pass.
+**Next: 4c = `PersistentMontyDriver` impl (owns `Arc<MontySessionRegistry>` + the
+14 engine-dep `Arc`s + pg_pool; `drive_turn`: load_thread → transition → extract
+last User input → `try_checkout`/`prepare_monty_session` → `drive_to_yield` →
+map `OrchestratorYield`→minimal `LoopExit` → `park`/`drop_session`).**
