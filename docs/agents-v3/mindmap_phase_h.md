@@ -2697,3 +2697,40 @@ evict-drops, evict-keeps-fresh, park-overwrites, Send/Sync-alias).
 `Arc<MontySessionRegistry>` (build the 14-dep arg list, `checkout_or_create`→
 `drive_to_yield`→`park`/`drop_session`, map `OrchestratorYield`→`LoopExit`) +
 `TurnRunnerWorker` direct path (bypass `driver_registry`).**
+
+### C.6 slice 4 grounding — redirect to orchestrator-centric (portion 140)
+
+**Redirect (user):** stopped spelunking `canonical.rs`/`PlannedDriver`/
+`brassclaw_agent_loop::executor` (`exit_helpers`/`capabilities`/`pipeline`) —
+that is the OLD Model-A stage machinery C.6-slice-5/C.7 retire. **Concentrate on
+the orchestrator.**
+
+**Key grounding facts (orchestrator side, already known):**
+- Production turn driver today = `TurnRunnerWorker`→`driver_registry`→
+  `PlannedDriver` (reborn)→`CanonicalAgentLoopExecutor` (canonical.rs stages).
+  `execute_orchestrator`/`ExecutionLoop`/`ThreadManager` (brassclaw_engine) are
+  DORMANT Model-A (C.7 deletion). There is NO `impl AgentLoopDriver for
+  ExecutionLoop`.
+- New arch: the orchestrator (`basic_mode.py` via `MontySession::drive_to_yield`)
+  IS the loop — it performs every side effect itself via `host.*`
+  (`post_reply`/`save_history`/`check_signals`/`compose_orchestrator`/
+  `run_program`/`kohai_complete`). The driver does NOT replicate canonical's
+  host-port `LoopCompleted` assembly (`reply_message_refs`/`result_refs`/
+  `final_checkpoint_id`/`usage_summary_ref` built in
+  `executor/exit_helpers.rs`+`capabilities.rs`).
+- `OrchestratorYield = Complete(Box<OrchestratorResult{outcome,tokens_used,
+  tier_zero_outcome}>) | AwaitNextTurn`. `LoopExit = Completed/Blocked/
+  Cancelled/Failed`.
+
+**Simplified slice-4 shape (orchestrator-centric):**
+`PersistentMontyDriver` (composition, impl `AgentLoopDriver` or the turns
+`MontyTurnDriverPort`) holds `Arc<MontySessionRegistry>` + the 14 engine-dep
+`Arc`s + pg_pool. `run`/`resume`: `checkout_or_create(turn_scope)`→
+`drive_to_yield(...14 deps..., new_input)`→ match yield: `Complete`→
+`drop_session` + **minimal** `LoopExit::Completed` (orchestrator already posted
+reply/saved history); `AwaitNextTurn`→ `park` + `LoopExit::Completed` (turn done,
+VM parked for next user input). Worker holds `Arc<dyn MontyTurnDriverPort>`,
+calls it directly for Monty turns (bypass `driver_registry`, C6-1=B kept).
+**Open: how minimal can the `LoopExit` be (does the worker need
+`reply_message_refs`/`final_checkpoint_id` populated, or can the orchestrator's
+own `host.*` side effects suffice)? + Monty-turn detection in worker.**
