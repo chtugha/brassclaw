@@ -134,6 +134,70 @@ this step; its stage logic already lives in the `host.*` arms
   local e2e (CI/Docker). Commit + push. Mark C.6 done in saved_plan/mindmap/
   subplan. **Continue into C.7.**
 
+## Slice 1 realization detail (grounded 2026-09-04)
+
+**Key facts confirmed:**
+- `execute_orchestrator` (`orchestrator.rs:520`) has exactly ONE prod caller
+  (`loop_engine.rs:533`, dormant `ExecutionLoop::run`) and ZERO test callers
+  (tests use the separate `run_python_final` helper). `OrchestratorResult`
+  external refs are doc-comments only. → Safe to refactor freely.
+- `FunctionCall<T>` (`monty/run_progress.rs:139`) is `pub` with `pub
+  function_name/args/kwargs/call_id/method_call` + private `snapshot`;
+  `resume(self, result, print)` consumes self; `tracker_mut()` exists. A
+  `FunctionCall<LimitedTracker>` is owned/`Send` (execute_orchestrator already
+  holds `RunProgress<LimitedTracker>` across `.await`). → A session CAN park
+  it across turns and resume with a fresh `PrintWriter`.
+- `SignalReceiver = tokio::sync::mpsc::Receiver<ThreadSignal>` (owned, `Send`).
+
+**Design (keeps the tree green + `loop_engine.rs` UNTOUCHED):**
+1. Add `pub enum OrchestratorYield { Complete(OrchestratorResult), AwaitNextTurn }`.
+2. Add `pub struct OrchestratorDeps<'a>` holding all borrowed host deps (the
+   `execute_orchestrator` params except `code`/`thread`/`persisted_state`/
+   `max_duration_override`/the unused `_retrieval_source`): `llm`, `effects`,
+   `leases`, `policy`, `event_tx`, `retrieval`, `store`, `platform_info`,
+   `gate_controller`, `#[cfg(skills-db)] pg_pool`, `dynamic_tools`,
+   `composition_port`, `kohai_port`.
+3. Add `pub struct MontySession { progress: Option<RunProgress<LimitedTracker>>,
+   parked_call: Option<FunctionCall<LimitedTracker>>, total_tokens: TokenUsage,
+   final_result: Option<serde_json::Value>, stdout: String }`.
+4. `MontySession::new(code, thread, persisted_state, max_duration_override)
+   -> Result<Self, EngineError>` — extracts `execute_orchestrator`'s setup
+   (:541-602: `build_orchestrator_inputs` + `MontyRun::new` + `start` + the
+   `classify_orchestrator_failure`/`orchestrator_vm_panic` error mapping +
+   `ResourceLimits`/`LimitedTracker`).
+5. `MontySession::drive_to_yield(&mut self, deps: &OrchestratorDeps<'_>,
+   thread: &mut Thread, signal_rx: &mut SignalReceiver, new_input:
+   Option<MontyObject>) -> Result<OrchestratorYield, EngineError>` — the
+   extracted dispatch loop (:604-957). On entry: if `self.parked_call` is
+   `Some`, resume it with `new_input` (the await_next_turn result) and loop;
+   else loop on `self.progress`. Add a private `enum DispatchOutcome {
+   Resume(ExtFunctionResult), AwaitNextTurn }` so the `host.await_next_turn()`
+   arm can park: it returns `DispatchOutcome::AwaitNextTurn`, and the outer
+   code stores `self.parked_call = Some(call); return Ok(AwaitNextTurn)` (the
+   suspended `call` is retained, NOT dropped — true persistence). `Complete` →
+   `Ok(Complete(OrchestratorResult{...}))`. Add `FunctionCall` to the
+   `monty` import (:38).
+6. Refactor `execute_orchestrator` to a thin delegation: `MontySession::new`
+   → `drive_to_yield(deps, thread, signal_rx, None)` → `Complete(r) => Ok(r)`,
+   `AwaitNextTurn => Err(EngineError::Orchestrator(classify_orchestrator_
+   failure("Orchestrator parked awaiting next turn", "host.await_next_turn()
+   in non-persistent mode")))`. **Signature unchanged** → `loop_engine.rs`
+   untouched.
+7. Unit test (slice 1): a mock script `host.await_next_turn()` then
+   `FINAL({"outcome":"completed","response":"done","state":{}})` driven via
+   `MontySession` with `MockCompositionPort`/`MockKohaiPort`-style deps —
+   first `drive_to_yield(None)` → `AwaitNextTurn`; second `drive_to_yield(
+   Some("next"))` → `Complete`. Plus a FINAL-only script → `Complete` on the
+   first drive.
+
+**Edit plan:** (a) add `FunctionCall` to the `monty` import; (b) insert
+`OrchestratorYield`+`OrchestratorDeps`+`MontySession`+`DispatchOutcome`+
+`MontySession::new`+`drive_to_yield` immediately before `execute_orchestrator`;
+(c) replace `execute_orchestrator`'s body (setup + loop, :541-957) with the
+thin delegation. Verify: `cargo clippy -p brassclaw_engine --all-targets -- -D
+warnings` (both configs) + `cargo test -p brassclaw_engine --lib orchestrator::`.
+Commit + push.
+
 ## Out of scope (explicit)
 - The Monty VM (`scripting.rs`), `Store`/`Thread`, `EffectExecutor`/`LlmBackend`
   traits, intent system, recipe/component stores, validators, formatters,
