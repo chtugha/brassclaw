@@ -329,6 +329,6 @@ evict-expired-keeps-fresh, park-overwrites, Send/Sync-alias).
 [x] slice 1 — engine `MontySession` + park/resume primitive (SHIPPED `d26d08b7`).
 [x] slice 2 — rework `basic_mode.py` into a resumable long-running loop (SHIPPED `f5e3e59b`).
 [x] slice 3 — conversation-keyed Monty session registry (SHIPPED `5b9c7261`).
-[ ] slice 4 — `MontyTurnDriverPort` trait (turns) + composition impl owning the registry; `TurnRunnerWorker` direct path (bypass driver_registry).
-[ ] slice 5 — retire `canonical.rs` stage pipeline + reuse stage logic as host fns.
-[ ] slice 6 — both configs clippy + tests + mark C.6 done. Then C.7.
+[x] slice 4 — `MontyTurnDriverPort` trait (turns) + composition impl owning the registry; `TurnRunnerWorker` direct path (bypass driver_registry). (SHIPPED)
+[x] slice 5 — retire pre-C.6 `driver_registry` fallback path from `TurnRunnerWorker::invoke_driver`; remove `driver_registry` field/param from worker; convert all `TurnRunnerWorker::new` call sites (20 unit + 5 integration + 1 production) to new 5-arg signature; add `WrappingMontyDriver` adapter for integration tests; remove `DriverNotFound`/`RouteSnapshotPersistenceFailed` variants + `persist_model_route_snapshot`; `canonical.rs` kept for stage-unit-test harness. Both configs clippy-clean; 234+706 lib tests pass. (SHIPPED)
+[x] slice 6 — both configs clippy + tests + mark C.6 done. (SHIPPED — merged into slice 5 delivery)

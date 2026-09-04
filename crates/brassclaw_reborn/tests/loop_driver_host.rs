@@ -43,9 +43,7 @@ use brassclaw_loop_support::{
     ProductLiveCancellationProbe, RunCancellationFactory, RunCancellationHandle,
     identity_message_ref,
 };
-use brassclaw_reborn::driver_registry::{
-    DriverKind, DriverRegistry, DriverRequirements, LoopDriverRegistryKey,
-};
+use brassclaw_reborn::driver_registry::{DriverRequirements, LoopDriverRegistryKey};
 use brassclaw_reborn::loop_driver_host::{
     RebornLoopDriverHost, RebornLoopDriverHostFactory, RebornLoopDriverHostRequest,
     TextOnlyLoopHostConfig,
@@ -74,6 +72,7 @@ use brassclaw_reborn::text_loop_driver::TextOnlyModelReplyDriver;
 use brassclaw_reborn::turn_runner::{
     HostFactory, TurnRunnerWakeReceiver, TurnRunnerWorker, TurnRunnerWorkerConfig,
 };
+use brassclaw_turns::run_profile::MontyTurnDriverPort;
 use brassclaw_threads::{
     AcceptInboundMessageRequest, EnsureThreadRequest, InMemorySessionThreadService, MessageContent,
     MessageKind, MessageStatus, SessionThreadService, SummaryModelContextPolicy,
@@ -1097,14 +1096,7 @@ async fn turn_runner_worker_completes_queued_run_after_turn_store_reopen() {
         )
         .unwrap(),
     );
-    let mut registry = DriverRegistry::new();
-    registry
-        .register_driver(
-            Arc::new(TextOnlyFinalReplyDriver { descriptor }),
-            DriverRequirements::all_required(),
-            DriverKind::Reference,
-        )
-        .unwrap();
+    let monty = WrappingMontyDriver::new(Arc::new(TextOnlyFinalReplyDriver { descriptor }));
 
     let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
     let worker = TurnRunnerWorker::new(
@@ -1116,10 +1108,10 @@ async fn turn_runner_worker_completes_queued_run_after_turn_store_reopen() {
         },
         reopened_turn_store.clone(),
         loop_exit_applier_for_fixture(&fixture, reopened_turn_store.clone()),
-        Arc::new(registry),
         Arc::new(fixture.factory_with_loop_checkpoint_store(reopened_turn_store.clone())),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1184,14 +1176,7 @@ async fn turn_runner_worker_drives_full_text_only_model_transcript_completion_af
     let run_id =
         queue_fixture_turn(&fixture, turn_store.as_ref(), &resolver, "idem-runner-e2e").await;
 
-    let mut registry = DriverRegistry::new();
-    registry
-        .register_driver(
-            Arc::new(TextOnlyFinalReplyDriver { descriptor }),
-            DriverRequirements::all_required(),
-            DriverKind::Reference,
-        )
-        .unwrap();
+    let monty = WrappingMontyDriver::new(Arc::new(TextOnlyFinalReplyDriver { descriptor }));
 
     let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
     let worker = TurnRunnerWorker::new(
@@ -1203,10 +1188,10 @@ async fn turn_runner_worker_drives_full_text_only_model_transcript_completion_af
         },
         turn_store.clone(),
         loop_exit_applier_for_fixture(&fixture, turn_store.clone()),
-        Arc::new(registry),
         Arc::new(fixture.factory_with_loop_checkpoint_store(turn_store.clone())),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1296,14 +1281,7 @@ async fn turn_runner_rejects_driver_fabricated_approval_block_without_durable_ga
     )
     .await;
 
-    let mut registry = DriverRegistry::new();
-    registry
-        .register_driver(
-            Arc::new(ApprovalBlockThenFinalReplyDriver { descriptor }),
-            DriverRequirements::all_required(),
-            DriverKind::Reference,
-        )
-        .unwrap();
+    let monty = WrappingMontyDriver::new(Arc::new(ApprovalBlockThenFinalReplyDriver { descriptor }));
 
     let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
     let worker = TurnRunnerWorker::new(
@@ -1315,10 +1293,10 @@ async fn turn_runner_rejects_driver_fabricated_approval_block_without_durable_ga
         },
         turn_store.clone(),
         loop_exit_applier_for_fixture(&fixture, turn_store.clone()),
-        Arc::new(registry),
         Arc::new(fixture.factory_with_loop_checkpoint_store(turn_store.clone())),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1379,14 +1357,7 @@ async fn turn_runner_blocks_on_approval_then_coordinator_resume_completes_same_r
     )
     .await;
 
-    let mut registry = DriverRegistry::new();
-    registry
-        .register_driver(
-            Arc::new(ApprovalBlockThenFinalReplyDriver { descriptor }),
-            DriverRequirements::all_required(),
-            DriverKind::Reference,
-        )
-        .unwrap();
+    let monty = WrappingMontyDriver::new(Arc::new(ApprovalBlockThenFinalReplyDriver { descriptor }));
 
     let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
     let worker = TurnRunnerWorker::new(
@@ -1401,10 +1372,10 @@ async fn turn_runner_blocks_on_approval_then_coordinator_resume_completes_same_r
             turn_store.clone(),
             Arc::new(AlwaysVerifiedLoopExitEvidence),
         )),
-        Arc::new(registry),
         Arc::new(fixture.factory_with_loop_checkpoint_store(turn_store.clone())),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1621,14 +1592,7 @@ async fn turn_runner_worker_fails_when_real_host_factory_rejects_claimed_scope()
     let run_id =
         queue_fixture_turn(&fixture, turn_store.as_ref(), &resolver, "idem-runner-edge").await;
 
-    let mut registry = DriverRegistry::new();
-    registry
-        .register_driver(
-            Arc::new(TextOnlyFinalReplyDriver { descriptor }),
-            DriverRequirements::all_required(),
-            DriverKind::Reference,
-        )
-        .unwrap();
+    let monty = WrappingMontyDriver::new(Arc::new(TextOnlyFinalReplyDriver { descriptor }));
 
     let wrong_thread_scope = ThreadScope {
         tenant_id: TenantId::new("tenant-other").unwrap(),
@@ -1659,10 +1623,10 @@ async fn turn_runner_worker_fails_when_real_host_factory_rejects_claimed_scope()
         },
         turn_store.clone(),
         loop_exit_applier_for_fixture(&fixture, turn_store.clone()),
-        Arc::new(registry),
         Arc::new(rejecting_factory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -2097,6 +2061,7 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
+        monty_driver: None,
     })
     .unwrap();
 
@@ -2279,6 +2244,7 @@ async fn build_runtime_host_with_optional_hooks(
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
+        monty_driver: None,
     })
     .unwrap();
 
@@ -2622,6 +2588,7 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
+        monty_driver: None,
     })
     .expect("all product-live adapters should satisfy readiness");
 
@@ -2749,6 +2716,7 @@ async fn product_live_parts_for_gate_test(
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
+        monty_driver: None,
     }
 }
 
@@ -6181,6 +6149,52 @@ async fn wait_for_run_status(
             state.failure
         );
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+/// Wraps an `AgentLoopDriver` behind `MontyTurnDriverPort` for integration
+/// tests. The first `drive_turn` call delegates to `driver.run`; subsequent
+/// calls (resumed runs) delegate to `driver.resume` with a synthetic
+/// checkpoint id so approval-block-resume tests work unchanged.
+struct WrappingMontyDriver {
+    driver: Arc<dyn AgentLoopDriver>,
+    call_count: std::sync::atomic::AtomicU32,
+}
+
+impl WrappingMontyDriver {
+    fn new(driver: Arc<dyn AgentLoopDriver>) -> Arc<Self> {
+        Arc::new(Self {
+            driver,
+            call_count: std::sync::atomic::AtomicU32::new(0),
+        })
+    }
+}
+
+#[async_trait]
+impl MontyTurnDriverPort for WrappingMontyDriver {
+    async fn drive_turn(
+        &self,
+        request: AgentLoopDriverRunRequest,
+        host: &(dyn AgentLoopDriverHost + Send + Sync),
+    ) -> Result<LoopExit, AgentLoopDriverError> {
+        let call = self
+            .call_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call == 0 {
+            self.driver.run(request, host).await
+        } else {
+            self.driver
+                .resume(
+                    AgentLoopDriverResumeRequest {
+                        turn_id: request.turn_id,
+                        run_id: request.run_id,
+                        checkpoint_id: brassclaw_turns::TurnCheckpointId::new(),
+                        resolved_run_profile: request.resolved_run_profile,
+                    },
+                    host,
+                )
+                .await
+        }
     }
 }
 

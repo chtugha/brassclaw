@@ -27,7 +27,7 @@ use brassclaw_turns::{
     run_profile::{
         AgentLoopHostError, InstructionSafetyContext, LoopCapabilityPort, LoopHostMilestoneSink,
         LoopModelBudgetAccountant, LoopModelPolicyGuard, LoopRunContext, MessageTextResolver,
-        OrchestratorLookup, RecipeLookup, RetrievalLookup,
+        MontyTurnDriverPort, OrchestratorLookup, RecipeLookup, RetrievalLookup,
     },
     runner::TurnRunTransitionPort,
 };
@@ -206,6 +206,12 @@ where
     /// is wired.
     #[cfg(feature = "root-llm-provider")]
     pub system_bundle_source: Option<Arc<dyn brassclaw_loop_support::SystemBundleSource>>,
+    /// Cross-turn-persistent Monty orchestrator driver (C.6 slice 4d). When
+    /// `Some`, `TurnRunnerWorker` calls
+    /// [`MontyTurnDriverPort::drive_turn`] directly for every turn, bypassing
+    /// the `driver_registry` / canonical stage pipeline. When `None`, the
+    /// pre-C.6 pipeline is used.
+    pub monty_driver: Option<Arc<dyn MontyTurnDriverPort>>,
 }
 
 pub trait RuntimeSubagentGoalStore:
@@ -640,14 +646,17 @@ where
         Arc::clone(&transition_port),
         parts.loop_exit_evidence,
     ));
-    let worker = Arc::new(TurnRunnerWorker::new(
+    let mut worker = TurnRunnerWorker::new(
         parts.config.worker,
         transition_port,
         loop_exit_applier,
-        Arc::clone(&driver_registry),
         host_factory.clone(),
         wake_receiver,
-    ));
+    );
+    if let Some(monty) = parts.monty_driver {
+        worker = worker.with_monty_driver(monty);
+    }
+    let worker = Arc::new(worker);
 
     Ok(
         RebornRuntimeLoopComposition::<T, dyn SessionThreadService, G> {

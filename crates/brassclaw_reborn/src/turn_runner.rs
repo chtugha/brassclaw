@@ -24,18 +24,17 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, warn};
 
 use brassclaw_turns::{
-    AgentLoopDriverError, AgentLoopDriverResumeRequest, AgentLoopDriverRunRequest, LoopExit,
-    SanitizedFailure, TurnError, TurnLeaseToken, TurnRunId, TurnRunWake, TurnRunWakeNotifier,
-    TurnRunWakeNotifyError, TurnRunnerId, TurnScope, TurnStatus,
+    AgentLoopDriverError, AgentLoopDriverRunRequest, LoopExit, SanitizedFailure, TurnError,
+    TurnLeaseToken, TurnRunId, TurnRunWake, TurnRunWakeNotifier, TurnRunWakeNotifyError,
+    TurnRunnerId, TurnScope, TurnStatus,
+    run_profile::MontyTurnDriverPort,
     runner::{
-        ClaimRunRequest, ClaimedTurnRun, HeartbeatRequest, RecordModelRouteSnapshotRequest,
-        RecordRunnerFailureRequest, RecoverExpiredLeasesRequest, RelinquishRunRequest,
-        TurnRunTransitionPort,
+        ClaimRunRequest, ClaimedTurnRun, HeartbeatRequest, RecordRunnerFailureRequest,
+        RecoverExpiredLeasesRequest, RelinquishRunRequest, TurnRunTransitionPort,
     },
 };
 
 use crate::{
-    driver_registry::{DriverRegistry, LoopDriverRegistryKey},
     failure_categories::MODEL_CREDITS_EXHAUSTED_CATEGORY,
     loop_exit_applier::LoopExitApplier,
 };
@@ -215,14 +214,20 @@ impl TurnRunWakeNotifier for TurnRunnerWakeSender {
 ///
 /// Claims one run at a time, heartbeats the lease, invokes the matched driver,
 /// and applies the returned `LoopExit` through the trusted transition port.
+///
+/// All claimed runs are dispatched through
+/// [`MontyTurnDriverPort::drive_turn`] when the driver is set via
+/// [`TurnRunnerWorker::with_monty_driver`] (C.6 slice 4d — C6-1=B). The
+/// legacy `driver_registry` path was retired in C.6 slice 5.
 pub struct TurnRunnerWorker {
     runner_id: TurnRunnerId,
     config: TurnRunnerWorkerConfig,
     transition_port: Arc<dyn TurnRunTransitionPort>,
     loop_exit_applier: Arc<LoopExitApplier>,
-    driver_registry: Arc<DriverRegistry>,
     host_factory: Arc<dyn HostFactory>,
     wake_receiver: TurnRunnerWakeReceiver,
+    /// Cross-turn-persistent Monty orchestrator driver (C.6 slice 4d).
+    monty_driver: Option<Arc<dyn MontyTurnDriverPort>>,
 }
 
 impl TurnRunnerWorker {
@@ -230,7 +235,6 @@ impl TurnRunnerWorker {
         config: TurnRunnerWorkerConfig,
         transition_port: Arc<dyn TurnRunTransitionPort>,
         loop_exit_applier: Arc<LoopExitApplier>,
-        driver_registry: Arc<DriverRegistry>,
         host_factory: Arc<dyn HostFactory>,
         wake_receiver: TurnRunnerWakeReceiver,
     ) -> Self {
@@ -241,10 +245,20 @@ impl TurnRunnerWorker {
             config,
             transition_port,
             loop_exit_applier,
-            driver_registry,
             host_factory,
             wake_receiver,
+            monty_driver: None,
         }
+    }
+
+    /// Set the cross-turn-persistent Monty driver (C.6 slice 4d).
+    ///
+    /// When set, [`TurnRunnerWorker`] dispatches every claimed run through
+    /// [`MontyTurnDriverPort::drive_turn`] directly, bypassing the
+    /// `driver_registry` / host-factory / canonical-stage path.
+    pub fn with_monty_driver(mut self, driver: Arc<dyn MontyTurnDriverPort>) -> Self {
+        self.monty_driver = Some(driver);
+        self
     }
 
     /// Returns the stable runner identity for this worker instance.
@@ -430,111 +444,32 @@ impl TurnRunnerWorker {
         }
     }
 
-    /// Resolve driver from registry and invoke it.
+    /// Invoke the Monty turn driver for the claimed run (C.6 slice 5 — only
+    /// the Monty path remains; the pre-C.6 `driver_registry` path is retired).
     async fn invoke_driver(
         &self,
         claimed: &ClaimedTurnRun,
     ) -> Result<LoopExit, DriverInvocationError> {
-        let descriptor = &claimed.resolved_run_profile.loop_driver;
-        let registry_key =
-            LoopDriverRegistryKey::from_descriptor(descriptor).map_err(|reason| {
-                DriverInvocationError::DriverNotFound {
-                    reason: format!("invalid descriptor: {reason}"),
-                }
-            })?;
-
-        let registered = self.driver_registry.get(&registry_key).ok_or_else(|| {
-            DriverInvocationError::DriverNotFound {
-                reason: format!("no registered driver for {registry_key}"),
+        let monty = self.monty_driver.as_ref().ok_or_else(|| {
+            DriverInvocationError::HostCreationFailed {
+                reason: "no MontyTurnDriverPort wired; call with_monty_driver before running"
+                    .to_string(),
             }
         })?;
-
-        let driver = registered.driver();
-        debug!(
-            runner_id = ?self.runner_id,
-            run_id = %claimed.state.run_id,
-            resolved_run_profile_id = claimed.resolved_run_profile.profile_id.as_str(),
-            loop_driver_id = descriptor.id.as_str(),
-            loop_driver_version = descriptor.version.as_u64(),
-            "reborn turn runner resolved loop driver"
-        );
-
-        // Create host for this run
         let host = self
             .host_factory
             .create_host(claimed)
             .await
             .map_err(|err| DriverInvocationError::HostCreationFailed { reason: err.reason })?;
-        self.persist_model_route_snapshot(claimed, host.as_ref())
-            .await?;
-
-        let status = claimed.state.status;
-        let turn_id = claimed.state.turn_id;
-        let run_id = claimed.state.run_id;
-
-        match (status, claimed.state.checkpoint_id) {
-            // Requeued blocked runs keep their checkpoint while returning to
-            // `Queued`; checkpoint identity is the resume signal.
-            (_, Some(checkpoint_id)) => {
-                let request = AgentLoopDriverResumeRequest {
-                    turn_id,
-                    run_id,
-                    checkpoint_id,
-                    resolved_run_profile: claimed.resolved_run_profile.clone(),
-                };
-                driver
-                    .resume(request, host.as_ref())
-                    .await
-                    .map_err(DriverInvocationError::DriverError)
-            }
-            (TurnStatus::Queued, _) => {
-                let request = AgentLoopDriverRunRequest {
-                    turn_id,
-                    run_id,
-                    resolved_run_profile: claimed.resolved_run_profile.clone(),
-                };
-                driver
-                    .run(request, host.as_ref())
-                    .await
-                    .map_err(DriverInvocationError::DriverError)
-            }
-            // Fallback: treat as new run
-            _ => {
-                let request = AgentLoopDriverRunRequest {
-                    turn_id,
-                    run_id,
-                    resolved_run_profile: claimed.resolved_run_profile.clone(),
-                };
-                driver
-                    .run(request, host.as_ref())
-                    .await
-                    .map_err(DriverInvocationError::DriverError)
-            }
-        }
-    }
-
-    /// Persist the host-attached model route before driver invocation can emit side effects.
-    async fn persist_model_route_snapshot(
-        &self,
-        claimed: &ClaimedTurnRun,
-        host: &(dyn brassclaw_turns::run_profile::AgentLoopDriverHost + Send + Sync),
-    ) -> Result<(), DriverInvocationError> {
-        let Some(snapshot) = host.run_context().resolved_model_route.clone() else {
-            return Ok(());
+        let request = AgentLoopDriverRunRequest {
+            turn_id: claimed.state.turn_id,
+            run_id: claimed.state.run_id,
+            resolved_run_profile: claimed.resolved_run_profile.clone(),
         };
-        if claimed.state.resolved_model_route.as_ref() == Some(&snapshot) {
-            return Ok(());
-        }
-        self.transition_port
-            .record_model_route_snapshot(RecordModelRouteSnapshotRequest {
-                run_id: claimed.state.run_id,
-                runner_id: claimed.runner_id,
-                lease_token: claimed.lease_token,
-                snapshot,
-            })
+        monty
+            .drive_turn(request, host.as_ref())
             .await
-            .map(|_| ())
-            .map_err(DriverInvocationError::RouteSnapshotPersistenceFailed)
+            .map_err(DriverInvocationError::DriverError)
     }
 
     /// Apply a `LoopExit` through the trusted applier.
@@ -626,11 +561,7 @@ impl TurnRunnerWorker {
             }
             other => {
                 let category = match other {
-                    DriverInvocationError::DriverNotFound { .. } => "driver_not_found",
                     DriverInvocationError::HostCreationFailed { .. } => "host_creation_failed",
-                    DriverInvocationError::RouteSnapshotPersistenceFailed(_) => {
-                        "route_snapshot_persistence_failed"
-                    }
                     DriverInvocationError::DriverError(AgentLoopDriverError::InvalidRequest {
                         ..
                     }) => "driver_invalid_request",
@@ -789,13 +720,9 @@ impl std::fmt::Display for TurnRunnerError {
 /// Error during driver invocation (before `LoopExit` is returned).
 #[derive(Debug)]
 enum DriverInvocationError {
-    DriverNotFound {
-        reason: String,
-    },
     HostCreationFailed {
         reason: String,
     },
-    RouteSnapshotPersistenceFailed(TurnError),
     DriverError(AgentLoopDriverError),
     DriverPanic,
     HeartbeatFailed(TurnError),
@@ -808,11 +735,7 @@ enum DriverInvocationError {
 impl std::fmt::Display for DriverInvocationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DriverNotFound { reason } => write!(f, "driver not found: {reason}"),
             Self::HostCreationFailed { reason } => write!(f, "host creation failed: {reason}"),
-            Self::RouteSnapshotPersistenceFailed(err) => {
-                write!(f, "route snapshot persistence failed: {err}")
-            }
             Self::DriverError(err) => write!(f, "driver error: {err}"),
             Self::DriverPanic => write!(f, "driver panicked before returning loop exit"),
             Self::HeartbeatFailed(err) => write!(f, "heartbeat failed: {err}"),

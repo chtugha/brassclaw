@@ -6,14 +6,13 @@ use tokio_util::sync::CancellationToken;
 
 use brassclaw_host_api::{TenantId, ThreadId};
 use brassclaw_turns::{
-    AcceptedMessageRef, AgentLoopDriver, AgentLoopDriverDescriptor, AgentLoopDriverError,
-    AgentLoopDriverResumeRequest, AgentLoopDriverRunRequest, EventCursor, LoopCheckpointKind,
-    LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, LoopExitMapping, LoopMessageRef,
-    ReplyTargetBindingRef, RunProfileVersion, SourceBindingRef, TurnCheckpointId, TurnError,
-    TurnId, TurnLeaseToken, TurnRunId, TurnRunState, TurnRunnerId, TurnScope, TurnStatus,
+    AcceptedMessageRef, AgentLoopDriverError, AgentLoopDriverRunRequest, EventCursor,
+    LoopCheckpointKind, LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, LoopExitMapping,
+    LoopMessageRef, ReplyTargetBindingRef, RunProfileVersion, SourceBindingRef, TurnError, TurnId,
+    TurnLeaseToken, TurnRunId, TurnRunState, TurnRunnerId, TurnScope, TurnStatus,
     run_profile::{
         AgentLoopDriverHost, AgentLoopHostError, CheckpointSchemaId, LoopDriverId,
-        LoopModelRouteSnapshot,
+        MontyTurnDriverPort,
     },
     runner::{
         ApplyValidatedLoopExitRequest, BlockRunRequest, CancelRunCompletionRequest,
@@ -25,7 +24,6 @@ use brassclaw_turns::{
 };
 
 use crate::{
-    driver_registry::{DriverKind, DriverRegistry, DriverRequirements},
     loop_exit_applier::{InMemoryLoopExitEvidencePort, LoopExitApplier},
 };
 
@@ -42,8 +40,8 @@ fn test_scope() -> TurnScope {
     )
 }
 
-fn test_descriptor() -> AgentLoopDriverDescriptor {
-    AgentLoopDriverDescriptor {
+fn test_descriptor() -> brassclaw_turns::run_profile::AgentLoopDriverDescriptor {
+    brassclaw_turns::run_profile::AgentLoopDriverDescriptor {
         id: LoopDriverId::new("test_loop").expect("valid"),
         version: RunProfileVersion::new(1),
         checkpoint_schema_id: Some(CheckpointSchemaId::new("test_checkpoint").expect("valid")),
@@ -52,7 +50,7 @@ fn test_descriptor() -> AgentLoopDriverDescriptor {
 }
 
 fn test_resolved_profile_with_driver(
-    desc: &AgentLoopDriverDescriptor,
+    desc: &brassclaw_turns::run_profile::AgentLoopDriverDescriptor,
 ) -> brassclaw_turns::ResolvedRunProfile {
     use brassclaw_turns::run_profile::*;
     use brassclaw_turns::*;
@@ -215,10 +213,6 @@ impl MockTransitionPort {
     fn applied_mappings(&self) -> Vec<LoopExitMapping> {
         self.applied_mappings.lock().expect("lock").clone()
     }
-
-    fn route_snapshot_requests(&self) -> Vec<RecordModelRouteSnapshotRequest> {
-        self.route_snapshot_requests.lock().expect("lock").clone()
-    }
 }
 
 #[async_trait]
@@ -351,106 +345,67 @@ impl TurnRunTransitionPort for MockTransitionPort {
     }
 }
 
-// ─── Mock driver ────────────────────────────────────────────────────────────
+// ─── Mock Monty driver ──────────────────────────────────────────────────────
 
-struct MockDriver {
-    descriptor: AgentLoopDriverDescriptor,
-    run_result: Mutex<Result<LoopExit, AgentLoopDriverError>>,
-    run_delay: Duration,
-    run_requests: Mutex<Vec<AgentLoopDriverRunRequest>>,
-    resume_requests: Mutex<Vec<AgentLoopDriverResumeRequest>>,
+struct MockMontyDriver {
+    drive_result: Mutex<Result<LoopExit, AgentLoopDriverError>>,
+    drive_delay: Duration,
+    drive_requests: Mutex<Vec<AgentLoopDriverRunRequest>>,
 }
 
-impl MockDriver {
-    fn completing(descriptor: AgentLoopDriverDescriptor) -> Self {
+impl MockMontyDriver {
+    fn completing() -> Self {
         Self {
-            descriptor,
-            run_result: Mutex::new(Ok(test_completed_exit())),
-            run_delay: Duration::ZERO,
-            run_requests: Mutex::new(Vec::new()),
-            resume_requests: Mutex::new(Vec::new()),
+            drive_result: Mutex::new(Ok(test_completed_exit())),
+            drive_delay: Duration::ZERO,
+            drive_requests: Mutex::new(Vec::new()),
         }
     }
 
-    fn failing(descriptor: AgentLoopDriverDescriptor, error: AgentLoopDriverError) -> Self {
+    fn failing(error: AgentLoopDriverError) -> Self {
         Self {
-            descriptor,
-            run_result: Mutex::new(Err(error)),
-            run_delay: Duration::ZERO,
-            run_requests: Mutex::new(Vec::new()),
-            resume_requests: Mutex::new(Vec::new()),
+            drive_result: Mutex::new(Err(error)),
+            drive_delay: Duration::ZERO,
+            drive_requests: Mutex::new(Vec::new()),
         }
     }
 
     fn with_delay(mut self, delay: Duration) -> Self {
-        self.run_delay = delay;
+        self.drive_delay = delay;
         self
     }
 
-    fn run_requests(&self) -> Vec<AgentLoopDriverRunRequest> {
-        self.run_requests.lock().expect("lock").clone()
-    }
-
-    fn resume_requests(&self) -> Vec<AgentLoopDriverResumeRequest> {
-        self.resume_requests.lock().expect("lock").clone()
+    #[allow(dead_code)]
+    fn drive_requests(&self) -> Vec<AgentLoopDriverRunRequest> {
+        self.drive_requests.lock().expect("lock").clone()
     }
 }
 
 #[async_trait]
-impl AgentLoopDriver for MockDriver {
-    fn descriptor(&self) -> AgentLoopDriverDescriptor {
-        self.descriptor.clone()
-    }
-
-    async fn run(
+impl MontyTurnDriverPort for MockMontyDriver {
+    async fn drive_turn(
         &self,
         request: AgentLoopDriverRunRequest,
         _host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError> {
-        self.run_requests.lock().expect("lock").push(request);
-        if !self.run_delay.is_zero() {
-            tokio::time::sleep(self.run_delay).await;
+        self.drive_requests.lock().expect("lock").push(request);
+        if !self.drive_delay.is_zero() {
+            tokio::time::sleep(self.drive_delay).await;
         }
-        self.run_result.lock().expect("lock").clone()
-    }
-
-    async fn resume(
-        &self,
-        request: AgentLoopDriverResumeRequest,
-        _host: &(dyn AgentLoopDriverHost + Send + Sync),
-    ) -> Result<LoopExit, AgentLoopDriverError> {
-        self.resume_requests.lock().expect("lock").push(request);
-        if !self.run_delay.is_zero() {
-            tokio::time::sleep(self.run_delay).await;
-        }
-        self.run_result.lock().expect("lock").clone()
+        self.drive_result.lock().expect("lock").clone()
     }
 }
 
-struct PanickingDriver {
-    descriptor: AgentLoopDriverDescriptor,
-}
+struct PanickingMontyDriver;
 
 #[async_trait]
-impl AgentLoopDriver for PanickingDriver {
-    fn descriptor(&self) -> AgentLoopDriverDescriptor {
-        self.descriptor.clone()
-    }
-
-    async fn run(
+impl MontyTurnDriverPort for PanickingMontyDriver {
+    async fn drive_turn(
         &self,
         _request: AgentLoopDriverRunRequest,
         _host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError> {
-        panic!("simulated driver panic")
-    }
-
-    async fn resume(
-        &self,
-        _request: AgentLoopDriverResumeRequest,
-        _host: &(dyn AgentLoopDriverHost + Send + Sync),
-    ) -> Result<LoopExit, AgentLoopDriverError> {
-        panic!("simulated driver resume panic")
+        panic!("simulated Monty driver panic")
     }
 }
 
@@ -566,7 +521,7 @@ impl brassclaw_turns::run_profile::LoopCheckpointPort for StubHost {
     async fn checkpoint(
         &self,
         _request: brassclaw_turns::run_profile::LoopCheckpointRequest,
-    ) -> Result<TurnCheckpointId, AgentLoopHostError> {
+    ) -> Result<brassclaw_turns::TurnCheckpointId, AgentLoopHostError> {
         unimplemented!("test-double host: never called by mock driver")
     }
 }
@@ -659,24 +614,6 @@ impl HostFactory for MockHostFactory {
     }
 }
 
-struct RouteSnapshotHostFactory {
-    snapshot: LoopModelRouteSnapshot,
-}
-
-#[async_trait]
-impl HostFactory for RouteSnapshotHostFactory {
-    async fn create_host(
-        &self,
-        claimed: &ClaimedTurnRun,
-    ) -> Result<Box<dyn AgentLoopDriverHost + Send + Sync>, HostFactoryError> {
-        let mut host = MockHostFactory::host_for_claim(claimed);
-        host.context = host
-            .context
-            .with_resolved_model_route(self.snapshot.clone());
-        Ok(Box::new(host))
-    }
-}
-
 struct FailingHostFactory {
     reason: String,
 }
@@ -694,7 +631,7 @@ impl HostFactory for FailingHostFactory {
 // ─── Test setup ─────────────────────────────────────────────────────────────
 
 fn make_claimed_run(
-    descriptor: &AgentLoopDriverDescriptor,
+    descriptor: &brassclaw_turns::run_profile::AgentLoopDriverDescriptor,
     scope: TurnScope,
     status: TurnStatus,
 ) -> ClaimedTurnRun {
@@ -737,18 +674,6 @@ fn first_terminal_failure_category(port: &MockTransitionPort) -> String {
         .to_string()
 }
 
-fn setup_registry(driver: Arc<dyn AgentLoopDriver>) -> DriverRegistry {
-    let mut registry = DriverRegistry::new();
-    registry
-        .register_driver(
-            driver,
-            DriverRequirements::all_optional(),
-            DriverKind::Production,
-        )
-        .expect("registration should succeed");
-    registry
-}
-
 fn make_applier(port: Arc<MockTransitionPort>) -> Arc<LoopExitApplier> {
     Arc::new(LoopExitApplier::new(
         port,
@@ -771,8 +696,7 @@ fn make_fail_closed_recovery_applier(port: Arc<MockTransitionPort>) -> Arc<LoopE
 #[tokio::test]
 async fn worker_recovers_expired_leases_before_claiming() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::completing());
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
 
@@ -788,10 +712,10 @@ async fn worker_recovers_expired_leases_before_claiming() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -818,9 +742,8 @@ async fn worker_recovers_expired_leases_before_claiming() {
 #[tokio::test]
 async fn worker_reuses_claim_runner_and_lease_for_heartbeat_and_exit() {
     let desc = test_descriptor();
-    let driver =
-        Arc::new(MockDriver::completing(desc.clone()).with_delay(Duration::from_millis(150)));
-    let registry = Arc::new(setup_registry(driver));
+    let monty =
+        Arc::new(MockMontyDriver::completing().with_delay(Duration::from_millis(150)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
@@ -837,10 +760,10 @@ async fn worker_reuses_claim_runner_and_lease_for_heartbeat_and_exit() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
     let worker_runner_id = worker.runner_id();
 
     let cancel = CancellationToken::new();
@@ -878,199 +801,9 @@ async fn worker_reuses_claim_runner_and_lease_for_heartbeat_and_exit() {
 }
 
 #[tokio::test]
-async fn worker_resumes_claimed_run_with_checkpoint() {
-    let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver.clone()));
-    let checkpoint_id = TurnCheckpointId::new();
-    let mut claimed = make_claimed_run(&desc, test_scope(), TurnStatus::RecoveryRequired);
-    claimed.state.checkpoint_id = Some(checkpoint_id);
-    let turn_id = claimed.state.turn_id;
-    let run_id = claimed.state.run_id;
-    let profile = claimed.resolved_run_profile.clone();
-    let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
-    let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
-    let worker = TurnRunnerWorker::new(
-        TurnRunnerWorkerConfig {
-            heartbeat_interval: Duration::from_secs(60),
-            poll_interval: Duration::from_secs(60),
-            scope_filter: None,
-            max_turn_duration: None,
-        },
-        port.clone(),
-        make_applier(port),
-        registry,
-        Arc::new(MockHostFactory),
-        wake_receiver,
-    );
-
-    assert!(
-        worker
-            .try_claim_and_run(&CancellationToken::new())
-            .await
-            .unwrap()
-    );
-
-    assert!(
-        driver.run_requests().is_empty(),
-        "checkpointed recovery run must not start from scratch"
-    );
-    let resume_requests = driver.resume_requests();
-    assert_eq!(resume_requests.len(), 1);
-    assert_eq!(resume_requests[0].turn_id, turn_id);
-    assert_eq!(resume_requests[0].run_id, run_id);
-    assert_eq!(resume_requests[0].checkpoint_id, checkpoint_id);
-    assert_eq!(resume_requests[0].resolved_run_profile, profile);
-}
-
-#[tokio::test]
-async fn worker_resumes_requeued_claimed_run_with_checkpoint() {
-    let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver.clone()));
-    let checkpoint_id = TurnCheckpointId::new();
-    let mut claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
-    claimed.state.checkpoint_id = Some(checkpoint_id);
-    let turn_id = claimed.state.turn_id;
-    let run_id = claimed.state.run_id;
-    let profile = claimed.resolved_run_profile.clone();
-    let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
-    let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
-    let worker = TurnRunnerWorker::new(
-        TurnRunnerWorkerConfig {
-            heartbeat_interval: Duration::from_secs(60),
-            poll_interval: Duration::from_secs(60),
-            scope_filter: None,
-            max_turn_duration: None,
-        },
-        port.clone(),
-        make_applier(port),
-        registry,
-        Arc::new(MockHostFactory),
-        wake_receiver,
-    );
-
-    assert!(
-        worker
-            .try_claim_and_run(&CancellationToken::new())
-            .await
-            .unwrap()
-    );
-
-    assert!(
-        driver.run_requests().is_empty(),
-        "requeued checkpointed run must not start from scratch"
-    );
-    let resume_requests = driver.resume_requests();
-    assert_eq!(resume_requests.len(), 1);
-    assert_eq!(resume_requests[0].turn_id, turn_id);
-    assert_eq!(resume_requests[0].run_id, run_id);
-    assert_eq!(resume_requests[0].checkpoint_id, checkpoint_id);
-    assert_eq!(resume_requests[0].resolved_run_profile, profile);
-}
-
-#[tokio::test]
-async fn worker_persists_host_model_route_snapshot_before_driver_exit() {
-    let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
-    let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
-    let run_id = claimed.state.run_id;
-    let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
-    let snapshot = LoopModelRouteSnapshot::new(
-        "openrouter",
-        "anthropic/claude-sonnet-4",
-        "config:v1",
-        "auth:v1",
-    );
-    let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
-    let worker = TurnRunnerWorker::new(
-        TurnRunnerWorkerConfig {
-            heartbeat_interval: Duration::from_secs(60),
-            poll_interval: Duration::from_secs(60),
-            scope_filter: None,
-            max_turn_duration: None,
-        },
-        port.clone(),
-        make_applier(port.clone()),
-        registry,
-        Arc::new(RouteSnapshotHostFactory {
-            snapshot: snapshot.clone(),
-        }),
-        wake_receiver,
-    );
-
-    assert!(
-        worker
-            .try_claim_and_run(&CancellationToken::new())
-            .await
-            .unwrap()
-    );
-
-    let requests = port.route_snapshot_requests();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].run_id, run_id);
-    assert_eq!(requests[0].snapshot, snapshot);
-    let calls = port.calls();
-    let route_pos = calls
-        .iter()
-        .position(|call| *call == TransitionCall::RecordModelRouteSnapshot)
-        .expect("route snapshot should be recorded");
-    let exit_pos = calls
-        .iter()
-        .position(|call| *call == TransitionCall::ApplyValidatedLoopExit)
-        .expect("exit should be applied");
-    assert!(route_pos < exit_pos);
-}
-
-#[tokio::test]
-async fn worker_rejects_unvalidated_host_route_snapshot_before_persist() {
-    let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
-    let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
-    let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
-    let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
-    let worker = TurnRunnerWorker::new(
-        TurnRunnerWorkerConfig {
-            heartbeat_interval: Duration::from_secs(60),
-            poll_interval: Duration::from_secs(60),
-            scope_filter: None,
-            max_turn_duration: None,
-        },
-        port.clone(),
-        make_applier(port.clone()),
-        registry,
-        Arc::new(RouteSnapshotHostFactory {
-            snapshot: LoopModelRouteSnapshot::new(
-                "openrouter",
-                "anthropic/secret-model",
-                "config:v1",
-                "auth:v1",
-            ),
-        }),
-        wake_receiver,
-    );
-
-    assert!(
-        worker
-            .try_claim_and_run(&CancellationToken::new())
-            .await
-            .unwrap()
-    );
-
-    assert!(port.route_snapshot_requests().is_empty());
-    let calls = port.calls();
-    assert!(calls.contains(&TransitionCall::RecordModelRouteSnapshot));
-    assert!(calls.contains(&TransitionCall::RecordRunnerFailure));
-    assert!(!calls.contains(&TransitionCall::ApplyValidatedLoopExit));
-}
-
-#[tokio::test]
 async fn default_worker_policy_rejects_fabricated_completion_refs() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::completing());
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
 
@@ -1079,10 +812,10 @@ async fn default_worker_policy_rejects_fabricated_completion_refs() {
         TurnRunnerWorkerConfig::default(),
         port.clone(),
         make_fail_closed_recovery_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     worker.try_claim_and_run(&cancel).await.unwrap();
@@ -1102,8 +835,7 @@ async fn default_worker_policy_rejects_fabricated_completion_refs() {
 #[tokio::test]
 async fn worker_claims_and_completes_run() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::completing());
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
 
@@ -1119,10 +851,10 @@ async fn worker_claims_and_completes_run() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1144,8 +876,8 @@ async fn worker_claims_and_completes_run() {
 #[tokio::test]
 async fn worker_records_terminal_failure_when_heartbeat_fails() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()).with_delay(Duration::from_secs(60)));
-    let registry = Arc::new(setup_registry(driver));
+    let monty =
+        Arc::new(MockMontyDriver::completing().with_delay(Duration::from_secs(60)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
     let port = Arc::new(
@@ -1166,10 +898,10 @@ async fn worker_records_terminal_failure_when_heartbeat_fails() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let result = tokio::time::timeout(
@@ -1190,8 +922,8 @@ async fn worker_records_terminal_failure_when_heartbeat_fails() {
 #[tokio::test]
 async fn worker_cancellation_relinquishes_run() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()).with_delay(Duration::from_secs(60)));
-    let registry = Arc::new(setup_registry(driver));
+    let monty =
+        Arc::new(MockMontyDriver::completing().with_delay(Duration::from_secs(60)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
@@ -1208,10 +940,10 @@ async fn worker_cancellation_relinquishes_run() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1246,13 +978,9 @@ async fn worker_cancellation_relinquishes_run() {
 #[tokio::test]
 async fn worker_records_terminal_failure_on_driver_error() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::failing(
-        desc.clone(),
-        AgentLoopDriverError::Failed {
-            reason_kind: "test_failure".to_string(),
-        },
-    ));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::failing(AgentLoopDriverError::Failed {
+        reason_kind: "test_failure".to_string(),
+    }));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
@@ -1269,10 +997,10 @@ async fn worker_records_terminal_failure_on_driver_error() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1290,13 +1018,9 @@ async fn worker_records_terminal_failure_on_driver_error() {
 #[tokio::test]
 async fn worker_preserves_model_credit_exhaustion_failure_category() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::failing(
-        desc.clone(),
-        AgentLoopDriverError::Failed {
-            reason_kind: MODEL_CREDITS_EXHAUSTED_CATEGORY.to_string(),
-        },
-    ));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::failing(AgentLoopDriverError::Failed {
+        reason_kind: MODEL_CREDITS_EXHAUSTED_CATEGORY.to_string(),
+    }));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
 
@@ -1310,10 +1034,10 @@ async fn worker_preserves_model_credit_exhaustion_failure_category() {
         },
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1332,10 +1056,6 @@ async fn worker_preserves_model_credit_exhaustion_failure_category() {
 #[tokio::test]
 async fn worker_records_terminal_failure_on_driver_panic() {
     let desc = test_descriptor();
-    let driver = Arc::new(PanickingDriver {
-        descriptor: desc.clone(),
-    });
-    let registry = Arc::new(setup_registry(driver));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
 
@@ -1351,10 +1071,10 @@ async fn worker_records_terminal_failure_on_driver_panic() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(Arc::new(PanickingMontyDriver));
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1370,8 +1090,7 @@ async fn worker_records_terminal_failure_on_driver_panic() {
 #[tokio::test]
 async fn worker_records_terminal_failure_on_host_factory_error() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::completing());
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
@@ -1392,51 +1111,10 @@ async fn worker_records_terminal_failure_on_host_factory_error() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         host_factory,
         wake_receiver,
-    );
-
-    let cancel = CancellationToken::new();
-    let cancel_clone = cancel.clone();
-    let handle = tokio::spawn(async move { worker.run(cancel_clone).await });
-
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    cancel.cancel();
-    handle.await.expect("worker task should complete");
-
-    assert!(port.calls().contains(&TransitionCall::RecordRunnerFailure));
-    assert_first_terminal_failure_matches_first_claim(&port, run_id);
-}
-
-#[tokio::test]
-async fn worker_records_terminal_failure_when_driver_not_found() {
-    let registered_desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(registered_desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
-
-    let mut claimed_desc = test_descriptor();
-    claimed_desc.id = LoopDriverId::new("missing_driver").expect("valid");
-    let claimed = make_claimed_run(&claimed_desc, test_scope(), TurnStatus::Queued);
-    let run_id = claimed.state.run_id;
-    let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
-
-    let (_ws, wake_receiver) = TurnRunnerWakeReceiver::new();
-    let config = TurnRunnerWorkerConfig {
-        heartbeat_interval: Duration::from_secs(60),
-        poll_interval: Duration::from_millis(50),
-        scope_filter: None,
-        max_turn_duration: None,
-    };
-
-    let worker = TurnRunnerWorker::new(
-        config,
-        port.clone(),
-        make_applier(port.clone()),
-        registry,
-        Arc::new(MockHostFactory),
-        wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1452,9 +1130,7 @@ async fn worker_records_terminal_failure_when_driver_not_found() {
 
 #[tokio::test]
 async fn worker_continues_when_no_runs_available() {
-    let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::completing());
     let port = Arc::new(MockTransitionPort::new());
 
     let (_ws, wake_receiver) = TurnRunnerWakeReceiver::new();
@@ -1469,10 +1145,10 @@ async fn worker_continues_when_no_runs_available() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1496,8 +1172,7 @@ async fn worker_continues_when_no_runs_available() {
 #[tokio::test]
 async fn wake_signal_drains_available_runs_until_queue_empty() {
     let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::completing());
     let first = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let second = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let port = Arc::new(
@@ -1518,10 +1193,10 @@ async fn wake_signal_drains_available_runs_until_queue_empty() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1553,9 +1228,7 @@ async fn wake_signal_drains_available_runs_until_queue_empty() {
 
 #[tokio::test]
 async fn wake_signal_triggers_claim_attempt() {
-    let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
+    let monty = Arc::new(MockMontyDriver::completing());
     let port = Arc::new(MockTransitionPort::new());
 
     let (wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
@@ -1570,10 +1243,10 @@ async fn wake_signal_triggers_claim_attempt() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1591,9 +1264,8 @@ async fn wake_signal_triggers_claim_attempt() {
 #[tokio::test]
 async fn heartbeat_runs_during_driver_execution() {
     let desc = test_descriptor();
-    let driver =
-        Arc::new(MockDriver::completing(desc.clone()).with_delay(Duration::from_millis(300)));
-    let registry = Arc::new(setup_registry(driver));
+    let monty =
+        Arc::new(MockMontyDriver::completing().with_delay(Duration::from_millis(300)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
 
@@ -1609,10 +1281,10 @@ async fn heartbeat_runs_during_driver_execution() {
         config,
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
-    );
+    )
+    .with_monty_driver(monty);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -1635,9 +1307,6 @@ async fn heartbeat_runs_during_driver_execution() {
 
 #[tokio::test]
 async fn worker_generates_stable_runner_id() {
-    let desc = test_descriptor();
-    let driver = Arc::new(MockDriver::completing(desc.clone()));
-    let registry = Arc::new(setup_registry(driver));
     let port = Arc::new(MockTransitionPort::new());
     let (_ws, wake_receiver) = TurnRunnerWakeReceiver::new();
 
@@ -1645,7 +1314,6 @@ async fn worker_generates_stable_runner_id() {
         TurnRunnerWorkerConfig::default(),
         port.clone(),
         make_applier(port.clone()),
-        registry,
         Arc::new(MockHostFactory),
         wake_receiver,
     );
