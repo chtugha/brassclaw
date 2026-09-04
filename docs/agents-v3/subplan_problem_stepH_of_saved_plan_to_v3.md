@@ -612,7 +612,7 @@ Mark this subplan Zenflow substep Completed.
   confirmed: 5 `recipe_stage_*` + the state round-trip); `cargo clippy -p
   brassclaw_engine -- -D warnings` GREEN. Committed+pushed `2cd8eaec`. **H.10 is
   next.**
-- H.10 — Pending.
-- H.11 — Pending.
-- H.12 — Pending.
-- H.13 — Pending.
+- H.10 — Done.
+- H.11 — Done.
+- H.12 — In progress (nested subplan; H.12.1–H.12.5 done, H.12.6 reshaped into Step A, H.12.7 pending).
+- H.13 — Pending (Model B/C tests + final verification; folded into the B→C→A end-game: C.7 + Step A + H.12.7).
