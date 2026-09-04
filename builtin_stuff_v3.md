@@ -23,7 +23,7 @@
 > ## Core Design Principle: Orchestrator-First, LLM-Minimal
 >
 > **The orchestrator IS the execution engine. Rust makes tools available. PythonCode (class 22)
-> in the orchestrator channel DECIDES when and how to call them via `__execute_action__()`.
+> in the orchestrator channel DECIDES when and how to call them via `host.<tool>()`.
 > The LLM is consulted ONLY when the task requires creative reasoning, composition, or
 > irreversible decisions the user must confirm. Every other operation is Tier 0.**
 >
@@ -31,7 +31,7 @@
 >
 > ```
 > channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute)
-> channel: "orchestrator"   → PythonCode calls __execute_action__() to actually run the tool
+> channel: "orchestrator"   → PythonCode calls host.<tool>() to actually run the tool
 > ```
 >
 > A Tier-0 recipe MUST have both: a rust step to pre-load and an orchestrator PythonCode step
@@ -58,7 +58,7 @@
 >   If a tool has three common usage patterns, author three leaf skills — not one monolithic skill
 >   that covers all patterns.
 > - **The orchestrator NEVER calls Rust directly.** Rust is not an agent. The orchestrator
->   (PythonCode in the orchestrator channel) calls Rust tools via `__execute_action__()`.
+>   (PythonCode in the orchestrator channel) calls Rust tools via `host.<tool>()`.
 >   The `channel: "rust"` recipe step only pre-loads the ToolSkill binding — it does NOT execute.
 > - **Combine what must be combined; split what can be split.** A combined recipe like
 >   `json-parse-and-query` or `memory-search-and-read` is valid when both steps always happen
@@ -71,14 +71,14 @@
 > The orchestrator is ALWAYS the supervisory layer. Rust makes tools *available* via the
 > rust channel; PythonCode in the orchestrator channel DECIDES when and how to call them.
 > This applies to every Tier-0 recipe: the `channel: "rust"` step pre-loads a ToolSkill
-> binding, and the `channel: "orchestrator"` PythonCode step calls `__execute_action__()`
+> binding, and the `channel: "orchestrator"` PythonCode step calls `host.<tool>()`
 > to actually dispatch it. A Tier-0 recipe with a rust step but no orchestrator PythonCode
 > step **fails Q1 §tier0-orchestrator-channel Rule 2** and is rejected.
 >
 > The `channel: "rust"` step does NOT execute the tool — it pre-loads the ToolSkill binding
 > into the thread execution context so the executor knows which tool is available. The actual
 > tool invocation happens ONLY in the `channel: "orchestrator"` PythonCode step via
-> `__execute_action__()`. This two-channel separation is mandatory and enforced at Q1.
+> `host.<tool>()`. This two-channel separation is mandatory and enforced at Q1.
 >
 > **Q1 §tier0-orchestrator-channel rules (hard errors):**
 > - Rule 1: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). Skill
@@ -119,10 +119,10 @@
 > ```python
 > # Channel: orchestrator | Class: 22 | No I/O, no imports, no network, no DB.
 > # IBS bakes in {{vars.slotN}} values before execution.
-> # __execute_action__ is provided by the runtime sandbox — not imported.
-> result = __execute_action__("tool_name", {"param": "{{vars.slot0}}"})
+> # host.<tool> is provided by the runtime sandbox — not imported.
+> result = host.tool_name(param="{{vars.slot0}}")
 > ```
-> The PythonCode body calls `__execute_action__` — this is the ONLY way a Tier-0 recipe
+> The PythonCode body calls `host.<tool>` — this is the ONLY way a Tier-0 recipe
 > actually dispatches a Rust tool. The rust channel step pre-loads the ToolSkill binding;
 > the PythonCode step drives execution.
 >
@@ -140,7 +140,7 @@
 > - Examples: `git status`, `git log --oneline -20`, `git diff --name-only HEAD`, `df -h`, `uname -a`, `ps aux`, `git config --list`
 >
 > **The pure-logic PythonCode helper pattern:**
-> PythonCode helpers (class 22) that do NOT call `__execute_action__()` are pure-logic
+> PythonCode helpers (class 22) that do NOT call `host.<tool>()` are pure-logic
 > post-processors (string split, CSV parse, list filter, dict pick, etc.). They use only
 > built-in Python operations, no imports, no I/O, no network. They transform data that
 > a preceding tool call returned. Name them `pc-<operation>-<noun>` (e.g. `pc-string-split`,
@@ -464,7 +464,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git status' in t
               command string. Output: {output, exit_code, success}."
 content: |
   # §shell-safe-fixed: command is a compile-time constant — no injection surface.
-  result = __execute_action__("shell", {"command": "git status"})
+  result = host.shell(command="git status")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -478,7 +478,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git log --onelin
               to get the last 20 commits. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input, no injection surface.
-  result = __execute_action__("shell", {"command": "git log --oneline -20"})
+  result = host.shell(command="git log --oneline -20")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -492,7 +492,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git diff --stat'
               changed file summary. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input, no injection surface.
-  result = __execute_action__("shell", {"command": "git diff --stat"})
+  result = host.shell(command="git diff --stat")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -506,7 +506,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git branch -a' t
               local and remote branches. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input, no injection surface.
-  result = __execute_action__("shell", {"command": "git branch -a"})
+  result = host.shell(command="git branch -a")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -520,7 +520,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git stash list' 
               the stash stack. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input, no injection surface.
-  result = __execute_action__("shell", {"command": "git stash list"})
+  result = host.shell(command="git stash list")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -534,7 +534,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'pwd' to show the
               working directory. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "pwd"})
+  result = host.shell(command="pwd")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -548,7 +548,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'df -h' to show d
               in human-readable format. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "df -h"})
+  result = host.shell(command="df -h")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -562,7 +562,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'ps aux' to list 
               processes. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "ps aux"})
+  result = host.shell(command="ps aux")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -576,7 +576,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'env' to list all
               variables in the current session. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "env"})
+  result = host.shell(command="env")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -590,7 +590,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'uname -a' to sho
               information. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "uname -a"})
+  result = host.shell(command="uname -a")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -614,7 +614,7 @@ content: |
   if not _re.match(r'^[a-zA-Z0-9_\-]{1,64}$', _tool):
       result = {"error": "Invalid tool name — must be a safe identifier", "success": False}
   else:
-      result = __execute_action__("shell", {"command": f"which {_tool}"})
+      result = host.shell(command=f"which {_tool}")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -633,7 +633,7 @@ content: |
   # Validate: only safe integer in 1–100 range
   if not isinstance(_n, int) or not (1 <= _n <= 100):
       _n = 20
-  result = __execute_action__("shell", {"command": f"git log --oneline -{_n}"})
+  result = host.shell(command=f"git log --oneline -{_n}")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -810,7 +810,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-status>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git status'}) — fixed literal"
+    "label":   "PythonCode calls host.shell(command='git status') — fixed literal"
   }
 ]
 intent_examples: [
@@ -850,7 +850,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-log>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git log --oneline -20'})"
+    "label":   "PythonCode calls host.shell(command='git log --oneline -20')"
   }
 ]
 intent_examples: [
@@ -890,7 +890,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-diff-stat>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git diff --stat'})"
+    "label":   "PythonCode calls host.shell(command='git diff --stat')"
   }
 ]
 intent_examples: [
@@ -929,7 +929,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-branch>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git branch -a'})"
+    "label":   "PythonCode calls host.shell(command='git branch -a')"
   }
 ]
 intent_examples: [
@@ -969,7 +969,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-stash-list>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git stash list'})"
+    "label":   "PythonCode calls host.shell(command='git stash list')"
   }
 ]
 intent_examples: [
@@ -1011,7 +1011,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-pwd>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'pwd'})"
+    "label":   "PythonCode calls host.shell(command='pwd')"
   }
 ]
 intent_examples: [
@@ -1049,7 +1049,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-df>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'df -h'})"
+    "label":   "PythonCode calls host.shell(command='df -h')"
   }
 ]
 intent_examples: [
@@ -1088,7 +1088,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-ps>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'ps aux'})"
+    "label":   "PythonCode calls host.shell(command='ps aux')"
   }
 ]
 intent_examples: [
@@ -1127,7 +1127,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-env>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'env'})"
+    "label":   "PythonCode calls host.shell(command='env')"
   }
 ]
 intent_examples: [
@@ -1166,7 +1166,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-uname>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'uname -a'})"
+    "label":   "PythonCode calls host.shell(command='uname -a')"
   }
 ]
 intent_examples: [
@@ -1205,7 +1205,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-which>"],
-    "label":   "PythonCode validates tool name then calls __execute_action__(shell, {command:'which <tool>'})"
+    "label":   "PythonCode validates tool name then calls host.shell(command='which <tool>')"
   }
 ]
 intent_examples: [
@@ -1238,7 +1238,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'date -u +%Y-%m-%
               to print the current UTC date/time as ISO-8601. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "date -u +%Y-%m-%dT%H:%M:%SZ"})
+  result = host.shell(command="date -u +%Y-%m-%dT%H:%M:%SZ")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1252,7 +1252,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'hostname' to pri
               machine hostname. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "hostname"})
+  result = host.shell(command="hostname")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1266,7 +1266,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'whoami' to print
               current user account name. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "whoami"})
+  result = host.shell(command="whoami")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1280,7 +1280,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'uptime' to show 
               uptime, load average, and logged-in user count. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "uptime"})
+  result = host.shell(command="uptime")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1294,7 +1294,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'free -h' to show
               usage in human-readable format. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "free -h"})
+  result = host.shell(command="free -h")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1308,7 +1308,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git remote -v' t
               all configured remote repositories and their URLs. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "git remote -v"})
+  result = host.shell(command="git remote -v")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1322,7 +1322,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git show --stat 
               show the last commit's changed files and line counts. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "git show --stat HEAD"})
+  result = host.shell(command="git show --stat HEAD")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1336,7 +1336,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git tag --list' 
               all tags in the repository. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input.
-  result = __execute_action__("shell", {"command": "git tag --list"})
+  result = host.shell(command="git tag --list")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1358,7 +1358,7 @@ content: |
   if not _re.match(r'^[a-zA-Z0-9_\-./]{1,256}$', _filepath):
       result = {"error": "Invalid filepath — must be a safe relative path", "success": False}
   else:
-      result = __execute_action__("shell", {"command": f"wc -l {_filepath}"})
+      result = host.shell(command=f"wc -l {_filepath}")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1508,7 +1508,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-date>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'date -u +...'})"
+    "label":   "PythonCode calls host.shell(command='date -u +...')"
   }
 ]
 intent_examples: [
@@ -1544,7 +1544,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-hostname>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'hostname'})"
+    "label":   "PythonCode calls host.shell(command='hostname')"
   }
 ]
 intent_examples: [
@@ -1580,7 +1580,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-whoami>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'whoami'})"
+    "label":   "PythonCode calls host.shell(command='whoami')"
   }
 ]
 intent_examples: [
@@ -1616,7 +1616,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-uptime>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'uptime'})"
+    "label":   "PythonCode calls host.shell(command='uptime')"
   }
 ]
 intent_examples: [
@@ -1652,7 +1652,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-free>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'free -h'})"
+    "label":   "PythonCode calls host.shell(command='free -h')"
   }
 ]
 intent_examples: [
@@ -1688,7 +1688,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-remote>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git remote -v'})"
+    "label":   "PythonCode calls host.shell(command='git remote -v')"
   }
 ]
 intent_examples: [
@@ -1724,7 +1724,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-show-stat>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git show --stat HEAD'})"
+    "label":   "PythonCode calls host.shell(command='git show --stat HEAD')"
   }
 ]
 intent_examples: [
@@ -1760,7 +1760,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-tag-list>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git tag --list'})"
+    "label":   "PythonCode calls host.shell(command='git tag --list')"
   }
 ]
 intent_examples: [
@@ -1796,7 +1796,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-wc-l>"],
-    "label":   "PythonCode validates path then calls __execute_action__(shell, {command:'wc -l <file>'})"
+    "label":   "PythonCode validates path then calls host.shell(command='wc -l <file>')"
   }
 ]
 intent_examples: [
@@ -1830,7 +1830,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git diff --name-
               Fixed literal command — no slot interpolation."
 content: |
   # §shell-safe-fixed: fixed command, no user input, no injection surface.
-  result = __execute_action__("shell", {"command": "git diff --name-only HEAD"})
+  result = host.shell(command="git diff --name-only HEAD")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1844,7 +1844,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git log --stat -
               to show the last 5 commits with file-change counts per commit. Fixed literal."
 content: |
   # §shell-safe-fixed: fixed command, no user input, no injection surface.
-  result = __execute_action__("shell", {"command": "git log --stat --oneline -5"})
+  result = host.shell(command="git log --stat --oneline -5")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1858,7 +1858,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git stash show' 
               the diff summary of the most recent stash entry. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input, no injection surface.
-  result = __execute_action__("shell", {"command": "git stash show"})
+  result = host.shell(command="git stash show")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1872,7 +1872,7 @@ description: "Orchestrator executor (§shell-safe-fixed): runs 'git config --lis
               all active git configuration values. Fixed literal command."
 content: |
   # §shell-safe-fixed: fixed command, no user input, no injection surface.
-  result = __execute_action__("shell", {"command": "git config --list"})
+  result = host.shell(command="git config --list")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1965,7 +1965,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-diff-name-only>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git diff --name-only HEAD'})"
+    "label":   "PythonCode calls host.shell(command='git diff --name-only HEAD')"
   }
 ]
 intent_examples: [
@@ -2007,7 +2007,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-log-stat>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git log --stat --oneline -5'})"
+    "label":   "PythonCode calls host.shell(command='git log --stat --oneline -5')"
   }
 ]
 intent_examples: [
@@ -2049,7 +2049,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-stash-show>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git stash show'})"
+    "label":   "PythonCode calls host.shell(command='git stash show')"
   }
 ]
 intent_examples: [
@@ -2089,7 +2089,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-config-list>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git config --list'})"
+    "label":   "PythonCode calls host.shell(command='git config --list')"
   }
 ]
 intent_examples: [
@@ -2156,7 +2156,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-write-file>"],
-    "label":   "PythonCode calls __execute_action__(write_file, {path:slot0, content:slot1}) — both pre-baked"
+    "label":   "PythonCode calls host.write_file(path=slot0, content=slot1) — both pre-baked"
   }
 ]
 intent_examples: [
@@ -2186,7 +2186,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-apply-patch"
-description: "Orchestrator executor: calls __execute_action__ to apply a targeted patch via
+description: "Orchestrator executor: calls host.<tool> to apply a targeted patch via
               builtin.apply_patch. Input: path (string), old_string (string), new_string
               (string), replace_all (optional bool). Output: {path, replacements_made}."
 content: |
@@ -2198,7 +2198,7 @@ content: |
   _params = {"path": _path, "old_string": _old, "new_string": _new}
   if _replace_all:
       _params["replace_all"] = True
-  result = __execute_action__("apply_patch", _params)
+  result = host.apply_patch(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -2227,7 +2227,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-apply-patch>"],
-    "label":   "PythonCode calls __execute_action__(apply_patch, {path, old_string, new_string, replace_all:true})"
+    "label":   "PythonCode calls host.apply_patch(path, old_string, new_string, replace_all=true)"
   }
 ]
 intent_examples: [
@@ -2270,7 +2270,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-glob>"],
-    "label":   "PythonCode calls __execute_action__(glob, {pattern, max_results:10}) — sorted by mtime"
+    "label":   "PythonCode calls host.glob(pattern, max_results=10) — sorted by mtime"
   }
 ]
 intent_examples: [
@@ -2346,17 +2346,17 @@ validation_status: "validated"
 
 ### Step 2.3 — PythonCode: `pc-exec-read-file` (class 22)
 
-> **Orchestrator executor pattern.** This PythonCode calls `__execute_action__` to dispatch
+> **Orchestrator executor pattern.** This PythonCode calls `host.<tool>` to dispatch
 > the read_file tool. It is the body that actually drives execution in every Tier-0 recipe
 > that reads a file.
 
 ```
 name:        "pc-exec-read-file"
-description: "Orchestrator executor: calls __execute_action__ to read a file via
+description: "Orchestrator executor: calls host.<tool> to read a file via
               builtin.read_file. Input: path (string), range (optional string, e.g. '1-50').
               Output: tool result dict {content, line_count, path}."
 content: |
-  # Orchestrator executor body. __execute_action__ is provided by the runtime sandbox.
+  # Orchestrator executor body. host.<tool> is provided by the runtime sandbox.
   # IBS bakes in path and range values as {{vars.slot0}} / {{vars.slot1}} before execution.
   # No I/O, no imports — pure orchestrator dispatch.
   _path = "{{vars.slot0}}"
@@ -2364,7 +2364,7 @@ content: |
   _params = {"path": _path}
   if _range and _range != "":
       _params["range"] = _range
-  result = __execute_action__("read_file", _params)
+  result = host.read_file(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -2428,7 +2428,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-read-file>"],
-    "label":   "PythonCode calls __execute_action__(read_file, {path, range}) and returns result"
+    "label":   "PythonCode calls host.read_file(path, range) and returns result"
   }
 ]
 intent_examples: [
@@ -2472,7 +2472,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-read-file>"],
-    "label":   "PythonCode calls __execute_action__(read_file, {path, range}) — range slot is required"
+    "label":   "PythonCode calls host.read_file(path, range) — range slot is required"
   }
 ]
 intent_examples: [
@@ -2548,21 +2548,21 @@ validation_status: "validated"
 
 ### Step 3.3 — PythonCode: `pc-exec-write-file` (class 22)
 
-> Orchestrator executor: writes a file via `__execute_action__`. Used in Tier-1 recipes
+> Orchestrator executor: writes a file via `host.<tool>`. Used in Tier-1 recipes
 > after the LLM has determined the content; may also be used standalone in automation.
 
 ```
 name:        "pc-exec-write-file"
-description: "Orchestrator executor: calls __execute_action__ to write a file via
+description: "Orchestrator executor: calls host.<tool> to write a file via
               builtin.write_file. Input: path (string), content (string). Output: tool
               result dict {path, bytes_written}."
 content: |
-  # Orchestrator executor body. __execute_action__ is provided by the runtime sandbox.
+  # Orchestrator executor body. host.<tool> is provided by the runtime sandbox.
   # IBS bakes in path and content as {{vars.slot0}} / {{vars.slot1}} before execution.
   # No I/O, no imports — pure orchestrator dispatch.
   _path = "{{vars.slot0}}"
   _content = "{{vars.slot1}}"
-  result = __execute_action__("write_file", {"path": _path, "content": _content})
+  result = host.write_file(path=_path, content=_content)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -2716,11 +2716,11 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-list-dir"
-description: "Orchestrator executor: calls __execute_action__ to list a directory via
+description: "Orchestrator executor: calls host.<tool> to list a directory via
               builtin.list_dir. Input: path (string, omit for workspace root), recursive
               (bool, default false), max_depth (int, optional)."
 content: |
-  # Orchestrator executor body. __execute_action__ provided by runtime sandbox.
+  # Orchestrator executor body. host.<tool> provided by runtime sandbox.
   # IBS bakes in path/recursive/max_depth as slot0/slot1/slot2.
   _path = "{{vars.slot0}}"
   _recursive = {{vars.slot1}}
@@ -2732,7 +2732,7 @@ content: |
       _params["recursive"] = True
   if _max_depth and _max_depth > 0:
       _params["max_depth"] = _max_depth
-  result = __execute_action__("list_dir", _params)
+  result = host.list_dir(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -2795,7 +2795,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-list-dir>"],
-    "label":   "PythonCode calls __execute_action__(list_dir, {path, recursive, max_depth})"
+    "label":   "PythonCode calls host.list_dir(path, recursive, max_depth)"
   }
 ]
 intent_examples: [
@@ -2837,7 +2837,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-list-dir>"],
-    "label":   "PythonCode calls __execute_action__(list_dir, {path, recursive:true, max_depth:3})"
+    "label":   "PythonCode calls host.list_dir(path, recursive=true, max_depth=3)"
   }
 ]
 intent_examples: [
@@ -2918,7 +2918,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-glob"
-description: "Orchestrator executor: calls __execute_action__ to find files via builtin.glob.
+description: "Orchestrator executor: calls host.<tool> to find files via builtin.glob.
               Input: pattern (string), path (optional string), max_results (optional int).
               Output: tool result with list of matching paths."
 content: |
@@ -2931,7 +2931,7 @@ content: |
       _params["path"] = _path
   if _max_results and _max_results > 0:
       _params["max_results"] = _max_results
-  result = __execute_action__("glob", _params)
+  result = host.glob(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -3011,7 +3011,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-glob>"],
-    "label":   "PythonCode calls __execute_action__(glob, {pattern, path, max_results})"
+    "label":   "PythonCode calls host.glob(pattern, path, max_results)"
   }
 ]
 intent_examples: [
@@ -3051,7 +3051,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-glob>"],
-    "label":   "PythonCode calls __execute_action__(glob, {pattern: '**/*.ext'})"
+    "label":   "PythonCode calls host.glob(pattern='**/*.ext')"
   }
 ]
 intent_examples: [
@@ -3091,7 +3091,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-glob>"],
-    "label":   "PythonCode calls __execute_action__(glob, {pattern: '**/name-pattern'})"
+    "label":   "PythonCode calls host.glob(pattern='**/name-pattern')"
   }
 ]
 intent_examples: [
@@ -3131,7 +3131,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-glob>"],
-    "label":   "PythonCode calls __execute_action__(glob, {pattern, path: subdir})"
+    "label":   "PythonCode calls host.glob(pattern, path=subdir)"
   }
 ]
 intent_examples: [
@@ -3232,7 +3232,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-grep"
-description: "Orchestrator executor: calls __execute_action__ to search content via
+description: "Orchestrator executor: calls host.<tool> to search content via
               builtin.grep. Input: pattern (string), path (optional), output_mode (optional,
               default files_with_matches), glob (optional), case_insensitive (optional bool)."
 content: |
@@ -3251,7 +3251,7 @@ content: |
       _params["glob"] = _glob
   if _case_insensitive:
       _params["case_insensitive"] = True
-  result = __execute_action__("grep", _params)
+  result = host.grep(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -3334,7 +3334,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-grep>"],
-    "label":   "PythonCode calls __execute_action__(grep, {pattern, path, output_mode, ...})"
+    "label":   "PythonCode calls host.grep(pattern, path, output_mode, ...)"
   }
 ]
 intent_examples: [
@@ -3373,7 +3373,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-grep>"],
-    "label":   "PythonCode calls __execute_action__(grep, {pattern, output_mode: 'files_with_matches'})"
+    "label":   "PythonCode calls host.grep(pattern, output_mode='files_with_matches')"
   }
 ]
 intent_examples: [
@@ -3414,7 +3414,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-grep>"],
-    "label":   "PythonCode calls __execute_action__(grep, {pattern, output_mode: 'content', context})"
+    "label":   "PythonCode calls host.grep(pattern, output_mode='content', context)"
   }
 ]
 intent_examples: [
@@ -3455,7 +3455,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-grep>"],
-    "label":   "PythonCode calls __execute_action__(grep, {pattern, output_mode: 'count'})"
+    "label":   "PythonCode calls host.grep(pattern, output_mode='count')"
   }
 ]
 intent_examples: [
@@ -3755,7 +3755,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-http-get"
-description: "Orchestrator executor: calls __execute_action__ for an HTTP GET request via
+description: "Orchestrator executor: calls host.<tool> for an HTTP GET request via
               builtin.http. Input: url (string), response_body_limit (optional int).
               Output: tool result with status, headers, body."
 content: |
@@ -3765,7 +3765,7 @@ content: |
   _params = {"url": _url, "method": "get"}
   if _limit and _limit > 0:
       _params["response_body_limit"] = _limit
-  result = __execute_action__("http", _params)
+  result = host.http(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -3777,7 +3777,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-http-post"
-description: "Orchestrator executor: calls __execute_action__ for an HTTP POST request via
+description: "Orchestrator executor: calls host.<tool> for an HTTP POST request via
               builtin.http. Input: url (string), body (JSON value), headers (optional dict).
               Output: tool result with status, headers, body."
 content: |
@@ -3788,7 +3788,7 @@ content: |
   _params = {"url": _url, "method": "post", "body": _body}
   if _headers:
       _params["headers"] = _headers
-  result = __execute_action__("http", _params)
+  result = host.http(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -3871,7 +3871,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-http-get>"],
-    "label":   "PythonCode calls __execute_action__(http, {url, method:get})"
+    "label":   "PythonCode calls host.http(url, method=get)"
   }
 ]
 intent_examples: [
@@ -3913,7 +3913,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-http-get>"],
-    "label":   "PythonCode calls __execute_action__(http, {url, method:get, headers:{Accept:application/json}})"
+    "label":   "PythonCode calls host.http(url, method=get, headers={Accept:application/json})"
   }
 ]
 intent_examples: [
@@ -4050,14 +4050,14 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-http-save"
-description: "Orchestrator executor: calls __execute_action__ for builtin.http.save.
+description: "Orchestrator executor: calls host.<tool> for builtin.http.save.
               Input: url (string), save_to (string — scoped path). Output: metadata dict
               with status code and bytes_saved."
 content: |
   # Orchestrator executor body.
   _url = "{{vars.slot0}}"
   _save_to = "{{vars.slot1}}"
-  result = __execute_action__("http.save", {"url": _url, "save_to": _save_to})
+  result = host.http.save(url=_url, save_to=_save_to)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -4120,7 +4120,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-http-save>"],
-    "label":   "PythonCode calls __execute_action__(http.save, {url, save_to})"
+    "label":   "PythonCode calls host.http.save(url, save_to)"
   }
 ]
 intent_examples: [
@@ -4168,7 +4168,7 @@ consumer_tags: ["02:orchestrator", "05:validator"]
 
 ```
 name:        "pc-exec-http-patch"
-description: "Orchestrator executor: calls __execute_action__ for an HTTP PATCH request via
+description: "Orchestrator executor: calls host.<tool> for an HTTP PATCH request via
               builtin.http. Input: url (string), body (JSON value), headers (optional dict).
               Output: status + body."
 content: |
@@ -4179,7 +4179,7 @@ content: |
   _params = {"url": _url, "method": "patch", "body": _body}
   if _headers:
       _params["headers"] = _headers
-  result = __execute_action__("http", _params)
+  result = host.http(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -4256,7 +4256,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-http-save>"],
-    "label":   "PythonCode calls __execute_action__(http.save, {url, save_to, response_body_limit: 5242880})"
+    "label":   "PythonCode calls host.http.save(url, save_to, response_body_limit=5242880)"
   }
 ]
 intent_examples: [
@@ -4425,7 +4425,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-memory-search"
-description: "Orchestrator executor: calls __execute_action__ to search persistent memory
+description: "Orchestrator executor: calls host.<tool> to search persistent memory
               via builtin.memory_search. Input: query (string), limit (optional int 1–20)."
 content: |
   # Orchestrator executor body.
@@ -4434,7 +4434,7 @@ content: |
   _params = {"query": _query}
   if _limit and _limit > 0:
       _params["limit"] = _limit
-  result = __execute_action__("memory_search", _params)
+  result = host.memory_search(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -4498,7 +4498,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-search>"],
-    "label":   "PythonCode calls __execute_action__(memory_search, {query, limit})"
+    "label":   "PythonCode calls host.memory_search(query, limit)"
   }
 ]
 intent_examples: [
@@ -4541,7 +4541,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-search>"],
-    "label":   "PythonCode calls __execute_action__(memory_search, {query, limit:20})"
+    "label":   "PythonCode calls host.memory_search(query, limit=20)"
   }
 ]
 intent_examples: [
@@ -4631,7 +4631,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-memory-write"
-description: "Orchestrator executor: calls __execute_action__ to write to persistent memory
+description: "Orchestrator executor: calls host.<tool> to write to persistent memory
               via builtin.memory_write. Input: content (string), target (optional string,
               default 'daily_log'), append (optional bool, default true)."
 content: |
@@ -4644,7 +4644,7 @@ content: |
       _params["target"] = _target
   if _append is not None:
       _params["append"] = _append
-  result = __execute_action__("memory_write", _params)
+  result = host.memory_write(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -4656,7 +4656,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-memory-patch"
-description: "Orchestrator executor: calls __execute_action__ for a targeted patch to a memory
+description: "Orchestrator executor: calls host.<tool> for a targeted patch to a memory
               document via builtin.memory_write patch mode. Input: target (string), old_string
               (string), new_string (string), replace_all (optional bool)."
 content: |
@@ -4668,7 +4668,7 @@ content: |
   _params = {"target": _target, "old_string": _old, "new_string": _new}
   if _replace_all:
       _params["replace_all"] = True
-  result = __execute_action__("memory_write", _params)
+  result = host.memory_write(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -4749,7 +4749,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-write>"],
-    "label":   "PythonCode calls __execute_action__(memory_write, {content, target, append})"
+    "label":   "PythonCode calls host.memory_write(content, target, append)"
   }
 ]
 intent_examples: [
@@ -4792,7 +4792,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-write>"],
-    "label":   "PythonCode calls __execute_action__(memory_write, {content, target:'daily_log', append:true})"
+    "label":   "PythonCode calls host.memory_write(content, target='daily_log', append=true)"
   }
 ]
 intent_examples: [
@@ -4836,7 +4836,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-write>"],
-    "label":   "PythonCode calls __execute_action__(memory_write, {content, target:'memory', append:true})"
+    "label":   "PythonCode calls host.memory_write(content, target='memory', append=true)"
   }
 ]
 intent_examples: [
@@ -4878,7 +4878,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-patch>"],
-    "label":   "PythonCode calls __execute_action__(memory_write, {target, old_string, new_string})"
+    "label":   "PythonCode calls host.memory_write(target, old_string, new_string)"
   }
 ]
 intent_examples: [
@@ -4954,12 +4954,12 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-memory-read"
-description: "Orchestrator executor: calls __execute_action__ to read a memory document by
+description: "Orchestrator executor: calls host.<tool> to read a memory document by
               path via builtin.memory_read. Input: path (string). Output: full document content."
 content: |
   # Orchestrator executor body.
   _path = "{{vars.slot0}}"
-  result = __execute_action__("memory_read", {"path": _path})
+  result = host.memory_read(path=_path)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -5002,7 +5002,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-read>"],
-    "label":   "PythonCode calls __execute_action__(memory_read, {path})"
+    "label":   "PythonCode calls host.memory_read(path)"
   }
 ]
 intent_examples: [
@@ -5044,7 +5044,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-read>"],
-    "label":   "PythonCode calls __execute_action__(memory_read, {path:'MEMORY.md'})"
+    "label":   "PythonCode calls host.memory_read(path='MEMORY.md')"
   }
 ]
 intent_examples: [
@@ -5088,7 +5088,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-read>"],
-    "label":   "PythonCode calls __execute_action__(memory_read, {path:'HEARTBEAT.md'})"
+    "label":   "PythonCode calls host.memory_read(path='HEARTBEAT.md')"
   }
 ]
 intent_examples: [
@@ -5165,7 +5165,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-memory-tree"
-description: "Orchestrator executor: calls __execute_action__ to list the memory directory
+description: "Orchestrator executor: calls host.<tool> to list the memory directory
               tree via builtin.memory_tree. Input: path (optional string), depth (optional int)."
 content: |
   # Orchestrator executor body.
@@ -5176,7 +5176,7 @@ content: |
       _params["path"] = _path
   if _depth and _depth > 0:
       _params["depth"] = _depth
-  result = __execute_action__("memory_tree", _params)
+  result = host.memory_tree(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -5219,7 +5219,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-tree>"],
-    "label":   "PythonCode calls __execute_action__(memory_tree, {path, depth})"
+    "label":   "PythonCode calls host.memory_tree(path, depth)"
   }
 ]
 intent_examples: [
@@ -5479,7 +5479,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-time-now"
-description: "Orchestrator executor: calls __execute_action__ to get the current timestamp
+description: "Orchestrator executor: calls host.<tool> to get the current timestamp
               via builtin.time operation='now'. Input: timezone (optional IANA string)."
 content: |
   # Orchestrator executor body.
@@ -5487,7 +5487,7 @@ content: |
   _params = {"operation": "now"}
   if _timezone and _timezone != "":
       _params["timezone"] = _timezone
-  result = __execute_action__("time", _params)
+  result = host.time(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -5530,7 +5530,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-time-now>"],
-    "label":   "PythonCode calls __execute_action__(time, {operation:now})"
+    "label":   "PythonCode calls host.time(operation=now)"
   }
 ]
 intent_examples: [
@@ -5571,7 +5571,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-time-now>"],
-    "label":   "PythonCode calls __execute_action__(time, {operation:now, timezone:<tz>})"
+    "label":   "PythonCode calls host.time(operation=now, timezone=<tz>)"
   }
 ]
 intent_examples: [
@@ -5623,7 +5623,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-time-parse"
-description: "Orchestrator executor: calls __execute_action__ to parse a timestamp string
+description: "Orchestrator executor: calls host.<tool> to parse a timestamp string
               via builtin.time operation='parse'. Input: input (string), timezone (optional)."
 content: |
   # Orchestrator executor body.
@@ -5632,7 +5632,7 @@ content: |
   _params = {"operation": "parse", "input": _input}
   if _timezone and _timezone != "":
       _params["timezone"] = _timezone
-  result = __execute_action__("time", _params)
+  result = host.time(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -5674,7 +5674,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-time-parse>"],
-    "label":   "PythonCode calls __execute_action__(time, {operation:parse, input})"
+    "label":   "PythonCode calls host.time(operation=parse, input)"
   }
 ]
 intent_examples: [
@@ -5722,7 +5722,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-time-convert"
-description: "Orchestrator executor: calls __execute_action__ to convert a timestamp between
+description: "Orchestrator executor: calls host.<tool> to convert a timestamp between
               timezones via builtin.time operation='convert'. Input: input (string),
               from_timezone (optional), to_timezone (optional IANA string)."
 content: |
@@ -5735,7 +5735,7 @@ content: |
       _params["from_timezone"] = _from_tz
   if _to_tz and _to_tz != "":
       _params["to_timezone"] = _to_tz
-  result = __execute_action__("time", _params)
+  result = host.time(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -5778,7 +5778,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-time-convert>"],
-    "label":   "PythonCode calls __execute_action__(time, {operation:convert, input, to_timezone})"
+    "label":   "PythonCode calls host.time(operation=convert, input, to_timezone)"
   }
 ]
 intent_examples: [
@@ -5878,7 +5878,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-time-diff"
-description: "Orchestrator executor: calls __execute_action__ to compute the signed
+description: "Orchestrator executor: calls host.<tool> to compute the signed
               difference between two timestamps via builtin.time operation='diff'.
               Input: input (string), timestamp2 (string). Output: {seconds, minutes,
               hours, days} — all signed."
@@ -5887,11 +5887,7 @@ content: |
   # IBS bakes in slot values before execution.
   _input = "{{vars.slot0}}"
   _ts2   = "{{vars.slot1}}"
-  result = __execute_action__("time", {
-      "operation":  "diff",
-      "input":      _input,
-      "timestamp2": _ts2
-  })
+  result = host.time(operation="diff", input=_input, timestamp2=_ts2)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -5903,7 +5899,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-time-format"
-description: "Orchestrator executor: calls __execute_action__ to format a timestamp
+description: "Orchestrator executor: calls host.<tool> to format a timestamp
               as a human-readable string via builtin.time operation='format'.
               Input: input (string), optional format_string (string), optional timezone
               (string). Output: {formatted, utc_iso, timezone?}."
@@ -5918,7 +5914,7 @@ content: |
       _params["format_string"] = _fmt
   if _tz:
       _params["timezone"] = _tz
-  result = __execute_action__("time", _params)
+  result = host.time(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -5989,7 +5985,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-time-diff>"],
-    "label":   "PythonCode calls __execute_action__(time, {operation:diff, input, timestamp2})"
+    "label":   "PythonCode calls host.time(operation=diff, input, timestamp2)"
   }
 ]
 intent_examples: [
@@ -6029,7 +6025,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-time-format>"],
-    "label":   "PythonCode calls __execute_action__(time, {operation:format, input, format_string?})"
+    "label":   "PythonCode calls host.time(operation=format, input, format_string?)"
   }
 ]
 intent_examples: [
@@ -6109,13 +6105,13 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-json-query"
-description: "Orchestrator executor: calls __execute_action__ for json query operation.
+description: "Orchestrator executor: calls host.<tool> for json query operation.
               Input: data (JSON value or string), path (dot-separated path string)."
 content: |
   # Orchestrator executor body.
   _data = {{vars.slot0}}
   _path = "{{vars.slot1}}"
-  result = __execute_action__("json", {"operation": "query", "data": _data, "path": _path})
+  result = host.json(operation="query", data=_data, path=_path)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -6158,7 +6154,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-json-query>"],
-    "label":   "PythonCode calls __execute_action__(json, {operation:query, data, path})"
+    "label":   "PythonCode calls host.json(operation=query, data, path)"
   }
 ]
 intent_examples: [
@@ -6230,13 +6226,13 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-json-stringify"
-description: "Orchestrator executor: calls __execute_action__ for json stringify or parse.
+description: "Orchestrator executor: calls host.<tool> for json stringify or parse.
               Input: operation ('stringify' or 'parse'), data."
 content: |
   # Orchestrator executor body.
   _operation = "{{vars.slot0}}"
   _data = {{vars.slot1}}
-  result = __execute_action__("json", {"operation": _operation, "data": _data})
+  result = host.json(operation=_operation, data=_data)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -6246,12 +6242,12 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-json-validate"
-description: "Orchestrator executor: calls __execute_action__ to validate a JSON string.
+description: "Orchestrator executor: calls host.<tool> to validate a JSON string.
               Input: data (string). Output: {valid, error}."
 content: |
   # Orchestrator executor body.
   _data = "{{vars.slot0}}"
-  result = __execute_action__("json", {"operation": "validate", "data": _data})
+  result = host.json(operation="validate", data=_data)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -6330,7 +6326,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-json-stringify>"],
-    "label":   "PythonCode calls __execute_action__(json, {operation, data})"
+    "label":   "PythonCode calls host.json(operation, data)"
   }
 ]
 intent_examples: [
@@ -6370,7 +6366,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-json-stringify>"],
-    "label":   "PythonCode calls __execute_action__(json, {operation:'parse', data})"
+    "label":   "PythonCode calls host.json(operation='parse', data)"
   }
 ]
 intent_examples: [
@@ -6410,7 +6406,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-json-validate>"],
-    "label":   "PythonCode calls __execute_action__(json, {operation:'validate', data})"
+    "label":   "PythonCode calls host.json(operation='validate', data)"
   }
 ]
 intent_examples: [
@@ -6491,7 +6487,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-json-query>"],
-    "label":   "PythonCode calls __execute_action__(json, {operation:'query', path:slot1}) on parsed data"
+    "label":   "PythonCode calls host.json(operation='query', path=slot1) on parsed data"
   }
 ]
 intent_examples: [
@@ -6670,17 +6666,17 @@ consumer_tags: ["02:orchestrator"]
 ### Step 16.7 — PythonCode: `pc-exec-skill-list` (class 22)
 
 > Orchestrator executor for `builtin.skill_list`. Dispatches the tool deterministically —
-> the only actor that calls `__execute_action__` for a Tier-0 skill-list recipe.
+> the only actor that calls `host.<tool>` for a Tier-0 skill-list recipe.
 
 ```
 name:        "pc-exec-skill-list"
 class_code:  22
-description: "Orchestrator executor: calls __execute_action__ to list installed skills.
+description: "Orchestrator executor: calls host.<tool> to list installed skills.
               Input: scope (string). Output: [{name, class_code, …}]."
 content: |
   # Orchestrator executor body.
   _scope = "{{vars.slot0}}" if "{{vars.slot0}}" else "all"
-  result = __execute_action__("skill_list", {"scope": _scope})
+  result = host.skill_list(scope=_scope)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -6798,7 +6794,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-skill-list>"],
-    "label":   "PythonCode calls __execute_action__(skill_list, {scope})"
+    "label":   "PythonCode calls host.skill_list(scope)"
   }
 ]
 intent_examples: [
@@ -7063,12 +7059,12 @@ consumer_tags: ["02:orchestrator"]
 ```
 name:        "pc-exec-trigger-list"
 class_code:  22
-description: "Orchestrator executor: calls __execute_action__ to list configured triggers.
+description: "Orchestrator executor: calls host.<tool> to list configured triggers.
               Input: scope (string). Output: [{name, schedule, recipe_name, …}]."
 content: |
   # Orchestrator executor body.
   _scope = "{{vars.slot0}}" if "{{vars.slot0}}" else "all"
-  result = __execute_action__("trigger_list", {"scope": _scope})
+  result = host.trigger_list(scope=_scope)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -7197,7 +7193,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-trigger-list>"],
-    "label":   "PythonCode calls __execute_action__(trigger_list, {scope})"
+    "label":   "PythonCode calls host.trigger_list(scope)"
   }
 ]
 intent_examples: [
@@ -7313,9 +7309,9 @@ validation_status: "validated"
 > result the orchestrator already holds), the LLM step is unnecessary.
 >
 > This section adds a `pc-exec-trigger-resolve-and-remove` PythonCode helper that:
-> 1. Lists all triggers via `__execute_action__(trigger_list, {})`.
+> 1. Lists all triggers via `host.trigger_list()`.
 > 2. Finds the trigger whose name exactly matches the input.
-> 3. Removes it via `__execute_action__(trigger_remove, {trigger_name: name})`.
+> 3. Removes it via `host.trigger_remove(trigger_name=name)`.
 >
 > This is still Tier 1 because `trigger_remove` has ExternalWrite effect and benefits from
 > user confirmation. However the LLM step is now ONLY for user confirmation — not for
@@ -7338,14 +7334,14 @@ content: |
   # Orchestrator executor body. No I/O, no imports, no network.
   # IBS bakes in slot values before execution.
   _trigger_name = "{{vars.slot0}}"
-  _list_result  = __execute_action__("trigger_list", {})
+  _list_result  = host.trigger_list()
   _triggers     = _list_result.get("triggers", []) if isinstance(_list_result, dict) else []
   _found        = next((t for t in _triggers if t.get("name") == _trigger_name), None)
   if _found is None:
       result = {"removed": False, "trigger_name": _trigger_name,
                 "error": f"No trigger named '{_trigger_name}' found"}
   else:
-      _remove_result = __execute_action__("trigger_remove", {"trigger_name": _trigger_name})
+      _remove_result = host.trigger_remove(trigger_name=_trigger_name)
       result = {"removed": True, "trigger_name": _trigger_name, "remove_result": _remove_result}
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
@@ -7419,11 +7415,11 @@ validation_status: "validated"
 ```
 name:        "pc-exec-trigger-list-active"
 class_code:  22
-description: "Orchestrator executor: calls __execute_action__(trigger_list, {scope:'active'})
+description: "Orchestrator executor: calls host.trigger_list(scope='active')
               to list only currently active (running/enabled) triggers. No LLM needed."
 content: |
   # Orchestrator executor body.
-  result = __execute_action__("trigger_list", {"scope": "active"})
+  result = host.trigger_list(scope="active")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -7434,11 +7430,11 @@ validation_status: "validated"
 ```
 name:        "pc-exec-trigger-list-scheduled"
 class_code:  22
-description: "Orchestrator executor: calls __execute_action__(trigger_list, {scope:'scheduled'})
+description: "Orchestrator executor: calls host.trigger_list(scope='scheduled')
               to list only scheduled (cron/time-based) triggers. No LLM needed."
 content: |
   # Orchestrator executor body.
-  result = __execute_action__("trigger_list", {"scope": "scheduled"})
+  result = host.trigger_list(scope="scheduled")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -7496,7 +7492,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-trigger-list-active>"],
-    "label":   "PythonCode calls __execute_action__(trigger_list, {scope:'active'})"
+    "label":   "PythonCode calls host.trigger_list(scope='active')"
   }
 ]
 intent_examples: [
@@ -7538,7 +7534,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-trigger-list-scheduled>"],
-    "label":   "PythonCode calls __execute_action__(trigger_list, {scope:'scheduled'})"
+    "label":   "PythonCode calls host.trigger_list(scope='scheduled')"
   }
 ]
 intent_examples: [
@@ -8131,12 +8127,12 @@ consumer_tags: ["02:orchestrator"]
 
 ```
 name:        "pc-exec-echo"
-description: "Orchestrator executor: calls __execute_action__ for builtin.echo (diagnostic
+description: "Orchestrator executor: calls host.<tool> for builtin.echo (diagnostic
               passthrough). Input: message (string). Output: {message} — returned verbatim."
 content: |
-  # Diagnostic executor body. __execute_action__ provided by runtime sandbox.
+  # Diagnostic executor body. host.<tool> provided by runtime sandbox.
   _message = "{{vars.slot0}}"
-  result = __execute_action__("echo", {"message": _message})
+  result = host.echo(message=_message)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -8164,7 +8160,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-echo>"],
-    "label":   "PythonCode calls __execute_action__(echo, {message}) — returned verbatim"
+    "label":   "PythonCode calls host.echo(message) — returned verbatim"
   }
 ]
 intent_examples: [
@@ -8745,7 +8741,7 @@ consumer_tags: ["02:orchestrator", "05:validator"]
 
 ```
 name:        "pc-exec-grep-case-insensitive"
-description: "Orchestrator executor: calls __execute_action__ for a case-insensitive grep
+description: "Orchestrator executor: calls host.<tool> for a case-insensitive grep
               via builtin.grep. Input: pattern (string), path (optional), output_mode
               (optional, default 'files_with_matches'). Sets case_insensitive=true."
 content: |
@@ -8760,7 +8756,7 @@ content: |
       _params["output_mode"] = _output_mode
   else:
       _params["output_mode"] = "files_with_matches"
-  result = __execute_action__("grep", _params)
+  result = host.grep(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -8772,7 +8768,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-grep-type-filtered"
-description: "Orchestrator executor: calls __execute_action__ for a type-filtered grep
+description: "Orchestrator executor: calls host.<tool> for a type-filtered grep
               via builtin.grep. Input: pattern (string), glob_filter (string e.g. '*.rs'),
               path (optional), output_mode (optional, default 'files_with_matches')."
 content: |
@@ -8788,7 +8784,7 @@ content: |
       _params["output_mode"] = _output_mode
   else:
       _params["output_mode"] = "files_with_matches"
-  result = __execute_action__("grep", _params)
+  result = host.grep(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -8816,7 +8812,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-grep-case-insensitive>"],
-    "label":   "PythonCode calls __execute_action__(grep, {pattern, case_insensitive:true, ...})"
+    "label":   "PythonCode calls host.grep(pattern, case_insensitive=true, ...)"
   }
 ]
 intent_examples: [
@@ -8856,7 +8852,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-grep-type-filtered>"],
-    "label":   "PythonCode calls __execute_action__(grep, {pattern, glob:'*.ext', ...})"
+    "label":   "PythonCode calls host.grep(pattern, glob='*.ext', ...)"
   }
 ]
 intent_examples: [
@@ -8887,7 +8883,7 @@ validation_status: "validated"
 ```
 name:        "pc-exec-grep-invert"
 class_code:  22
-description: "Orchestrator executor: calls __execute_action__ for an inverted grep via
+description: "Orchestrator executor: calls host.<tool> for an inverted grep via
               builtin.grep. Input: pattern (string), path (optional), output_mode (optional,
               default 'files_with_matches'). Sets invert_match=true."
 content: |
@@ -8902,7 +8898,7 @@ content: |
       _params["output_mode"] = _output_mode
   else:
       _params["output_mode"] = "files_with_matches"
-  result = __execute_action__("grep", _params)
+  result = host.grep(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -8947,7 +8943,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-grep-invert>"],
-    "label":   "PythonCode calls __execute_action__(grep, {pattern, invert_match:true, ...})"
+    "label":   "PythonCode calls host.grep(pattern, invert_match=true, ...)"
   }
 ]
 intent_examples: [
@@ -9022,7 +9018,7 @@ description: "Pure-logic helper: filters a list_dir result to only entries of a 
               Output: {entries, entry_type, count} — only matching entries."
 content: |
   # No I/O, no imports. IBS bakes in entries and entry_type before execution.
-  # __execute_action__ is NOT called here — this is a post-processing step.
+  # host.<tool> is NOT called here — this is a post-processing step.
   _entries = {{vars.slot0}}
   _entry_type = "{{vars.slot1}}"
   if not isinstance(_entries, list):
@@ -9206,12 +9202,12 @@ consumer_tags: ["02:orchestrator", "05:validator"]
 
 ```
 name:        "pc-exec-http-head"
-description: "Orchestrator executor: calls __execute_action__ for an HTTP HEAD request via
+description: "Orchestrator executor: calls host.<tool> for an HTTP HEAD request via
               builtin.http. Input: url (string). Output: status code and headers only."
 content: |
   # Orchestrator executor body.
   _url = "{{vars.slot0}}"
-  result = __execute_action__("http", {"url": _url, "method": "head"})
+  result = host.http(url=_url, method="head")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -9221,7 +9217,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-http-get-authenticated"
-description: "Orchestrator executor: calls __execute_action__ for an authenticated HTTP GET
+description: "Orchestrator executor: calls host.<tool> for an authenticated HTTP GET
               via builtin.http. Input: url (string), auth_header_value (string — full value
               for the Authorization header, e.g. 'Bearer <token>'). Output: status + body."
 content: |
@@ -9229,7 +9225,7 @@ content: |
   _url = "{{vars.slot0}}"
   _auth = "{{vars.slot1}}"
   _params = {"url": _url, "method": "get", "headers": {"Authorization": _auth}}
-  result = __execute_action__("http", _params)
+  result = host.http(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -9239,7 +9235,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-http-put"
-description: "Orchestrator executor: calls __execute_action__ for an HTTP PUT request via
+description: "Orchestrator executor: calls host.<tool> for an HTTP PUT request via
               builtin.http. Input: url (string), body (JSON value), headers (optional dict).
               Output: status + body."
 content: |
@@ -9250,7 +9246,7 @@ content: |
   _params = {"url": _url, "method": "put", "body": _body}
   if _headers:
       _params["headers"] = _headers
-  result = __execute_action__("http", _params)
+  result = host.http(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -9260,7 +9256,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-http-delete"
-description: "Orchestrator executor: calls __execute_action__ for an HTTP DELETE request via
+description: "Orchestrator executor: calls host.<tool> for an HTTP DELETE request via
               builtin.http. Input: url (string), headers (optional dict with auth).
               Output: status + body."
 content: |
@@ -9270,7 +9266,7 @@ content: |
   _params = {"url": _url, "method": "delete"}
   if _headers:
       _params["headers"] = _headers
-  result = __execute_action__("http", _params)
+  result = host.http(**_params)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -9299,7 +9295,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-http-head>"],
-    "label":   "PythonCode calls __execute_action__(http, {url, method:'head'})"
+    "label":   "PythonCode calls host.http(url, method='head')"
   }
 ]
 intent_examples: [
@@ -9340,7 +9336,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-http-get-authenticated>"],
-    "label":   "PythonCode calls __execute_action__(http, {url, method:get, headers:{Authorization:...}})"
+    "label":   "PythonCode calls host.http(url, method=get, headers={Authorization:...})"
   }
 ]
 intent_examples: [
@@ -9467,7 +9463,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-http-post>"],
-    "label":   "PythonCode calls __execute_action__(http, {url, method:post, body:{event, payload}, headers:{Content-Type:application/json}})"
+    "label":   "PythonCode calls host.http(url, method=post, body={event, payload}, headers={Content-Type:application/json})"
   }
 ]
 intent_examples: [
@@ -9510,7 +9506,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-memory-tree>"],
-    "label":   "PythonCode calls __execute_action__(memory_tree, {depth:5})"
+    "label":   "PythonCode calls host.memory_tree(depth=5)"
   }
 ]
 intent_examples: [
@@ -9556,7 +9552,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-skill-list>"],
-    "label":   "PythonCode calls __execute_action__(skill_list, {scope:'user'})"
+    "label":   "PythonCode calls host.skill_list(scope='user')"
   }
 ]
 intent_examples: [
@@ -9595,7 +9591,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-skill-list>"],
-    "label":   "PythonCode calls __execute_action__(skill_list, {scope:'system'})"
+    "label":   "PythonCode calls host.skill_list(scope='system')"
   }
 ]
 intent_examples: [
@@ -11321,13 +11317,13 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-shell-git-add"
-description: "Orchestrator executor: calls __execute_action__ to run 'git add <path>'.
+description: "Orchestrator executor: calls host.<tool> to run 'git add <path>'.
               Input: vars.slot0 = path(s) to stage. Use '.' to stage all changes.
               §shell-guard-custom — path is user/LLM-supplied. Tier 1 only."
 content: |
   # §shell-guard-custom — path is user/LLM-supplied. Tier 1 only.
   _path = "{{vars.slot0}}" or "."
-  result = __execute_action__("shell", {"command": "git add " + _path})
+  result = host.shell(command="git add " + _path)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -11407,12 +11403,12 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-shell-git-commit"
-description: "Orchestrator executor: calls __execute_action__ to run 'git commit -m <msg>'.
+description: "Orchestrator executor: calls host.<tool> to run 'git commit -m <msg>'.
               Input: vars.slot0 = commit message (user-supplied, LLM-validated). Tier 1 only."
 content: |
   # §shell-guard-custom — commit message is user/LLM-supplied. Tier 1 only.
   _msg = "{{vars.slot0}}"
-  result = __execute_action__("shell", {"command": "git commit -m " + repr(_msg)})
+  result = host.shell(command="git commit -m " + repr(_msg))
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -11424,13 +11420,13 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-shell-git-push"
-description: "Orchestrator executor: calls __execute_action__ to run 'git push <remote> <branch>'.
+description: "Orchestrator executor: calls host.<tool> to run 'git push <remote> <branch>'.
               Input: vars.slot0 = remote (e.g. 'origin'), vars.slot1 = branch (e.g. 'main'). Tier 1 only."
 content: |
   # §shell-guard-custom — remote/branch are user-supplied. Tier 1 only.
   _remote = "{{vars.slot0}}" or "origin"
   _branch = "{{vars.slot1}}" or "main"
-  result = __execute_action__("shell", {"command": "git push " + _remote + " " + _branch})
+  result = host.shell(command="git push " + _remote + " " + _branch)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -11440,7 +11436,7 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-shell-git-pull"
-description: "Orchestrator executor: calls __execute_action__ to run 'git pull <remote> <branch>'.
+description: "Orchestrator executor: calls host.<tool> to run 'git pull <remote> <branch>'.
               Input: vars.slot0 = remote, vars.slot1 = branch. Tier 1 only."
 content: |
   # §shell-guard-custom — remote/branch are user-supplied. Tier 1 only.
@@ -11449,7 +11445,7 @@ content: |
   _cmd = "git pull " + _remote
   if _branch:
       _cmd = _cmd + " " + _branch
-  result = __execute_action__("shell", {"command": _cmd})
+  result = host.shell(command=_cmd)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -11462,10 +11458,10 @@ validation_status: "validated"
 
 ```
 name:        "pc-exec-shell-git-fetch"
-description: "Orchestrator executor: calls __execute_action__ to run 'git fetch --all'. Tier 0 safe."
+description: "Orchestrator executor: calls host.<tool> to run 'git fetch --all'. Tier 0 safe."
 content: |
   # §shell-safe-fixed — 'git fetch --all' is a fixed read-only remote query. No user input in command.
-  result = __execute_action__("shell", {"command": "git fetch --all"})
+  result = host.shell(command="git fetch --all")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -11554,7 +11550,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-shell-git-fetch>"],
-    "label":   "PythonCode calls __execute_action__(shell, {command:'git fetch --all'})"
+    "label":   "PythonCode calls host.shell(command='git fetch --all')"
   }
 ]
 intent_examples: [
@@ -11727,7 +11723,7 @@ description: "Orchestrator executor: reads the first 50 lines of a file via buil
 content: |
   # Pre-baked head variant: reads lines 1-50. No user input in range → Tier 0 safe.
   _path = "{{vars.slot0}}"
-  result = __execute_action__("read_file", {"path": _path, "range": "1-50"})
+  result = host.read_file(path=_path, range="1-50")
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -11742,10 +11738,10 @@ description: "Orchestrator executor: reads the last 50 lines of a file (lines -5
 content: |
   # Tail variant: reads from line (total - 50) onward. First get line_count, then slice.
   _path = "{{vars.slot0}}"
-  _info = __execute_action__("read_file", {"path": _path, "range": "1-1"})
+  _info = host.read_file(path=_path, range="1-1")
   _total = _info.get("line_count", 1) if isinstance(_info, dict) else 1
   _start = max(1, _total - 49)
-  result = __execute_action__("read_file", {"path": _path, "range": str(_start) + "-" + str(_total)})
+  result = host.read_file(path=_path, range=str(_start) + "-" + str(_total))
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -11761,7 +11757,7 @@ content: |
   # Check existence by reading line 1. If tool returns an error, file doesn't exist.
   _path = "{{vars.slot0}}"
   try:
-      _r = __execute_action__("read_file", {"path": _path, "range": "1-1"})
+      _r = host.read_file(path=_path, range="1-1")
       result = {"exists": True, "path": _path, "line_count": _r.get("line_count", 0) if isinstance(_r, dict) else 0}
   except Exception:
       result = {"exists": False, "path": _path}
@@ -11837,7 +11833,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-read-file-head>"],
-    "label":   "PythonCode calls __execute_action__(read_file, {path, range:'1-50'})"
+    "label":   "PythonCode calls host.read_file(path, range='1-50')"
   }
 ]
 intent_examples: [
@@ -11877,7 +11873,7 @@ step_descriptions: [
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-read-file-tail>"],
-    "label":   "PythonCode probes line_count then calls __execute_action__(read_file, {path, range:N-total})"
+    "label":   "PythonCode probes line_count then calls host.read_file(path, range=N-total)"
   }
 ]
 intent_examples: [
@@ -11958,10 +11954,10 @@ content: |
   # Append pattern: read existing, concat new content, write back.
   _path    = "{{vars.slot0}}"
   _new_txt = "{{vars.slot1}}"
-  _existing = __execute_action__("memory_read", {"path": _path})
+  _existing = host.memory_read(path=_path)
   _current = _existing.get("content", "") if isinstance(_existing, dict) else ""
   _combined = _current.rstrip("\n") + "\n\n" + _new_txt
-  result = __execute_action__("memory_write", {"path": _path, "content": _combined})
+  result = host.memory_write(path=_path, content=_combined)
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -12036,7 +12032,7 @@ validation_status: "validated"
 ## Step 20.x.2 — Additional Pure-Logic PythonCode Helpers (path, number, regex)
 
 > These helpers extend the string/list/dict/csv set from Step 20.x.
-> All are pure-logic, no I/O, no imports, no `__execute_action__` calls.
+> All are pure-logic, no I/O, no imports, no `host.<tool>` calls.
 > They transform data from preceding tool results.
 
 ### PythonCode: `pc-path-join` (class 22)
@@ -12171,7 +12167,7 @@ content: |
   # Read file content, then filter lines matching the pattern.
   _path    = "{{vars.slot0}}"
   _pattern = "{{vars.slot1}}"
-  _file_result = __execute_action__("read_file", {"path": _path})
+  _file_result = host.read_file(path=_path)
   _content = _file_result.get("content", "") if isinstance(_file_result, dict) else str(_file_result)
   _lines = _content.split("\n")
   result = [_l for _l in _lines if _pattern in _l]
@@ -12191,7 +12187,7 @@ content: |
   # List directory, then filter entries by name substring.
   _dir    = "{{vars.slot0}}"
   _filter = "{{vars.slot1}}"
-  _list_result = __execute_action__("list_dir", {"path": _dir})
+  _list_result = host.list_dir(path=_dir)
   _entries = _list_result if isinstance(_list_result, list) else (
       _list_result.get("entries", []) if isinstance(_list_result, dict) else []
   )
@@ -12334,7 +12330,7 @@ validation_status: "validated"
 > **Changes in this revision (v3-revised, since v3-base 368):**
 >
 > *Bug fixes (interrupted optimization resolved):*
-> - All ToolSkill `tool_name:` fields now use the short name without `builtin.` prefix — consistent with all other ToolSkills and with `__execute_action__()` call sites. Affected: `ts-skill-list/install/remove`, `ts-trigger-create/list/remove`, `ts-spawn-subagent`, `ts-echo`, `ts-web-search`.
+> - All ToolSkill `tool_name:` fields now use the short name without `builtin.` prefix — consistent with all other ToolSkills and with `host.<tool>()` call sites. Affected: `ts-skill-list/install/remove`, `ts-trigger-create/list/remove`, `ts-spawn-subagent`, `ts-echo`, `ts-web-search`.
 > - `pc-web-search-extract` removed illegal `import json` statement — replaced with pure dict access (http tool returns parsed dict).
 > - `pc-web-search-query-build` removed illegal `import urllib.parse` — now delegates to `url_encode` action.
 > - Duplicate `pc-path-dirname` definition removed; `validation_exists` typo corrected to `validation_status`.
@@ -12354,7 +12350,7 @@ validation_status: "validated"
 > LLM involvement required for 25% (shell-run/script, git-add, git-commit/push/pull, spawn variants, file-write, file-patch, memory-write*, memory-write-append, http-save-large, http-post-webhook, trigger-create, skill-install/remove, web-search, memory-search-and-read — all creative, write, spawn, or destructive operations).
 >
 > **Design invariants enforced (v3-revised):**
-> - All ToolSkill `tool_name:` use short names (no `builtin.` prefix) — matches Tool `name:` field and `__execute_action__()` calls
+> - All ToolSkill `tool_name:` use short names (no `builtin.` prefix) — matches Tool `name:` field and `host.<tool>()` calls
 > - All PythonCode bodies use no `import` statements (pure sandbox execution only)
 > - All Tier-0 recipes have both `channel:"rust"` pre-load step AND `channel:"orchestrator"` PythonCode dispatch step
 > - `shell-guard-custom` enforced: all git-write recipes are `llm_call_required: true`
@@ -12487,11 +12483,11 @@ producing duplicate rows.
 > emission goes through `host.post_reply`. Security is mode-driven (Matching-Mode
 > all-off / Non-Matching-Mode wrapper-on) — see CLAUDE.md.
 >
-> **Tool invocation = first-class callables (no `__execute_action__`):** a recipe
+> **Tool invocation = first-class callables (no `host.<tool>`):** a recipe
 > step's PythonCode calls a ToolSkill directly, e.g.
 > `result = host.resolve_intent(user_input=text)`. The rust-channel step binds the
 > ToolSkill into the Monty namespace; the orchestrator-channel PythonCode calls
-> the bound callable. `__execute_action__` / `__execute_code_step__` /
+> the bound callable. `host.<tool>` / `__execute_code_step__` /
 > `__execute_actions_parallel__` are all **retired** (Model-A relics; Monty is
 > single-threaded so a parallel helper would degrade to sequential anyway — "call
 > N tools" is a sequential recipe with N steps). A future MCP bridge hits the
@@ -12553,7 +12549,7 @@ producing duplicate rows.
 | `__get_reduction_rules__` | **DROPPED** (LOCKED) — same |
 | `__llm_complete__` | **RETIRED** — LLM invocation is Kohai-mediated (Recipe); `handle_llm_complete` / `LlmBackend` retire |
 | `__save_checkpoint__`, `__transition_to__`, `__check_budget__`, `__log_budget_warning__`, `__emit_event__`, `__get_actions__`, `__record_skill_usage__` | **ALL RETIRED** (LOCKED Q-D) — the Orchestrator owns thread state (it knows where it is in its own step sequence); the agent-loop stage pipeline is no longer the driver; chat event emission goes via `host.post_reply` |
-| `__execute_action__`, `__execute_code_step__` | **RETIRED** meta-primitives — the recipe step calls the ToolSkill directly |
+| `host.<tool>`, `__execute_code_step__` | **RETIRED** meta-primitives — the recipe step calls the ToolSkill directly |
 | `__execute_actions_parallel__` | **RETIRED** meta-primitive — "call N tools" is a sequential recipe with N steps (Monty is single-threaded, so a `pc-host-execute-parallel` Python helper would degrade to sequential anyway). A parallel-step-group recipe extension may be added later only if a real concurrent case appears |
 
 > **Net new `host.*` Tool rows:** `resolve_intent`, `compose_orchestrator`
@@ -12901,7 +12897,7 @@ tier:              0
 > sequential recipe with N steps.
 >
 > **RETIRED (no Tool row, no intrinsic, no component):**
-> - `__execute_action__(name, params, call_id=…)` — **RETIRED**. Tools are called
+> - `host.<tool>(name, params, call_id=…)` — **RETIRED**. Tools are called
 >   directly as first-class callables; there is no string-name dispatch intrinsic.
 >   The old Rust `handle_execute_action` policy/lease/gate/event wrapper is also
 >   retired as a universal per-call babysitter — security is now mode-driven
@@ -13106,7 +13102,7 @@ ok = host.regex_match(pattern="{{vars.slot0}}", text="{{vars.slot1}}")
 # builtin.skill_list (Step 16) MUST share one Rust backing implementation
 # (handle_list_skills). No new host.* Tool row is created: the host call and the
 # builtin tool are the same capability. Recipes that need the skill catalogue call
-# __execute_action__("builtin.skill_list", {max_candidates, max_tokens}) — the
+# host.builtin.skill_list(max_candidates, max_tokens) — the
 # identical surface Monty and the future MCP bridge use. The only work here is
 # implementation hygiene: ensure builtin.skill_list and __list_skills__ route to
 # the same handler (they already do in orchestrator.rs); no component row is added.
@@ -13313,7 +13309,7 @@ param_schema:      [{name:"prompt",param_type:"object",required:true}]
 param_template:    {"prompt":{{prompt}}}
 category:          "llm"
 
-# PythonCode (class 22) — first-class callable (no __execute_action__):
+# PythonCode (class 22) — first-class callable (no host.<tool>):
 answer = host.kohai_complete(prompt=prompt)
 
 # Leaf Skill (class 1)
@@ -13336,7 +13332,7 @@ body:              "Call host.kohai_complete with the assembled prompt (chat his
 > ToolSkills, PythonCode snippets, leaf skills, and internal Recipes that Monty
 > and the composition system use to run the main process. Tools are **first-class
 > callables in the Monty namespace** (recipe PythonCode calls `host.<name>(…)`
-> directly — no `__execute_action__`); this is the catalogue a future MCP bridge
+> directly — no `host.<tool>`); this is the catalogue a future MCP bridge
 > enumerates to advertise host capabilities from the **same namespace registry**.
 > It is `source: "system"`, `validation_status: "validated"` — first-party, not
 > user-editable.
@@ -13350,7 +13346,7 @@ overview_doc: |
   The host domain covers the `host.*` service Tools the Monty main process calls
   as first-class namespace callables, plus the internal main-process Recipes.
   These are first-party system components; the old `__host_call__` 23-arm match
-  and the `__execute_action__` string-intrinsic are RETIRED into this registry.
+  and the `host.<tool>` string-intrinsic are RETIRED into this registry.
 
   ## Tools in this domain (class 0) — 8 net new
   - host.resolve_intent            — Phase 2 intent match (whole intent system = one Tool)
@@ -13381,7 +13377,7 @@ overview_doc: |
   - host.retrieve_docs / host.get_reduction_rules — DROPPED (prior knowledge = fallback Recipe)
   - host.get_actions / host.record_skill_usage — RETIRED (Q-D: Orchestrator owns its run)
   - host.emit_event / host.save_checkpoint / host.transition_to / host.check_budget / host.log_budget_warning — RETIRED (Q-D: Orchestrator owns thread state; chat via host.post_reply)
-  - __execute_action__ / __execute_code_step__ — RETIRED meta-primitives (first-class callables)
+  - host.<tool> / __execute_code_step__ — RETIRED meta-primitives (first-class callables)
   - __execute_actions_parallel__ — RETIRED (Monty is single-threaded; "call N tools" = a sequential recipe with N steps)
 
 task_groups:
@@ -13431,9 +13427,9 @@ child_component_ids: [
 > [Kohai-mediated], host-assemble-prior-knowledge [fallback], host-save-history),
 > **1 Python helper** (pc-host-execute-parallel), **DROPPED** retrieve_docs +
 > get_reduction_rules, and **RETIRED** host.llm_complete (+ handle_llm_complete /
-> LlmBackend) + 7 stage-machinery verbs (Q-D) + __execute_action__ /
+> LlmBackend) + 7 stage-machinery verbs (Q-D) + host.<tool> /
 > __execute_code_step__. Tools are first-class namespace callables (no
-> `__execute_action__`); the future MCP bridge advertises the same registry. Phase
+> `host.<tool>`); the future MCP bridge advertises the same registry. Phase
 > C Rust implementation (C.1 tool registry + first-class callables, C.2 reclassify
 > host calls, C.3 cdylib dynamic loading, C.4 mode-driven security + WebUI panel,
 > C.5 basic-mode orchestrator script, C.6 production driver switch, C.7 retire dead
