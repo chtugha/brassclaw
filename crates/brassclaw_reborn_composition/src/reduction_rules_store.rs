@@ -6,12 +6,13 @@
 //! rule entries. Storing them in the engine's [`Store`] keeps every
 //! operator-tunable surface routed through the same persistence resume,
 //! backup, and audit path that powers conversations and threads. The
-//! engine's [`orchestrator`](brassclaw_engine::executor) reads them on
-//! every over-budget turn (see
-//! `brassclaw_engine::executor::orchestrator::load_reduction_rules`); the
-//! engine-side process-wide cache is dropped via
+//! `__get_reduction_rules__` orchestrator verb + `load_reduction_rules` were
+//! retired in the v3 Phase C.6 Kohai re-arch, so the engine no longer reads
+//! these rules on the hot path; this store remains the WebUI v2 operator
+//! surface for CRUD-ing them. It still calls
 //! `brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache`
-//! whenever this store successfully writes a new snapshot.
+//! on every successful write to preserve the flush contract for any future
+//! engine-side reader.
 //!
 //! ## Identifier strategy
 //!

@@ -10,7 +10,9 @@
 //! - `__emit_event__` — broadcast a ThreadEvent
 //! - `__save_checkpoint__` — persist thread state
 //! - `__transition_to__` — change thread state (validated)
-//! - `__retrieve_docs__` — query memory docs
+//! - `__retrieve_docs__` — retired (v3 Phase C.6 Kohai re-arch); dropped together
+//!   with `__get_reduction_rules__` (prior knowledge now flows via the
+//!   `assemble_prior_knowledge_with_hint` library call / seeded Recipe)
 //! - `__assemble_prior_knowledge__` — retired (v3 Phase H8.4); replaced by the
 //!   `pub` `assemble_prior_knowledge_with_hint` library call (§3.13/§3.14)
 //! - `__check_budget__` — remaining tokens/time/USD
@@ -633,7 +635,7 @@ impl MontySession {
         policy: &Arc<PolicyEngine>,
         signal_rx: &mut SignalReceiver,
         event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
-        retrieval: Option<&RetrievalEngine>,
+        _retrieval: Option<&RetrievalEngine>,
         store: Option<&Arc<dyn Store>>,
         _platform_info: Option<&crate::executor::prompt::PlatformInfo>,
         gate_controller: &Arc<dyn crate::gate::GateController>,
@@ -736,11 +738,6 @@ impl MontySession {
                         // __transition_to__(state, reason)
                         "__transition_to__" => handle_transition_to(args, kwargs, thread),
 
-                        // __retrieve_docs__(goal, max_docs)
-                        "__retrieve_docs__" => {
-                            handle_retrieve_docs(args, kwargs, thread, retrieval).await
-                        }
-
                         // __check_budget__()"
                         "__check_budget__" => handle_check_budget(thread),
 
@@ -750,13 +747,6 @@ impl MontySession {
                         // only soft signal: time/cost budgets remain hard-stops.
                         "__log_budget_warning__" => {
                             handle_log_budget_warning(args, kwargs, thread, event_tx)
-                        }
-
-                        // __get_reduction_rules__() -> list
-                        // Returns the per-project/user cached reduction rules used
-                        // by the segment reduction pipeline in default.py.
-                        "__get_reduction_rules__" => {
-                            handle_get_reduction_rules(thread, store).await
                         }
 
                         // __get_actions__()
@@ -1350,51 +1340,6 @@ fn handle_transition_to(
             monty::ExcType::RuntimeError,
             Some(format!("State transition failed: {e}")),
         )),
-    }
-}
-
-/// Handle `__retrieve_docs__(goal, max_docs)`.
-async fn handle_retrieve_docs(
-    args: &[MontyObject],
-    _kwargs: &[(MontyObject, MontyObject)],
-    thread: &Thread,
-    retrieval: Option<&RetrievalEngine>,
-) -> ExtFunctionResult {
-    let retrieval = match retrieval {
-        Some(r) => r,
-        None => return ExtFunctionResult::Return(json_to_monty(&serde_json::json!([]))),
-    };
-
-    let goal = args.first().map(monty_to_string).unwrap_or_default();
-    let max_docs = args
-        .get(1)
-        .and_then(|v| match v {
-            MontyObject::Int(i) => Some(*i as usize),
-            _ => None,
-        })
-        .unwrap_or(5);
-
-    match retrieval
-        .retrieve_context(thread.project_id, &thread.user_id, &goal, max_docs)
-        .await
-    {
-        Ok(docs) => {
-            let docs_json: Vec<serde_json::Value> = docs
-                .iter()
-                .map(|d| {
-                    serde_json::json!({
-                        "type": format!("{:?}", d.doc_type),
-                        "title": d.title,
-                        "content": d.content,
-                    })
-                })
-                .collect();
-            ExtFunctionResult::Return(json_to_monty(&serde_json::json!(docs_json)))
-        }
-        Err(e) => {
-            debug!("retrieve_docs failed: {e}");
-            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
-        }
     }
 }
 
@@ -2464,17 +2409,12 @@ fn handle_check_budget(thread: &Thread) -> ExtFunctionResult {
 
 // ── Reduction rules cache ──────────────────────────────────
 //
-// The orchestrator Python calls `__get_reduction_rules__()` on every
-// prompt assembly when the assembled message list is over budget. To
-// keep that hot path off the DB, the resolved rules are cached
-// per-(project_id, user_id) in a process-wide map. REST handlers that
-// mutate the rules call `invalidate_reduction_rules_cache()` to flush
-// stale entries; until then, the cache serves the same Vec without
-// touching the DB.
-//
-// The cache key intentionally excludes the rule tag — only one tag
-// ("reduction_rule") is supported today. Adding more tags later
-// requires widening the key.
+// The `__get_reduction_rules__` verb + `load_reduction_rules` were retired
+// in the v3 Phase C.6 Kohai re-arch, so the engine no longer populates or
+// reads this cache. `invalidate_reduction_rules_cache()` is kept as a
+// composition-facing flush API — `reduction_rules_store.rs` still calls it
+// on every successful write. It is a no-op today (the cache is never
+// populated) but preserves the contract for any future engine-side reader.
 type ReductionRuleCacheKey = (crate::types::project::ProjectId, String);
 type ReductionRuleCacheValue = Vec<serde_json::Value>;
 type ReductionRuleSlot = Arc<StdMutex<Option<ReductionRuleCacheValue>>>;
@@ -2505,77 +2445,6 @@ pub fn invalidate_reduction_rules_cache() -> usize {
         }
     }
     cleared
-}
-
-/// Apply cached or freshly-loaded reduction rules for the given project/
-/// user. If a fresh DB load fails, returns an empty list (the
-/// orchestrator skips reduction rather than aborting).
-async fn load_reduction_rules(
-    project_id: crate::types::project::ProjectId,
-    user_id: &str,
-    store: Option<&Arc<dyn Store>>,
-) -> Vec<serde_json::Value> {
-    let Some(store) = store else {
-        return Vec::new();
-    };
-    let key: ReductionRuleCacheKey = (project_id, user_id.to_string());
-    let slot = {
-        let mut cache = REDUCTION_RULE_CACHE
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        cache
-            .entry(key)
-            .or_insert_with(|| Arc::new(StdMutex::new(None)))
-            .clone()
-    };
-    {
-        let guard = slot.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(cached) = guard.as_ref() {
-            return cached.clone();
-        }
-    }
-    let fresh = match store.list_memory_docs(project_id, user_id).await {
-        Ok(docs) => {
-            let mut out: Vec<serde_json::Value> = Vec::new();
-            for doc in docs {
-                if !doc.tags.iter().any(|t| t == "reduction_rule") {
-                    continue;
-                }
-                let value = match serde_json::from_str::<serde_json::Value>(&doc.content) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        debug!("reduction rule parse failed: {e}");
-                        continue;
-                    }
-                };
-                if let Some(arr) = value.as_array() {
-                    for entry in arr {
-                        if entry.is_object() {
-                            out.push(entry.clone());
-                        }
-                    }
-                } else if value.is_object() {
-                    out.push(value);
-                }
-            }
-            out
-        }
-        Err(e) => {
-            debug!("reduction rule load failed: {e}");
-            // Cache the empty result so subsequent calls on the same
-            // (project_id, user_id) pair do not hammer a flaky DB on
-            // every over-budget turn. An explicit `invalidate_reduction_rules_cache`
-            // call (e.g. after a DB recovery) will clear the slot.
-            let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
-            *guard = Some(Vec::new());
-            return Vec::new();
-        }
-    };
-    {
-        let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
-        *guard = Some(fresh.clone());
-    }
-    fresh
 }
 
 /// Handle `__log_budget_warning__(field, value, message)`.
@@ -2622,20 +2491,6 @@ fn handle_log_budget_warning(
     thread.updated_at = chrono::Utc::now();
 
     ExtFunctionResult::Return(MontyObject::None)
-}
-
-/// Handle `__get_reduction_rules__()`.
-///
-/// Returns the cached or freshly-loaded reduction rules for the active
-/// thread's project/user, filtered by the `reduction_rule` tag and
-/// parsed as a JSON array of objects. Session-isolated via the
-/// thread's `project_id`+`user_id`.
-async fn handle_get_reduction_rules(
-    thread: &Thread,
-    store: Option<&Arc<dyn Store>>,
-) -> ExtFunctionResult {
-    let rules = load_reduction_rules(thread.project_id, &thread.user_id, store).await;
-    ExtFunctionResult::Return(json_to_monty(&serde_json::json!(rules)))
 }
 
 /// Handle `__get_actions__()`.
@@ -3497,7 +3352,7 @@ mod tests {
     use crate::traits::effect::ThreadExecutionContext;
     use crate::memory::intent_system::{IntentCandidate, IntentResolution};
     use crate::memory::{
-        ComponentItem, ComponentScope, FetchForTurnResult, RetrievalEngine, RetrievalSource,
+        ComponentItem, ComponentScope, FetchForTurnResult, RetrievalSource,
         RetrievalSourceError, TurnRoutingSignals,
     };
     use crate::types::memory::{DocType, MemoryDoc};
@@ -5970,487 +5825,11 @@ FINAL(batch_error_count)
         );
     }
 
-    // ── Reduction-rules cache test serialization ───────────────────────────
-    //
-    // `invalidate_reduction_rules_cache()` is a process-wide flush: it clears
-    // EVERY cached slot, not just the caller's. Four tests here call it and
-    // `cargo test` runs them in parallel, so one test's invalidate can clear a
-    // sibling test's slot between its two `load_reduction_rules` calls — turning
-    // a "DB called exactly once" cache assertion into a spurious second query
-    // (the intermittent `load_reduction_rules_db_error_returns_empty_and_caches`
-    // failure). This test-only `std::sync::Mutex` serializes just the
-    // reduction-rules cache tests so the process-wide flush cannot race with a
-    // sibling's slot. The async tests hold the guard across `.await` on a
-    // current-thread `#[tokio::test]` runtime (no thread migration → no
-    // self-deadlock); see the `#[allow(clippy::await_holding_lock)]` on each,
-    // matching the oauth/hooks convention.
-    static REDUCTION_RULES_TEST_LOCK: Mutex<()> = Mutex::new(());
-
     #[test]
     fn invalidate_reduction_rules_cache_returns_zero_when_unused() {
-        let _test_lock = REDUCTION_RULES_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        // Ensure the public API exists and is callable; in this fresh
-        // state no slots are populated so cleared is zero.
+        // Public API stays callable; in a fresh state no slots are populated
+        // so the process-wide flush clears nothing.
         let _ = invalidate_reduction_rules_cache();
-    }
-
-    // ── load_reduction_rules ──────────────────────────────────────────────
-
-    /// Helper: build a `MemoryDoc` tagged `reduction_rule` whose content is
-    /// a JSON array of rule objects.
-    fn make_rule_doc(
-        project_id: crate::types::project::ProjectId,
-        user_id: &str,
-        rules_json: serde_json::Value,
-    ) -> crate::types::memory::MemoryDoc {
-        use crate::types::memory::{DocType, MemoryDoc};
-        let mut doc = MemoryDoc::new(
-            project_id,
-            user_id,
-            DocType::Note,
-            "rules",
-            rules_json.to_string(),
-        );
-        doc.tags.push("reduction_rule".to_string());
-        doc
-    }
-
-    // Lock held across await to serialize the reduction-rules cache tests
-    // (process-wide invalidate race — see REDUCTION_RULES_TEST_LOCK).
-    #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
-    async fn load_reduction_rules_cache_miss_then_hit() {
-        let _test_lock = REDUCTION_RULES_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        // First call loads from DB; second call returns from cache (exactly
-        // one DB query total, proven by using a store that counts calls).
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        struct CountingStore {
-            inner: crate::tests::InMemoryStore,
-            calls: AtomicUsize,
-        }
-
-        #[async_trait::async_trait]
-        impl Store for CountingStore {
-            async fn list_memory_docs(
-                &self,
-                project_id: crate::types::project::ProjectId,
-                user_id: &str,
-            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
-            {
-                self.calls.fetch_add(1, Ordering::Relaxed);
-                self.inner.list_memory_docs(project_id, user_id).await
-            }
-            // ── delegate everything else ──────────────────────────────────
-            async fn save_thread(
-                &self,
-                t: &crate::types::thread::Thread,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.save_thread(t).await
-            }
-            async fn load_thread(
-                &self,
-                id: crate::types::thread::ThreadId,
-            ) -> Result<Option<crate::types::thread::Thread>, crate::types::error::EngineError>
-            {
-                self.inner.load_thread(id).await
-            }
-            async fn list_threads(
-                &self,
-                p: crate::types::project::ProjectId,
-                u: &str,
-            ) -> Result<Vec<crate::types::thread::Thread>, crate::types::error::EngineError>
-            {
-                self.inner.list_threads(p, u).await
-            }
-            async fn update_thread_state(
-                &self,
-                id: crate::types::thread::ThreadId,
-                s: crate::types::thread::ThreadState,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.update_thread_state(id, s).await
-            }
-            async fn save_step(
-                &self,
-                step: &crate::types::step::Step,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.save_step(step).await
-            }
-            async fn load_steps(
-                &self,
-                id: crate::types::thread::ThreadId,
-            ) -> Result<Vec<crate::types::step::Step>, crate::types::error::EngineError>
-            {
-                self.inner.load_steps(id).await
-            }
-            async fn append_events(
-                &self,
-                evts: &[crate::types::event::ThreadEvent],
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.append_events(evts).await
-            }
-            async fn load_events(
-                &self,
-                id: crate::types::thread::ThreadId,
-            ) -> Result<Vec<crate::types::event::ThreadEvent>, crate::types::error::EngineError>
-            {
-                self.inner.load_events(id).await
-            }
-            async fn save_project(
-                &self,
-                p: &crate::types::project::Project,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.save_project(p).await
-            }
-            async fn load_project(
-                &self,
-                id: crate::types::project::ProjectId,
-            ) -> Result<Option<crate::types::project::Project>, crate::types::error::EngineError>
-            {
-                self.inner.load_project(id).await
-            }
-            async fn list_all_projects(
-                &self,
-            ) -> Result<Vec<crate::types::project::Project>, crate::types::error::EngineError>
-            {
-                self.inner.list_all_projects().await
-            }
-            async fn save_conversation(
-                &self,
-                c: &crate::types::conversation::ConversationSurface,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.save_conversation(c).await
-            }
-            async fn load_conversation(
-                &self,
-                id: crate::types::conversation::ConversationId,
-            ) -> Result<
-                Option<crate::types::conversation::ConversationSurface>,
-                crate::types::error::EngineError,
-            > {
-                self.inner.load_conversation(id).await
-            }
-            async fn list_conversations(
-                &self,
-                u: &str,
-            ) -> Result<
-                Vec<crate::types::conversation::ConversationSurface>,
-                crate::types::error::EngineError,
-            > {
-                self.inner.list_conversations(u).await
-            }
-            async fn save_memory_doc(
-                &self,
-                doc: &crate::types::memory::MemoryDoc,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.save_memory_doc(doc).await
-            }
-            async fn load_memory_doc(
-                &self,
-                id: crate::types::memory::DocId,
-            ) -> Result<Option<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
-            {
-                self.inner.load_memory_doc(id).await
-            }
-            async fn list_memory_docs_by_owner(
-                &self,
-                u: &str,
-            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
-            {
-                self.inner.list_memory_docs_by_owner(u).await
-            }
-            async fn save_lease(
-                &self,
-                l: &crate::types::capability::CapabilityLease,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.save_lease(l).await
-            }
-            async fn load_active_leases(
-                &self,
-                id: crate::types::thread::ThreadId,
-            ) -> Result<
-                Vec<crate::types::capability::CapabilityLease>,
-                crate::types::error::EngineError,
-            > {
-                self.inner.load_active_leases(id).await
-            }
-            async fn revoke_lease(
-                &self,
-                id: crate::types::capability::LeaseId,
-                reason: &str,
-            ) -> Result<(), crate::types::error::EngineError> {
-                self.inner.revoke_lease(id, reason).await
-            }
-        }
-
-        let project_id = crate::types::project::ProjectId::new();
-        let user_id = "alice";
-        let rule = serde_json::json!([{"type": "drop", "field": "content"}]);
-        let doc = make_rule_doc(project_id, user_id, rule.clone());
-
-        // Wrap in Arc so we can also hold a reference to the CountingStore
-        // and verify call counts directly (no as_any needed).
-        let counting_store = Arc::new(CountingStore {
-            inner: crate::tests::InMemoryStore::with_docs(vec![doc]),
-            calls: AtomicUsize::new(0),
-        });
-        let store: Arc<dyn Store> = counting_store.clone();
-
-        // Ensure a clean cache slot for this key before the test runs.
-        invalidate_reduction_rules_cache();
-
-        // First call: cache miss → DB query.
-        let rules = load_reduction_rules(project_id, user_id, Some(&store)).await;
-        assert_eq!(rules.len(), 1, "expected one rule from DB");
-        assert_eq!(rules[0]["type"], "drop");
-        assert_eq!(
-            counting_store.calls.load(Ordering::Relaxed),
-            1,
-            "DB must be called exactly once on cache miss"
-        );
-
-        // Second call: cache hit → no additional DB query.
-        let rules2 = load_reduction_rules(project_id, user_id, Some(&store)).await;
-        assert_eq!(rules2.len(), 1, "expected same rule from cache");
-        assert_eq!(
-            counting_store.calls.load(Ordering::Relaxed),
-            1,
-            "DB must not be called again on cache hit"
-        );
-        assert_eq!(rules, rules2, "cache hit must return identical data");
-    }
-
-    // Lock held across await to serialize the reduction-rules cache tests
-    // (process-wide invalidate race — see REDUCTION_RULES_TEST_LOCK).
-    #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
-    async fn load_reduction_rules_ignores_docs_without_tag() {
-        let _test_lock = REDUCTION_RULES_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        // A doc without the `reduction_rule` tag must be silently skipped.
-        use crate::types::memory::{DocType, MemoryDoc};
-        let project_id = crate::types::project::ProjectId::new();
-        let user_id = "bob";
-        let mut doc = MemoryDoc::new(
-            project_id,
-            user_id,
-            DocType::Note,
-            "not-a-rule",
-            r#"[{"type": "drop", "field": "content"}]"#,
-        );
-        doc.tags.push("skill".to_string()); // wrong tag — must be ignored
-
-        invalidate_reduction_rules_cache();
-
-        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![doc]));
-        let rules = load_reduction_rules(project_id, user_id, Some(&store)).await;
-        assert!(
-            rules.is_empty(),
-            "docs without the 'reduction_rule' tag must not produce rules"
-        );
-    }
-
-    // Lock held across await to serialize the reduction-rules cache tests
-    // (process-wide invalidate race — see REDUCTION_RULES_TEST_LOCK).
-    #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
-    async fn load_reduction_rules_db_error_returns_empty_and_caches() {
-        let _test_lock = REDUCTION_RULES_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        // When the DB fails the function must return an empty vec and cache
-        // that result so the slot is not re-queried on every subsequent call.
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        struct AlwaysFailStore {
-            calls: AtomicUsize,
-        }
-
-        #[async_trait::async_trait]
-        impl Store for AlwaysFailStore {
-            async fn list_memory_docs(
-                &self,
-                _project_id: crate::types::project::ProjectId,
-                _user_id: &str,
-            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
-            {
-                self.calls.fetch_add(1, Ordering::Relaxed);
-                Err(crate::types::error::EngineError::Store {
-                    reason: "simulated DB failure".into(),
-                })
-            }
-            async fn save_thread(
-                &self,
-                _: &crate::types::thread::Thread,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn load_thread(
-                &self,
-                _: crate::types::thread::ThreadId,
-            ) -> Result<Option<crate::types::thread::Thread>, crate::types::error::EngineError>
-            {
-                Ok(None)
-            }
-            async fn list_threads(
-                &self,
-                _: crate::types::project::ProjectId,
-                _: &str,
-            ) -> Result<Vec<crate::types::thread::Thread>, crate::types::error::EngineError>
-            {
-                Ok(vec![])
-            }
-            async fn update_thread_state(
-                &self,
-                _: crate::types::thread::ThreadId,
-                _: crate::types::thread::ThreadState,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn save_step(
-                &self,
-                _: &crate::types::step::Step,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn load_steps(
-                &self,
-                _: crate::types::thread::ThreadId,
-            ) -> Result<Vec<crate::types::step::Step>, crate::types::error::EngineError>
-            {
-                Ok(vec![])
-            }
-            async fn append_events(
-                &self,
-                _: &[crate::types::event::ThreadEvent],
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn load_events(
-                &self,
-                _: crate::types::thread::ThreadId,
-            ) -> Result<Vec<crate::types::event::ThreadEvent>, crate::types::error::EngineError>
-            {
-                Ok(vec![])
-            }
-            async fn save_project(
-                &self,
-                _: &crate::types::project::Project,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn load_project(
-                &self,
-                _: crate::types::project::ProjectId,
-            ) -> Result<Option<crate::types::project::Project>, crate::types::error::EngineError>
-            {
-                Ok(None)
-            }
-            async fn list_all_projects(
-                &self,
-            ) -> Result<Vec<crate::types::project::Project>, crate::types::error::EngineError>
-            {
-                Ok(vec![])
-            }
-            async fn save_conversation(
-                &self,
-                _: &crate::types::conversation::ConversationSurface,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn load_conversation(
-                &self,
-                _: crate::types::conversation::ConversationId,
-            ) -> Result<
-                Option<crate::types::conversation::ConversationSurface>,
-                crate::types::error::EngineError,
-            > {
-                Ok(None)
-            }
-            async fn list_conversations(
-                &self,
-                _: &str,
-            ) -> Result<
-                Vec<crate::types::conversation::ConversationSurface>,
-                crate::types::error::EngineError,
-            > {
-                Ok(vec![])
-            }
-            async fn save_memory_doc(
-                &self,
-                _: &crate::types::memory::MemoryDoc,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn load_memory_doc(
-                &self,
-                _: crate::types::memory::DocId,
-            ) -> Result<Option<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
-            {
-                Ok(None)
-            }
-            async fn list_memory_docs_by_owner(
-                &self,
-                _: &str,
-            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
-            {
-                Ok(vec![])
-            }
-            async fn save_lease(
-                &self,
-                _: &crate::types::capability::CapabilityLease,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-            async fn load_active_leases(
-                &self,
-                _: crate::types::thread::ThreadId,
-            ) -> Result<
-                Vec<crate::types::capability::CapabilityLease>,
-                crate::types::error::EngineError,
-            > {
-                Ok(vec![])
-            }
-            async fn revoke_lease(
-                &self,
-                _: crate::types::capability::LeaseId,
-                _: &str,
-            ) -> Result<(), crate::types::error::EngineError> {
-                Ok(())
-            }
-        }
-
-        let project_id = crate::types::project::ProjectId::new();
-        let user_id = "carol";
-
-        invalidate_reduction_rules_cache();
-
-        let store = Arc::new(AlwaysFailStore {
-            calls: AtomicUsize::new(0),
-        });
-        let store_dyn: Arc<dyn Store> = store.clone();
-
-        let rules = load_reduction_rules(project_id, user_id, Some(&store_dyn)).await;
-        assert!(rules.is_empty(), "DB error must yield empty rules");
-        assert_eq!(
-            store.calls.load(Ordering::Relaxed),
-            1,
-            "DB called exactly once"
-        );
-
-        // Second call must use the cached empty vec (DB error is cached).
-        let rules2 = load_reduction_rules(project_id, user_id, Some(&store_dyn)).await;
-        assert!(rules2.is_empty());
-        assert_eq!(
-            store.calls.load(Ordering::Relaxed),
-            1,
-            "DB must not be called again after error was cached"
-        );
     }
 
     // ── handle_log_budget_warning ─────────────────────────────────────────
@@ -7010,60 +6389,6 @@ FINAL(batch_error_count)
             json.is_null(),
             "missing class-code must return Null, got {json}"
         );
-    }
-
-    /// Phase F.7 #6 — `__retrieve_docs__` is untouched by Phase F: it still
-    /// returns a FLAT list of `{type, title, content}` entries, not a dict
-    /// with the v3 routing keys.
-    #[tokio::test]
-    async fn phase_f7_handle_retrieve_docs_remains_flat_list() {
-        let project = ProjectId::new();
-        let retrieval =
-            RetrievalEngine::new(Arc::new(crate::tests::InMemoryStore::with_docs(vec![
-                MemoryDoc::new(
-                    project,
-                    "user",
-                    DocType::Lesson,
-                    "web_search tool alias",
-                    "Use web_search",
-                ),
-            ])));
-        let thread = crate::types::thread::Thread::new(
-            "web_search error",
-            crate::types::thread::ThreadType::Foreground,
-            project,
-            "user",
-            crate::types::thread::ThreadConfig::default(),
-        );
-        let args = vec![
-            MontyObject::String("web_search error".into()),
-            MontyObject::Int(5),
-        ];
-
-        let result = handle_retrieve_docs(&args, &[], &thread, Some(&retrieval)).await;
-        let json = match result {
-            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
-            other => panic!("expected Return, got: {other:?}"),
-        };
-
-        // Phase F must leave __retrieve_docs__ returning a FLAT array of
-        // {type, title, content} entries — NOT a dict with v3 routing keys.
-        let arr = json
-            .as_array()
-            .expect("retrieve_docs must return a flat array");
-        assert!(!arr.is_empty(), "the seeded lesson must be retrieved");
-        let first = &arr[0];
-        assert!(first.get("type").is_some(), "type key required");
-        assert!(first.get("title").is_some(), "title key required");
-        assert!(first.get("content").is_some(), "content key required");
-        assert_eq!(first["title"], "web_search tool alias");
-        assert_eq!(first["content"], "Use web_search");
-
-        // No v3 routing / orchestrator keys leaked into the flat list entries.
-        assert!(first.get("orchestrator_content").is_none());
-        assert!(first.get("matched_component_ids").is_none());
-        assert!(first.get("action_short_circuit").is_none());
-        assert!(first.get("disambiguation").is_none());
     }
 
     /// Phase F.7 #7 — the `ComponentScope` built by
