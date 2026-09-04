@@ -148,6 +148,8 @@ mod runtime_input;
 #[cfg(feature = "postgres")]
 pub mod seed_builtin_host;
 #[cfg(feature = "postgres")]
+pub mod builtin_bootstrap;
+#[cfg(feature = "postgres")]
 pub mod secrets_master;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod sempai_proposal_sink;

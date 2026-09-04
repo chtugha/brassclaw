@@ -177,12 +177,26 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     if let Some(pool) = services.pg_pool.clone() {
         let host_tenant_id = runtime.webui_tenant_id().to_string();
         if let Err(e) =
-            crate::seed_builtin_host::seed_builtin_host_components(pool, &host_tenant_id).await
+            crate::seed_builtin_host::seed_builtin_host_components(pool.clone(), &host_tenant_id)
+                .await
         {
             tracing::warn!(
                 error = %e,
                 "builtin host component seeding failed; host.* capabilities may be \
                  missing until the next restart"
+            );
+        }
+
+        // Phase L — seed the 23 first-party builtin capability tool stacks
+        // (read_file, write_file, shell, …). Distinct from the host.* stack
+        // above. Idempotent; safe on every boot.
+        if let Err(e) =
+            crate::builtin_bootstrap::seed_builtin_components(pool, &host_tenant_id).await
+        {
+            tracing::warn!(
+                error = %e,
+                "builtin bootstrap component seeding failed; first-party capability \
+                 components may be missing until the next restart"
             );
         }
     }
