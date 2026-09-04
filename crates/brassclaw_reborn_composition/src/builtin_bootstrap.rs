@@ -10758,6 +10758,131 @@ Echo is a diagnostic-only passthrough. It has no user-facing recipe. Use it only
 in tests and during recipe development.
 "#;
 
+const CAT_EXT_TIME_OVERVIEW: &str = r#"# Time Operations Capability
+Tool: builtin.time
+Effect: read_only
+
+Provides five time operations via a single tool: now, parse, convert, diff, format.
+
+Approaches:
+- Get current time (UTC): → time-now recipe (Tier 0)
+- Get current time in a timezone: → time-now-tz recipe (Tier 0)
+- Parse a timestamp string: → time-parse recipe (Tier 0)
+- Convert between timezones: → time-convert recipe (Tier 0)
+- Compute duration between two timestamps: → time-diff recipe (Tier 0)
+- Format a timestamp as a human-readable string: → time-format recipe (Tier 0)
+
+PythonCode MUST NOT use datetime.now() — always use the time tool.
+"#;
+
+const CAT_EXT_JSON_OVERVIEW: &str = r#"# JSON Operations Capability
+Tool: builtin.json
+Effect: read_only
+
+Provides four JSON operations via a single tool: query, stringify, parse, validate.
+
+Approaches:
+- Extract a field by path: → json-query recipe (Tier 0)
+- Stringify / pretty-print: → json-stringify recipe (Tier 0)
+- Parse JSON string: → json-parse recipe (Tier 0)
+- Validate JSON syntax: → json-validate recipe (Tier 0)
+
+Always validate before parsing when the source is external or user-provided.
+"#;
+
+const CAT_EXT_SKILL_MANAGEMENT_OVERVIEW: &str = r#"# Skill Management Capability
+Tools: builtin.skill_list, builtin.skill_install, builtin.skill_remove
+Effects: Read (list), Write (install/remove)
+
+Manages the installed skill library. List is Tier 0. Install and Remove are Tier 1
+(user confirmation required — both have side effects on the capability stack).
+
+Approaches:
+- List all skills: → skill-list recipe (Tier 0)
+- List user skills only: → skill-list-user-only recipe (Tier 0)
+- List system skills only: → skill-list-system-only recipe (Tier 0)
+- Install a skill: → skill-install recipe (Tier 1)
+- Remove a skill: → skill-remove recipe (Tier 1)
+"#;
+
+// ---------------------------------------------------------------------------
+// Catalogue row builders — management group
+// ---------------------------------------------------------------------------
+
+fn management_primary_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
+    NewPgExtensionCatalogue {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: CAT_MANAGEMENT.to_string(),
+        description: "Management & utility domain capability catalogue (skill_list, \
+                       skill_install, skill_remove, time, json, echo)."
+            .to_string(),
+        version: "1.0".into(),
+        overview_doc: CAT_MANAGEMENT_OVERVIEW.into(),
+        task_groups: json!([
+            {"group_name": "skill-management", "description": "Skill lifecycle: list, install, remove"},
+            {"group_name": "time-utilities",   "description": "Time queries, parsing, and conversion"},
+            {"group_name": "json-utilities",   "description": "JSON query, stringify, parse, validate"},
+            {"group_name": "diagnostics",      "description": "Echo passthrough (development/testing only)"}
+        ]),
+        child_component_ids: Vec::new(),
+        intent_index: None,
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        dependency_registry: None,
+    }
+}
+
+fn ext_time_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
+    ext_catalogue_row(
+        tenant,
+        "ext-time",
+        "Per-tool extension catalogue for builtin.time (now, parse, convert, diff, format).",
+        CAT_EXT_TIME_OVERVIEW,
+        json!([
+            {"group_name": "time-now",     "description": "Get current time"},
+            {"group_name": "time-parse",   "description": "Parse timestamp strings"},
+            {"group_name": "time-convert", "description": "Timezone conversion"},
+            {"group_name": "time-diff",    "description": "Duration between timestamps"},
+            {"group_name": "time-format",  "description": "Human-readable timestamp rendering"}
+        ]),
+    )
+}
+
+fn ext_json_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
+    ext_catalogue_row(
+        tenant,
+        "ext-json",
+        "Per-tool extension catalogue for builtin.json (query, stringify, parse, validate).",
+        CAT_EXT_JSON_OVERVIEW,
+        json!([
+            {"group_name": "json-query",           "description": "Extract values by path"},
+            {"group_name": "json-stringify-parse", "description": "Serialize and deserialize"},
+            {"group_name": "json-validate",        "description": "Syntax validation"}
+        ]),
+    )
+}
+
+fn ext_skill_management_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
+    ext_catalogue_row(
+        tenant,
+        "ext-skill-management",
+        "Per-tool extension catalogue for the skill-management tools (skill_list, \
+         skill_install, skill_remove).",
+        CAT_EXT_SKILL_MANAGEMENT_OVERVIEW,
+        json!([
+            {"group_name": "skill-list",   "description": "Enumerate installed skills (scope-filtered)"},
+            {"group_name": "skill-install", "description": "Install a new skill from URL/path"},
+            {"group_name": "skill-remove",  "description": "Remove an installed skill"}
+        ]),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Tool row builders — management group
 // ---------------------------------------------------------------------------
@@ -10936,6 +11061,358 @@ fn tool_skill_remove_row(tenant: &str) -> NewPgTool {
         source: "system".into(),
         validation_status: "validated".into(),
         capability_id: "builtin.skill_remove".into(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ToolSkill row builders — management group
+// ---------------------------------------------------------------------------
+//
+// `param_schema` uses the seeder-wide array format
+// (`[{name, param_type, required, description}]`) for consistency with the
+// filesystem/network ToolSkills, even though the doc renders the time/json
+// ToolSkill schemas in JSON-Schema object form. The doc omits `consumer_tags`
+// for ts-time-now/parse/convert and all ts-json-*; those inherit the parent
+// tool's tags `["00:rusty","05:validator"]`, matching the explicitly-tagged
+// siblings ts-time-diff/ts-time-format. The skill-management and echo
+// ToolSkills carry the doc-verbatim `["02:orchestrator"]`.
+
+fn ts_time_now_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-time-now".to_string(),
+        description: "Executor binding: get the current UTC timestamp (operation='now'). \
+                      Optional: timezone (IANA name) to return current time in a specific \
+                      timezone."
+            .to_string(),
+        content: TS_TIME_NOW_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("time".to_string()),
+        param_schema: Some(json!([
+            {"name": "operation", "param_type": "string", "required": true, "description": "Time operation (fixed 'now')"},
+            {"name": "timezone",  "param_type": "string", "required": false, "description": "IANA timezone name (e.g. 'America/New_York')"}
+        ])),
+        param_template: Some(json!({"operation": "now"})),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_time_parse_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-time-parse".to_string(),
+        description: "Executor binding: parse a timestamp string (operation='parse'). \
+                      Required: input (timestamp string). Optional: timezone (IANA, for \
+                      interpreting the input)."
+            .to_string(),
+        content: TS_TIME_PARSE_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("time".to_string()),
+        param_schema: Some(json!([
+            {"name": "operation", "param_type": "string", "required": true, "description": "Time operation (fixed 'parse')"},
+            {"name": "input",     "param_type": "string", "required": true, "description": "Timestamp string to parse"},
+            {"name": "timezone",  "param_type": "string", "required": false, "description": "IANA timezone for interpreting naive input"}
+        ])),
+        param_template: Some(json!({"operation": "parse", "input": "{{input}}"})),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_time_convert_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-time-convert".to_string(),
+        description: "Executor binding: convert a timestamp between timezones \
+                      (operation='convert'). Required: input. Optional: from_timezone, \
+                      to_timezone (IANA, default UTC)."
+            .to_string(),
+        content: TS_TIME_CONVERT_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("time".to_string()),
+        param_schema: Some(json!([
+            {"name": "operation",     "param_type": "string", "required": true, "description": "Time operation (fixed 'convert')"},
+            {"name": "input",         "param_type": "string", "required": true, "description": "Source timestamp string"},
+            {"name": "from_timezone", "param_type": "string", "required": false, "description": "IANA timezone if input is naive (default UTC)"},
+            {"name": "to_timezone",   "param_type": "string", "required": false, "description": "Target IANA timezone (default UTC)"}
+        ])),
+        param_template: Some(json!({"operation": "convert", "input": "{{input}}"})),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_time_diff_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-time-diff".to_string(),
+        description: "Executor binding: compute the signed difference between two timestamps \
+                      (operation='diff'). Required: input, timestamp2. Optional: timezone / \
+                      from_timezone (IANA). Returns {seconds, minutes, hours, days} — signed."
+            .to_string(),
+        content: TS_TIME_DIFF_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("time".to_string()),
+        param_schema: Some(json!([
+            {"name": "operation",     "param_type": "string", "required": true, "description": "Time operation (fixed 'diff')"},
+            {"name": "input",         "param_type": "string", "required": true, "description": "First timestamp string"},
+            {"name": "timestamp2",    "param_type": "string", "required": true, "description": "Second timestamp string"},
+            {"name": "timezone",      "param_type": "string", "required": false, "description": "IANA timezone for both inputs"},
+            {"name": "from_timezone", "param_type": "string", "required": false, "description": "Alias for timezone in diff context"}
+        ])),
+        param_template: Some(json!({"operation": "diff", "input": "{{input}}", "timestamp2": "{{timestamp2}}"})),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_time_format_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-time-format".to_string(),
+        description: "Executor binding: format a timestamp as a human-readable string \
+                      (operation='format'). Required: input. Optional: format_string (chrono), \
+                      timezone, from_timezone (IANA). Returns {formatted, utc_iso, timezone?}."
+            .to_string(),
+        content: TS_TIME_FORMAT_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("time".to_string()),
+        param_schema: Some(json!([
+            {"name": "operation",      "param_type": "string", "required": true, "description": "Time operation (fixed 'format')"},
+            {"name": "input",          "param_type": "string", "required": true, "description": "Timestamp string to format"},
+            {"name": "format_string",  "param_type": "string", "required": false, "description": "chrono format string, e.g. '%d %b %Y'"},
+            {"name": "timezone",       "param_type": "string", "required": false, "description": "IANA timezone for the output"},
+            {"name": "from_timezone",  "param_type": "string", "required": false, "description": "IANA timezone for interpreting a naive input"}
+        ])),
+        param_template: Some(json!({"operation": "format", "input": "{{input}}"})),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_json_query_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-json-query".to_string(),
+        description: "Executor binding for json query operation. Required: operation='query', \
+                      data (JSON string or value), path (dot/bracket path). Returns value at \
+                      path or null."
+            .to_string(),
+        content: TS_JSON_QUERY_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("json".to_string()),
+        param_schema: Some(json!([
+            {"name": "operation", "param_type": "string", "required": true, "description": "JSON operation (fixed 'query')"},
+            {"name": "data",      "param_type": "any",    "required": true, "description": "JSON value or JSON string to query"},
+            {"name": "path",      "param_type": "string", "required": true, "description": "Dot/bracket path, e.g. 'user.address.city'"}
+        ])),
+        param_template: Some(json!({"operation": "query", "data": "{{data}}", "path": "{{path}}"})),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_json_stringify_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-json-stringify".to_string(),
+        description: "Executor binding for json stringify and parse operations. Required: \
+                      operation ('stringify' or 'parse'), data. Stringify → formatted JSON \
+                      string; parse → structured value from JSON string."
+            .to_string(),
+        content: TS_JSON_STRINGIFY_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("json".to_string()),
+        param_schema: Some(json!([
+            {"name": "operation", "param_type": "string", "required": true, "description": "'stringify' (value → JSON string) or 'parse' (JSON string → value)"},
+            {"name": "data",      "param_type": "any",    "required": true, "description": "Value to serialize, or JSON string to parse"}
+        ])),
+        param_template: Some(json!({"operation": "{{operation}}", "data": "{{data}}"})),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_json_validate_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-json-validate".to_string(),
+        description: "Executor binding for json validate operation. Required: \
+                      operation='validate', data (string to check). Returns {valid: bool, \
+                      error: string|null}. Never a tool error."
+            .to_string(),
+        content: TS_JSON_VALIDATE_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("json".to_string()),
+        param_schema: Some(json!([
+            {"name": "operation", "param_type": "string", "required": true, "description": "JSON operation (fixed 'validate')"},
+            {"name": "data",      "param_type": "string", "required": true, "description": "String to check for JSON validity"}
+        ])),
+        param_template: Some(json!({"operation": "validate", "data": "{{data}}"})),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_skill_list_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-skill-list".to_string(),
+        description: "ToolSkill binding for builtin.skill_list — deterministic scope-filtered \
+                      listing."
+            .to_string(),
+        content: TS_SKILL_LIST_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("skill_list".to_string()),
+        param_schema: Some(json!([
+            {"name": "scope", "param_type": "string", "required": false, "description": "Scope filter: 'all' | 'user' | 'system'. Defaults to 'all'."}
+        ])),
+        param_template: Some(json!({"scope": "{{scope}}"})),
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_skill_install_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-skill-install".to_string(),
+        description: "ToolSkill binding for builtin.skill_install — installs a skill from \
+                      URL/path."
+            .to_string(),
+        content: TS_SKILL_INSTALL_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("skill_install".to_string()),
+        param_schema: Some(json!([
+            {"name": "source_url", "param_type": "string", "required": true,  "description": "URL or local file path to skill manifest"},
+            {"name": "scope",      "param_type": "string", "required": false, "description": "Target scope: 'user' (default) or 'system'"}
+        ])),
+        param_template: Some(json!({"source_url": "{{source_url}}"})),
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_skill_remove_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-skill-remove".to_string(),
+        description: "ToolSkill binding for builtin.skill_remove — removes a skill by name."
+            .to_string(),
+        content: TS_SKILL_REMOVE_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("skill_remove".to_string()),
+        param_schema: Some(json!([
+            {"name": "skill_name", "param_type": "string", "required": true,  "description": "Name of the skill to remove"},
+            {"name": "scope",      "param_type": "string", "required": false, "description": "Scope: 'user' | 'system'. Defaults to 'user'."}
+        ])),
+        param_template: Some(json!({"skill_name": "{{skill_name}}"})),
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_echo_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-echo".to_string(),
+        description: "ToolSkill binding for builtin.echo — diagnostic passthrough, no \
+                      user-facing recipe."
+            .to_string(),
+        content: TS_ECHO_CONTENT.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("echo".to_string()),
+        param_schema: Some(json!([
+            {"name": "message", "param_type": "string", "required": true, "description": "Any string. Returned verbatim."}
+        ])),
+        param_template: Some(json!({"message": "{{message}}"})),
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
     }
 }
 
