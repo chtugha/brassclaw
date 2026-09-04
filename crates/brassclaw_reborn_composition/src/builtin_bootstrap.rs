@@ -1662,6 +1662,316 @@ async fn seed_filesystem_group(
         )
         .await?;
 
+    // 4i. Gap-filler recipes (class 21) transcribed from the doc's Step 6.x /
+    //     4.x / 2.x.2 sections. Their supporting PythonCode + leaf skills were
+    //     minted in sections 3/4 above; this slot only adds the recipe rows.
+    let recipe_file_grep_case_insensitive = stores
+        .seed_recipe(
+            &tenant,
+            "file-grep-case-insensitive",
+            "Search file contents case-insensitively using a regular expression.",
+            true,
+            RECIPE_FILE_GREP_CASE_INSENSITIVE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.grep(pattern, case_insensitive=true, ...)",
+                    "component",
+                    &[pc_grep_case_insensitive],
+                ),
+            ],
+            &[
+                json!({"input": "find all uses of Error (any case)", "class": 1}),
+                json!({"input": "case insensitive search for this pattern", "class": 1}),
+                json!({"input": "find this word regardless of capitalisation", "class": 1}),
+                json!({"input": "grep case insensitive", "class": 1}),
+                json!({"input": "search for TODO ignoring case", "class": 2}),
+                json!({"input": "case-insensitive regex search in the codebase", "class": 1}),
+                json!({"input": "find 'config' in any capitalisation", "class": 2}),
+                json!({"input": "grep -i for this pattern", "class": 1}),
+                json!({"input": "search files case insensitively", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_grep_type_filtered = stores
+        .seed_recipe(
+            &tenant,
+            "file-grep-type-filtered",
+            "Search only specific file types for a pattern using a glob file-type filter.",
+            true,
+            RECIPE_FILE_GREP_TYPE_FILTERED_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.grep(pattern, glob='*.ext', ...)",
+                    "component",
+                    &[pc_grep_type_filtered],
+                ),
+            ],
+            &[
+                json!({"input": "find this pattern only in .rs files", "class": 1}),
+                json!({"input": "grep for this in TypeScript files only", "class": 1}),
+                json!({"input": "search only Python files for this string", "class": 1}),
+                json!({"input": "find this in .json config files", "class": 2}),
+                json!({"input": "grep only Rust source files for this pattern", "class": 1}),
+                json!({"input": "search in .ts and .tsx files", "class": 2}),
+                json!({"input": "find this function only in test files", "class": 2}),
+                json!({"input": "grep specific file extension for pattern", "class": 1}),
+                json!({"input": "search only markdown files for this text", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_grep_invert = stores
+        .seed_recipe(
+            &tenant,
+            "file-grep-invert",
+            "Find files or lines that do NOT contain a given pattern (inverted grep).",
+            true,
+            RECIPE_FILE_GREP_INVERT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.grep(pattern, invert_match=true, ...)",
+                    "component",
+                    &[pc_grep_invert],
+                ),
+            ],
+            &[
+                json!({"input": "find files without this pattern", "class": 1}),
+                json!({"input": "files missing this import", "class": 2}),
+                json!({"input": "which files don't have a copyright header", "class": 2}),
+                json!({"input": "invert grep — exclude matching lines", "class": 1}),
+                json!({"input": "grep -v for this pattern", "class": 1}),
+                json!({"input": "show lines that do not match", "class": 1}),
+                json!({"input": "find files not containing this string", "class": 1}),
+                json!({"input": "which source files lack this function", "class": 2}),
+                json!({"input": "filter out lines matching this pattern", "class": 2}),
+                json!({"input": "exclude files that have this keyword", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_list_files_only = stores
+        .seed_recipe(
+            &tenant,
+            "file-list-files-only",
+            "List only regular files (no subdirectories) in a directory.",
+            true,
+            RECIPE_FILE_LIST_FILES_ONLY_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode: list_dir then filter entries to type='file'",
+                    "component",
+                    &[pc_list_dir, pc_list_filter_by_type],
+                ),
+            ],
+            &[
+                json!({"input": "list only the files in this directory", "class": 1}),
+                json!({"input": "show me files without subdirectories", "class": 1}),
+                json!({"input": "files only, no folders", "class": 1}),
+                json!({"input": "list all files in this directory (no dirs)", "class": 1}),
+                json!({"input": "what files are directly in the src folder", "class": 2}),
+                json!({"input": "show only file entries not directories", "class": 1}),
+                json!({"input": "list files in the project root", "class": 2}),
+                json!({"input": "just the files please no subfolders", "class": 1}),
+                json!({"input": "enumerate files in this folder", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_list_dirs_only = stores
+        .seed_recipe(
+            &tenant,
+            "file-list-dirs-only",
+            "List only subdirectories (no regular files) in a directory.",
+            true,
+            RECIPE_FILE_LIST_DIRS_ONLY_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode: list_dir then filter entries to type='directory'",
+                    "component",
+                    &[pc_list_dir, pc_list_filter_by_type],
+                ),
+            ],
+            &[
+                json!({"input": "list only subdirectories", "class": 1}),
+                json!({"input": "show me only the folders", "class": 1}),
+                json!({"input": "directories only, no files", "class": 1}),
+                json!({"input": "what subdirectories are in this folder", "class": 1}),
+                json!({"input": "list only the immediate subdirs", "class": 1}),
+                json!({"input": "show folder structure without files", "class": 2}),
+                json!({"input": "list the top-level project directories", "class": 2}),
+                json!({"input": "just folders no files", "class": 1}),
+                json!({"input": "what are the child directories here", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_read_head = stores
+        .seed_recipe(
+            &tenant,
+            "file-read-head",
+            "Read the first 50 lines of a file (head).",
+            true,
+            RECIPE_FILE_READ_HEAD_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.read_file(path, range='1-50')",
+                    "component",
+                    &[pc_read_file_head],
+                ),
+            ],
+            &[
+                json!({"input": "show me the top of this file", "class": 2}),
+                json!({"input": "read the first few lines", "class": 1}),
+                json!({"input": "show the beginning of the file", "class": 1}),
+                json!({"input": "head of this file", "class": 1}),
+                json!({"input": "first 50 lines", "class": 1}),
+                json!({"input": "show me the file header", "class": 1}),
+                json!({"input": "read the start of this file", "class": 2}),
+                json!({"input": "show the top lines of this log", "class": 2}),
+                json!({"input": "first lines of this config file", "class": 2}),
+                json!({"input": "file head", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_read_tail = stores
+        .seed_recipe(
+            &tenant,
+            "file-read-tail",
+            "Read the last 50 lines of a file (tail).",
+            true,
+            RECIPE_FILE_READ_TAIL_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode probes line_count then calls host.read_file(path, range=N-total)",
+                    "component",
+                    &[pc_read_file_tail],
+                ),
+            ],
+            &[
+                json!({"input": "show me the end of this file", "class": 2}),
+                json!({"input": "tail of this file", "class": 1}),
+                json!({"input": "read the last few lines", "class": 1}),
+                json!({"input": "last 50 lines", "class": 1}),
+                json!({"input": "show the bottom of the log", "class": 2}),
+                json!({"input": "show recent log entries", "class": 2}),
+                json!({"input": "read the end of this file", "class": 2}),
+                json!({"input": "show latest lines in this log file", "class": 2}),
+                json!({"input": "file tail", "class": 1}),
+                json!({"input": "last lines of the file", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_exists = stores
+        .seed_recipe(
+            &tenant,
+            "file-exists",
+            "Check whether a file exists at the given path.",
+            true,
+            RECIPE_FILE_EXISTS_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding (used for existence probe)", "component", &[ts_read_file]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode tries reading line 1; returns {exists: bool, path}",
+                    "component",
+                    &[pc_file_exists],
+                ),
+            ],
+            &[
+                json!({"input": "does this file exist", "class": 1}),
+                json!({"input": "check if a file exists", "class": 1}),
+                json!({"input": "file exists check", "class": 1}),
+                json!({"input": "does the path exist", "class": 1}),
+                json!({"input": "is there a file at this path", "class": 2}),
+                json!({"input": "check whether this path is valid", "class": 2}),
+                json!({"input": "verify the file is present", "class": 2}),
+                json!({"input": "file existence check", "class": 1}),
+                json!({"input": "does config.toml exist", "class": 2}),
+                json!({"input": "is this file present in the workspace", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_read_and_grep = stores
+        .seed_recipe(
+            &tenant,
+            "file-read-and-grep",
+            "Read a file and return lines matching a pattern (combined read+filter, Tier 0).",
+            true,
+            RECIPE_FILE_READ_AND_GREP_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode reads file then filters lines matching vars.slot1 pattern",
+                    "component",
+                    &[pc_read_then_grep],
+                ),
+            ],
+            &[
+                json!({"input": "read this file and find lines with X", "class": 2}),
+                json!({"input": "show me lines matching this pattern", "class": 2}),
+                json!({"input": "read and filter this file", "class": 2}),
+                json!({"input": "find matching lines in this file", "class": 2}),
+                json!({"input": "search this file for a string", "class": 2}),
+                json!({"input": "grep inside a specific file", "class": 2}),
+                json!({"input": "file read and grep", "class": 1}),
+                json!({"input": "read file and show matching lines only", "class": 2}),
+                json!({"input": "filter lines in this log file", "class": 2}),
+                json!({"input": "what lines in this file contain X", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_list_and_filter = stores
+        .seed_recipe(
+            &tenant,
+            "file-list-and-filter",
+            "List a directory and return entries whose name contains a filter string.",
+            true,
+            RECIPE_FILE_LIST_AND_FILTER_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode lists directory then filters entries by name substring",
+                    "component",
+                    &[pc_list_then_grep],
+                ),
+            ],
+            &[
+                json!({"input": "list files containing test in the name", "class": 2}),
+                json!({"input": "show only config files in this directory", "class": 2}),
+                json!({"input": "find files with this name pattern", "class": 2}),
+                json!({"input": "list and filter directory entries", "class": 2}),
+                json!({"input": "show all test files", "class": 2}),
+                json!({"input": "filter directory listing by name", "class": 2}),
+                json!({"input": "file list filtered by name", "class": 1}),
+                json!({"input": "list entries matching this substring", "class": 2}),
+                json!({"input": "which files in this dir have this word", "class": 2}),
+                json!({"input": "directory filtered listing", "class": 1}),
+            ],
+        )
+        .await?;
+
     // 5. Append the minted tool + toolskill + python_code ids to each per-tool
     //    catalogue (leaf Skill / Recipe ids appended in later chunks).
     stores
@@ -1683,6 +1993,10 @@ async fn seed_filesystem_group(
                 skill_read_and_grep,
                 recipe_file_read,
                 recipe_file_read_range,
+                recipe_file_read_head,
+                recipe_file_read_tail,
+                recipe_file_exists,
+                recipe_file_read_and_grep,
             ],
         )
         .await?;
@@ -1717,6 +2031,9 @@ async fn seed_filesystem_group(
                 skill_list_and_filter,
                 recipe_file_list,
                 recipe_file_list_recursive,
+                recipe_file_list_files_only,
+                recipe_file_list_dirs_only,
+                recipe_file_list_and_filter,
             ],
         )
         .await?;
@@ -1758,6 +2075,9 @@ async fn seed_filesystem_group(
                 recipe_file_grep_files,
                 recipe_file_grep_content,
                 recipe_file_grep_count,
+                recipe_file_grep_case_insensitive,
+                recipe_file_grep_type_filtered,
+                recipe_file_grep_invert,
             ],
         )
         .await?;
@@ -1840,6 +2160,9 @@ async fn seed_filesystem_group(
                 recipe_file_grep_files,
                 recipe_file_grep_content,
                 recipe_file_grep_count,
+                recipe_file_grep_case_insensitive,
+                recipe_file_grep_type_filtered,
+                recipe_file_grep_invert,
                 tool_apply_patch,
                 ts_apply_patch,
                 pc_apply_patch,
@@ -1852,16 +2175,23 @@ async fn seed_filesystem_group(
                 pc_path_dirname,
                 recipe_file_read,
                 recipe_file_read_range,
+                recipe_file_read_head,
+                recipe_file_read_tail,
+                recipe_file_exists,
+                recipe_file_read_and_grep,
                 recipe_file_write,
                 recipe_file_write_template,
                 recipe_file_list,
                 recipe_file_list_recursive,
+                recipe_file_list_files_only,
+                recipe_file_list_dirs_only,
+                recipe_file_list_and_filter,
                 skill_filesystem,
             ],
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3d: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 17 read/write/list/glob/grep/patch recipes — complete)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3f: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 27 read/write/list/glob/grep/patch recipes — complete)");
     Ok(())
 }
 
@@ -3396,6 +3726,186 @@ const RECIPE_FILE_PATCH_REPLACE_ALL_YAML: &str = r#"step_descriptions: [
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-apply-patch>"],
     "label":   "PythonCode calls host.apply_patch(path, old_string, new_string, replace_all=true)"
+  }
+]
+"#;
+
+const RECIPE_FILE_GREP_CASE_INSENSITIVE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep-case-insensitive>"],
+    "label":   "PythonCode calls host.grep(pattern, case_insensitive=true, ...)"
+  }
+]
+"#;
+
+const RECIPE_FILE_GREP_TYPE_FILTERED_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep-type-filtered>"],
+    "label":   "PythonCode calls host.grep(pattern, glob='*.ext', ...)"
+  }
+]
+"#;
+
+const RECIPE_FILE_GREP_INVERT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep-invert>"],
+    "label":   "PythonCode calls host.grep(pattern, invert_match=true, ...)"
+  }
+]
+"#;
+
+const RECIPE_FILE_LIST_FILES_ONLY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-dir>", "<uuid:pc-exec-list-filter-by-type>"],
+    "label":   "PythonCode: list_dir then filter entries to type='file'"
+  }
+]
+"#;
+
+const RECIPE_FILE_LIST_DIRS_ONLY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-dir>", "<uuid:pc-exec-list-filter-by-type>"],
+    "label":   "PythonCode: list_dir then filter entries to type='directory'"
+  }
+]
+"#;
+
+const RECIPE_FILE_READ_HEAD_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-file-head>"],
+    "label":   "PythonCode calls host.read_file(path, range='1-50')"
+  }
+]
+"#;
+
+const RECIPE_FILE_READ_TAIL_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-file-tail>"],
+    "label":   "PythonCode probes line_count then calls host.read_file(path, range=N-total)"
+  }
+]
+"#;
+
+const RECIPE_FILE_EXISTS_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding (used for existence probe)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-file-exists>"],
+    "label":   "PythonCode tries reading line 1; returns {exists: bool, path}"
+  }
+]
+"#;
+
+const RECIPE_FILE_READ_AND_GREP_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-then-grep>"],
+    "label":   "PythonCode reads file then filters lines matching vars.slot1 pattern"
+  }
+]
+"#;
+
+const RECIPE_FILE_LIST_AND_FILTER_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-then-grep>"],
+    "label":   "PythonCode lists directory then filters entries by name substring"
   }
 ]
 "#;
