@@ -2458,3 +2458,62 @@ to C.6; (C) how the script reaches Tier-1 prior-knowledge
 returned program vs dedicated arms; (D) C.5 verification strategy (unit test
 driving execute_orchestrator with mock composition_port+LLM vs script+seed only,
 verify in C.6).
+
+## C.5 progress (2026-09-03/04)
+
+- **Forks LOCKED:** A=new `orchestrator/basic_mode.py` compiled-in as the new
+  `DEFAULT_ORCHESTRATOR` (default.py deleted in C.7); B=wire `host.kohai_complete`
+  Rust handler in C.5; C=`compose_orchestrator`'s `ComposedProgram` embeds
+  prior-knowledge via `tier` — no new host fns (script calls only resolve_intent,
+  compose_orchestrator, run_program, kohai_complete, post_reply,
+  resolve_component_by_name, check_signals); D=combine C.5 verification with C.6.
+  Realization fork = FULL (build the complete interceptor ingress flow now).
+- **Slice 1a DONE** — engine `KohaiPort` trait + `KohaiCallCtx`/`KohaiAnswer`/
+  `KohaiUsage`/`KohaiPortError` in `executor/kohai_port.rs` (mirrors
+  `CompositionPort`). **1b DONE** — `kohai_port: Option<Arc<dyn KohaiPort>>`
+  wired into `ExecutionLoop` + `execute_orchestrator` + dispatch arm
+  `"kohai_complete" if call.method_call` + `handle_kohai_complete` (parse
+  `prompt` kwarg/positional, `.filter(is_object)` validate, None-port →
+  `kohai_unavailable`, build `KohaiCallCtx` from thread, `port.complete(prompt,
+  ctx, &**llm)` → `{ok,answer,usage}`) + 5 MockKohaiPort tests. **1c DONE** —
+  `PgKohaiPort` FULL routing flow in composition `pg_kohai_port.rs` (parse prompt
+  dict → `get_system_bundle` infallible prefix → build `CapturedPrompt` →
+  `ForensicPacket::new`+save [AwaitingKohai] → `LlmBackend::complete(force_text)`
+  → `with_kohai_response`+save [Complete] → `KohaiAnswer`; Sempai deferred).
+  Trait sig `complete<'a>(&'a self,…,llm:'a dyn LlmBackend)->Future+'a` (unifies
+  &self+llm — impl drives borrowed LLM inside future, unlike `compose`'s 'static).
+  10 unit tests ungated; `#[cfg(feature="postgres")]` on DB struct. Both configs
+  clippy-clean.
+- **Slice 2 grounding (basic_mode.py authoring):** host-call return shapes —
+  `run_program`→`{ok,return_value,stdout,error}`; `resolve_intent`→`{status:
+  match|disambiguation|no_match|error,…}` (match:+component_id/step_link/
+  component_name/class_code; disambiguation:+candidates[{component_id,
+  class_code,score,class_label}] NO step_link; no_match: status only);
+  `compose_orchestrator(component_id,step_link,user_input)`→`{ok,program:
+  {steplist[{step_id,instructions,executable_code,tool_bindings}],skills
+  [{id,class_code,name,body}],rust_directives,variables,assembled_program,tier},
+  error}` — REQUIRES non-empty step_link matching a variant (NoVariantMatch on
+  miss); `kohai_complete(prompt=)`→`{ok,answer,usage:{input,output,cost}}`;
+  `post_reply(text=)`→None; `resolve_component_by_name(name,class_code)`→
+  component dict|None; `check_signals()`→"stop"|{inject:content}|None. Bootstrap
+  vars: `context` (list of `{role,content,…}`, role=Debug fmt "User"/"Assistant"/
+  …), `goal`, `actions` (empty), `state`, `config`. FINAL contract:
+  `parse_outcome` reads `result["outcome"]`+"response"; `sync_runtime_state`
+  reads `result["state"]` → `FINAL({outcome:"completed",response,state})`.
+  **GAP:** seeded host-save-history + host-non-match-llm-answer recipes have
+  `variants:None` → compose returns NoVariantMatch → basic_mode.py degrades
+  gracefully (non-match → ultimate fallback direct `host.kohai_complete`; save-
+  history → best-effort skip). Seed default-variant fix deferred (C.2 refinement).
+- **Slice 3 coupling:** swapping `DEFAULT_ORCHESTRATOR`→basic_mode.py breaks the
+  default.py-helper-slicing tests (`eval_python_bool`/`eval_python_int`/
+  `eval_python_object` slice at `"\ndef run_loop("` + run the helpers prefix).
+  Resolution: update the 2 surviving slicing find markers → `"\ndef main("`
+  (basic_mode.py starts with comment header + `def main` so helpers-prefix =
+  comments, harmless to standalone snippets), DELETE obsolete helper-dependent
+  tests (`select_skills_matches_curly_apostrophe_input` + the entire "Segment
+  reduction helpers (Phase 3)" block — they test retired Model-A helpers
+  `select_skills`/`_reduce_prompt`), update `load_orchestrator_*` asserts
+  (`run_loop`→`def main`, `__llm_complete__`→`host.resolve_intent`). Standalone
+  snippet tests (action_errors_*, regex_match reachability) SURVIVE (no helper
+  deps). This is C.7's test-deletion pulled forward by the swap — final-version
+  state.

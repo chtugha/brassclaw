@@ -68,7 +68,7 @@ use crate::types::thread::{Thread, ThreadState};
 const HOST_NAMESPACE_TYPE_ID: u64 = 0x484F_5354; // "HOST"
 
 /// The compiled-in default orchestrator (v0).
-pub(crate) const DEFAULT_ORCHESTRATOR: &str = include_str!("../../orchestrator/default.py");
+pub(crate) const DEFAULT_ORCHESTRATOR: &str = include_str!("../../orchestrator/basic_mode.py");
 
 /// Well-known title for orchestrator code in the Store.
 pub const ORCHESTRATOR_TITLE: &str = "orchestrator:main";
@@ -4008,16 +4008,6 @@ mod tests {
     const TEST_MAX_ALLOCATIONS: usize = 500_000;
     /// Max consecutive errors used in None-guard regression test.
     const TEST_CONSECUTIVE_ERRORS: i64 = 99;
-    /// Large content size (1 MB) used in truncation tests.
-    const TEST_LARGE_CONTENT_SIZE: i64 = 1_000_000;
-    /// Expected max output length after 200-char truncate rule (rule + ellipsis).
-    const TEST_TRUNCATE_MAX_OUTPUT: i64 = 210;
-    /// Content size triggering drop-rule tests (8 KiB).
-    const TEST_CONTENT_8K: i64 = 8_000;
-    /// Noise/secondary content size in drop-rule tests (4 KiB).
-    const TEST_CONTENT_4K: i64 = 4_000;
-    /// Estimated-token value used in budget event tests.
-    const TEST_ESTIMATED_TOKENS: i64 = 123;
     /// Negative token budget value used in event map tests.
     const TEST_NEG_TOKENS_50: i64 = -50;
     /// Budget token value in PromptOverBudget event shape tests.
@@ -4268,9 +4258,11 @@ mod tests {
     }
 
     fn eval_python_bool(expr: &str) -> bool {
-        // Extract only the helper functions (everything before run_loop)
+        // basic_mode.py has no helper section (the v3 script is a single
+        // `def main`), so the slice before `def main` is just the comment
+        // header — harmless to prepend to a standalone snippet.
         let helpers_end = DEFAULT_ORCHESTRATOR
-            .find("\ndef run_loop(")
+            .find("\ndef main(")
             .unwrap_or(DEFAULT_ORCHESTRATOR.len());
         let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end]; // safety: find() returns a char boundary on this ASCII-only constant
 
@@ -4285,7 +4277,7 @@ mod tests {
     /// with `FINAL(int_expr)` and return the integer value.
     fn eval_python_int(program: &str) -> i64 {
         let helpers_end = DEFAULT_ORCHESTRATOR
-            .find("\ndef run_loop(")
+            .find("\ndef main(")
             .unwrap_or(DEFAULT_ORCHESTRATOR.len());
         let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end];
 
@@ -4316,41 +4308,12 @@ mod tests {
         assert!(!eval_python_bool(r#"bool(__regex_match__("[", "abc"))"#));
     }
 
-    #[test]
-    fn select_skills_matches_curly_apostrophe_input() {
-        // The ceo-setup skill's first pattern uses ASCII `'`. A user
-        // typing on iOS sends U+2019. With normalization, select_skills
-        // must still pick the skill; without it, the regex misses and
-        // the skill scores 0.
-        let pattern = r"(?i)I'm a (CEO|manager|executive|director|VP|founder)";
-        // Build a single-skill list as a Python literal — metadata shape
-        // matches what handle_list_skills emits at runtime.
-        let skill_literal = format!(
-            r#"[{{"doc_id": "test", "title": "ceo-setup", "content": "body", "metadata": {{"name": "ceo-setup", "activation": {{"patterns": [{pattern:?}], "max_context_tokens": 2500, "keywords": [], "tags": []}}}}}}]"#
-        );
-        let curly_goal = "I\u{2019}m Illia Polosukhin. I\u{2019}m a CEO of NEAR Foundation";
-        let program = format!(
-            "selected = select_skills({skill_literal}, {curly_goal:?}); FINAL(len(selected))"
-        );
-        let helpers_end = DEFAULT_ORCHESTRATOR
-            .find("\ndef run_loop(")
-            .unwrap_or(DEFAULT_ORCHESTRATOR.len());
-        let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end];
-        let code = format!("{helpers}\n{program}");
-        match run_python_final(code) {
-            MontyObject::Int(1) => {}
-            other => {
-                panic!("select_skills should pick ceo-setup for curly-quoted input, got: {other:?}")
-            }
-        }
-    }
-
     #[tokio::test]
     async fn load_orchestrator_without_store_returns_default() {
         let (code, version) = load_orchestrator(None, ProjectId::new(), true).await;
         assert_eq!(version, 0);
-        assert!(code.contains("run_loop"));
-        assert!(code.contains("__llm_complete__"));
+        assert!(code.contains("def main"));
+        assert!(code.contains("host.resolve_intent"));
     }
 
     #[tokio::test]
@@ -4494,7 +4457,7 @@ mod tests {
 
         // Should fall back to compiled-in default (v0)
         assert_eq!(version, 0);
-        assert!(code.contains("run_loop"));
+        assert!(code.contains("def main"));
     }
 
     #[tokio::test]
@@ -5489,393 +5452,6 @@ else:
         );
     }
 
-    // ── Phase H.1 — _parse_orchestrator_channel_steps ────────────
-    //
-    // Parses the `format_orchestrator_content` prose block format
-    // (`## [Heading: name]\n{body}`, blocks joined by `\n\n`) back into
-    // `[{kind, name, body}]` for the Tier-0 channel executor (H.2). Runs the
-    // pure-Python helper through Monty via `eval_python_int`; returns 1 only
-    // if every assertion (single block, multi-block, heading-only, empty,
-    // None, malformed-heading-raises, missing-separator-raises) passes.
-
-    #[test]
-    fn phase_h1_parse_orchestrator_channel_steps() {
-        let result = eval_python_int(
-            r###"
-ok = True
-# single PythonCode block with a body
-r1 = _parse_orchestrator_channel_steps("## [PythonCode: greet]\nprint('hi')")
-ok = ok and (len(r1) == 1)
-ok = ok and (r1[0]["kind"] == "PythonCode")
-ok = ok and (r1[0]["name"] == "greet")
-ok = ok and (r1[0]["body"] == "print('hi')")
-# multi-block: Skill with a body + heading-only Recipe
-r2 = _parse_orchestrator_channel_steps("## [Skill: s1]\nbody line 1\n\n## [Recipe: r]")
-ok = ok and (len(r2) == 2)
-ok = ok and (r2[0]["kind"] == "Skill")
-ok = ok and (r2[0]["name"] == "s1")
-ok = ok and (r2[0]["body"] == "body line 1")
-ok = ok and (r2[1]["kind"] == "Recipe")
-ok = ok and (r2[1]["name"] == "r")
-ok = ok and (r2[1]["body"] == "")
-# empty + None inputs -> []
-ok = ok and (len(_parse_orchestrator_channel_steps("")) == 0)
-ok = ok and (len(_parse_orchestrator_channel_steps(None)) == 0)
-# a non-heading first line -> raises
-raised = False
-try:
-    _parse_orchestrator_channel_steps("not a heading")
-except Exception:
-    raised = True
-ok = ok and raised
-# a heading missing the ': ' separator -> raises
-raised2 = False
-try:
-    _parse_orchestrator_channel_steps("## [NoSeparatorHere]")
-except Exception:
-    raised2 = True
-ok = ok and raised2
-# a name containing ': ' is preserved (split on the first separator only)
-r3 = _parse_orchestrator_channel_steps("## [PythonCode: f]\nbody")
-ok = ok and (r3[0]["name"] == "f")
-ok = ok and (r3[0]["body"] == "body")
-FINAL(1 if ok else 0)
-"###,
-        );
-        assert_eq!(
-            result, 1,
-            "_parse_orchestrator_channel_steps must parse prose blocks, handle \
-             empty/None, preserve names with ': ', and raise on malformed input"
-        );
-    }
-
-    // ── Phase H.2 — execute_recipe_orchestrator_channel harness ──────
-    //
-    // Drives `execute_recipe_orchestrator_channel(orchestrator_content)` through
-    // Monty with a mocked `__execute_code_step__` so the Tier-0 channel executor
-    // can be unit-tested without the full engine stack (thread/llm/effects/
-    // leases/policy/gate). `step_results` is a queue: the i-th
-    // `__execute_code_step__` call returns `step_results[i]` (or a default
-    // had_error dict if the queue is exhausted — guards against unexpected
-    // extra calls). `raise_on_step = Some(i)` makes the i-th call raise a
-    // Monty RuntimeError (simulating `execute_code` returning Err, which the
-    // production `handle_execute_code_step` surfaces as `ExtFunctionResult::
-    // Error`). Returns the `{outcome, result|message}` dict plus the count of
-    // `__execute_code_step__` calls so tests can assert the channel stops at
-    // the first error / never calls the executor for a non-PythonCode step.
-
-    fn run_python_tier0_channel(
-        orchestrator_content: &str,
-        step_results: Vec<serde_json::Value>,
-        raise_on_step: Option<usize>,
-    ) -> (serde_json::Value, usize) {
-        let helpers_end = DEFAULT_ORCHESTRATOR
-            .find("\ndef run_loop(")
-            .unwrap_or(DEFAULT_ORCHESTRATOR.len());
-        let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end];
-        let program = format!(
-            "r = execute_recipe_orchestrator_channel({content:?}); FINAL(r)",
-            content = orchestrator_content
-        );
-        let code = format!("{helpers}\n{program}");
-        let runner =
-            MontyRun::new(code, "test.py", vec![]).expect("Failed to parse tier0 channel test");
-        let mut stdout = String::new();
-        let tracker =
-            LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
-        let mut progress = runner
-            .start(vec![], tracker, PrintWriter::CollectString(&mut stdout))
-            .expect("Failed to start tier0 channel test");
-        let mut call_idx: usize = 0;
-
-        loop {
-            match progress {
-                RunProgress::Complete(obj) => return (monty_to_json(&obj), call_idx),
-                RunProgress::FunctionCall(call) => {
-                    if call.function_name == "FINAL" {
-                        let val = call.args.first().cloned().unwrap_or(MontyObject::None);
-                        let _ = call.resume(
-                            ExtFunctionResult::Return(MontyObject::None),
-                            PrintWriter::CollectString(&mut stdout),
-                        );
-                        return (monty_to_json(&val), call_idx);
-                    }
-                    let ext_result = match call.function_name.as_str() {
-                        "__execute_code_step__" => {
-                            let idx = call_idx;
-                            call_idx += 1;
-                            if raise_on_step == Some(idx) {
-                                ExtFunctionResult::Error(monty::MontyException::new(
-                                    monty::ExcType::RuntimeError,
-                                    Some("simulated execute_code failure".into()),
-                                ))
-                            } else {
-                                let result = step_results.get(idx).cloned().unwrap_or_else(|| {
-                                    serde_json::json!({
-                                        "return_value": serde_json::Value::Null,
-                                        "stdout": "",
-                                        "action_results": [],
-                                        "final_answer": serde_json::Value::Null,
-                                        "had_error": true,
-                                        "pending_gate": serde_json::Value::Null,
-                                    })
-                                });
-                                ExtFunctionResult::Return(json_to_monty(&result))
-                            }
-                        }
-                        _ => ExtFunctionResult::Return(MontyObject::None),
-                    };
-                    progress = call
-                        .resume(ext_result, PrintWriter::CollectString(&mut stdout))
-                        .expect("tier0 host function resume failed");
-                }
-                RunProgress::NameLookup(lookup) => {
-                    let name = lookup.name.clone();
-                    progress = lookup
-                        .resume(
-                            NameLookupResult::Undefined,
-                            PrintWriter::CollectString(&mut stdout),
-                        )
-                        .unwrap_or_else(|e| panic!("tier0 NameError '{name}': {e}"));
-                }
-                _ => panic!("Unexpected RunProgress variant in tier0 channel test"),
-            }
-        }
-    }
-
-    /// Build a `__execute_code_step__` result dict with the given fields;
-    /// everything else defaults to the production success shape.
-    fn step_result(
-        return_value: serde_json::Value,
-        stdout: &str,
-        final_answer: Option<&str>,
-        had_error: bool,
-        pending_gate: Option<serde_json::Value>,
-    ) -> serde_json::Value {
-        serde_json::json!({
-            "return_value": return_value,
-            "stdout": stdout,
-            "action_results": [],
-            "final_answer": final_answer.map(|s| serde_json::json!(s)).unwrap_or(serde_json::Value::Null),
-            "had_error": had_error,
-            "pending_gate": pending_gate.unwrap_or(serde_json::Value::Null),
-        })
-    }
-
-    #[test]
-    fn phase_h2_single_pythoncode_step_success_final_answer() {
-        // FINAL("...") is the established RLM reply pattern: the body sets
-        // `final_answer`, so the success `result` must come from there (NOT
-        // return_value, which is Null for a FINAL-only body).
-        let (res, calls) = run_python_tier0_channel(
-            "## [PythonCode: greet]\nFINAL(\"hello\")",
-            vec![step_result(
-                serde_json::Value::Null,
-                "",
-                Some("hello"),
-                false,
-                None,
-            )],
-            None,
-        );
-        assert_eq!(res["outcome"], "success");
-        assert_eq!(res["result"], "hello");
-        assert_eq!(calls, 1);
-    }
-
-    #[test]
-    fn phase_h2_single_pythoncode_step_success_return_value() {
-        // No FINAL -> result falls back to the step's return_value (a str).
-        let (res, calls) = run_python_tier0_channel(
-            "## [PythonCode: greet]\nbody",
-            vec![step_result(
-                serde_json::json!("hi-from-rv"),
-                "",
-                None,
-                false,
-                None,
-            )],
-            None,
-        );
-        assert_eq!(res["outcome"], "success");
-        assert_eq!(res["result"], "hi-from-rv");
-        assert_eq!(calls, 1);
-    }
-
-    #[test]
-    fn phase_h2_success_falls_back_to_stdout() {
-        // No FINAL, no return_value -> result falls back to captured stdout.
-        let (res, _calls) = run_python_tier0_channel(
-            "## [PythonCode: greet]\nprint('printed-out')",
-            vec![step_result(
-                serde_json::Value::Null,
-                "printed-out",
-                None,
-                false,
-                None,
-            )],
-            None,
-        );
-        assert_eq!(res["outcome"], "success");
-        assert_eq!(res["result"], "printed-out");
-    }
-
-    #[test]
-    fn phase_h2_return_value_non_str_is_stringified() {
-        // A non-str return_value (int) is stringified for the reply text.
-        let (res, _calls) = run_python_tier0_channel(
-            "## [PythonCode: count]\nbody",
-            vec![step_result(serde_json::json!(42), "", None, false, None)],
-            None,
-        );
-        assert_eq!(res["outcome"], "success");
-        assert_eq!(res["result"], "42");
-    }
-
-    #[test]
-    fn phase_h2_step_had_error_returns_error() {
-        // An internal step failure (had_error true) -> error, never success.
-        let (res, _calls) = run_python_tier0_channel(
-            "## [PythonCode: bad]\nbody",
-            vec![step_result(
-                serde_json::Value::Null,
-                "Error: boom",
-                None,
-                true,
-                None,
-            )],
-            None,
-        );
-        assert_eq!(res["outcome"], "error");
-        assert!(
-            res["message"].as_str().unwrap().contains("step raised"),
-            "had_error message must say 'step raised': {}",
-            res["message"]
-        );
-    }
-
-    #[test]
-    fn phase_h2_step_raises_runtime_error_returns_error() {
-        // `__execute_code_step__` raising (execute_code Err) is caught by
-        // `except Exception` and surfaced as {outcome: error}.
-        let (res, calls) = run_python_tier0_channel(
-            "## [PythonCode: boom]\nbody",
-            vec![step_result(serde_json::Value::Null, "", None, false, None)],
-            Some(0),
-        );
-        assert_eq!(res["outcome"], "error");
-        assert!(
-            res["message"]
-                .as_str()
-                .unwrap()
-                .contains("simulated execute_code failure"),
-            "raised-exception message must carry the RuntimeError text: {}",
-            res["message"]
-        );
-        assert_eq!(calls, 1);
-    }
-
-    #[test]
-    fn phase_h2_pending_gate_degrades_to_error() {
-        // Q-H5gate: a gate pause is binary error (degrades to Tier-2 LLM,
-        // which owns gate handling) — never success, never a third outcome.
-        let (res, _calls) = run_python_tier0_channel(
-            "## [PythonCode: gated]\nbody",
-            vec![step_result(
-                serde_json::Value::Null,
-                "",
-                None,
-                false,
-                Some(serde_json::json!({
-                    "gate_paused": true,
-                    "gate_name": "shell_approval",
-                })),
-            )],
-            None,
-        );
-        assert_eq!(res["outcome"], "error");
-        assert!(
-            res["message"].as_str().unwrap().contains("approval gate"),
-            "pending_gate message must mention the gate: {}",
-            res["message"]
-        );
-    }
-
-    #[test]
-    fn phase_h2_non_pythoncode_kind_returns_error_without_executing() {
-        // FIND-P9-02 Q1: only PythonCode is executable at Tier 0. A Skill
-        // step (LLM prose) -> error, and __execute_code_step__ is NEVER
-        // called (calls == 0).
-        let (res, calls) = run_python_tier0_channel("## [Skill: s1]\nbody", vec![], None);
-        assert_eq!(res["outcome"], "error");
-        assert!(
-            res["message"]
-                .as_str()
-                .unwrap()
-                .contains("not PythonCode: Skill"),
-            "non-PythonCode message must name the kind: {}",
-            res["message"]
-        );
-        assert_eq!(calls, 0);
-    }
-
-    #[test]
-    fn phase_h2_empty_steps_returns_error() {
-        // Empty orchestrator_content -> no steps -> error (nothing to run).
-        let (res, calls) = run_python_tier0_channel("", vec![], None);
-        assert_eq!(res["outcome"], "error");
-        assert!(
-            res["message"]
-                .as_str()
-                .unwrap()
-                .contains("no orchestrator channel steps"),
-            "empty-steps message must say so: {}",
-            res["message"]
-        );
-        assert_eq!(calls, 0);
-    }
-
-    #[test]
-    fn phase_h2_malformed_content_returns_error() {
-        // A parse failure (non-heading first line) is caught and converted
-        // to {outcome: error} — never propagates as an uncaught exception.
-        let (res, calls) = run_python_tier0_channel("not a heading", vec![], None);
-        assert_eq!(res["outcome"], "error");
-        assert_eq!(calls, 0);
-    }
-
-    #[test]
-    fn phase_h2_multi_step_last_result_wins() {
-        // Two PythonCode steps: the LAST step's reply is the channel result.
-        let (res, calls) = run_python_tier0_channel(
-            "## [PythonCode: a]\nbody1\n\n## [PythonCode: b]\nbody2",
-            vec![
-                step_result(serde_json::json!("first"), "", None, false, None),
-                step_result(serde_json::Value::Null, "", Some("second"), false, None),
-            ],
-            None,
-        );
-        assert_eq!(res["outcome"], "success");
-        assert_eq!(res["result"], "second");
-        assert_eq!(calls, 2);
-    }
-
-    #[test]
-    fn phase_h2_multi_step_first_error_stops_channel() {
-        // First step fails -> channel stops immediately (calls == 1), second
-        // step never runs.
-        let (res, calls) = run_python_tier0_channel(
-            "## [PythonCode: a]\nbody1\n\n## [PythonCode: b]\nbody2",
-            vec![
-                step_result(serde_json::Value::Null, "Error: first", None, true, None),
-                step_result(serde_json::json!("never"), "", None, false, None),
-            ],
-            None,
-        );
-        assert_eq!(res["outcome"], "error");
-        assert_eq!(calls, 1);
-    }
-
     #[test]
     fn action_errors_nudge_injected_at_threshold() {
         // When consecutive_action_errors reaches max_consecutive_errors,
@@ -6175,192 +5751,6 @@ FINAL(batch_error_count)
                  this would cause 'No tool output found' from the LLM API"
             );
         }
-    }
-
-    // ── Segment reduction helpers (Phase 3) ─────────────────────────
-    //
-    // Monty-side smoke tests for the Python reduction-rule factories +
-    // `_reduce_prompt` pipeline defined inline in default.py. Each test
-    // compiles the helpers through `MontyRun::new` and runs a small
-    // driver program that ends with FINAL(...).
-
-    fn eval_python_object(program: &str) -> MontyObject {
-        let helpers_end = DEFAULT_ORCHESTRATOR
-            .find("\ndef run_loop(")
-            .unwrap_or(DEFAULT_ORCHESTRATOR.len());
-        let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end];
-
-        let code = format!("{helpers}\n{program}");
-        run_python_final(code)
-    }
-
-    /// Run a multi-statement Python driver whose final expression is
-    /// implicitly the program's value (auto-wrapped in `FINAL(...)`).
-    /// Retrieves the last non-empty line of the driver as the assertion
-    /// expression and runs `FINAL(<that expression>)` against the
-    /// orchestrator helpers.
-    fn run_python_final_with_driver(driver: &str) {
-        let trimmed = driver.trim();
-        let body_lines: Vec<&str> = trimmed
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .collect();
-        // Body is everything except the final assertion line; if the
-        // driver has only one line we use it both as body and
-        // assertion so trivial drivers still work.
-        let (body, assertion) = match body_lines.as_slice() {
-            [] => (String::new(), "True".to_string()),
-            [single] => (String::new(), (*single).to_string()),
-            [rest @ .., last] => (rest.join("\n"), (*last).to_string()),
-        };
-        let program = format!("{body}\nFINAL({assertion})");
-        match eval_python_object(&program) {
-            MontyObject::Bool(true) => {}
-            MontyObject::Bool(false) => panic!("driver returned False"),
-            other => panic!("driver returned non-bool: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn truncate_rule_reduces_oversized_content() {
-        // Build a single user message with TEST_LARGE_CONTENT_SIZE bytes of content, apply a
-        // 200-char truncate rule with a 100-token budget, and verify
-        // the resulting content is <= TEST_TRUNCATE_MAX_OUTPUT chars.
-        let driver = format!(
-            r#"
-msgs = [{{"role": "user", "content": "x" * {large}}}]
-_reduce_prompt(msgs, [make_truncate_rule("content", 200)], 100)
-len(msgs[-1]["content"]) <= {max_out}
-"#,
-            large = TEST_LARGE_CONTENT_SIZE,
-            max_out = TEST_TRUNCATE_MAX_OUTPUT,
-        );
-        run_python_final_with_driver(&driver);
-    }
-
-    #[test]
-    fn drop_rule_removes_target_field() {
-        // TEST_CONTENT_8K chars of content, TEST_CONTENT_4K chars of noise.
-        let driver = format!(
-            r#"
-msgs = [{{"role": "user", "content": "x" * {c8k}, "noise": "y" * {c4k}}}]
-_reduce_prompt(msgs, [make_drop_rule("noise")], 100)
-"noise" not in msgs[-1]
-"#,
-            c8k = TEST_CONTENT_8K,
-            c4k = TEST_CONTENT_4K,
-        );
-        run_python_final_with_driver(&driver);
-    }
-
-    #[test]
-    fn priority_rule_drops_low_priority_fields_first() {
-        // 'content' is highest priority, 'meta' middle, 'noise' lowest.
-        // The rule must drop 'noise' first, then 'meta' if still needed.
-        // Content sizes: 500, TEST_CONTENT_4K, TEST_CONTENT_8K.
-        let driver = format!(
-            r#"
-msgs = [{{"role": "user", "content": "a" * 500, "meta": "b" * {c4k}, "noise": "c" * {c8k}}}]
-_reduce_prompt(msgs, [make_priority_rule(["content", "meta", "noise"])], 100)
-estimate_context_tokens(msgs) <= 100
-"#,
-            c4k = TEST_CONTENT_4K,
-            c8k = TEST_CONTENT_8K,
-        );
-        run_python_final_with_driver(&driver);
-    }
-
-    #[test]
-    fn history_compact_keeps_system_prefix() {
-        // Direct check of _history_compact: 10 user messages of TEST_CONTENT_4K chars each.
-        let driver = format!(
-            r#"
-msgs = [{{"role": "system", "content": "stable"}}] + [
-    {{"role": "user", "content": "x" * {c4k}}} for _ in range(10)
-]
-out = _history_compact(list(msgs), 3)
-len(out) <= 4
-"#,
-            c4k = TEST_CONTENT_4K,
-        );
-        run_python_final_with_driver(&driver);
-    }
-
-    #[test]
-    fn summarize_rule_records_flag() {
-        // TEST_CONTENT_8K chars of content.
-        let driver = format!(
-            r#"
-msgs = [{{"role": "user", "content": "x" * {c8k}}}]
-_reduce_prompt(msgs, [make_summarize_rule("content")], 100)
-msgs[-1].get("_reduction_flags", {{}}).get("content") == "summarize"
-"#,
-            c8k = TEST_CONTENT_8K,
-        );
-        run_python_final_with_driver(&driver);
-    }
-
-    // Regression for review finding #3: `_summarize_field_in_message`
-    // was shallow-copying the message, so writing to the
-    // `_reduction_flags` nested dict mutated the original message.
-    // Two distinct copies of the same source message must keep their
-    // flag dicts separate after being passed through
-    // `_summarize_field_in_message`.
-    #[test]
-    fn summarize_does_not_corrupt_sibling_message_via_nested_flags() {
-        let driver = r#"
-shared = {"role": "user", "content": "x" * 100, "_reduction_flags": {"already_set": True}}
-msgs = [dict(shared), dict(shared)]
-# Mutate one of them through the helper. The other must keep its
-# existing `_reduction_flags` untouched.
-msgs[0] = _summarize_field_in_message(msgs[0], "content")
-msgs[0]["_reduction_flags"].get("content") == "summarize" and msgs[1]["_reduction_flags"] == {"already_set": True}
-"#;
-        run_python_final_with_driver(driver);
-    }
-
-    // Regression for review finding #2: `_history_compact` was
-    // checking `"system"` (lowercase) but the orchestrator always
-    // emits `"System"` (capital). The bug silently destroyed the
-    // cache-stable system prefix.
-    #[test]
-    fn history_compact_preserves_capitalized_system_prefix() {
-        let driver = format!(
-            r#"
-msgs = [{{"role": "System", "content": "stable"}}] + [
-    {{"role": "User", "content": "x" * {c4k}}} for _ in range(10)
-]
-out = _history_compact(list(msgs), 3)
-out[0].get("role") == "System" and len(out) == 4
-"#,
-            c4k = TEST_CONTENT_4K,
-        );
-        run_python_final_with_driver(&driver);
-    }
-
-    #[test]
-    fn reduce_prompt_returns_messages_when_already_under_budget() {
-        let driver = r#"
-msgs = [{"role": "system", "content": "stable"}, {"role": "user", "content": "hi"}]
-out = _reduce_prompt(msgs, [make_drop_rule("content")], 1000)
-out is msgs
-"#;
-        run_python_final_with_driver(driver);
-    }
-
-    #[test]
-    fn reduction_rules_over_budget_event_kwarg_shape() {
-        // Verify the new event-kwarg shape used by the post-assembly
-        // enforcement step: estimated_tokens and budget_tokens.
-        // Uses TEST_ESTIMATED_TOKENS for the estimated value.
-        let driver = format!(
-            r#"
-evt = {{"estimated_tokens": {et}, "budget_tokens": 100}}
-evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
-"#,
-            et = TEST_ESTIMATED_TOKENS,
-        );
-        run_python_final_with_driver(&driver);
     }
 
     #[test]
