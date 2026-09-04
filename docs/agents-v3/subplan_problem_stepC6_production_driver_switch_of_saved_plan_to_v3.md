@@ -230,10 +230,34 @@ Option<MontyObject>`). The arm bodies are therefore **byte-identical** to the ol
   orchestrator-module tests pass both configs. Diff scoped to
   `crates/brassclaw_engine/src/executor/orchestrator.rs`.
 
+## Slice 2 result (SHIPPED `f5e3e59b`, 2026-09-04)
+
+`basic_mode.py` reworked into a `while True` resumable loop: seed in-VM
+`history` from bootstrap `context` once (drop last User msg = current turn's
+input via `host.await_next_turn()`); per iteration — `host.check_signals()`
+(stop→`FINAL(stopped)`), `user_input = host.await_next_turn()` (park point;
+empty→`FINAL(completed,"")`), append User, `host.resolve_intent`→compose+run
+or `_non_match_answer(history, ...)`, `host.post_reply`, `_save_history`,
+append Assistant, loop. New `_seed_history` helper; all other helpers
+UNCHANGED so `eval_python_bool`/`int` prefix-extraction still works. Bootstrap
+contract unchanged → `build_orchestrator_inputs` untouched. Entry point is
+`main(context, goal, actions, state, config)` (no `result=`/trailing FINAL;
+main parks forever on the happy path). New test
+`default_orchestrator_parses_and_parks_at_first_await_next_turn` drives the real
+`DEFAULT_ORCHESTRATOR` via `MontySession` and asserts `AwaitNextTurn` (verifies
+`while True` + `host.check_signals` + `host.await_next_turn` parse in Monty
+0.0.16 and the first drive parks). Deleted 2 Model-A conversation tests that
+drove the legacy `ThreadManager`→`execute_orchestrator`→`DEFAULT_ORCHESTRATOR`
+path and asserted `ThreadOutcome::Completed` (the resumable loop obsoletes
+one-shot completion; `brassclaw_engine::runtime` is C.7 deletion scope; spawn/
+resume plumbing re-covered at slice 4). Gates: engine clippy clean (default +
+skills-db), 565 default / 576 skills-db lib tests pass, 99 orchestrator-module
+tests pass both configs.
+
 ## Status
 
 [x] slice 1 — engine `MontySession` + park/resume primitive (SHIPPED `d26d08b7`).
-[ ] slice 2 — rework `basic_mode.py` into a resumable long-running loop.
+[x] slice 2 — rework `basic_mode.py` into a resumable long-running loop (SHIPPED `f5e3e59b`).
 [ ] slice 3 — conversation-keyed Monty session registry.
 [ ] slice 4 — `TurnRunnerWorker` direct path (bypass driver_registry).
 [ ] slice 5 — retire `canonical.rs` stage pipeline + reuse stage logic as host fns.

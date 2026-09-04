@@ -2616,3 +2616,42 @@ Monty 0.0.16 + parks at first await_next_turn). Bootstrap contract
 untouched. Skills: `program.skills` carried as an array while iterating the
 steplist (consultation narrative for the Orchestrator; per-step
 `executable_code` already concrete).
+
+### C.6 slice 2 SHIPPED + slice 3 grounded (2026-09-04)
+**Slice 2 SHIPPED `f5e3e59b`:** `basic_mode.py` reworked into a `while True`
+resumable loop. Seed in-VM `history` from bootstrap `context` once (drop last
+User msg = current turn's input, delivered via `host.await_next_turn()` so
+per-turn append stays uniform). Per iteration: `host.check_signals()`→stop→
+`FINAL(stopped)`; `user_input=host.await_next_turn()` (park point; empty→
+`FINAL(completed,"")`); append User; `host.resolve_intent`→`_compose_and_run`
+or `_non_match_answer(history,...)`; `host.post_reply`; `_save_history`; append
+Assistant; loop. New `_seed_history` helper; all other helpers UNCHANGED →
+`eval_python_bool/int` prefix-extraction (`find("\ndef main(")`) still works.
+Entry point = `main(context,goal,actions,state,config)` (no `result=`/trailing
+FINAL; main parks forever on the happy path). Bootstrap contract unchanged →
+`build_orchestrator_inputs` untouched. New test
+`default_orchestrator_parses_and_parks_at_first_await_next_turn` drives the real
+`DEFAULT_ORCHESTRATOR` via `MontySession::new`+`drive_to_yield(None)` and asserts
+`AwaitNextTurn` (verifies `while True`+`host.check_signals`+`host.await_next_turn`
+parse in Monty 0.0.16 + first drive parks). **Discovery:** `execute_orchestrator`
+is NOT test-dormant — `runtime::conversation::tests::{handle_message_spawns_
+thread, handle_message_resumes_suspended_thread}` drive it via `ThreadManager`
+→`ExecutionLoop::run`; the loop rework broke their `ThreadOutcome::Completed`
+assertion (park→`AwaitNextTurn→Err`). Deleted both as Model-A (in
+`brassclaw_engine::runtime`, C.7 deletion scope; `join_thread` is a `ThreadManager`
+method that dies in C.7; spawn/resume re-covered at slice 4). Gates: engine
+clippy clean (default+skills-db), 565/576 lib tests, 99 orchestrator-module
+tests both configs.
+**Slice 3 grounded:** conversation-keyed `MontySession` registry — a store keyed
+by thread/conversation id holding parked `MontySession` handles (the VM state:
+progress/parked_call/total_tokens/final_result/stdout; NO borrowed host deps —
+those are re-supplied each `drive_to_yield`), with liveness/eviction (drop on
+thread complete or TTL). `MontySession` is `pub`+owned+`Send` (holds
+`RunProgress<LimitedTracker>`, already `Send` since `execute_orchestrator` held
+it across `.await`). Lives downstream of engine (composition or brassclaw_reborn,
+near `TurnRunnerWorker`); guarded by a `tokio::sync::Mutex` since
+`drive_to_yield` is `async fn(&mut self)`. Slice 3 = registry type + get/insert/
+remove/evict + unit tests; slice 4 = `TurnRunnerWorker` direct path uses it
+(bypass `driver_registry`, retrieve-or-create per conversation, `drive_to_yield`
+with the new input, apply the yield: Complete→turn done; AwaitNextTurn→park +
+turn done).
