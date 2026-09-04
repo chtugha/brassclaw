@@ -78,6 +78,11 @@ pub enum SeedBuiltinBootstrapError {
 /// to avoid touching the in-flight host seeder).
 struct BootstrapStores {
     tenant: String,
+    /// Held beside the per-table stores so the seeder can run targeted
+    /// post-insert UPDATEs on columns the insert structs do not expose —
+    /// notably `reborn_recipes.tier` / `wilson_lower` for the Tier-0 gate
+    /// (Q2 decision A: composition-only post-insert UPDATE).
+    pool: Arc<PgPool>,
     tool: PgToolStore,
     tool_skill: PgToolSkillStore,
     python_code: PgPythonCodeStore,
@@ -95,6 +100,7 @@ impl BootstrapStores {
             python_code: PgPythonCodeStore::new(pool.clone()),
             skill: PgSkillStore::new(pool.clone()),
             recipe: PgRecipeStore::new(pool.clone()),
+            pool: pool.clone(),
             catalogue: PgExtensionCatalogueStore::new(pool),
         }
     }
@@ -275,6 +281,78 @@ impl BootstrapStores {
             )
             .await
             .map_err(map)
+    }
+
+    /// Mark a seeded recipe row as Tier-0 eligible. `NewPgRecipe` cannot set
+    /// `reborn_recipes.tier` / `wilson_lower`, so a freshly inserted builtin
+    /// defaults to `seedling` / `0.0` and `compose_with_pool`'s gate
+    /// (`tier ∈ {mature, candidate} && validation_status='validated' &&
+    /// wilson_lower >= 0.70`) computes `llm_call_required = true`. Setting
+    /// `tier = 'mature'` + `wilson_lower = 1.0` flips that to `false` so the
+    /// doc's Tier-0 builtins run without an LLM call. Tier-1 recipes are left
+    /// at the insert defaults. Idempotent (plain UPDATE on the seeded row).
+    async fn mark_recipe_tier0(
+        &self,
+        recipe_id: Uuid,
+    ) -> Result<(), SeedBuiltinBootstrapError> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Pool {
+                reason: e.to_string(),
+            })?;
+        client
+            .execute(
+                "UPDATE reborn_recipes \
+                 SET tier = 'mature', wilson_lower = 1.0 \
+                 WHERE id = $1 AND tenant_id = $2 AND user_id = $3 \
+                 AND agent_id = $4 AND project_id = $5",
+                &[
+                    &recipe_id,
+                    &self.tenant,
+                    &SEED_USER,
+                    &SEED_AGENT,
+                    &SEED_PROJECT,
+                ],
+            )
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            })?;
+        Ok(())
+    }
+
+    /// Insert (or recover) a recipe transcribed from the doc's flat format into
+    /// the IBS authoring model, then — for Tier-0 recipes — mark it
+    /// Tier-0 eligible. `step_entries` are the pre-built IBS `StepEntry`
+    /// objects (channel→knowledge, step_id→stepnumber, `llm`→`text`, include
+    /// placeholders resolved to real seeded UUIDs); `yaml_source` is the
+    /// verbatim doc `step_descriptions` block (WebUI renderer only — the IBS
+    /// reads `steps`); `intent_examples` are the doc's `{input, class}`
+    /// objects (preserved at the recipe top-level for Phase N graduation; the
+    /// synthesized variant also carries the bare input strings).
+    #[allow(clippy::too_many_arguments)]
+    async fn seed_recipe(
+        &self,
+        tenant: &str,
+        name: &str,
+        description: &str,
+        tier0: bool,
+        yaml_source: &str,
+        step_entries: &[Value],
+        intent_examples: &[Value],
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let id = self
+            .upsert_recipe(
+                recipe_row(tenant, name, description, yaml_source, step_entries, intent_examples),
+                name,
+            )
+            .await?;
+        if tier0 {
+            self.mark_recipe_tier0(id).await?;
+        }
+        Ok(id)
     }
 }
 
@@ -990,6 +1068,229 @@ async fn seed_filesystem_group(
         )
         .await?;
 
+    // 4d. Filesystem Domain Skill (class 2) — `skill-filesystem`. References
+    //     all 25 filesystem leaf skills by name (no duplicated content).
+    //     NOTE: an earlier audit incorrectly reported this domain skill as
+    //     undefined in the doc; it IS defined at `builtin_stuff_v3.md` Step 7.x
+    //     (~line 3631). Seeded here per that definition (Q3 was answered "skip"
+    //     under the since-corrected premise that no definition existed).
+    let skill_filesystem = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-filesystem",
+                "The filesystem domain provides six scoped tools for working with the workspace.",
+                SKILL_FILESYSTEM_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-filesystem",
+        )
+        .await?;
+
+    // 4e. Filesystem Recipes (class 21) — transcribed from the doc's flat
+    //     format into the IBS authoring model (Q1 decision A). Tier-0 recipes
+    //     are marked tier0-eligible post-insert (Q2 decision A). Read/write/list
+    //     here; glob/grep/patch land in subsequent chunks.
+    let recipe_file_read = stores
+        .seed_recipe(
+            &tenant,
+            "file-read",
+            "Read a file from the workspace and return its contents.",
+            true,
+            RECIPE_FILE_READ_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.read_file(path, range) and returns result",
+                    "component",
+                    &[pc_read_file],
+                ),
+            ],
+            &[
+                json!({"input": "read a file", "class": 1}),
+                json!({"input": "show me the contents of", "class": 1}),
+                json!({"input": "open file", "class": 1}),
+                json!({"input": "what is in config.toml", "class": 2}),
+                json!({"input": "read the file at this path", "class": 1}),
+                json!({"input": "show me this file", "class": 1}),
+                json!({"input": "load file contents", "class": 1}),
+                json!({"input": "display the file", "class": 1}),
+                json!({"input": "cat this file", "class": 2}),
+                json!({"input": "inspect the configuration file", "class": 2}),
+                json!({"input": "file read", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_read_range = stores
+        .seed_recipe(
+            &tenant,
+            "file-read-range",
+            "Read a specific line range from a file (for large files or targeted inspection).",
+            true,
+            RECIPE_FILE_READ_RANGE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.read_file(path, range) — range slot is required",
+                    "component",
+                    &[pc_read_file],
+                ),
+            ],
+            &[
+                json!({"input": "read lines 10 to 50 of main.rs", "class": 1}),
+                json!({"input": "show me line 100 to 200 of this file", "class": 1}),
+                json!({"input": "read the first 30 lines", "class": 1}),
+                json!({"input": "read lines 500 to 600 of the log", "class": 1}),
+                json!({"input": "show only the top 20 lines", "class": 2}),
+                json!({"input": "read the middle section of this file", "class": 2}),
+                json!({"input": "show lines starting from 150", "class": 2}),
+                json!({"input": "paginate through a large file", "class": 2}),
+                json!({"input": "read just this specific section of the file", "class": 2}),
+                json!({"input": "show me the function body starting at line 80", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_write = stores
+        .seed_recipe(
+            &tenant,
+            "file-write",
+            "Read current file content (if it exists), then write new content authored by LLM.",
+            false,
+            RECIPE_FILE_WRITE_YAML,
+            &[
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load read + write leaf skill context",
+                    "component",
+                    &[skill_read_file, skill_write_file_replace, skill_write_file_new],
+                ),
+                step_entry(
+                    2,
+                    "rust",
+                    "Pre-load ts-read-file binding (for optional pre-read)",
+                    "component",
+                    &[ts_read_file],
+                ),
+                step_entry(
+                    3,
+                    "orchestrator",
+                    "LLM optionally reads current content, then composes new file content",
+                    "text",
+                    &[],
+                ),
+                step_entry(4, "rust", "Pre-load ts-write-file binding", "component", &[ts_write_file]),
+            ],
+            &[
+                json!({"input": "write a file", "class": 1}),
+                json!({"input": "create a file", "class": 1}),
+                json!({"input": "save content to a file", "class": 1}),
+                json!({"input": "write a README for this project", "class": 2}),
+                json!({"input": "create config.toml with these values", "class": 2}),
+                json!({"input": "make a new file with this content", "class": 1}),
+                json!({"input": "create a new document", "class": 1}),
+                json!({"input": "write this content to disk", "class": 1}),
+                json!({"input": "overwrite this file with new content", "class": 2}),
+                json!({"input": "file write", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_write_template = stores
+        .seed_recipe(
+            &tenant,
+            "file-write-template",
+            "Write a file using a fully pre-baked template content from recipe vars (no LLM).",
+            true,
+            RECIPE_FILE_WRITE_TEMPLATE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-write-file ToolSkill binding", "component", &[ts_write_file]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.write_file(path=slot0, content=slot1) — both pre-baked",
+                    "component",
+                    &[pc_write_file],
+                ),
+            ],
+            &[
+                json!({"input": "create an empty __init__.py", "class": 2}),
+                json!({"input": "create a default .gitignore", "class": 2}),
+                json!({"input": "write a minimal config file", "class": 2}),
+                json!({"input": "initialize this file with a template", "class": 2}),
+                json!({"input": "create a stub file", "class": 2}),
+                json!({"input": "write a file from a template", "class": 1}),
+                json!({"input": "scaffold a new config file", "class": 2}),
+                json!({"input": "create a default settings file", "class": 2}),
+                json!({"input": "file write from template vars", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_list = stores
+        .seed_recipe(
+            &tenant,
+            "file-list",
+            "List the contents of a directory.",
+            true,
+            RECIPE_FILE_LIST_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.list_dir(path, recursive, max_depth)",
+                    "component",
+                    &[pc_list_dir],
+                ),
+            ],
+            &[
+                json!({"input": "list files in this directory", "class": 1}),
+                json!({"input": "show directory contents", "class": 1}),
+                json!({"input": "what files are in the project root", "class": 1}),
+                json!({"input": "show me what is in this folder", "class": 1}),
+                json!({"input": "ls", "class": 1}),
+                json!({"input": "what is in the src directory", "class": 2}),
+                json!({"input": "explore this folder", "class": 2}),
+                json!({"input": "directory listing", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_list_recursive = stores
+        .seed_recipe(
+            &tenant,
+            "file-list-recursive",
+            "Recursively list all files and directories under a path.",
+            true,
+            RECIPE_FILE_LIST_RECURSIVE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.list_dir(path, recursive=true, max_depth=3)",
+                    "component",
+                    &[pc_list_dir],
+                ),
+            ],
+            &[
+                json!({"input": "list all files recursively", "class": 1}),
+                json!({"input": "show me the full directory tree", "class": 1}),
+                json!({"input": "list all files in this project", "class": 1}),
+                json!({"input": "recursive directory listing", "class": 1}),
+                json!({"input": "show all files and folders", "class": 1}),
+                json!({"input": "tree view of this directory", "class": 2}),
+                json!({"input": "list every file under this path", "class": 1}),
+                json!({"input": "what files exist in this whole project", "class": 2}),
+                json!({"input": "ls -r", "class": 1}),
+                json!({"input": "recursive ls", "class": 1}),
+            ],
+        )
+        .await?;
+
     // 5. Append the minted tool + toolskill + python_code ids to each per-tool
     //    catalogue (leaf Skill / Recipe ids appended in later chunks).
     stores
@@ -1009,6 +1310,8 @@ async fn seed_filesystem_group(
                 skill_read_file_tail,
                 skill_file_exists,
                 skill_read_and_grep,
+                recipe_file_read,
+                recipe_file_read_range,
             ],
         )
         .await?;
@@ -1022,6 +1325,8 @@ async fn seed_filesystem_group(
                 skill_write_file_new,
                 skill_write_file_replace,
                 skill_write_file_template,
+                recipe_file_write,
+                recipe_file_write_template,
             ],
         )
         .await?;
@@ -1039,6 +1344,8 @@ async fn seed_filesystem_group(
                 skill_list_dir_files_only,
                 skill_list_dir_dirs_only,
                 skill_list_and_filter,
+                recipe_file_list,
+                recipe_file_list_recursive,
             ],
         )
         .await?;
@@ -1089,7 +1396,8 @@ async fn seed_filesystem_group(
 
     // 6. Append all filesystem tool + toolskill + python_code + leaf skill ids
     //    to the primary catalogue (path helpers are cross-capability → primary
-    //    only; the filesystem domain skill is added in a later chunk).
+    //    only), plus the filesystem domain skill + the 6 read/write/list
+    //    recipes. Glob/grep/patch recipes land in later chunks.
     stores
         .append_children(
             cat_filesystem,
@@ -1149,11 +1457,18 @@ async fn seed_filesystem_group(
                 pc_path_join,
                 pc_path_basename,
                 pc_path_dirname,
+                recipe_file_read,
+                recipe_file_read_range,
+                recipe_file_write,
+                recipe_file_write_template,
+                recipe_file_list,
+                recipe_file_list_recursive,
+                skill_filesystem,
             ],
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 2: 6 base + 12 variant/helper PythonCode + 25 leaf skills)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3a: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 6 read/write/list recipes)");
     Ok(())
 }
 
@@ -1874,6 +2189,92 @@ fn leaf_skill(tenant: &str, name: &str, description: &str, body: &str) -> NewPgS
     skill_row(tenant, name, description, body, 1, LEAF_SKILL_TAGS)
 }
 
+/// Build one IBS `StepEntry` from a transcribed doc step. `knowledge` is the
+/// doc's `channel` (`rust` | `orchestrator` | `both`); the doc's `llm` step
+/// type (no channel) is passed as `knowledge = "orchestrator"`. `ty` is the
+/// doc's `type` (`component` | `text` | `snippet`); the doc's `llm` type maps
+/// to `"text"` (the IBS `RecipeStepType` has no `llm` variant — LLM invocation
+/// is the recipe-level `llm_call_required` flag). `include` carries the real
+/// seeded UUIDs that the doc's `<uuid:name>` placeholders resolved to.
+/// `tool_bindings` is empty (the rust step pre-loads a ToolSkill via
+/// `include`; the orchestrator step's `host.<tool>()` call lives in the
+/// PythonCode body). `dependencies` is null.
+fn step_entry(stepnumber: u32, knowledge: &str, goal: &str, ty: &str, include: &[Uuid]) -> Value {
+    json!({
+        "stepnumber": stepnumber,
+        "knowledge": knowledge,
+        "goal": goal,
+        "content": goal,
+        "type": ty,
+        "include": include,
+        "tool_bindings": [],
+        "dependencies": null,
+    })
+}
+
+/// Build a `NewPgRecipe` row from the doc's flat recipe format, adapted to the
+/// IBS authoring model (Q1 decision A — composition-only):
+/// - `step_descriptions` = one `StepDescriptionEntry` (`desc_idx: 0`,
+///   `label` = recipe description, `yaml_source` = verbatim doc block, `steps`
+///   = the supplied `StepEntry` array). The IBS reads `steps`; the WebUI
+///   renderer reads `yaml_source`.
+/// - `variants` = one synthesized default `RecipeVariant` whose `step_link`
+///   is the canonical "run every step" formula `0:1-0:E` (desc_idx 0,
+///   stepnumber 1 → End). This is the value `parse_step_link` expects — the
+///   doc's flat recipes carry no variants/step_link, so a single whole-recipe
+///   variant is synthesized. `match_variant` matches by exact string equality,
+///   and Phase N graduates `intent_examples` into `reborn_intent_inputs`
+///   carrying this same `step_link`, so the value round-trips intent → Monty →
+///   compose → `build_instruction`.
+/// - `intent_examples` (recipe top-level) preserves the doc's `{input, class}`
+///   objects verbatim.
+///
+/// `consumer_tags` includes `05:validator` per the `NewPgRecipe` contract;
+/// recipes are not subject to the SEC-01 delivery filter (only `pg_python_code`
+/// is), so this does not hide the row.
+fn recipe_row(
+    tenant: &str,
+    name: &str,
+    description: &str,
+    yaml_source: &str,
+    step_entries: &[Value],
+    intent_examples: &[Value],
+) -> NewPgRecipe {
+    let intent_input_strings: Vec<String> = intent_examples
+        .iter()
+        .filter_map(|e| e.get("input").and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+    NewPgRecipe {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: name.to_string(),
+        description: description.to_string(),
+        trigger: None,
+        steps: json!([]),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        consumer_tags: vec!["02:orchestrator".into(), "05:validator".into()],
+        intent_examples: Some(json!(intent_examples)),
+        source: "system".into(),
+        step_descriptions: Some(json!([{
+            "desc_idx": 0,
+            "label": description,
+            "yaml_source": yaml_source,
+            "steps": step_entries,
+        }])),
+        variants: Some(json!([{
+            "variant_key": name,
+            "step_link": "0:1-0:E",
+            "description": description,
+            "intent_examples": intent_input_strings,
+            "variable_patterns": [],
+        }])),
+        dependency_registry: None,
+    }
+}
+
 const PC_EXEC_READ_FILE_CONTENT: &str = r#"# Orchestrator executor body. host.<tool> is provided by the runtime sandbox.
 # IBS bakes in path and range values as {{vars.slot0}} / {{vars.slot1}} before execution.
 # No I/O, no imports — pure orchestrator dispatch.
@@ -2221,4 +2622,177 @@ const SKILL_LIST_AND_FILTER_BODY: &str = r#"Use pc-exec-list-then-grep when you 
 narrow results by a name substring (e.g. "show me all Python files in src/"). This
 avoids a separate glob call for simple substring name filters. For extension-based
 filtering, prefer skill-glob-by-extension for exact extension matching.
+"#;
+
+/// `skill-filesystem` (class 2) domain-skill body — transcribed verbatim from
+/// `builtin_stuff_v3.md` Step 7.x (the doc's `description:` field; the doc
+/// omits a separate `body:` for this domain skill, so the full prose lives
+/// here and a one-line summary is used as the row `description`).
+const SKILL_FILESYSTEM_BODY: &str = r#"The filesystem domain provides six scoped tools for working with the workspace.
+Decision guide — use the right skill for each approach:
+
+READING:
+— skill-read-file: Read a file's full content.
+— skill-read-file-range: Read a specific line range from a large file.
+
+LISTING / FINDING:
+— skill-list-dir: List contents of a single directory level.
+— skill-list-dir-recursive: Recursively scan a directory tree.
+— skill-list-dir-files-only: List only regular files (no subdirs).
+— skill-list-dir-dirs-only: List only subdirectories.
+— skill-glob-by-extension: Find all files of a given extension.
+— skill-glob-by-name: Find files whose names match a pattern.
+— skill-glob-in-subdir: Restrict a glob to a specific subdirectory.
+
+SEARCHING CONTENT:
+— skill-grep-files: Find which files contain a pattern (fast, compact output).
+— skill-grep-content: Retrieve matching lines with surrounding context.
+— skill-grep-count: Count occurrences without returning content.
+— skill-grep-case-insensitive: Case-insensitive grep (add case_insensitive=true).
+— skill-grep-type-filtered: Grep only specific file types via glob filter.
+— skill-grep-invert: Find files/lines that do NOT match (invert_match=true).
+
+Decision for grep approach:
+• Which files contain pattern → skill-grep-files
+• What exactly matches with context → skill-grep-content
+• How many occurrences → skill-grep-count
+• Pattern in any case → skill-grep-case-insensitive
+• Only in .rs / .ts / etc. files → skill-grep-type-filtered
+• Files MISSING a pattern → skill-grep-invert
+
+WRITING / EDITING:
+— skill-write-file-new: Create a new file with full content.
+— skill-write-file-replace: Replace an existing file's entire content.
+— skill-write-file-template: Write a file from pre-baked template vars (no LLM).
+— skill-apply-patch-single: Replace one unique occurrence in a file.
+— skill-apply-patch-all: Replace every occurrence of a string in a file.
+
+All paths are scoped to the workspace mount. Output is capped at 1 MiB per call.
+"#;
+
+// ---------------------------------------------------------------------------
+// Filesystem recipe `yaml_source` — verbatim `step_descriptions` blocks from
+// `builtin_stuff_v3.md`. The IBS never parses `yaml_source` (it reads the
+// structured `steps` array built by `step_entry`); this is preserved for the
+// WebUI authoring renderer.
+// ---------------------------------------------------------------------------
+
+const RECIPE_FILE_READ_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-file>"],
+    "label":   "PythonCode calls host.read_file(path, range) and returns result"
+  }
+]
+"#;
+
+const RECIPE_FILE_READ_RANGE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-file>"],
+    "label":   "PythonCode calls host.read_file(path, range) — range slot is required"
+  }
+]
+"#;
+
+const RECIPE_FILE_WRITE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-read-file>", "<uuid:skill-write-file-replace>", "<uuid:skill-write-file-new>"],
+    "label":   "Load read + write leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file binding (for optional pre-read)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM optionally reads current content, then composes new file content"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-write-file>"],
+    "label":   "Pre-load ts-write-file binding"
+  }
+]
+"#;
+
+const RECIPE_FILE_WRITE_TEMPLATE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-write-file>"],
+    "label":   "Pre-load ts-write-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-write-file>"],
+    "label":   "PythonCode calls host.write_file(path=slot0, content=slot1) — both pre-baked"
+  }
+]
+"#;
+
+const RECIPE_FILE_LIST_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-dir>"],
+    "label":   "PythonCode calls host.list_dir(path, recursive, max_depth)"
+  }
+]
+"#;
+
+const RECIPE_FILE_LIST_RECURSIVE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-dir>"],
+    "label":   "PythonCode calls host.list_dir(path, recursive=true, max_depth=3)"
+  }
+]
 "#;
