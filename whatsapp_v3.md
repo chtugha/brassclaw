@@ -6,7 +6,18 @@
 > account you have created maps to one Meta WABA phone number. Every user that DMs that
 > number reaches the agent. Replies are delivered back to the sender, exactly as a chat.
 >
-> **Next migration:** V062 (V061 = `reborn_components_registry`, already applied).
+> **Next migration:** V076 (V075 = `reborn_skills_syntax`, highest applied as of this
+> audit). V062 is already occupied by `call_action_action_id_resolution` (Phase G.7).
+> V061 = `reborn_components_registry` was the anchor at plan-authoring time; the
+> codebase has since advanced through V062–V075 (Phase G cleanup, K.1 basic-prompt
+> store, security settings, Python code includes, tool/skill syntax columns).
+>
+> **Pending migrations V055–V060** (phases J, K.1, L.1, M.1, N.1 from
+> `saved_plan_to_v3.md`) are absent from the migration directory — they have been
+> designed but not yet applied. They are independent of the WhatsApp tables and will
+> not conflict with V076 when they land (they will take their own numbers before or
+> after V076 depending on sequencing; WhatsApp uses the next available slot at
+> implementation time, which is currently V076).
 >
 > **Companion document:** `saved_plan_to_v3.md` — the recipe/v3 finalisation plan.
 > WhatsApp integration is additive on top of that plan. Neither plan modifies the
@@ -73,7 +84,7 @@ brassclaw_webui_v2              ← MODIFIED — adds Settings > Channels panel 
     │ src/descriptors.rs  (new route constants)
     │ src/router.rs  (new routes mounted)
     │
-crates/brassclaw_pg/migrations  ← MODIFIED — V062 adds whatsapp_installations table
+crates/brassclaw_pg/migrations  ← MODIFIED — V076 adds whatsapp_installations table
     │
 brassclaw_reborn_traces         ← MODIFIED — TraceChannel::WhatsApp variant
     │
@@ -115,7 +126,7 @@ an E.164 number without `+` prefix (e.g. `4915112345678`). We store it with
 a `+` prefix for canonical E.164 form. Rendering strips it back to digits-only
 for the Meta API `"to"` field.
 
-### 0.6 Migration plan (V062)
+### 0.6 Migration plan (V076)
 
 One new table: `reborn_whatsapp_installations`. This is the persistence layer
 for the operator-configured WhatsApp installation. The secrets themselves live in
@@ -1000,7 +1011,7 @@ Both must pass with zero warnings and zero failures before marking WA-A done.
 
 ---
 
-## 2. Phase WA-B — Database migration V062
+## 2. Phase WA-B — Database migration V076
 
 **Goal:** Persist the WhatsApp installation configuration. One row = one Meta
 WABA phone number configured by the operator. The row stores metadata only —
@@ -1008,10 +1019,10 @@ secrets live in the encrypted `brassclaw_secrets` store, referenced by name.
 
 ### 2.1 Migration file
 
-**File: `crates/brassclaw_pg/migrations/V062__reborn_whatsapp_installations.sql`**
+**File: `crates/brassclaw_pg/migrations/V076__reborn_whatsapp_installations.sql`**
 
 ```sql
--- V062__reborn_whatsapp_installations.sql
+-- V076__reborn_whatsapp_installations.sql
 --
 -- Stores operator-configured WhatsApp Business Cloud API installations.
 -- One row per WABA phone number. Secrets are NOT stored here — only the
@@ -1581,6 +1592,17 @@ pub fn validate_whatsapp_v1_v2_exclusivity(v1_channel_artifacts_present: bool) {
 
 **File to modify:** `crates/brassclaw_reborn_composition/src/factory.rs`
 
+> **⚠️ Audit finding — verify Telegram wiring location before implementing.**
+> The `validate_whatsapp_v1_v2_exclusivity` function above is described as mirroring
+> `validate_telegram_v1_v2_exclusivity`. As of the codebase audit (V075 high water
+> mark), **no Telegram wiring exists in `brassclaw_reborn_composition/src/`** — there
+> is no `telegram.rs` module and no `validate_telegram_v1_v2_exclusivity` function
+> in that crate. The Telegram adapter crate (`brassclaw_telegram_v2_adapter`) exists
+> but its composition wiring has not been implemented. Before implementing the
+> WhatsApp version here, read `crates/brassclaw_reborn_composition/src/factory.rs`
+> and `product_live_adapters.rs` to understand the actual live adapter-registration
+> pattern and mirror that — not a hypothetical Telegram precedent.
+
 In the Reborn service builder, after DB is up:
 
 ```rust
@@ -1674,6 +1696,12 @@ changes to the engine, LLM, or adapter crates.
 
 **File to modify:** `crates/brassclaw_llm/src/reasoning.rs`
 
+> **Audit confirmed — not yet implemented.** As of V075, `reasoning.rs:1056`
+> still reads `"Send messages via Signal, Telegram, Slack, or other connected
+> channels"` — WhatsApp is absent. The `"whatsapp"` channel formatting case at
+> line 1033 is already correct. Only the proactive messaging hint block needs
+> updating as described below.
+
 At line 1056 the `message_tool_hint` string lists the channels the agent can
 proactively reach users on. WhatsApp is missing. Update the hint:
 
@@ -1720,6 +1748,14 @@ WhatsApp as a reply target.
 ### 5.1 `TraceChannel::WhatsApp`
 
 **File to modify:** `crates/brassclaw_reborn_traces/src/contribution.rs`
+
+> **Audit confirmed — not yet implemented.** As of V075, `TraceChannel` in
+> [`contribution.rs:138`](crates/brassclaw_reborn_traces/src/contribution.rs:138)
+> is `{ Web, Cli, Telegram, Slack, Routine, Other }` — `WhatsApp` is absent.
+> [`client.rs:258`](crates/brassclaw_reborn_traces/src/client.rs:258) likewise has
+> no `"whatsapp"` arm in `trace_channel_from_host_channel`. Both must be added.
+> `TraceChannelArg` in the CLI (`brassclaw_reborn_cli/src/commands/traces/mod.rs:316`)
+> is also missing the `WhatsApp` variant and its `Display` / `From` impls.
 
 ```rust
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -2208,7 +2244,7 @@ Every crate touched in phases WA-A through WA-G:
 | Crate | Change type | Phase |
 |---|---|---|
 | `brassclaw_whatsapp_v2_adapter` | **NEW** | WA-A |
-| `crates/brassclaw_pg/migrations` | Migration V062 | WA-B |
+| `crates/brassclaw_pg/migrations` | Migration V076 | WA-B |
 | `brassclaw_reborn_composition` | New module `whatsapp.rs`, new `whatsapp_installation_store.rs`, `webui_serve.rs` route wiring, `factory.rs` startup wiring | WA-C, WA-D |
 | `brassclaw_product_workflow` | `StaticConnectableChannelsProductFacade` entry, new facade methods on `RebornServicesApi` | WA-D, WA-F |
 | `brassclaw_reborn_traces` | `TraceChannel::WhatsApp` + `trace_channel_from_host_channel` | WA-E |
