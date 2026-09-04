@@ -380,6 +380,9 @@ pub async fn seed_builtin_components(
     // memory_tree + search-and-read combined recipe).
     seed_memory_group(&stores).await?;
 
+    // Pass 4 — process group (shell, spawn_subagent, trigger_create/list/remove).
+    seed_process_group(&stores).await?;
+
     Ok(())
 }
 
@@ -6978,3 +6981,600 @@ const RECIPE_MEMORY_SEARCH_AND_READ_YAML: &str = r#"step_descriptions: [
   }
 ]
 "#;
+
+// ---------------------------------------------------------------------------
+// Process group (Pass 4) — shell, spawn_subagent, trigger management.
+// Catalogue names + overview docs (transcribed verbatim from the doc).
+// ---------------------------------------------------------------------------
+
+/// Process domain primary ExtensionCatalogue name (Step 25).
+const CAT_PROCESS: &str = "builtin-process";
+
+const CAT_EXT_SHELL_OVERVIEW: &str = r#"# Shell Execution Capability
+Tool: builtin.shell
+Effect: mixed (sandboxed subprocess)
+Permission: Ask
+
+TWO TIERS of shell execution in this catalogue:
+
+§shell-safe-fixed (Tier 0): Fixed-literal pre-validated commands.
+No user input enters the command string — zero injection surface.
+- Git inspection: → shell-git-status, shell-git-log, shell-git-diff-stat,
+  shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat,
+  shell-git-tag-list recipes (all Tier 0)
+- System info: → shell-pwd, shell-df, shell-ps, shell-env, shell-uname,
+  shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime,
+  shell-free, shell-wc-l recipes (all Tier 0)
+
+§shell-guard-custom (Tier 1): User-composed or user-supplied commands.
+LLM must validate and compose the exact command before dispatch.
+- Single custom command: → shell-run recipe (Tier 1)
+- Multi-line script: → shell-script recipe (Tier 1)
+
+Prefer structured filesystem, network, and memory tools over shell whenever possible.
+Shell is the last resort when no structured tool covers the need.
+"#;
+
+const CAT_EXT_SPAWN_SUBAGENT_OVERVIEW: &str = r#"# Child Agent Delegation Capability
+Tool: builtin.spawn_subagent
+Effect: ExternalWrite
+
+§spawn_subagent-guard: ALL recipes using this tool are Tier 1 (llm_call_required=true).
+The LLM MUST frame the goal and confirm delegation. No Tier-0 spawn dispatch.
+
+Approaches:
+- Generic goal delegation: write clear goal + context → subagent-spawn recipe (Tier 1)
+- Named procedure: specify recipe_name → subagent-spawn recipe (Tier 1)
+- Research delegation: focused info-gathering → subagent-research recipe (Tier 1)
+- Coding delegation: file read/write/patch task → subagent-coding recipe (Tier 1)
+- Exploration delegation: deep read-only analysis → subagent-exploration recipe (Tier 1)
+- Query delegation: focused single-question lookup → subagent-query recipe (Tier 1)
+
+Choose the most specific recipe — the intent system routes the user's phrasing here
+and the pre-loaded leaf skill body gives the LLM the right framing before it writes
+the goal string.
+"#;
+
+const CAT_EXT_TRIGGER_MANAGEMENT_OVERVIEW: &str = r#"# Trigger Management Capability
+Tools: builtin.trigger_list, builtin.trigger_create, builtin.trigger_remove
+Effects: Read (list), ExternalWrite (create/remove)
+
+Manages persistent scheduled triggers. List is Tier 0. Create and Remove are Tier 1
+(ExternalWrite effect, user confirmation required).
+
+Approaches:
+- List all triggers: → trigger-list recipe (Tier 0)
+- Create a trigger: → trigger-create recipe (Tier 1)
+- Remove a trigger (generic): → trigger-remove recipe (Tier 1 — LLM resolves name)
+- Remove a trigger by exact name: → trigger-remove-by-name recipe (Tier 1 — LLM confirms,
+  PythonCode resolves and removes — no LLM disambiguation of the name)
+"#;
+
+const CAT_PROCESS_OVERVIEW: &str = r#"# Process & Scheduling Capabilities
+
+The process domain covers: shell command execution (two tiers), child agent delegation,
+and persistent trigger scheduling.
+
+## Tools in this domain
+- builtin.shell          — run a shell command in a sandboxed subprocess
+- builtin.spawn_subagent — delegate a sub-goal to a child agent run
+- builtin.trigger_create — create a scheduled or event-driven trigger
+- builtin.trigger_list   — list configured triggers (read-only)
+- builtin.trigger_remove — remove a trigger (irreversible)
+
+## Shell safety — two tiers
+§shell-safe-fixed (Tier 0): Fixed-literal pre-validated commands.
+No user input enters the command string — the PythonCode hardcodes the command.
+Git inspection (git status, log, diff --stat, branch) and system info
+(pwd, df -h, ps aux, env, uname -a, which) are all Tier 0.
+
+§shell-guard-custom (Tier 1): User-composed or user-supplied commands.
+The LLM must compose and validate the exact command before dispatch.
+Never pass unvalidated user input into a custom shell command.
+
+## Subagent invariants (§spawn_subagent-guard)
+- Any recipe using builtin.spawn_subagent MUST have llm_call_required=true. No Tier-0.
+- Child cannot exceed parent scope or authority.
+- Include all needed context explicitly — child has no parent conversation access.
+
+## Trigger safety
+- trigger_create and trigger_remove have ExternalWrite effect — require user confirmation.
+- Triggers run with the creating session's authority and cannot escalate.
+"#;
+
+/// Seed the process domain group: the primary `builtin-process` catalogue, the
+/// 3 per-tool catalogues (ext-shell, ext-spawn-subagent, ext-trigger-management),
+/// the 5 Tool rows (shell, spawn_subagent, trigger_create/list/remove), and the 5
+/// ToolSkill rows. PythonCode, leaf Skills, the 3 Domain Skills, and Recipes are
+/// added in subsequent chunks (6b-6g); their ids are appended to the catalogues'
+/// `child_component_ids` as they are minted (dedup makes this idempotent).
+async fn seed_process_group(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
+    //    appended to as children are minted below and in later chunks).
+    let cat_process = stores
+        .upsert_catalogue(process_primary_catalogue_row(&tenant), CAT_PROCESS)
+        .await?;
+    let cat_shell = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-shell",
+                "Shell execution capability (builtin.shell).",
+                CAT_EXT_SHELL_OVERVIEW,
+                json!([
+                    {"group_name": "shell-safe-fixed-git", "description": "Fixed-literal git commands (Tier 0, no LLM)"},
+                    {"group_name": "shell-safe-fixed-sysinfo", "description": "Fixed-literal system info commands (Tier 0, no LLM)"},
+                    {"group_name": "shell-custom", "description": "User-composed shell commands (Tier 1, LLM required)"}
+                ]),
+            ),
+            "ext-shell",
+        )
+        .await?;
+    let cat_spawn = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-spawn-subagent",
+                "Child agent delegation capability (builtin.spawn_subagent).",
+                CAT_EXT_SPAWN_SUBAGENT_OVERVIEW,
+                json!([
+                    {"group_name": "subagent-goal", "description": "Delegate a self-contained sub-goal to a child agent"},
+                    {"group_name": "subagent-procedure", "description": "Run a named recipe as a child agent procedure"},
+                    {"group_name": "subagent-typed", "description": "Flavour-specific delegation: research, coding, exploration, query"}
+                ]),
+            ),
+            "ext-spawn-subagent",
+        )
+        .await?;
+    let cat_trigger = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-trigger-management",
+                "Trigger management capability (builtin.trigger_create/list/remove).",
+                CAT_EXT_TRIGGER_MANAGEMENT_OVERVIEW,
+                json!([
+                    {"group_name": "trigger-list", "description": "Enumerate configured triggers"},
+                    {"group_name": "trigger-create", "description": "Schedule a new trigger"},
+                    {"group_name": "trigger-remove", "description": "Remove a scheduled trigger"},
+                    {"group_name": "trigger-remove-by-name", "description": "Remove by exact name — PythonCode does list+resolve, LLM only confirms"}
+                ]),
+            ),
+            "ext-trigger-management",
+        )
+        .await?;
+
+    // 2. Tool rows (class 0) — capability_id is the literal `builtin.X`.
+    let tool_shell = stores
+        .upsert_tool(tool_shell_row(&tenant), "shell")
+        .await?;
+    let tool_spawn_subagent = stores
+        .upsert_tool(tool_spawn_subagent_row(&tenant), "spawn_subagent")
+        .await?;
+    let tool_trigger_create = stores
+        .upsert_tool(tool_trigger_create_row(&tenant), "trigger_create")
+        .await?;
+    let tool_trigger_list = stores
+        .upsert_tool(tool_trigger_list_row(&tenant), "trigger_list")
+        .await?;
+    let tool_trigger_remove = stores
+        .upsert_tool(tool_trigger_remove_row(&tenant), "trigger_remove")
+        .await?;
+
+    // 3. ToolSkill rows (class 13).
+    let ts_shell_run = stores
+        .upsert_tool_skill(ts_shell_run_row(&tenant), "ts-shell-run")
+        .await?;
+    let ts_spawn_subagent = stores
+        .upsert_tool_skill(ts_spawn_subagent_row(&tenant), "ts-spawn-subagent")
+        .await?;
+    let ts_trigger_create = stores
+        .upsert_tool_skill(ts_trigger_create_row(&tenant), "ts-trigger-create")
+        .await?;
+    let ts_trigger_list = stores
+        .upsert_tool_skill(ts_trigger_list_row(&tenant), "ts-trigger-list")
+        .await?;
+    let ts_trigger_remove = stores
+        .upsert_tool_skill(ts_trigger_remove_row(&tenant), "ts-trigger-remove")
+        .await?;
+
+    // 4-7. PythonCode, leaf Skills, Domain Skills, Recipes, and the catalogue
+    //      `child_component_ids` appends are added in subsequent chunks (6b-6g).
+    //      The bindings above are consumed there; until then, touch them so the
+    //      compiler does not warn about unused ids.
+    let _ = (
+        cat_process, cat_shell, cat_spawn, cat_trigger, tool_shell, tool_spawn_subagent,
+        tool_trigger_create, tool_trigger_list, tool_trigger_remove, ts_shell_run,
+        ts_spawn_subagent, ts_trigger_create, ts_trigger_list, ts_trigger_remove,
+    );
+
+    tracing::debug!(
+        "seeded process group chunk 6a: 4 catalogues + 5 tools + 5 toolskills - shell/spawn/trigger bindings ready"
+    );
+
+    Ok(())
+}
+
+fn process_primary_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
+    NewPgExtensionCatalogue {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: CAT_PROCESS.to_string(),
+        description: "Process domain capability catalogue (shell, spawn_subagent, \
+                       trigger_create/list/remove)."
+            .to_string(),
+        version: "1.0".into(),
+        overview_doc: CAT_PROCESS_OVERVIEW.into(),
+        task_groups: json!([
+            {"group_name": "shell-safe-fixed", "description": "Fixed-literal shell commands (Tier 0): git + system info"},
+            {"group_name": "shell-custom", "description": "User-composed shell execution (Tier 1, LLM required)"},
+            {"group_name": "agent-delegation", "description": "Child agent spawning and sub-task delegation"},
+            {"group_name": "trigger-management", "description": "Scheduled trigger lifecycle: list, create, remove"}
+        ]),
+        child_component_ids: Vec::new(),
+        intent_index: None,
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        dependency_registry: None,
+    }
+}
+
+fn tool_shell_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "shell".to_string(),
+        description: "Execute a shell command or script in the sandboxed process executor. \
+                       Returns {output, exit_code, success, sandboxed}. When stdout+stderr \
+                       exceeds the inline cap, the full output is saved to a scoped workspace \
+                       file and the response body contains the saved path."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Shell command or multi-line script body"},
+                "workdir": {"type": "string", "description": "Working directory (must be a backed scoped path)"},
+                "timeout_secs": {"type": "number", "description": "Wall-clock timeout, max 120"},
+                "extra_env": {"type": "object", "description": "Additional environment variables"}
+            },
+            "required": ["command"]
+        })),
+        param_template: Some(json!({"command": ""})),
+        effect_type: "mixed".to_string(),
+        preconditions: Some("".into()),
+        error_handling: Some("".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.shell".into(),
+    }
+}
+
+fn tool_spawn_subagent_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "spawn_subagent".to_string(),
+        description: "Spawn a child agent run to handle a sub-goal or delegated procedure."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "The task description or goal for the child agent."},
+                "context": {"type": "string", "description": "Optional additional context to pass to the child. Plain text."},
+                "recipe_name": {"type": "string", "description": "Optional: name of a recipe to seed the child's execution with."},
+                "budget_tokens": {"type": "integer", "description": "Optional token budget cap for the child run. Inherits parent default if absent."}
+            },
+            "required": ["goal"]
+        })),
+        param_template: Some(json!({"goal": "{{goal}}"})),
+        effect_type: "ExternalWrite".to_string(),
+        preconditions: Some("".into()),
+        error_handling: Some("".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.spawn_subagent".into(),
+    }
+}
+
+fn tool_trigger_create_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "trigger_create".to_string(),
+        description: "Create a new scheduled or event-driven trigger for a recipe or task."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Human-readable trigger name."},
+                "schedule": {"type": "string", "description": "Cron expression ('0 9 * * 1') or interval ('every 1h', 'every 30m')."},
+                "recipe_name": {"type": "string", "description": "Name of the recipe to invoke on trigger."},
+                "payload": {"type": "object", "description": "Optional input vars to pass to the recipe at trigger time."}
+            },
+            "required": ["name", "schedule", "recipe_name"]
+        })),
+        param_template: Some(json!({"name": "{{name}}"})),
+        effect_type: "ExternalWrite".to_string(),
+        preconditions: Some("".into()),
+        error_handling: Some("".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.trigger_create".into(),
+    }
+}
+
+fn tool_trigger_list_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "trigger_list".to_string(),
+        description: "List all configured triggers in the active scope.".to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "description": "Scope filter: 'all' (default) | 'user' | 'system'."}
+            },
+            "required": []
+        })),
+        param_template: Some(json!({})),
+        effect_type: "Read".to_string(),
+        preconditions: Some("".into()),
+        error_handling: Some("".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.trigger_list".into(),
+    }
+}
+
+fn tool_trigger_remove_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "trigger_remove".to_string(),
+        description: "Remove a trigger by name. Irreversible — the scheduled task stops \
+                       immediately."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "trigger_name": {"type": "string", "description": "Name of the trigger to remove."}
+            },
+            "required": ["trigger_name"]
+        })),
+        param_template: Some(json!({"trigger_name": "{{trigger_name}}"})),
+        effect_type: "ExternalWrite".to_string(),
+        preconditions: Some("".into()),
+        error_handling: Some("".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.trigger_remove".into(),
+    }
+}
+
+fn ts_shell_run_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-shell-run".to_string(),
+        description: "Run a shell command via builtin.shell. Accepts command (required), optional \
+                       workdir (must be a backed scoped path), optional timeout_secs (1–120). \
+                       Returns {output, exit_code, success, sandboxed}. When output exceeds the \
+                       inline cap, a saved_file path is returned — call read_file to retrieve it."
+            .to_string(),
+        content: "Call `host.shell(command=<command>, workdir=<optional backed scoped path>, \
+                  timeout_secs=<optional 1..120>)` to run a shell command in the sandboxed process \
+                  executor. Returns {output, exit_code, success, sandboxed}. When output exceeds \
+                  the inline cap, a saved_file path is returned — call read_file on that path to \
+                  retrieve the full content before proceeding."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("shell".to_string()),
+        param_schema: Some(json!([
+            {"name": "command", "param_type": "string", "required": true, "description": "Shell command or multi-line script"},
+            {"name": "workdir", "param_type": "string", "required": false, "description": "Backed scoped working directory path"},
+            {"name": "timeout_secs", "param_type": "number", "required": false, "description": "Timeout in seconds, max 120"}
+        ])),
+        param_template: Some(json!({"command": "{{command}}"})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_spawn_subagent_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-spawn-subagent".to_string(),
+        description: "ToolSkill binding for builtin.spawn_subagent — delegate a task to a child \
+                       agent."
+            .to_string(),
+        content: r#"Tool: builtin.spawn_subagent
+Effect: ExternalWrite — creates a child agent run.
+
+Parameters:
+- goal (string, required): the sub-goal for the child. Be precise — the child has no
+  access to parent conversation history unless you include it in 'context'.
+- context (string, optional): additional background text passed to the child. Include
+  any file paths, decisions, or constraints the child needs.
+- recipe_name (string, optional): if you want the child to start from a known recipe
+  path, pass its name here. The recipe must be validation_status='validated'.
+- budget_tokens (integer, optional): cap the child's token budget. Cannot exceed the
+  parent's remaining budget.
+
+Scope isolation invariants:
+- The child runs in the same scope as the parent but cannot access parent-private
+  session state or conversation history unless explicitly passed.
+- The child cannot escalate authority beyond the parent's capability grants.
+- Budget inheritance: if budget_tokens is omitted, the child inherits the parent
+  session's default budget, not the parent's remaining balance.
+- The child's tool approvals are independent — the user may need to re-approve the
+  same tool in the child's context.
+
+When to delegate:
+- The sub-task is self-contained and would not benefit from the parent's ongoing context.
+- The sub-task is long-running and you want to continue parent work in parallel.
+- You are implementing a named procedure that has a stable recipe shape.
+
+When NOT to delegate:
+- When the task requires back-and-forth with the parent's current state.
+- For trivial operations that take one or two tool calls.
+"#
+        .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("spawn_subagent".to_string()),
+        param_schema: None,
+        param_template: None,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_trigger_create_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-trigger-create".to_string(),
+        description: "ToolSkill binding for builtin.trigger_create — schedule a recipe invocation."
+            .to_string(),
+        content: r#"Tool: builtin.trigger_create
+Effect: ExternalWrite — registers a persistent scheduled run request.
+
+Parameters:
+- name (string, required): human-readable trigger name. Must be unique in scope.
+- schedule (string, required): either a 5-field cron expression ('0 9 * * 1' = every
+  Monday 9am) or a plain-English interval ('every 1h', 'every 30m', 'every day at 9am').
+  The runtime normalizes interval syntax to cron internally.
+- recipe_name (string, required): the Recipe to invoke. Must be installed and
+  validation_status='validated'.
+- payload (object, optional): key-value vars passed as input slots to the recipe.
+
+Cron field order: minute hour day-of-month month day-of-week.
+Examples:
+  '0 9 * * 1'    → every Monday at 09:00
+  '*/15 * * * *' → every 15 minutes
+  'every 1h'     → every hour on the hour
+
+Safety: triggers run with the authority of the creating session's scope. They cannot
+escalate privilege beyond the scope in which they were created.
+"#
+        .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("trigger_create".to_string()),
+        param_schema: None,
+        param_template: None,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_trigger_list_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-trigger-list".to_string(),
+        description: "ToolSkill binding for builtin.trigger_list — list all configured triggers."
+            .to_string(),
+        content: r#"Tool: builtin.trigger_list
+Effect: Read — returns all triggers in scope as a JSON array.
+
+Parameters:
+- scope (string, optional): 'all' | 'user' | 'system'. Defaults to 'all'.
+
+Output format:
+  [{name, schedule, recipe_name, payload, created_at, last_fired_at, next_fire_at}]
+
+Scope isolation: user-scope triggers are isolated from system-scope ones.
+Always list before creating to avoid duplicate trigger names.
+"#
+        .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("trigger_list".to_string()),
+        param_schema: None,
+        param_template: None,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_trigger_remove_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-trigger-remove".to_string(),
+        description: "ToolSkill binding for builtin.trigger_remove — remove a scheduled trigger."
+            .to_string(),
+        content: r#"Tool: builtin.trigger_remove
+Effect: ExternalWrite — permanently removes the trigger. Stops immediately; any
+pending next-fire for this trigger is discarded.
+
+Parameters:
+- trigger_name (string, required): exact name of the trigger to remove.
+
+Safety:
+- Always confirm with the user before removing a trigger — the scheduled task will
+  stop and cannot be recovered (only re-created from scratch).
+- Removing a trigger does not remove the recipe it pointed to.
+"#
+        .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("trigger_remove".to_string()),
+        param_schema: None,
+        param_template: None,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
