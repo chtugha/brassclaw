@@ -1448,6 +1448,133 @@ async fn seed_filesystem_group(
         )
         .await?;
 
+    // 4g. Filesystem Grep Recipes (class 21) — 4 recipes, all Tier-0. One per
+    //     output mode (default / files_with_matches / content / count). Each is
+    //     a 2-step rust(preload ts-grep) + orchestrator(pc-exec-grep dispatch)
+    //     program. Transcribed from the doc's flat format (Q1 decision A).
+    let recipe_file_grep = stores
+        .seed_recipe(
+            &tenant,
+            "file-grep",
+            "Search file contents using a regular expression.",
+            true,
+            RECIPE_FILE_GREP_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.grep(pattern, path, output_mode, ...)",
+                    "component",
+                    &[pc_grep],
+                ),
+            ],
+            &[
+                json!({"input": "find all uses of function foo", "class": 1}),
+                json!({"input": "search for TODO comments in src", "class": 1}),
+                json!({"input": "which files import React", "class": 1}),
+                json!({"input": "find all occurrences of FIXME", "class": 1}),
+                json!({"input": "grep this pattern", "class": 1}),
+                json!({"input": "search for this string in the codebase", "class": 1}),
+                json!({"input": "find files containing this text", "class": 1}),
+                json!({"input": "how many places use this function", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_grep_files = stores
+        .seed_recipe(
+            &tenant,
+            "file-grep-files",
+            "Find which files contain a regex pattern (returns file paths only, no line content).",
+            true,
+            RECIPE_FILE_GREP_FILES_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.grep(pattern, output_mode='files_with_matches')",
+                    "component",
+                    &[pc_grep],
+                ),
+            ],
+            &[
+                json!({"input": "which files use this function", "class": 1}),
+                json!({"input": "which files import this module", "class": 1}),
+                json!({"input": "find files containing this string", "class": 1}),
+                json!({"input": "which files have TODO", "class": 1}),
+                json!({"input": "what files reference this constant", "class": 1}),
+                json!({"input": "show me files with this error pattern", "class": 2}),
+                json!({"input": "which .rs files contain async", "class": 2}),
+                json!({"input": "find files matching this regex", "class": 1}),
+                json!({"input": "list every file that has this keyword", "class": 1}),
+                json!({"input": "show me all files that define this class", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_grep_content = stores
+        .seed_recipe(
+            &tenant,
+            "file-grep-content",
+            "Search file contents and return matching lines with surrounding context.",
+            true,
+            RECIPE_FILE_GREP_CONTENT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.grep(pattern, output_mode='content', context)",
+                    "component",
+                    &[pc_grep],
+                ),
+            ],
+            &[
+                json!({"input": "show me the lines that contain this error", "class": 1}),
+                json!({"input": "find all uses of this function with context", "class": 1}),
+                json!({"input": "search for this pattern and show surrounding code", "class": 1}),
+                json!({"input": "grep with context lines", "class": 1}),
+                json!({"input": "find this variable declaration", "class": 2}),
+                json!({"input": "show matching lines in the source files", "class": 1}),
+                json!({"input": "grep content mode", "class": 1}),
+                json!({"input": "see the code around each match", "class": 2}),
+                json!({"input": "show 3 lines before and after each match", "class": 2}),
+                json!({"input": "grep and show surrounding context", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_grep_count = stores
+        .seed_recipe(
+            &tenant,
+            "file-grep-count",
+            "Count occurrences of a pattern across files without returning the matching lines.",
+            true,
+            RECIPE_FILE_GREP_COUNT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.grep(pattern, output_mode='count')",
+                    "component",
+                    &[pc_grep],
+                ),
+            ],
+            &[
+                json!({"input": "how many TODO comments are there", "class": 1}),
+                json!({"input": "count occurrences of this pattern", "class": 1}),
+                json!({"input": "how many times does this appear", "class": 1}),
+                json!({"input": "count all uses of this function", "class": 2}),
+                json!({"input": "how many errors in these log files", "class": 2}),
+                json!({"input": "count grep matches", "class": 1}),
+                json!({"input": "how many files contain this string", "class": 2}),
+                json!({"input": "give me a count not the lines themselves", "class": 1}),
+                json!({"input": "how many FIXME markers in the codebase", "class": 2}),
+                json!({"input": "count how many times this import appears", "class": 2}),
+            ],
+        )
+        .await?;
+
     // 5. Append the minted tool + toolskill + python_code ids to each per-tool
     //    catalogue (leaf Skill / Recipe ids appended in later chunks).
     stores
@@ -1540,6 +1667,10 @@ async fn seed_filesystem_group(
                 skill_grep_case_insensitive,
                 skill_grep_type_filtered,
                 skill_grep_invert,
+                recipe_file_grep,
+                recipe_file_grep_files,
+                recipe_file_grep_content,
+                recipe_file_grep_count,
             ],
         )
         .await?;
@@ -1558,8 +1689,8 @@ async fn seed_filesystem_group(
 
     // 6. Append all filesystem tool + toolskill + python_code + leaf skill ids
     //    to the primary catalogue (path helpers are cross-capability → primary
-    //    only), plus the filesystem domain skill + the 11 read/write/list/glob
-    //    recipes. Grep/patch recipes land in later chunks.
+    //    only), plus the filesystem domain skill + the 15 read/write/list/glob/
+    //    grep recipes. Patch recipes land in a later chunk.
     stores
         .append_children(
             cat_filesystem,
@@ -1616,6 +1747,10 @@ async fn seed_filesystem_group(
                 skill_grep_case_insensitive,
                 skill_grep_type_filtered,
                 skill_grep_invert,
+                recipe_file_grep,
+                recipe_file_grep_files,
+                recipe_file_grep_content,
+                recipe_file_grep_count,
                 tool_apply_patch,
                 ts_apply_patch,
                 pc_apply_patch,
@@ -1635,7 +1770,7 @@ async fn seed_filesystem_group(
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3b: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 11 read/write/list/glob recipes)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3c: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 15 read/write/list/glob/grep recipes)");
     Ok(())
 }
 
@@ -3050,6 +3185,78 @@ const RECIPE_FILE_GLOB_RECENT_YAML: &str = r#"step_descriptions: [
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-glob>"],
     "label":   "PythonCode calls host.glob(pattern, max_results=10) — sorted by mtime"
+  }
+]
+"#;
+
+const RECIPE_FILE_GREP_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep>"],
+    "label":   "PythonCode calls host.grep(pattern, path, output_mode, ...)"
+  }
+]
+"#;
+
+const RECIPE_FILE_GREP_FILES_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep>"],
+    "label":   "PythonCode calls host.grep(pattern, output_mode='files_with_matches')"
+  }
+]
+"#;
+
+const RECIPE_FILE_GREP_CONTENT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep>"],
+    "label":   "PythonCode calls host.grep(pattern, output_mode='content', context)"
+  }
+]
+"#;
+
+const RECIPE_FILE_GREP_COUNT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep>"],
+    "label":   "PythonCode calls host.grep(pattern, output_mode='count')"
   }
 ]
 "#;
