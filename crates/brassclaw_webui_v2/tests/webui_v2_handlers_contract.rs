@@ -892,6 +892,7 @@ impl RebornServicesApi for StubServices {
                 q4_retention_days: 30,
                 forensic_packet_retention_days: 90,
                 active_orchestrator_id: None,
+                token_budgets_enabled: true,
             },
         })
     }
@@ -911,6 +912,7 @@ impl RebornServicesApi for StubServices {
                 q4_retention_days: 30,
                 forensic_packet_retention_days: 90,
                 active_orchestrator_id: None,
+                token_budgets_enabled: true,
             },
         })
     }

@@ -52,6 +52,12 @@ pub struct MontyVmSettings {
     pub forensic_packet_retention_days: u32,
     /// ID of the currently active orchestrator component (`Validated`).
     pub active_orchestrator_id: Option<String>,
+    /// Global kill switch for all token budgets (§0.21 / Phase O).
+    /// When `false`, every token-budget check in the system is bypassed —
+    /// the VM runs as if every cap is `usize::MAX`.  Time and USD limits
+    /// remain enforced regardless.  Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub token_budgets_enabled: bool,
 }
 
 /// Request body for `PUT /api/settings/monty-vm`.
@@ -66,6 +72,8 @@ pub struct UpdateMontyVmSettingsRequest {
     pub forensic_packet_retention_days: Option<u32>,
     /// Only `Validated` orchestrators are accepted; others return 400.
     pub active_orchestrator_id: Option<String>,
+    /// Toggle the global token-budget kill switch (§0.21).
+    pub token_budgets_enabled: Option<bool>,
 }
 
 /// Response for both GET and PUT of Monty VM settings.
@@ -183,6 +191,10 @@ pub trait MontyVmSettingsStore: Send + Sync {
     ) -> Result<MontyVmSettings, MontyVmSettingsError>;
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// Compiled-in defaults, used when no DB row exists or in DB-less mode.
 pub fn default_monty_vm_settings() -> MontyVmSettings {
     MontyVmSettings {
@@ -194,6 +206,7 @@ pub fn default_monty_vm_settings() -> MontyVmSettings {
         q4_retention_days: 30,
         forensic_packet_retention_days: 90,
         active_orchestrator_id: None,
+        token_budgets_enabled: true,
     }
 }
 

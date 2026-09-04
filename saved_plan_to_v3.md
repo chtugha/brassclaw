@@ -3851,7 +3851,7 @@ not just after Phase N.
 
 ### Phase B — PythonCode Component (class 22)
 
-**Status:** [ ] Pending
+**Status:** [x] Done — V052 migration, `pg_python_code_store.rs`, class-22 arms in retrieval/validator/labels all implemented.
 
 **Goal:** New component class for Python code/instruction elements targeted at the orchestrator.
 
@@ -4085,7 +4085,7 @@ not just after Phase N.
 
 ### Phase C — ExtensionCatalogue Component (class 23)
 
-**Status:** [ ] Pending
+**Status:** [x] Done — V053 migration, `pg_extension_catalogue_store.rs`, class-23 arms in retrieval/validator/labels all implemented.
 
 **Goal:** Documentation-container class that organises a capability domain.
 
@@ -4313,7 +4313,7 @@ Same engine files as Phase B, but for class 23:
 
 ### Phase D — `step_link` Column on Intent Inputs
 
-**Status:** [ ] Pending
+**Status:** [x] Done — V054 migration applied; `IntentResolution::Match` carries `step_link: Option<String>` + `component_name: String`; `resolve_intent` LEFT JOINs and binds both at indices 5/6; `seed_intent_input` accepts `step_link`.
 
 **Goal:** Add `step_link` to `reborn_intent_inputs`; wire into `resolve_intent` and
 `IntentResolution::Match`.
@@ -4519,7 +4519,7 @@ Same engine files as Phase B, but for class 23:
 
 ### Phase E.0 — Wire `PostgresSource` in Composition (Prerequisite — resolves C2/C3/C4)
 
-**Status:** [ ] Pending
+**Status:** [x] Done — E0-A fully implemented: `retrieval_lookup.rs`, `message_text_resolver.rs`, `LoopRetrievalPort` + `NoRetrieval` in host, `AgentLoopHostErrorKind::Unimplemented`, 14th supertrait, `RebornLoopDriverHost` field + impl, `retrieval_lookup_impl.rs` in composition, `peek_message_text`, `last_user_text` in state, `RecipeStage::process` fires `fetch_for_turn` live. H.9 phase merged in (recipe_hint/recipe_rust_context split stash).
 
 > **🔗 SUBSTEP — Re-targeted E0-A (agent-loop adaptation):** Grounding proved the engine
 > `ExecutionLoop`/`ThreadManager`/`execute_orchestrator`/`fetch_for_turn` path this section
@@ -4744,7 +4744,7 @@ production retrieval path breaks." E.0 is that wiring sub-task, pulled forward.
 
 ### Phase E — `fetch_for_turn` Upgrade + `FetchForTurnResult::SplitResult`
 
-**Status:** [ ] Pending
+**Status:** [x] Done — `FetchForTurnResult` enum with `SplitResult`/`ActionShortCircuit`/`Components`/`Disambiguation` variants fully implemented in `retrieval_source.rs`.
 
 > **🔗 SUBSTEP — Component-class registry (FIND-IBS-02 gap):** the IBS emits
 > `IbsRecipeStep.include: Vec<Uuid>` per step with **no per-UUID `class_code`**
@@ -5027,7 +5027,7 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
 
 ### Phase F — `handle_assemble_prior_knowledge` Upgrade (Rust handler)
 
-**Status:** [ ] Pending
+**Status:** [x] Done — `assemble_pkr_from_fetch` handles all 4 `FetchForTurnResult` variants including `SplitResult`; routing signals extracted; all arms tested.
 
 > **🔗 SUBSTEP — Phase F problem resolution (pre-E0-A-plan vs post-E0-A-codebase
 > gap):** Phase F was written before the E0-A re-target. Grounding after E.0–E.6

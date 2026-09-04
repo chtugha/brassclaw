@@ -59,7 +59,7 @@ mod inner {
                     "SELECT max_duration_secs, max_allocations, max_memory_bytes,
                             failure_rollback_threshold, active_orchestrator_id,
                             prior_knowledge_token_budget, q4_retention_days,
-                            forensic_packet_retention_days
+                            forensic_packet_retention_days, token_budgets_enabled
                      FROM reborn_monty_vm_settings
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id  = $3 AND project_id = $4",
@@ -83,6 +83,7 @@ mod inner {
                     let prior_knowledge_token_budget: i32 = r.get(5);
                     let q4_retention_days: i32 = r.get(6);
                     let forensic_packet_retention_days: i32 = r.get(7);
+                    let token_budgets_enabled: bool = r.get(8);
                     Ok(MontyVmSettings {
                         max_duration_secs: max_duration_secs.max(0) as u64,
                         max_allocations: Some(max_allocations.max(0) as u64),
@@ -93,6 +94,7 @@ mod inner {
                         forensic_packet_retention_days: forensic_packet_retention_days.max(0)
                             as u32,
                         active_orchestrator_id: active_orchestrator_id.map(|u| u.to_string()),
+                        token_budgets_enabled,
                     })
                 }
                 None => {
@@ -155,6 +157,9 @@ mod inner {
                 .as_deref()
                 .or(current.active_orchestrator_id.as_deref())
                 .and_then(|s| uuid::Uuid::parse_str(s).ok());
+            let token_budgets_enabled: bool = update
+                .token_budgets_enabled
+                .unwrap_or(current.token_budgets_enabled);
 
             let client = self.pool.get().await.map_err(Self::map_pool)?;
             client
@@ -164,8 +169,8 @@ mod inner {
                           max_duration_secs, max_allocations, max_memory_bytes,
                           failure_rollback_threshold, active_orchestrator_id,
                           prior_knowledge_token_budget, q4_retention_days,
-                          forensic_packet_retention_days)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                          forensic_packet_retention_days, token_budgets_enabled)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                      ON CONFLICT ON CONSTRAINT reborn_monty_vm_settings_scope_unique
                      DO UPDATE SET
                          max_duration_secs            = EXCLUDED.max_duration_secs,
@@ -176,6 +181,7 @@ mod inner {
                          prior_knowledge_token_budget = EXCLUDED.prior_knowledge_token_budget,
                          q4_retention_days            = EXCLUDED.q4_retention_days,
                          forensic_packet_retention_days = EXCLUDED.forensic_packet_retention_days,
+                         token_budgets_enabled        = EXCLUDED.token_budgets_enabled,
                          updated_at                   = now()",
                     &[
                         &self.tenant_id.as_str(),
@@ -190,6 +196,7 @@ mod inner {
                         &prior_knowledge_token_budget,
                         &q4_retention_days,
                         &forensic_packet_retention_days,
+                        &token_budgets_enabled,
                     ],
                 )
                 .await
