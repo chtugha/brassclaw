@@ -53,6 +53,9 @@ brassclaw_interceptor = { path = "../brassclaw_interceptor" }
 base64 = "0.22"
 chrono = "0.4"
 hex = "0.4"
+# C.6 slice 4c — the persistent Monty driver constructs `MontyObject::String`
+# turn inputs to feed `MontySession::drive_to_yield`. Mirrors the engine decl.
+monty = { git = "https://github.com/pydantic/monty.git", tag = "v0.0.16" }
 deadpool-postgres = "0.14"
 tokio-postgres = "0.7"
 futures = "0.3"

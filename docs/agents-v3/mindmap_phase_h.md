@@ -2920,3 +2920,71 @@ minimal `LoopExit::Completed` (empty refs)→park/drop_session). Then 4d =
 gate + mark slice 4 done; 5 = retire `canonical.rs`; 6 = mark C.6 done → C.7
 (retire `execute_orchestrator` + `default.py` + `ExecutionLoop`/`ThreadManager`/
 `brassclaw_engine::runtime` + stale doc-comments) → mark C done → proceed to A.**
+
+**Slice 4c — `PersistentMontyDriver` impl (composition).** File:
+`crates/brassclaw_reborn_composition/src/persistent_monty_driver.rs` (new). Impl
+`MontyTurnDriverPort` (turns `run_profile/driver.rs:116`, `#[async_trait]`).
+
+- **`SignalBroker`** (user-locked A) = `Mutex<HashMap<TurnScope, SignalSender>>`
+  + `set`/`remove`/`send`. `send` clones the tx out of the lock, drops the guard,
+  THEN awaits `tx.send` — never holds the tokio Mutex across an await. Holds the
+  per-conversation sender for the turn currently in flight so slice 4d's
+  `TurnRunnerWorker` can forward `Stop`/`Suspend`/`InjectMessage` into
+  `host.check_signals` mid-drive. Cleared when `drive_turn` returns.
+- **`PersistentMontyDriver`** owns `Arc<MontySessionRegistry>` +
+  `Arc<SignalBroker>` + `store: Arc<dyn Store>` (single field = thread loader AND
+  shared-docs store, passed `Some(&self.store)` to both `load_thread`-equiv +
+  `prepare_monty_session`/`drive_to_yield`) + the 8 live engine deps
+  (`llm`/`effects`/`leases`/`policy`/`event_tx`/`gate_controller`/`dynamic_tools`/
+  `component_port`/`kohai_port`) + `max_duration_secs`. The 3 dead-walking deps
+  (retrieval / platform_info / _retrieval_source) are passed `None` to
+  `drive_to_yield` (retire in C.7). All mutable state behind `Arc`/`Mutex` →
+  `drive_turn` takes `&self`; driver is `Send + Sync` (asserted in test).
+- **`drive_turn`** (trait): `host.run_context()` → clone `scope` →
+  `load_thread(context)` (turns `ThreadId`→engine `ThreadId(pub Uuid)` via
+  `Uuid::parse_str`; miss/error → `Failed`) → `last_user_input_string(&thread)` →
+  fresh `signal_channel(32)` → `signal_broker.set(scope, tx)` →
+  `drive_turn_inner` → `signal_broker.remove(scope)` → return.
+- **`drive_turn_inner`**: `try_checkout(&scope)` → `Some(parked)` or
+  `None`→`prepare_monty_session` + **prime** `drive_one(None)` (turn 1 needs two
+  drives: prime parks at the first `host.await_next_turn()`; `Complete` on prime
+  → return completed_exit early); then **resume** `drive_one(Some(user_input))` →
+  `Complete`→`drop_session`, `AwaitNextTurn`→`park(scope.clone(), session)`; then
+  `completed_exit(context)`.
+- **`drive_one`** centralizes the 14-dep forwarding to
+  `session.drive_to_yield(...)` with `new_input =
+  user_input.map(|s| MontyObject::String(s.to_string()))`.
+- **Completion handshake:** `completed_exit` → `LoopExit::Completed(
+  LoopCompleted{NoReply, empty refs, exit_id =
+  LoopExitId::new("exit:{run_id}-completed")})`. Orchestrator owns the durable
+  reply via `host.post_reply`; trusted applier accepts empty-ref completed exits.
+- **`last_user_input_string`** mirrors `build_orchestrator_inputs`'
+  `bootstrap_messages` choice (`internal_messages` if non-empty else `messages`)
+  so the input delivered via `host.await_next_turn()` is the same msg
+  `_seed_history` dropped. `last_user_input_from_messages` = last `User` content.
+- **monty dep:** added `monty = { git=..., tag="v0.0.16" }` to composition
+  Cargo.toml (only `MontyObject::String` carrier needed; composition already
+  deeply couples to engine). `pub(crate) mod persistent_monty_driver;` in lib.rs.
+  Transient `#![allow(dead_code)]` until slice 4d wires the driver into the
+  assembled runtime + worker direct path (then removed).
+- **Tests (8, both configs):** SignalBroker set+send+recv delivers; remove drops
+  sender → recv None (channel closed); send-no-entry noop (no panic/block);
+  `last_user_input_from_messages` last-User / no-User-empty / empty-transcript;
+  `completed_exit_id` builds `exit:{run_id}-completed`; `PersistentMontyDriver` +
+  `SignalBroker` `Send + Sync` compile-time assert. Full `drive_turn` e2e is
+  CI/Docker (C6-4=C).
+- **Gates:** `cargo clippy -p brassclaw_reborn_composition --all-targets
+  [--features skills-db] -- -D warnings` ✓✓; `cargo test -p
+  brassclaw_reborn_composition [--features skills-db] --lib
+  persistent_monty_driver` → 8 passed ✓✓. Disk 16Gi free / 92% → cleaned
+  composition first (−9.3Gi). One clippy nit fixed (`&format!(...)`→`format!()`).
+
+**Next: slice 4d = `TurnRunnerWorker` always-Monty direct path + composition wiring
+(construct `PersistentMontyDriver::new(registry, signal_broker, store, llm,
+effects, leases, policy, event_tx, gate_controller, dynamic_tools, component_port,
+kohai_port, max_duration_secs)`; wire `Arc<SignalBroker>` into the worker for
+in-turn signal forwarding; worker holds `Arc<dyn MontyTurnDriverPort>` + calls
+`drive_turn` directly every turn, bypassing `driver_registry`). Then 4e = both-configs
+gate + mark slice 4 done; 4f = retire `canonical.rs`; 5 = mark C.6 done → C.7
+(retire `execute_orchestrator` + `default.py` + `ExecutionLoop`/`ThreadManager`/
+`brassclaw_engine::runtime` + stale doc-comments) → mark C done → proceed to A.**
