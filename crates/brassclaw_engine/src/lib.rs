@@ -104,6 +104,7 @@ pub use types::conversation::{
 
 pub use executor::ExecutionLoop;
 pub use executor::TierZeroOrchestrator;
+pub use executor::run_python_code_body;
 
 // ── Re-exports: memory ────────────────────────────────────────
 

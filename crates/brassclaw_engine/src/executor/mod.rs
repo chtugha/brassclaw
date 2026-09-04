@@ -29,5 +29,5 @@ pub use orchestrator::{
     PkrAssemblyResult, TierZeroChannelResult, assemble_prior_knowledge_with_hint,
     execute_tier_zero_channel,
 };
-pub use scripting::validate_python_syntax;
+pub use scripting::{run_python_code_body, validate_python_syntax};
 pub use tier_zero_orchestrator::{TierZeroOrchestrator, TierZeroOrchestratorBuilder};

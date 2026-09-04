@@ -33,11 +33,13 @@ pub use metric_outcome::MetricRecorder;
 pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillMatch};
 pub use recipe_validator::{RecipeValidator, ValidationResult};
 pub use retrieval::RetrievalEngine;
-#[cfg(feature = "skills-db")]
-pub use retrieval_source::PostgresSource;
 pub use retrieval_source::{
     ComponentItem, ComponentScope, FetchForTurnResult, RamSource, RetrievalSource,
     RetrievalSourceError, TurnRoutingSignals,
+};
+#[cfg(feature = "skills-db")]
+pub use retrieval_source::{
+    DependencyEntry, PostgresSource, lookup_component_class, resolve_dependencies,
 };
 pub use similarity_checker::{SimilarityChecker, SimilarityMatch};
 pub use skill_tracker::SkillTracker;

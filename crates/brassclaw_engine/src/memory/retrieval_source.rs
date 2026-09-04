@@ -1462,6 +1462,208 @@ fn doc_type_to_class_code(doc_type: crate::types::memory::DocType) -> (i32, &'st
 }
 
 // ---------------------------------------------------------------------------
+// resolve_dependencies — Phase J.3 (§0.19)
+// ---------------------------------------------------------------------------
+
+/// One entry in a component's `dependency_registry` JSONB array.
+///
+/// Schema mirrors §0.19:
+/// `[{ "idx": 0, "component_id": "<uuid>", "class_code": N, "label": "..." }, ...]`
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct DependencyEntry {
+    /// Positional index in this component's `dependency_registry`.
+    pub idx: usize,
+    /// UUID of the dependent component.
+    pub component_id: uuid::Uuid,
+    /// Class code of the dependent component (drives channel routing).
+    pub class_code: i32,
+    /// Human-readable label (authoring aid; not used at runtime).
+    #[serde(default)]
+    pub label: String,
+}
+
+/// Resolve the dependency traversal expression `expr` rooted at `root_id`
+/// against the `dependency_registry` JSONB column on the root component's row
+/// in the `reborn_components` registry (V061).
+///
+/// # Algorithm (§0.19)
+/// For each [`DependencyNode`] in `expr`:
+/// 1. Query the root component's `dependency_registry[node.idx]` → `(dep_uuid, dep_class)`.
+/// 2. If `dep_uuid ∈ visited` → skip (dedup / cycle guard).
+/// 3. `visited.insert(dep_uuid)`
+/// 4. `fetch_component_by_id(dep_uuid, dep_class)` → [`ComponentItem`].
+/// 5. If `node.sub == All` → fetch dep's full registry and recurse over each entry.
+/// 6. If `node.sub == Selective(sub_nodes)` → recurse with `dep_uuid` + `sub_nodes`.
+///
+/// Returns `(orchestrator_items, rust_items)` — split by class code using the
+/// same rule as `fetch_recipe_split_result` (class 13 ToolSkill → rust; all
+/// others → orchestrator).
+///
+/// `visited` is shared across a whole `fetch_for_turn` call so a UUID fetched
+/// by any earlier step is not re-fetched. Pass the same `visited` set through
+/// the entire turn.
+#[cfg(feature = "skills-db")]
+pub async fn resolve_dependencies(
+    pool: &brassclaw_pg::PgPool,
+    scope: &ComponentScope,
+    root_id: uuid::Uuid,
+    expr: &crate::memory::instruction_builder::DependencyExpr,
+    visited: &mut std::collections::HashSet<uuid::Uuid>,
+) -> Result<(Vec<ComponentItem>, Vec<ComponentItem>), RetrievalSourceError> {
+    use crate::memory::instruction_builder::DependencySubExpr;
+
+    let mut orchestrator_items: Vec<ComponentItem> = Vec::new();
+    let mut rust_items: Vec<ComponentItem> = Vec::new();
+
+    // Fetch the root component's dependency_registry from the reborn_components
+    // registry table (V061 — maintains a class_code-indexed mirror of all
+    // component IDs).  We then join to the class-specific table to get the
+    // actual dependency_registry JSONB column.
+    //
+    // To load the root's registry we must know its class_code (so we can read
+    // the correct table).  `lookup_component_class` provides that.
+    let root_class = match lookup_component_class(pool, scope, root_id).await? {
+        Some(c) => c,
+        None => return Ok((orchestrator_items, rust_items)), // root not found → no deps
+    };
+
+    let root_registry: Vec<DependencyEntry> =
+        fetch_dependency_registry(pool, scope, root_id, root_class).await?;
+
+    for node in expr.iter() {
+        let entry = match root_registry.iter().find(|e| e.idx == node.idx) {
+            Some(e) => e,
+            None => continue, // index out of range for this component's registry
+        };
+
+        let dep_uuid = entry.component_id;
+        if !visited.insert(dep_uuid) {
+            continue; // already collected or cycle
+        }
+
+        // Fetch the dependent component (returns Vec — empty when not found).
+        let mut dep_items = fetch_component_by_id(pool, scope, dep_uuid, entry.class_code).await?;
+        let dep_item = match dep_items.pop() {
+            Some(item) => item,
+            None => continue, // component missing from DB → soft skip
+        };
+
+        // Channel routing: class 13 (ToolSkill) → rust; everything else → orchestrator.
+        let is_rust = dep_item.class_code == 13;
+
+        // Recurse into sub-dependencies before pushing the item, so that
+        // dependencies appear before the component that references them.
+        match &node.sub {
+            None => {} // leaf node — no recursion
+            Some(DependencySubExpr::All) => {
+                // Recursively load the dep's full registry.
+                let dep_class = entry.class_code;
+                let dep_registry =
+                    fetch_dependency_registry(pool, scope, dep_uuid, dep_class).await?;
+                if !dep_registry.is_empty() {
+                    // Build a DependencyExpr covering all indices.
+                    let all_nodes: crate::memory::instruction_builder::DependencyExpr =
+                        dep_registry
+                            .iter()
+                            .map(|e| crate::memory::instruction_builder::DependencyNode {
+                                idx: e.idx,
+                                sub: Some(DependencySubExpr::All),
+                            })
+                            .collect();
+                    let (sub_orch, sub_rust) = Box::pin(resolve_dependencies(
+                        pool, scope, dep_uuid, &all_nodes, visited,
+                    ))
+                    .await?;
+                    orchestrator_items.extend(sub_orch);
+                    rust_items.extend(sub_rust);
+                }
+            }
+            Some(DependencySubExpr::Selective(sub_nodes)) => {
+                let (sub_orch, sub_rust) = Box::pin(resolve_dependencies(
+                    pool, scope, dep_uuid, sub_nodes, visited,
+                ))
+                .await?;
+                orchestrator_items.extend(sub_orch);
+                rust_items.extend(sub_rust);
+            }
+        }
+
+        if is_rust {
+            rust_items.push(dep_item);
+        } else {
+            orchestrator_items.push(dep_item);
+        }
+    }
+
+    Ok((orchestrator_items, rust_items))
+}
+
+/// Fetch the `dependency_registry` JSONB for a component of known class.
+///
+/// Returns an empty `Vec` when the column is `NULL` or the component is not
+/// found. On JSON deserialization error, logs at `debug!` and returns empty
+/// (soft-fail — a malformed registry is an authoring issue, not a hard error
+/// at fetch time).
+#[cfg(feature = "skills-db")]
+async fn fetch_dependency_registry(
+    pool: &brassclaw_pg::PgPool,
+    scope: &ComponentScope,
+    component_id: uuid::Uuid,
+    class_code: i32,
+) -> Result<Vec<DependencyEntry>, RetrievalSourceError> {
+    let table = match class_code_to_table(class_code) {
+        Some((t, _)) => t,
+        None => return Ok(vec![]), // unknown class — no registry
+    };
+
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
+    let sql = format!(
+        "SELECT dependency_registry \
+         FROM {table} \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3 AND agent_id = $4 AND project_id = $5"
+    );
+    let row = client
+        .query_opt(
+            &sql,
+            &[
+                &component_id,
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+            ],
+        )
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
+    let row = match row {
+        Some(r) => r,
+        None => return Ok(vec![]),
+    };
+
+    let json: Option<serde_json::Value> = row.get(0);
+    let json = match json {
+        Some(j) => j,
+        None => return Ok(vec![]),
+    };
+
+    match serde_json::from_value::<Vec<DependencyEntry>>(json) {
+        Ok(entries) => Ok(entries),
+        Err(e) => {
+            tracing::debug!(
+                component_id = %component_id,
+                "dependency_registry JSON deserialization failed: {e}; treating as empty"
+            );
+            Ok(vec![])
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
 
@@ -1743,5 +1945,48 @@ mod tests {
             }
             _ => panic!("expected SplitResult"),
         }
+    }
+
+    // ── DependencyEntry (Phase J.2 / §0.19) ────────────────────────────────
+
+    /// DependencyEntry deserializes from the canonical JSONB registry shape.
+    #[test]
+    fn dependency_entry_deserializes_from_registry_json() {
+        let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
+        let json = serde_json::json!([
+            {
+                "idx": 0,
+                "component_id": uuid_str,
+                "class_code": 1,
+                "label": "pipe-skill"
+            }
+        ]);
+        let entries: Vec<DependencyEntry> = serde_json::from_value(json).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].idx, 0);
+        assert_eq!(entries[0].class_code, 1);
+        assert_eq!(entries[0].label, "pipe-skill");
+        assert_eq!(entries[0].component_id.to_string(), uuid_str);
+    }
+
+    /// DependencyEntry: missing label defaults to empty string.
+    #[test]
+    fn dependency_entry_missing_label_defaults_to_empty() {
+        let uuid_str = "550e8400-e29b-41d4-a716-446655440001";
+        let json = serde_json::json!([
+            {"idx": 2, "component_id": uuid_str, "class_code": 22}
+        ]);
+        let entries: Vec<DependencyEntry> = serde_json::from_value(json).unwrap();
+        assert_eq!(entries[0].label, "");
+        assert_eq!(entries[0].idx, 2);
+        assert_eq!(entries[0].class_code, 22);
+    }
+
+    /// Empty dependency_registry array deserializes to empty Vec.
+    #[test]
+    fn dependency_entry_empty_array_gives_empty_vec() {
+        let json = serde_json::json!([]);
+        let entries: Vec<DependencyEntry> = serde_json::from_value(json).unwrap();
+        assert!(entries.is_empty());
     }
 }

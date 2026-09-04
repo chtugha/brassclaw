@@ -1499,6 +1499,139 @@ fn classify_runtime_error(error_msg: &str) -> CodeExecutionFailure {
     }
 }
 
+/// Lightweight in-process PythonCode executor — Phase J.2 (§0.23.4).
+///
+/// Runs a single PythonCode body in the Monty VM without any tool dispatch,
+/// LLM calls, leases, policies, or network access.  Used by the per-class
+/// formatter (§0.23.4) to compute `formatted_content` at save time, and
+/// reusable for any single-component deterministic PythonCode need.
+///
+/// # What is permitted
+/// - Pure Python logic: arithmetic, string operations, dict/list manipulation.
+/// - `datetime.now()` / `date.today()` (clock reads via `OsCall`).
+///
+/// # What is rejected
+/// - Tool / function calls (`FunctionCall`) → hard error, execution stops.
+/// - OS operations other than clock reads → denied with `OSError`.
+/// - Resource limits: 5-second wall-clock timeout, 16 MB memory.
+///
+/// # Inputs
+/// `inputs` is a flat `Vec<(name, json_value)>` injected as top-level Python
+/// variables.  Pass `&[]` when the body needs no external data.
+///
+/// # Return value convention
+/// Returns the value of the **last expression** in the body as JSON.
+/// In Monty (like standard Python), assignment statements (`x = 5`) evaluate
+/// to `None` — the last line must be a bare expression to return a value:
+/// ```python
+/// result = compute_something(input_var)
+/// result          # bare expression on the last line — this is the return value
+/// ```
+/// Returns `Ok(None)` when the body completes with a `None` return value.
+/// Returns `Err(String)` on any execution failure (syntax, runtime, tool-call
+/// attempt, resource limit).
+pub fn run_python_code_body(
+    code: &str,
+    inputs: &[(&str, serde_json::Value)],
+) -> Result<Option<serde_json::Value>, String> {
+    // Build input name / value vectors for the Monty VM.
+    let input_names: Vec<String> = inputs.iter().map(|(k, _)| (*k).to_string()).collect();
+    let input_values: Vec<MontyObject> = inputs.iter().map(|(_, v)| json_to_monty(v)).collect();
+
+    // Parse (wrap in catch_unwind — Monty parser may panic on pathological input).
+    let runner = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        MontyRun::new(code.to_string(), "formatter.py", input_names)
+    })) {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return Err(format!("SyntaxError: {e}")),
+        Err(_) => return Err("VmPanic: Monty VM panicked during parsing".into()),
+    };
+
+    // Tight resource limits: formatter bodies are tiny and must not hog CPU.
+    let limits = ResourceLimits::new()
+        .max_duration(Duration::from_secs(5))
+        .max_allocations(SCRIPTING_MAX_ALLOCATIONS / 4)
+        .max_memory(16 * 1024 * 1024); // 16 MB
+    let tracker = LimitedTracker::new(limits);
+
+    let mut stdout = String::new();
+
+    let mut progress = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runner.start(
+            input_values,
+            tracker,
+            PrintWriter::CollectString(&mut stdout),
+        )
+    })) {
+        Ok(Ok(p)) => p,
+        Ok(Err(e)) => return Err(format!("RuntimeError: {e}")),
+        Err(_) => return Err("VmPanic: Monty VM panicked during execution start".into()),
+    };
+
+    loop {
+        match progress {
+            RunProgress::Complete(obj) => {
+                let json = monty_to_json(&obj);
+                if json.is_null() {
+                    return Ok(None);
+                }
+                return Ok(Some(json));
+            }
+
+            RunProgress::FunctionCall(_call) => {
+                // Tool / host-function calls are not permitted in the light executor.
+                return Err(
+                    "RuntimeError: tool calls are not permitted in formatter bodies".into(),
+                );
+            }
+
+            RunProgress::ResolveFutures(_) => {
+                // Should never be reached (no async calls are possible), but
+                // guard defensively so we do not hang.
+                return Err(
+                    "RuntimeError: async operations are not permitted in formatter bodies".into(),
+                );
+            }
+
+            RunProgress::NameLookup(lookup) => {
+                // Resolve to Undefined — formatter bodies should not reference
+                // unknown names. Let Monty surface a NameError on next step.
+                let result = NameLookupResult::Undefined;
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    lookup.resume(result, PrintWriter::CollectString(&mut stdout))
+                })) {
+                    Ok(Ok(p)) => progress = p,
+                    Ok(Err(e)) => return Err(format!("RuntimeError: {e}")),
+                    Err(_) => return Err("VmPanic: Monty VM panicked during name lookup".into()),
+                }
+            }
+
+            RunProgress::OsCall(os_call) => {
+                // Allow clock reads; deny everything else.
+                let reply = match os_call.function {
+                    OsFunction::DateTimeNow => {
+                        ExtFunctionResult::Return(build_datetime_now(&os_call.args))
+                    }
+                    OsFunction::DateToday => ExtFunctionResult::Return(build_date_today()),
+                    _ => ExtFunctionResult::Error(MontyException::new(
+                        ExcType::OSError,
+                        Some("OS operations are not permitted in formatter bodies".into()),
+                    )),
+                };
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    os_call.resume(reply, PrintWriter::CollectString(&mut stdout))
+                })) {
+                    Ok(Ok(p)) => progress = p,
+                    Ok(Err(e)) => return Err(format!("RuntimeError: {e}")),
+                    Err(_) => {
+                        return Err("VmPanic: Monty VM panicked during OS call".into());
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Compute a short hash of Python code for dedup/correlation in events.
 ///
 /// Uses FNV-1a (64-bit) which is stable across Rust versions, unlike
@@ -4833,5 +4966,69 @@ print(outcome)
         let h1 = code_hash("print('hello')");
         let h2 = code_hash("print('world')");
         assert_ne!(h1, h2);
+    }
+
+    // ── run_python_code_body (Phase J.2 light executor) ────────────────────
+
+    /// Pure arithmetic — bare expression on last line returns the computed value.
+    #[test]
+    fn light_executor_pure_arithmetic_returns_value() {
+        // Assignment alone returns None in Python; bare expression returns the value.
+        let result = run_python_code_body("result = 2 + 3\nresult", &[]).unwrap();
+        assert_eq!(result, Some(serde_json::json!(5)));
+    }
+
+    /// Input variable is visible in the body.
+    #[test]
+    fn light_executor_input_variable_is_visible() {
+        let result = run_python_code_body(
+            "result = name + ' world'\nresult",
+            &[("name", serde_json::json!("hello"))],
+        )
+        .unwrap();
+        assert_eq!(result, Some(serde_json::json!("hello world")));
+    }
+
+    /// Body that sets no `result` returns `None` (body completes without assigning).
+    #[test]
+    fn light_executor_no_result_returns_none() {
+        let result = run_python_code_body("x = 1", &[]).unwrap();
+        // x = 1 produces no return value; the module result is None → mapped to None.
+        assert_eq!(result, None);
+    }
+
+    /// Tool / function calls are rejected immediately.
+    #[test]
+    fn light_executor_tool_call_is_rejected() {
+        let err = run_python_code_body("result = some_tool('arg')", &[]).unwrap_err();
+        assert!(
+            err.contains("tool calls are not permitted"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// Syntax errors surface as Err with a "SyntaxError:" prefix.
+    #[test]
+    fn light_executor_syntax_error_is_err() {
+        let err = run_python_code_body("def :\n", &[]).unwrap_err();
+        assert!(
+            err.contains("SyntaxError"),
+            "expected SyntaxError prefix, got: {err}"
+        );
+    }
+
+    /// Dict manipulation — light executor handles structured data.
+    #[test]
+    fn light_executor_dict_manipulation_works() {
+        // Bare `result` on last line returns the dict value.
+        let result = run_python_code_body(
+            r#"d = {"a": 1, "b": 2}
+d["c"] = d["a"] + d["b"]
+result = d
+result"#,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(result, Some(serde_json::json!({"a": 1, "b": 2, "c": 3})));
     }
 }
