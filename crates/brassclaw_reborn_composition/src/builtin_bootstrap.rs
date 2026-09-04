@@ -7553,9 +7553,372 @@ async fn seed_process_group(
         )
         .await?;
 
+    // 5. Leaf Skills (class 1) — shell subgroup. Seven bodies are transcribed
+    //    verbatim from the doc (run, safe-check, git-diff-name-only, git-log-stat,
+    //    git-stash-show, git-config-list, git-add). The remaining 24 are
+    //    synthesized following the doc's own leaf-skill pattern (Q1 decision A:
+    //    each names its exact pc, command, tier, what it returns, and the Tier-1
+    //    shell-run fallback) — content-specific, not generic.
+    let skill_shell_run = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-run",
+                "Leaf skill: how to drive the executor to run a single shell command.",
+                SKILL_SHELL_RUN_BODY,
+            ),
+            "skill-shell-run",
+        )
+        .await?;
+    let skill_shell_safe_check = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-safe-check",
+                "Leaf skill: safety rules for shell command execution.",
+                SKILL_SHELL_SAFE_CHECK_BODY,
+            ),
+            "skill-shell-safe-check",
+        )
+        .await?;
+    let skill_shell_git_status = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-status",
+                "Leaf skill: how to check the working-tree status (modified, staged, untracked files).",
+                SKILL_SHELL_GIT_STATUS_BODY,
+            ),
+            "skill-shell-git-status",
+        )
+        .await?;
+    let skill_shell_git_log = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-log",
+                "Leaf skill: how to view the recent commit history as a compact one-line list.",
+                SKILL_SHELL_GIT_LOG_BODY,
+            ),
+            "skill-shell-git-log",
+        )
+        .await?;
+    let skill_shell_git_diff_stat = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-diff-stat",
+                "Leaf skill: how to view a summary of changed files and line counts.",
+                SKILL_SHELL_GIT_DIFF_STAT_BODY,
+            ),
+            "skill-shell-git-diff-stat",
+        )
+        .await?;
+    let skill_shell_git_branch = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-branch",
+                "Leaf skill: how to list all local and remote branches.",
+                SKILL_SHELL_GIT_BRANCH_BODY,
+            ),
+            "skill-shell-git-branch",
+        )
+        .await?;
+    let skill_shell_git_stash_list = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-stash-list",
+                "Leaf skill: how to list the stash stack.",
+                SKILL_SHELL_GIT_STASH_LIST_BODY,
+            ),
+            "skill-shell-git-stash-list",
+        )
+        .await?;
+    let skill_shell_git_remote = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-remote",
+                "Leaf skill: how to list configured remote repositories and their URLs.",
+                SKILL_SHELL_GIT_REMOTE_BODY,
+            ),
+            "skill-shell-git-remote",
+        )
+        .await?;
+    let skill_shell_git_show_stat = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-show-stat",
+                "Leaf skill: how to inspect the last commit's changed files and line counts.",
+                SKILL_SHELL_GIT_SHOW_STAT_BODY,
+            ),
+            "skill-shell-git-show-stat",
+        )
+        .await?;
+    let skill_shell_git_tag_list = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-tag-list",
+                "Leaf skill: how to enumerate all tags in the repository.",
+                SKILL_SHELL_GIT_TAG_LIST_BODY,
+            ),
+            "skill-shell-git-tag-list",
+        )
+        .await?;
+    let skill_shell_git_diff_name_only = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-diff-name-only",
+                "Leaf skill: how to list only filenames changed since the last commit (no diff content).",
+                SKILL_SHELL_GIT_DIFF_NAME_ONLY_BODY,
+            ),
+            "skill-shell-git-diff-name-only",
+        )
+        .await?;
+    let skill_shell_git_log_stat = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-log-stat",
+                "Leaf skill: how to view recent commit history with file-change statistics.",
+                SKILL_SHELL_GIT_LOG_STAT_BODY,
+            ),
+            "skill-shell-git-log-stat",
+        )
+        .await?;
+    let skill_shell_git_stash_show = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-stash-show",
+                "Leaf skill: how to inspect the diff summary of the most recent stash entry.",
+                SKILL_SHELL_GIT_STASH_SHOW_BODY,
+            ),
+            "skill-shell-git-stash-show",
+        )
+        .await?;
+    let skill_shell_git_config_list = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-config-list",
+                "Leaf skill: how to inspect all active git configuration values.",
+                SKILL_SHELL_GIT_CONFIG_LIST_BODY,
+            ),
+            "skill-shell-git-config-list",
+        )
+        .await?;
+    let skill_shell_pwd = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-pwd",
+                "Leaf skill: how to print the current working directory.",
+                SKILL_SHELL_PWD_BODY,
+            ),
+            "skill-shell-pwd",
+        )
+        .await?;
+    let skill_shell_df = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-df",
+                "Leaf skill: how to show disk usage in human-readable form.",
+                SKILL_SHELL_DF_BODY,
+            ),
+            "skill-shell-df",
+        )
+        .await?;
+    let skill_shell_ps = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-ps",
+                "Leaf skill: how to list running processes.",
+                SKILL_SHELL_PS_BODY,
+            ),
+            "skill-shell-ps",
+        )
+        .await?;
+    let skill_shell_env = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-env",
+                "Leaf skill: how to list environment variables in the current session.",
+                SKILL_SHELL_ENV_BODY,
+            ),
+            "skill-shell-env",
+        )
+        .await?;
+    let skill_shell_uname = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-uname",
+                "Leaf skill: how to show OS and kernel information.",
+                SKILL_SHELL_UNAME_BODY,
+            ),
+            "skill-shell-uname",
+        )
+        .await?;
+    let skill_shell_which = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-which",
+                "Leaf skill: how to locate a binary on PATH.",
+                SKILL_SHELL_WHICH_BODY,
+            ),
+            "skill-shell-which",
+        )
+        .await?;
+    let skill_shell_date = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-date",
+                "Leaf skill: how to print the current UTC date and time as ISO-8601.",
+                SKILL_SHELL_DATE_BODY,
+            ),
+            "skill-shell-date",
+        )
+        .await?;
+    let skill_shell_hostname = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-hostname",
+                "Leaf skill: how to print the machine hostname.",
+                SKILL_SHELL_HOSTNAME_BODY,
+            ),
+            "skill-shell-hostname",
+        )
+        .await?;
+    let skill_shell_whoami = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-whoami",
+                "Leaf skill: how to print the current user account name.",
+                SKILL_SHELL_WHOAMI_BODY,
+            ),
+            "skill-shell-whoami",
+        )
+        .await?;
+    let skill_shell_uptime = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-uptime",
+                "Leaf skill: how to show system uptime and load average.",
+                SKILL_SHELL_UPTIME_BODY,
+            ),
+            "skill-shell-uptime",
+        )
+        .await?;
+    let skill_shell_free = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-free",
+                "Leaf skill: how to show memory usage in human-readable form.",
+                SKILL_SHELL_FREE_BODY,
+            ),
+            "skill-shell-free",
+        )
+        .await?;
+    let skill_shell_wc_l = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-wc-l",
+                "Leaf skill: how to count lines in a file.",
+                SKILL_SHELL_WC_L_BODY,
+            ),
+            "skill-shell-wc-l",
+        )
+        .await?;
+    let skill_shell_git_add = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-add",
+                "Leaf skill: how to stage files for commit with git add.",
+                SKILL_SHELL_GIT_ADD_BODY,
+            ),
+            "skill-shell-git-add",
+        )
+        .await?;
+    let skill_shell_git_commit = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-commit",
+                "Leaf skill: how to create a commit with a message.",
+                SKILL_SHELL_GIT_COMMIT_BODY,
+            ),
+            "skill-shell-git-commit",
+        )
+        .await?;
+    let skill_shell_git_push = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-push",
+                "Leaf skill: how to push local commits to a remote.",
+                SKILL_SHELL_GIT_PUSH_BODY,
+            ),
+            "skill-shell-git-push",
+        )
+        .await?;
+    let skill_shell_git_pull = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-pull",
+                "Leaf skill: how to pull remote changes into the current branch.",
+                SKILL_SHELL_GIT_PULL_BODY,
+            ),
+            "skill-shell-git-pull",
+        )
+        .await?;
+    let skill_shell_git_fetch = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-shell-git-fetch",
+                "Leaf skill: how to fetch remote refs without merging (Tier 0 safe).",
+                SKILL_SHELL_GIT_FETCH_BODY,
+            ),
+            "skill-shell-git-fetch",
+        )
+        .await?;
+
+    // 6. Domain Skill (class 2) — skill-shell. Body transcribed verbatim from the
+    //    doc (references every leaf skill above; two-tier usage guide).
+    let skill_shell = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-shell",
+                "Domain skill: when and how to use shell execution — two tiers.",
+                SKILL_SHELL_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-shell",
+        )
+        .await?;
+
     // Append the shell tool + toolskill + 30 PythonCode ids to ext-shell and the
-    // primary catalogue (dedup-idempotent). Leaf skills, domain skill, and recipes
-    // are appended in chunks 6c/6d.
+    // primary catalogue (dedup-idempotent). Recipes are appended in chunk 6d.
     let ext_shell_children: Vec<Uuid> = vec![
         tool_shell, ts_shell_run, pc_exec_shell_git_status, pc_exec_shell_git_log,
         pc_exec_shell_git_diff_stat, pc_exec_shell_git_branch, pc_exec_shell_git_stash_list,
@@ -7570,6 +7933,26 @@ async fn seed_process_group(
     ];
     stores.append_children(cat_shell, &ext_shell_children).await?;
     stores.append_children(cat_process, &ext_shell_children).await?;
+
+    // Append the 31 leaf skills + 1 domain skill to ext-shell and the primary
+    // (recipes appended in chunk 6d).
+    let ext_shell_skill_children: Vec<Uuid> = vec![
+        skill_shell_git_status, skill_shell_git_log, skill_shell_git_diff_stat,
+        skill_shell_git_branch, skill_shell_git_stash_list, skill_shell_git_remote,
+        skill_shell_git_show_stat, skill_shell_git_tag_list, skill_shell_git_diff_name_only,
+        skill_shell_git_log_stat, skill_shell_git_stash_show, skill_shell_git_config_list,
+        skill_shell_pwd, skill_shell_df, skill_shell_ps, skill_shell_env, skill_shell_uname,
+        skill_shell_which, skill_shell_date, skill_shell_hostname, skill_shell_whoami,
+        skill_shell_uptime, skill_shell_free, skill_shell_wc_l, skill_shell_run,
+        skill_shell_safe_check, skill_shell_git_add, skill_shell_git_commit,
+        skill_shell_git_push, skill_shell_git_pull, skill_shell_git_fetch, skill_shell,
+    ];
+    stores
+        .append_children(cat_shell, &ext_shell_skill_children)
+        .await?;
+    stores
+        .append_children(cat_process, &ext_shell_skill_children)
+        .await?;
 
     // Append the spawn tool + toolskill to ext-spawn-subagent and the primary
     // (leaf skills + recipes appended in chunk 6e).
@@ -8120,4 +8503,266 @@ if not _re.match(r'^[a-zA-Z0-9_\-./]{1,256}$', _filepath):
     result = {"error": "Invalid filepath — must be a safe relative path", "success": False}
 else:
     result = host.shell(command=f"wc -l {_filepath}")
+"#;
+
+// ---------------------------------------------------------------------------
+// Process group chunk 6c — shell Leaf Skill + Domain Skill bodies.
+// Seven leaf bodies + the domain body are transcribed verbatim from the doc.
+// The remaining 24 leaf bodies are synthesized following the doc's own
+// leaf-skill pattern (Q1 decision A): each names its exact pc, command, tier,
+// what it returns, and the Tier-1 shell-run fallback.
+// ---------------------------------------------------------------------------
+
+const SKILL_SHELL_RUN_BODY: &str = r#"Use `ts-shell-run` when you need to execute one shell command. Pass the command
+string verbatim; do NOT construct it from unvalidated user input without escaping.
+Check `success` in the result; a false value means the command returned a non-zero
+exit code — inspect `output` for details and decide whether to retry, report, or
+continue. When the result contains a `saved_file` path (large output was saved),
+call `skill-read-file` on that path to retrieve the full content before proceeding.
+"#;
+
+const SKILL_SHELL_SAFE_CHECK_BODY: &str = r#"Before dispatching any command via `ts-shell-run`, apply these rules:
+- Never pass user-supplied strings directly into the command without escaping.
+- Never run a command that modifies security-critical system files (/etc, /bin, etc.).
+- Prefer scoped filesystem tools (skill-read-file, skill-list-dir, skill-grep) over
+  shell equivalents (cat, ls, grep) when the structured tool covers the need.
+- When output may exceed 1 MiB, add output-limiting flags (e.g. `head -n 200`).
+- `builtin.shell` requires user approval (PermissionMode::Ask) — the LLM must present
+  the command to the user and wait for confirmation before dispatch.
+"#;
+
+const SKILL_SHELL_GIT_STATUS_BODY: &str = r#"Use pc-exec-shell-git-status (§shell-safe-fixed) to run 'git status'.
+Returns the working-tree state: staged, modified, and untracked files. Run this first
+before any git write (add/commit) to know exactly what will be included. For a compact
+one-line summary of history, use skill-shell-git-log instead.
+"#;
+
+const SKILL_SHELL_GIT_LOG_BODY: &str = r#"Use pc-exec-shell-git-log (§shell-safe-fixed) to run 'git log --oneline -20'.
+Returns the last 20 commits as one-line summaries (hash + subject). Use to understand
+recent project history before making changes. For per-file change counts, use
+skill-shell-git-log-stat; for a custom count, use shell-run (Tier 1 — §shell-guard).
+"#;
+
+const SKILL_SHELL_GIT_DIFF_STAT_BODY: &str = r#"Use pc-exec-shell-git-diff-stat (§shell-safe-fixed) to run 'git diff --stat'.
+Returns a per-file summary of insertions/deletions in the working tree. Use to gauge
+the size of uncommitted changes before committing. For filenames only, use
+skill-shell-git-diff-name-only; for full diff content, use shell-run (Tier 1).
+"#;
+
+const SKILL_SHELL_GIT_BRANCH_BODY: &str = r#"Use pc-exec-shell-git-branch (§shell-safe-fixed) to run 'git branch -a'.
+Returns all local and remote-tracking branches with the current branch marked. Use
+before checkout, merge, or push to confirm branch names. To create or switch branches,
+use shell-run with a custom git command (Tier 1 — §shell-guard).
+"#;
+
+const SKILL_SHELL_GIT_STASH_LIST_BODY: &str = r#"Use pc-exec-shell-git-stash-list (§shell-safe-fixed) to run 'git stash list'.
+Returns the stash stack (index@{n}: message). Use to review stashed work before popping.
+For the diff summary of the top stash, use skill-shell-git-stash-show; to pop or apply,
+use shell-run (Tier 1).
+"#;
+
+const SKILL_SHELL_GIT_REMOTE_BODY: &str = r#"Use pc-exec-shell-git-remote (§shell-safe-fixed) to run 'git remote -v'.
+Returns each remote name with its fetch/push URLs. Use to confirm where a push or pull
+will reach before dispatching a git-write command. To add or remove remotes, use
+shell-run (Tier 1 — §shell-guard).
+"#;
+
+const SKILL_SHELL_GIT_SHOW_STAT_BODY: &str = r#"Use pc-exec-shell-git-show-stat (§shell-safe-fixed) to run 'git show --stat HEAD'.
+Returns the last commit's message plus its changed-file summary and insertions/deletions.
+Use to verify what the most recent commit actually contained. For older commits, use
+shell-run with 'git show <hash>' (Tier 1).
+"#;
+
+const SKILL_SHELL_GIT_TAG_LIST_BODY: &str = r#"Use pc-exec-shell-git-tag-list (§shell-safe-fixed) to run 'git tag --list'.
+Returns every tag in the repository. Use to discover release markers before checkout
+or comparison. To create or delete tags, use shell-run (Tier 1 — §shell-guard).
+"#;
+
+const SKILL_SHELL_GIT_DIFF_NAME_ONLY_BODY: &str = r#"Use pc-exec-shell-git-diff-name-only (§shell-safe-fixed) to run 'git diff --name-only HEAD'.
+Returns only the names of modified files — no content, no diff hunks. This is the fastest
+way to discover which files are dirty before deciding which ones to inspect or read.
+For full diff content, use shell-run with a custom git diff command (Tier 1 — §shell-guard).
+"#;
+
+const SKILL_SHELL_GIT_LOG_STAT_BODY: &str = r#"Use pc-exec-shell-git-log-stat (§shell-safe-fixed) to run 'git log --stat --oneline -5'.
+Shows the last 5 commits with their changed-file counts and insertions/deletions summary.
+For more commits or a different format, use shell-run (Tier 1 — §shell-guard).
+"#;
+
+const SKILL_SHELL_GIT_STASH_SHOW_BODY: &str = r#"Use pc-exec-shell-git-stash-show (§shell-safe-fixed) to run 'git stash show'.
+Returns a short summary of files and line counts in the top stash entry. Does NOT pop
+or apply the stash. To see the full patch or apply it, use shell-run (Tier 1).
+"#;
+
+const SKILL_SHELL_GIT_CONFIG_LIST_BODY: &str = r#"Use pc-exec-shell-git-config-list (§shell-safe-fixed) to run 'git config --list'.
+Returns all effective git config key=value pairs (local, global, system). Useful for
+checking user.email, user.name, remote settings, or merge strategy before making commits.
+"#;
+
+const SKILL_SHELL_PWD_BODY: &str = r#"Use pc-exec-shell-pwd (§shell-safe-fixed) to run 'pwd'.
+Returns the absolute path of the current working directory. Use to confirm where
+subsequent relative-path commands will resolve. To change directory, use shell-run
+with a custom 'cd' command (Tier 1 — §shell-guard).
+"#;
+
+const SKILL_SHELL_DF_BODY: &str = r#"Use pc-exec-shell-df (§shell-safe-fixed) to run 'df -h'.
+Returns per-mount disk usage with sizes in human-readable units. Use to check available
+space before large writes or builds. For a specific path, use shell-run with
+'df -h <path>' (Tier 1).
+"#;
+
+const SKILL_SHELL_PS_BODY: &str = r#"Use pc-exec-shell-ps (§shell-safe-fixed) to run 'ps aux'.
+Returns all running processes with user, pid, cpu, memory, and command. Use to inspect
+the process table or find a stray daemon. For a filtered view, use shell-run with
+'ps aux | grep <pattern>' (Tier 1).
+"#;
+
+const SKILL_SHELL_ENV_BODY: &str = r#"Use pc-exec-shell-env (§shell-safe-fixed) to run 'env'.
+Returns all environment variables exported in the current session as KEY=VALUE lines.
+Use to confirm configuration before a command that depends on env vars. Never print
+secrets-bearing vars to the chat without user consent.
+"#;
+
+const SKILL_SHELL_UNAME_BODY: &str = r#"Use pc-exec-shell-uname (§shell-safe-fixed) to run 'uname -a'.
+Returns the kernel name, hostname, release, version, and architecture in one line. Use
+to confirm the platform before issuing OS-specific commands.
+"#;
+
+const SKILL_SHELL_WHICH_BODY: &str = r#"Use pc-exec-shell-which (§shell-safe-fixed) to locate a binary. Pass the tool name via
+vars.slot0 — it is validated against [a-zA-Z0-9_-]+ before dispatch, so there is no
+injection surface. Returns the absolute path of the first matching binary on PATH, or
+a not-found result. Use to confirm a tool is installed before invoking it.
+"#;
+
+const SKILL_SHELL_DATE_BODY: &str = r#"Use pc-exec-shell-date (§shell-safe-fixed) to run 'date -u +%Y-%m-%dT%H:%M:%SZ'.
+Returns the current UTC date/time in ISO-8601. Use to timestamp logs, messages, or
+memory entries consistently. For a local-time or custom format, use shell-run (Tier 1).
+"#;
+
+const SKILL_SHELL_HOSTNAME_BODY: &str = r#"Use pc-exec-shell-hostname (§shell-safe-fixed) to run 'hostname'.
+Returns the machine's hostname. Use to identify the host in logs or diagnostics.
+"#;
+
+const SKILL_SHELL_WHOAMI_BODY: &str = r#"Use pc-exec-shell-whoami (§shell-safe-fixed) to run 'whoami'.
+Returns the current effective user account name. Use to confirm which user a command
+will run as before dispatching.
+"#;
+
+const SKILL_SHELL_UPTIME_BODY: &str = r#"Use pc-exec-shell-uptime (§shell-safe-fixed) to run 'uptime'.
+Returns system uptime, the number of logged-in users, and the 1/5/15-minute load
+averages. Use to gauge machine load before starting a heavy build or task.
+"#;
+
+const SKILL_SHELL_FREE_BODY: &str = r#"Use pc-exec-shell-free (§shell-safe-fixed) to run 'free -h'.
+Returns total, used, free, and available memory in human-readable units (Linux only).
+Use to check available RAM before a memory-intensive operation.
+"#;
+
+const SKILL_SHELL_WC_L_BODY: &str = r#"Use pc-exec-shell-wc-l (§shell-safe-fixed) to count lines in a file. Pass the filepath via
+vars.slot0 — it is validated against [a-zA-Z0-9_-./]+ before dispatch, so there is no
+shell-metacharacter injection surface. Returns the line count. Use to gauge file size
+before reading it with skill-read-file.
+"#;
+
+const SKILL_SHELL_GIT_ADD_BODY: &str = r#"Use pc-exec-shell-git-add (via shell tool) to stage files.
+§shell-guard-custom applies: always Tier 1.
+Always run 'git status' (skill-shell-git-status) first to know which files are modified.
+Pass '.' to stage all changes, or provide specific file paths. After staging, run
+'git status' again to confirm the staged content before committing.
+Never stage files the user has not confirmed — particularly .env, secrets, and
+binary files should be explicitly confirmed before staging.
+"#;
+
+const SKILL_SHELL_GIT_COMMIT_BODY: &str = r#"Use pc-exec-shell-git-commit (via shell tool) to create a commit.
+§shell-guard-custom applies: always Tier 1 — the commit message is user/LLM-supplied.
+Always run 'git status' and 'git diff --staged' first to confirm what will be committed.
+Pass the message via vars.slot0; it is repr()-escaped before dispatch. Never commit
+without explicit user confirmation of both the staged content and the message.
+Never commit secrets, .env files, or large binaries.
+"#;
+
+const SKILL_SHELL_GIT_PUSH_BODY: &str = r#"Use pc-exec-shell-git-push (via shell tool) to push commits.
+§shell-guard-custom applies: always Tier 1 — remote and branch are user-supplied.
+Always run 'git status' and 'git log <remote>/<branch>..HEAD' first to confirm what
+will be pushed. Pass remote via vars.slot0 and branch via vars.slot1 (defaulting to
+'origin' and 'main'). Never push without explicit user confirmation. Never force-push
+without a separate explicit confirmation.
+"#;
+
+const SKILL_SHELL_GIT_PULL_BODY: &str = r#"Use pc-exec-shell-git-pull (via shell tool) to pull remote changes.
+§shell-guard-custom applies: always Tier 1 — remote and branch are user-supplied.
+Always run 'git status' first to ensure the working tree is clean (pull can fail on
+conflicts). Pass remote via vars.slot0 and branch via vars.slot1. If conflicts arise,
+the LLM must help resolve them — never overwrite local changes silently. Confirm the
+pull with the user before dispatch.
+"#;
+
+const SKILL_SHELL_GIT_FETCH_BODY: &str = r#"Use pc-exec-shell-git-fetch (§shell-safe-fixed) to run 'git fetch --all'.
+Updates all remote-tracking branches from all remotes without modifying the working
+tree or current branch — a read-only remote query, Tier 0. Use before git-log or
+git-diff to compare local state against the latest remote refs. To merge or rebase
+after fetching, use git-pull or shell-run (Tier 1).
+"#;
+
+const SKILL_SHELL_BODY: &str = r#"Shell execution is the most powerful and most dangerous builtin. Use it only when no
+higher-level tool covers the need (prefer filesystem domain tools for file operations;
+prefer skill-http-fetch for network work).
+
+TWO TIERS OF SHELL EXECUTION:
+
+Tier 0 — Fixed pre-validated commands (§shell-safe-fixed):
+Use when the command is a fixed literal with no user input. Zero injection surface.
+
+Git inspection (status / diff / history):
+— skill-shell-git-status:         'git status'
+— skill-shell-git-log:            'git log --oneline -20'
+— skill-shell-git-log-stat:       'git log --stat --oneline -5' (per-file change counts)
+— skill-shell-git-diff-stat:      'git diff --stat'
+— skill-shell-git-diff-name-only: 'git diff --name-only HEAD' (changed filenames only)
+— skill-shell-git-branch:         'git branch -a'
+— skill-shell-git-stash-list:     'git stash list'
+— skill-shell-git-stash-show:     'git stash show' (diff summary of latest stash)
+— skill-shell-git-remote:         'git remote -v'
+— skill-shell-git-show-stat:      'git show --stat HEAD'
+— skill-shell-git-tag-list:       'git tag --list'
+— skill-shell-git-config-list:    'git config --list' (all active git config)
+
+System information:
+— skill-shell-pwd: run 'pwd'
+— skill-shell-df: run 'df -h'
+— skill-shell-ps: run 'ps aux'
+— skill-shell-env: run 'env'
+— skill-shell-uname: run 'uname -a'
+— skill-shell-which: run 'which <tool>' (tool name is a fixed slot, not user-composed)
+— skill-shell-date: run 'date -u' (UTC date/time)
+— skill-shell-hostname: run 'hostname'
+— skill-shell-whoami: run 'whoami'
+— skill-shell-uptime: run 'uptime'
+— skill-shell-free: run 'free -h' (Linux only)
+— skill-shell-wc-l: run 'wc -l <file>' (line count, path validated)
+
+Read-only git commands (fetch):
+— skill-shell-git-fetch: 'git fetch --all' (Tier 0 — §shell-safe-fixed)
+
+Decision guide for git work:
+• What changed since last commit (names only) → skill-shell-git-diff-name-only (Tier 0)
+• What changed in detail → shell-run 'git diff HEAD' (Tier 1 — custom)
+• Recent commit history with stats → skill-shell-git-log-stat (Tier 0)
+• What is in the stash → skill-shell-git-stash-show (Tier 0)
+• Git identity/config check → skill-shell-git-config-list (Tier 0)
+• Fetch latest remote refs without merging → skill-shell-git-fetch (Tier 0)
+
+Tier 1 — Custom/user-composed commands (§shell-guard-custom):
+Use when the command string involves user intent, user-supplied paths, or composition.
+— skill-shell-run: run a single composed command (LLM validates and composes)
+— skill-shell-safe-check: safety rules before composing any command
+
+Git write operations (always Tier 1 — §shell-guard-custom):
+— skill-shell-git-commit: 'git commit -m <msg>' (LLM composes message, user confirms)
+— skill-shell-git-push: 'git push <remote> <branch>' (user confirms remote/branch)
+— skill-shell-git-pull: 'git pull <remote> [branch]' (user confirms; LLM handles conflicts)
+
+Safety rules before running any command → skill-shell-safe-check.
+NEVER run a git commit/push/pull without explicit user confirmation.
+NEVER run a command that the user supplied without LLM validation first.
 "#;
