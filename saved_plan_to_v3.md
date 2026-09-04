@@ -7561,7 +7561,7 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 
 ### Phase K — BasicPromptStore + Prefix Tab + MCP Translation + Cleanup
 
-**Status:** [~] K.1 PARTIALLY COMPLETE — see implementation notes below. K.2, K.3 Pending.
+**Status:** [x] K.1 COMPLETE (incl. K.1.7 SKILL.md export — implemented after the notes below were written; see K.1.7 note). [ ] K.2 Pending (MCP translation — `mcp_translation.rs` absent). [~] K.3 PARTIAL — `__retrieve_docs__`/`__get_reduction_rules__` handler+registration removal DONE (Kohai K3, commit `a3ecad97`); `handle_assemble_prior_knowledge` legacy `retrieve_context` fallback block already gone (retired H8.4 — handler replaced by `assemble_prior_knowledge_with_hint`); `RamSource` + `retrieval_dbless.rs` + `RetrievalEngine::retrieve_context` + `build_step_context` deletion DEFERRED to C.7 (coupled to the legacy `brassclaw_engine::runtime::manager`/`ThreadManager` retirement — see K.3 note).
 
 > ---
 > ### ⚠️ K.1 IMPLEMENTATION STATUS (do NOT overwrite these decisions)
@@ -7642,15 +7642,17 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 >   `prefix.*` key block added. Other language packs: English fallback is automatic
 >   (`packs["en"]` fallback in `i18n.js:31`); no changes needed to other packs.
 >
-> **K.1.7 — SKILL.md on-demand export:** **NOT YET IMPLEMENTED.** The plan specifies:
-> - Route: `GET /api/webchat/v2/skills/{id}/export` with descriptor `WEBUI_V2_ROUTE_EXPORT_SKILL`
-> - Handler: `export_skill(...)` in `handlers.rs`
-> - Service method: `export_skill_as_skill_md` on `RebornServicesApi` (default returns 501)
-> - WebUI: "Download SKILL.md" button on skill detail page
-> - `WebUiV2HttpError::internal(msg)` constructor (does not yet exist)
-> The constants `WEBUI_V2_ROUTE_EXPORT_SKILL` and `WEBUI_V2_PATTERN_EXPORT_SKILL` are
-> declared in `descriptors.rs` but the descriptor function, route wiring, handler, and
-> service method are all absent. K.1.7 must be implemented as a separate step.
+> **K.1.7 — SKILL.md on-demand export:** **DONE** (implemented after the original
+> "NOT YET IMPLEMENTED" note above was written — that note is retained for traceability
+> but is now stale). Verified in the codebase:
+> - Route: `GET /api/webchat/v2/skills/{id}/export` — descriptor `WEBUI_V2_ROUTE_EXPORT_SKILL`
+>   + pattern `WEBUI_V2_PATTERN_EXPORT_SKILL` in `descriptors.rs`; route wired in
+>   `router.rs` → `handlers::export_skill`.
+> - Handler: `export_skill(...)` in `crates/brassclaw_webui_v2/src/handlers.rs`.
+> - Service method: `export_skill_as_skill_md` on `RebornServicesApi`
+>   (`crates/brassclaw_product_workflow/src/reborn_services.rs`).
+> - Contract test stub: `webui_v2_handlers_contract.rs`.
+> K.1.7 is complete; K.1 is now fully done (K.1.1–K.1.8).
 >
 > **K.1.8 — Tests:** Contract tests in `webui_v2_handlers_contract.rs` and
 > `webui_v2_descriptors_contract.rs` have been updated (stubs added for `list_prefix_entries`,
@@ -8409,6 +8411,31 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 - `source = "imported"` (not `"system"`).
 
 #### K.3 Cleanup
+
+> **⚠️ K.3 IMPLEMENTATION STATUS (audit `e81125fc`, Sep 2026):** PARTIAL — do NOT
+> assume the bullets below are all still pending. Verified against the codebase:
+> - **DONE** — `__retrieve_docs__` / `__get_reduction_rules__` handler registration
+>   + function bodies removed from `orchestrator.rs` (Kohai K3, commit `a3ecad97`).
+> - **ALREADY GONE (H8.4)** — the "legacy `retrieve_context` fallback block in
+>   `handle_assemble_prior_knowledge`" bullet is moot: `handle_assemble_prior_knowledge`
+>   was retired in H8.4 and replaced by the `pub` `assemble_prior_knowledge_with_hint`
+>   (`orchestrator.rs:1946`), which calls `retrieval_source.fetch_for_turn` — NOT
+>   `retrieve_context`. There is no `retrieve_context` call site in `orchestrator.rs`.
+> - **DEFERRED TO C.7** — `RamSource` (`retrieval_source.rs:278`), `retrieval_dbless.rs`,
+>   `RetrievalEngine::retrieve_context` (`retrieval.rs:34`), and `build_step_context`
+>   (`executor/context.rs:23`) are **all part of the legacy `brassclaw_engine::runtime`
+>   engine-runtime blob** (`manager.rs:408` still wires `RamSource` for `ThreadManager`).
+>   The v3 composition runtime (`reborn_composition/runtime.rs:2566`) already uses
+>   `PostgresSource` and does NOT use `ThreadManager`. Deleting `RamSource`/
+>   `retrieve_context`/`retrieval_dbless.rs` now would break the not-yet-retired
+>   `ThreadManager` — so this deletion is coupled to C.7's
+>   `execute_orchestrator`/`default.py`/`ExecutionLoop`/`ThreadManager`/
+>   `brassclaw_engine::runtime` retirement and lands there. The plan's "E.0 made this
+>   pure deletion" claim is only half-true: E.0 wired `PostgresSource` in the
+>   **composition** runtime, not the legacy **engine** runtime (which is C.7-bound).
+> - **STILL TO DO (safe now)** — `__list_skills__` deprecation notice (pure comment).
+>
+> Original bullets retained below for traceability.
 
 - Remove `__retrieve_docs__` handler registration from `orchestrator.rs` **now** (no
   compatibility window). It is the legacy MemoryDoc path, fully superseded by the

@@ -2639,6 +2639,11 @@ pub async fn list_skills_from_store(
 
 /// Handle `__list_skills__()` / `host.skill_list()` (C.6 slice 4c-prep).
 ///
+/// NOTE (Phase K.3): the basic-mode orchestrator no longer issues `__list_skills__`
+/// from its default step-0 flow — skill discovery is now intent/resume-driven.
+/// The handler remains callable so external/custom orchestrators can enumerate
+/// skills explicitly.
+///
 /// Thin-calls [`ComponentPort::list_skills`] (the composition-side impl runs the
 /// skills-db fast path — sorted `reborn_skills` — with the MemoryDoc `Store`
 /// fallback above). Returns a Python list of skill dicts; the Python orchestrator
