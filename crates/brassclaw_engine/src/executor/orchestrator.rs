@@ -41,9 +41,9 @@ use monty::{
 };
 use tracing::{debug, warn};
 
+use super::dynamic_tool_port::DynamicToolPort;
 use super::scripting::{execute_code, json_to_monty, monty_to_json, monty_to_string};
 use super::thread_context::thread_execution_context;
-use super::dynamic_tool_port::DynamicToolPort;
 use crate::capability::lease::LeaseManager;
 use crate::capability::policy::PolicyEngine;
 use crate::memory::{ComponentScope, RetrievalEngine, RetrievalSource};
@@ -719,203 +719,206 @@ impl MontySession {
 
                     debug!(action = %action_name, "orchestrator: host function call");
 
-                let ext_result = match action_name.as_str() {
-                    // FINAL(result) — orchestrator returns its outcome
-                    "FINAL" => {
-                        let val = args.first().map(monty_to_json).unwrap_or_default();
-                        self.final_result = Some(val);
-                        ExtFunctionResult::Return(MontyObject::None)
-                    }
+                    let ext_result = match action_name.as_str() {
+                        // FINAL(result) — orchestrator returns its outcome
+                        "FINAL" => {
+                            let val = args.first().map(monty_to_json).unwrap_or_default();
+                            self.final_result = Some(val);
+                            ExtFunctionResult::Return(MontyObject::None)
+                        }
 
-                    // __llm_complete__(messages, actions, config)
-                    "__llm_complete__" => {
-                        handle_llm_complete(
-                            args,
-                            kwargs,
-                            thread,
-                            LlmCompleteDeps {
+                        // __llm_complete__(messages, actions, config)
+                        "__llm_complete__" => {
+                            handle_llm_complete(
+                                args,
+                                kwargs,
+                                thread,
+                                LlmCompleteDeps {
+                                    llm,
+                                    effects,
+                                    leases,
+                                    store,
+                                    platform_info,
+                                },
+                                &mut self.total_tokens,
+                            )
+                            .await
+                        }
+
+                        // __check_signals__()
+                        "__check_signals__" => handle_check_signals(signal_rx, thread),
+
+                        // __emit_event__(kind, **data)
+                        "__emit_event__" => handle_emit_event(args, kwargs, thread, event_tx),
+
+                        // __save_checkpoint__(state, counters)
+                        "__save_checkpoint__" => handle_save_checkpoint(args, kwargs, thread),
+
+                        // __transition_to__(state, reason)
+                        "__transition_to__" => handle_transition_to(args, kwargs, thread),
+
+                        // __retrieve_docs__(goal, max_docs)
+                        "__retrieve_docs__" => {
+                            handle_retrieve_docs(args, kwargs, thread, retrieval).await
+                        }
+
+                        // __check_budget__()"
+                        "__check_budget__" => handle_check_budget(thread),
+
+                        // __log_budget_warning__(field, value, message)
+                        // Soft telemetry — emits a BudgetWarning event but does not
+                        // abort the orchestrator. Token-budget soft warnings are the
+                        // only soft signal: time/cost budgets remain hard-stops.
+                        "__log_budget_warning__" => {
+                            handle_log_budget_warning(args, kwargs, thread, event_tx)
+                        }
+
+                        // __get_reduction_rules__() -> list
+                        // Returns the per-project/user cached reduction rules used
+                        // by the segment reduction pipeline in default.py.
+                        "__get_reduction_rules__" => {
+                            handle_get_reduction_rules(thread, store).await
+                        }
+
+                        // __get_actions__()
+                        "__get_actions__" => {
+                            handle_get_actions(thread, effects, leases, store).await
+                        }
+
+                        // __list_skills__(max_candidates, max_tokens)
+                        "__list_skills__" => handle_list_skills(args, thread, component_port).await,
+
+                        // __record_skill_usage__(doc_id, success)
+                        "__record_skill_usage__" => handle_record_skill_usage(args, store).await,
+
+                        // __regex_match__(pattern, text) -> bool
+                        // Evaluates a regex against text using Rust's regex crate.
+                        // Invalid patterns return False silently. Monty has no `re`
+                        // module, so this host function bridges the gap for the
+                        // skill selector's pattern-based scoring.
+                        "__regex_match__" => handle_regex_match(args),
+
+                        // __validate_component__(title, content, doc_type, metadata)
+                        // Intercepts self-improvement memory_write calls for protected
+                        // components (orchestrator:main, prompt:codeact_preamble).
+                        // Creates an update-candidate MemoryDoc in Q1 (pending) instead
+                        // of writing directly. Spec §3.5 / §3.6.
+                        "__validate_component__" => {
+                            handle_validate_component(args, thread, store).await
+                        }
+
+                        // __fetch_component__(uuid, class_code) -> dict | None
+                        // Fetches a single validated component by UUID + class code from
+                        // its class-specific table (SEC-01 gate). Used by `call_action`
+                        // nested lookups (plan §0.9); Phase G depends on it. v3 Phase F.6
+                        // (Q-F3).
+                        "__fetch_component__" => {
+                            handle_fetch_component(args, thread, component_port).await
+                        }
+
+                        // __resolve_component_by_name__(name, class_code) -> dict | None
+                        // The §0.9 Option B fallback: fetches a single validated
+                        // component by name + class code (SEC-01 gate). Used by
+                        // `call_action` when it holds a step name, not a UUID.
+                        // v3 Phase G.2 (Q-G4).
+                        "__resolve_component_by_name__" => {
+                            handle_resolve_component_by_name(args, thread, component_port).await
+                        }
+
+                        // ── C.1 first-class `host.*` callables ───────────────────────
+                        // `host.<tool>(...)` surfaces as a MethodCall: function_name is the
+                        // bare tool name, method_call is true, and args[0] is the `host`
+                        // Dataclass (self). Skip args[0]; kwargs are untouched. These arms
+                        // reuse the existing Rust handlers verbatim — wiring, not new logic.
+                        // Net-new handlers land inline as they are implemented: resolve_intent
+                        // (Phase 2) + post_reply (end-of-turn chat post) are done;
+                        // kohai_complete follows next; compose_orchestrator's rewrite lands
+                        // with the Recipe/Component rework in a later C substep.
+                        "resolve_intent" if call.method_call => {
+                            handle_resolve_intent(&args[1..], kwargs, thread, component_port).await
+                        }
+                        "post_reply" if call.method_call => {
+                            handle_post_reply(&args[1..], kwargs, thread, event_tx)
+                        }
+                        "fetch_component" if call.method_call => {
+                            handle_fetch_component(&args[1..], thread, component_port).await
+                        }
+                        "resolve_component_by_name" if call.method_call => {
+                            handle_resolve_component_by_name(&args[1..], thread, component_port)
+                                .await
+                        }
+                        "validate_component" if call.method_call => {
+                            handle_validate_component(&args[1..], thread, store).await
+                        }
+                        "check_signals" if call.method_call => {
+                            handle_check_signals(signal_rx, thread)
+                        }
+                        // Reused existing tools exposed under the `host.*` namespace.
+                        "regex_match" if call.method_call => handle_regex_match(&args[1..]),
+                        "skill_list" if call.method_call => {
+                            handle_list_skills(&args[1..], thread, component_port).await
+                        }
+
+                        // C.4.5.17: host.run_program(code) — run a dynamically-provided
+                        // Python code string via a NESTED execute_code (fresh
+                        // isolation per call — mirrors execute_tier_zero_channel).
+                        // Monty iterates composed.steplist and calls this once per
+                        // step's executable_code. Returns {ok, return_value, stdout,
+                        // error}.
+                        "run_program" if call.method_call => {
+                            handle_run_program(
+                                &args[1..],
+                                thread,
                                 llm,
                                 effects,
                                 leases,
-                                store,
-                                platform_info,
-                            },
-                            &mut self.total_tokens,
-                        )
-                        .await
-                    }
+                                policy,
+                                gate_controller,
+                                event_tx,
+                            )
+                            .await
+                        }
 
-                    // __check_signals__()
-                    "__check_signals__" => handle_check_signals(signal_rx, thread),
+                        // C.4.5.17: compose a recipe (component_id) + variant
+                        // (step_link) into the predefined ComposedProgram via the
+                        // composition-system port (the IBS). Monty iterates the
+                        // returned steplist, consults the skills array for exact
+                        // tool usage, and runs each step's executable_code via
+                        // host.run_program. The cdylib application of
+                        // rust_directives is a C.5/C.6 concern (deferred). Returns
+                        // {ok, program} on success; {ok:false, error} on no bridge
+                        // / not found / failure.
+                        "compose_orchestrator" if call.method_call => {
+                            handle_compose_orchestrator(&args[1..], thread, component_port).await
+                        }
 
-                    // __emit_event__(kind, **data)
-                    "__emit_event__" => handle_emit_event(args, kwargs, thread, event_tx),
+                        // C.5: host.kohai_complete(prompt={chat_history, user_query,
+                        // prefix_placeholder}) — the Orchestrator→Kohai LLM handoff.
+                        // Runs the full interceptor ingress (forensic-packet capture
+                        // → optional Sempai → provider-prefix swap → provider gateway
+                        // call → packet close) via the composition-side port. Returns
+                        // {ok, answer, usage} on success; {ok:false, error} on no
+                        // bridge / invalid prompt / failure. Monty drives this; Rust
+                        // is the host.
+                        "kohai_complete" if call.method_call => {
+                            handle_kohai_complete(&args[1..], kwargs, thread, kohai_port).await
+                        }
 
-                    // __save_checkpoint__(state, counters)
-                    "__save_checkpoint__" => handle_save_checkpoint(args, kwargs, thread),
+                        // ── C.3 dynamic cdylib Tool fallthrough ─────────────────────
+                        // A `host.<name>(...)` call whose name is not a built-in. If a
+                        // dynamic Tool is loaded under that name, route the call through
+                        // the DynamicToolPort (JSON-in/JSON-out); otherwise let Monty
+                        // resolve it (user-defined functions, builtins). The impl lives in
+                        // composition (C.5/C.6) over `DynamicToolLoader`; until then
+                        // `dynamic_tools` is `None` and this arm is dormant.
+                        other if call.method_call => match dynamic_tools {
+                            Some(port) => dispatch_dynamic_tool(&**port, other, &args[1..], kwargs),
+                            None => ExtFunctionResult::NotFound(other.to_string()),
+                        },
 
-                    // __transition_to__(state, reason)
-                    "__transition_to__" => handle_transition_to(args, kwargs, thread),
-
-                    // __retrieve_docs__(goal, max_docs)
-                    "__retrieve_docs__" => {
-                        handle_retrieve_docs(args, kwargs, thread, retrieval).await
-                    }
-
-                    // __check_budget__()"
-                    "__check_budget__" => handle_check_budget(thread),
-
-                    // __log_budget_warning__(field, value, message)
-                    // Soft telemetry — emits a BudgetWarning event but does not
-                    // abort the orchestrator. Token-budget soft warnings are the
-                    // only soft signal: time/cost budgets remain hard-stops.
-                    "__log_budget_warning__" => {
-                        handle_log_budget_warning(args, kwargs, thread, event_tx)
-                    }
-
-                    // __get_reduction_rules__() -> list
-                    // Returns the per-project/user cached reduction rules used
-                    // by the segment reduction pipeline in default.py.
-                    "__get_reduction_rules__" => handle_get_reduction_rules(thread, store).await,
-
-                    // __get_actions__()
-                    "__get_actions__" => handle_get_actions(thread, effects, leases, store).await,
-
-                    // __list_skills__(max_candidates, max_tokens)
-                    "__list_skills__" => {
-                        handle_list_skills(args, thread, component_port).await
-                    }
-
-                    // __record_skill_usage__(doc_id, success)
-                    "__record_skill_usage__" => handle_record_skill_usage(args, store).await,
-
-                    // __regex_match__(pattern, text) -> bool
-                    // Evaluates a regex against text using Rust's regex crate.
-                    // Invalid patterns return False silently. Monty has no `re`
-                    // module, so this host function bridges the gap for the
-                    // skill selector's pattern-based scoring.
-                    "__regex_match__" => handle_regex_match(args),
-
-                    // __validate_component__(title, content, doc_type, metadata)
-                    // Intercepts self-improvement memory_write calls for protected
-                    // components (orchestrator:main, prompt:codeact_preamble).
-                    // Creates an update-candidate MemoryDoc in Q1 (pending) instead
-                    // of writing directly. Spec §3.5 / §3.6.
-                    "__validate_component__" => {
-                        handle_validate_component(args, thread, store).await
-                    }
-
-                    // __fetch_component__(uuid, class_code) -> dict | None
-                    // Fetches a single validated component by UUID + class code from
-                    // its class-specific table (SEC-01 gate). Used by `call_action`
-                    // nested lookups (plan §0.9); Phase G depends on it. v3 Phase F.6
-                    // (Q-F3).
-                    "__fetch_component__" => {
-                        handle_fetch_component(args, thread, component_port).await
-                    }
-
-                    // __resolve_component_by_name__(name, class_code) -> dict | None
-                    // The §0.9 Option B fallback: fetches a single validated
-                    // component by name + class code (SEC-01 gate). Used by
-                    // `call_action` when it holds a step name, not a UUID.
-                    // v3 Phase G.2 (Q-G4).
-                    "__resolve_component_by_name__" => {
-                        handle_resolve_component_by_name(args, thread, component_port).await
-                    }
-
-                    // ── C.1 first-class `host.*` callables ───────────────────────
-                    // `host.<tool>(...)` surfaces as a MethodCall: function_name is the
-                    // bare tool name, method_call is true, and args[0] is the `host`
-                    // Dataclass (self). Skip args[0]; kwargs are untouched. These arms
-                    // reuse the existing Rust handlers verbatim — wiring, not new logic.
-                    // Net-new handlers land inline as they are implemented: resolve_intent
-                    // (Phase 2) + post_reply (end-of-turn chat post) are done;
-                    // kohai_complete follows next; compose_orchestrator's rewrite lands
-                    // with the Recipe/Component rework in a later C substep.
-                    "resolve_intent" if call.method_call => {
-                        handle_resolve_intent(&args[1..], kwargs, thread, component_port).await
-                    }
-                    "post_reply" if call.method_call => {
-                        handle_post_reply(&args[1..], kwargs, thread, event_tx)
-                    }
-                    "fetch_component" if call.method_call => {
-                        handle_fetch_component(&args[1..], thread, component_port).await
-                    }
-                    "resolve_component_by_name" if call.method_call => {
-                        handle_resolve_component_by_name(&args[1..], thread, component_port).await
-                    }
-                    "validate_component" if call.method_call => {
-                        handle_validate_component(&args[1..], thread, store).await
-                    }
-                    "check_signals" if call.method_call => {
-                        handle_check_signals(signal_rx, thread)
-                    }
-                    // Reused existing tools exposed under the `host.*` namespace.
-                    "regex_match" if call.method_call => handle_regex_match(&args[1..]),
-                    "skill_list" if call.method_call => {
-                        handle_list_skills(&args[1..], thread, component_port).await
-                    }
-
-                    // C.4.5.17: host.run_program(code) — run a dynamically-provided
-                    // Python code string via a NESTED execute_code (fresh
-                    // isolation per call — mirrors execute_tier_zero_channel).
-                    // Monty iterates composed.steplist and calls this once per
-                    // step's executable_code. Returns {ok, return_value, stdout,
-                    // error}.
-                    "run_program" if call.method_call => {
-                        handle_run_program(
-                            &args[1..],
-                            thread,
-                            llm,
-                            effects,
-                            leases,
-                            policy,
-                            gate_controller,
-                            event_tx,
-                        )
-                        .await
-                    }
-
-                    // C.4.5.17: compose a recipe (component_id) + variant
-                    // (step_link) into the predefined ComposedProgram via the
-                    // composition-system port (the IBS). Monty iterates the
-                    // returned steplist, consults the skills array for exact
-                    // tool usage, and runs each step's executable_code via
-                    // host.run_program. The cdylib application of
-                    // rust_directives is a C.5/C.6 concern (deferred). Returns
-                    // {ok, program} on success; {ok:false, error} on no bridge
-                    // / not found / failure.
-                    "compose_orchestrator" if call.method_call => {
-                        handle_compose_orchestrator(&args[1..], thread, component_port).await
-                    }
-
-                    // C.5: host.kohai_complete(prompt={chat_history, user_query,
-                    // prefix_placeholder}) — the Orchestrator→Kohai LLM handoff.
-                    // Runs the full interceptor ingress (forensic-packet capture
-                    // → optional Sempai → provider-prefix swap → provider gateway
-                    // call → packet close) via the composition-side port. Returns
-                    // {ok, answer, usage} on success; {ok:false, error} on no
-                    // bridge / invalid prompt / failure. Monty drives this; Rust
-                    // is the host.
-                    "kohai_complete" if call.method_call => {
-                        handle_kohai_complete(&args[1..], kwargs, thread, kohai_port).await
-                    }
-
-                    // ── C.3 dynamic cdylib Tool fallthrough ─────────────────────
-                    // A `host.<name>(...)` call whose name is not a built-in. If a
-                    // dynamic Tool is loaded under that name, route the call through
-                    // the DynamicToolPort (JSON-in/JSON-out); otherwise let Monty
-                    // resolve it (user-defined functions, builtins). The impl lives in
-                    // composition (C.5/C.6) over `DynamicToolLoader`; until then
-                    // `dynamic_tools` is `None` and this arm is dormant.
-                    other if call.method_call => match dynamic_tools {
-                        Some(port) => dispatch_dynamic_tool(&**port, other, &args[1..], kwargs),
-                        None => ExtFunctionResult::NotFound(other.to_string()),
-                    },
-
-                    // Unknown — let Monty resolve it (user-defined functions, builtins)
-                    other => ExtFunctionResult::NotFound(other.to_string()),
-                };
+                        // Unknown — let Monty resolve it (user-defined functions, builtins)
+                        other => ExtFunctionResult::NotFound(other.to_string()),
+                    };
 
                     // Resume the orchestrator VM
                     self.progress = Some(
@@ -924,10 +927,12 @@ impl MontySession {
                         })) {
                             Ok(Ok(p)) => p,
                             Ok(Err(e)) => {
-                                return Err(EngineError::Orchestrator(classify_orchestrator_failure(
-                                    "Orchestrator error after resume",
-                                    &e.to_string(),
-                                )));
+                                return Err(EngineError::Orchestrator(
+                                    classify_orchestrator_failure(
+                                        "Orchestrator error after resume",
+                                        &e.to_string(),
+                                    ),
+                                ));
                             }
                             Err(_) => {
                                 return Err(EngineError::Orchestrator(orchestrator_vm_panic(
@@ -973,10 +978,12 @@ impl MontySession {
                         })) {
                             Ok(Ok(p)) => p,
                             Ok(Err(e)) => {
-                                return Err(EngineError::Orchestrator(classify_orchestrator_failure(
-                                    &format!("Orchestrator NameError '{name}'"),
-                                    &e.to_string(),
-                                )));
+                                return Err(EngineError::Orchestrator(
+                                    classify_orchestrator_failure(
+                                        &format!("Orchestrator NameError '{name}'"),
+                                        &e.to_string(),
+                                    ),
+                                ));
                             }
                             Err(_) => {
                                 return Err(EngineError::Orchestrator(orchestrator_vm_panic(
@@ -1052,7 +1059,12 @@ pub async fn prepare_monty_session(
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
 
-    MontySession::new(&orchestrator_code, thread, &persisted_state, max_duration_override)
+    MontySession::new(
+        &orchestrator_code,
+        thread,
+        &persisted_state,
+        max_duration_override,
+    )
 }
 
 /// Drive an orchestrator script once to completion (non-persistent path).
@@ -1106,12 +1118,12 @@ pub async fn execute_orchestrator(
         .await?
     {
         OrchestratorYield::Complete(result) => Ok(*result),
-        OrchestratorYield::AwaitNextTurn => Err(EngineError::Orchestrator(
-            classify_orchestrator_failure(
+        OrchestratorYield::AwaitNextTurn => {
+            Err(EngineError::Orchestrator(classify_orchestrator_failure(
                 "Orchestrator parked awaiting next turn",
                 "host.await_next_turn() in non-persistent mode",
-            ),
-        )),
+            )))
+        }
     }
 }
 
@@ -1693,8 +1705,7 @@ async fn handle_run_program(
     event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
 ) -> ExtFunctionResult {
     let code = args.first().map(monty_to_string).unwrap_or_default();
-    let exec_ctx =
-        thread_execution_context(thread, StepId::new(), None, gate_controller.clone());
+    let exec_ctx = thread_execution_context(thread, StepId::new(), None, gate_controller.clone());
     let fresh_state = serde_json::json!({});
 
     match Box::pin(execute_code(
@@ -1791,7 +1802,10 @@ async fn handle_resolve_component_by_name(
         project_id: _thread.project_id.to_string(),
     };
 
-    match port.resolve_component_by_name(&scope, &name, class_code).await {
+    match port
+        .resolve_component_by_name(&scope, &name, class_code)
+        .await
+    {
         Ok(Some(item)) => {
             let mut value = serde_json::json!({
                 "id": item.id.to_string(),
@@ -1872,7 +1886,10 @@ async fn handle_compose_orchestrator(
         agent_id: thread.agent_id.clone(),
         project_id: thread.project_id.to_string(),
     };
-    match port.compose(&scope, component_id, &step_link, &user_input).await {
+    match port
+        .compose(&scope, component_id, &step_link, &user_input)
+        .await
+    {
         Ok(program) => {
             let program_value = serde_json::to_value(&program).unwrap_or(serde_json::Value::Null);
             ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
@@ -1981,9 +1998,7 @@ async fn handle_resolve_intent(
         }
     };
     let Some(port) = component_port else {
-        return ExtFunctionResult::Return(json_to_monty(
-            &serde_json::json!({"status":"no_match"}),
-        ));
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"status":"no_match"})));
     };
     let scope = ComponentScope {
         tenant_id: _thread.tenant_id.clone(),
@@ -2021,9 +2036,9 @@ async fn handle_resolve_intent(
                 "candidates": cands,
             })))
         }
-        Ok(IntentResolution::NoMatch) => ExtFunctionResult::Return(json_to_monty(
-            &serde_json::json!({"status":"no_match"}),
-        )),
+        Ok(IntentResolution::NoMatch) => {
+            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"status":"no_match"})))
+        }
         Err(e) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
             "status": "error",
             "error": e.to_string(),
@@ -3745,17 +3760,13 @@ mod tests {
             monty::MontyObject::String("y".into()),
         )];
         let json = super::dynamic_call_args_to_json(&args, &kwargs);
-        assert_eq!(
-            json,
-            serde_json::json!({"__arg0": "p", "x": "y"})
-        );
+        assert_eq!(json, serde_json::json!({"__arg0": "p", "x": "y"}));
     }
 
     #[test]
     fn dispatch_dynamic_tool_loaded_returns_json_as_monty() {
         let port = MockDynamicToolPort::new(true);
-        *port.invoke_result.lock().unwrap() =
-            Some(Ok(serde_json::json!({"echoed": true})));
+        *port.invoke_result.lock().unwrap() = Some(Ok(serde_json::json!({"echoed": true})));
         let kwargs = vec![(
             monty::MontyObject::String("k".into()),
             monty::MontyObject::String("v".into()),
@@ -3768,7 +3779,10 @@ mod tests {
         );
         match result {
             monty::ExtFunctionResult::Return(obj) => {
-                assert_eq!(super::monty_to_json(&obj), serde_json::json!({"echoed": true}));
+                assert_eq!(
+                    super::monty_to_json(&obj),
+                    serde_json::json!({"echoed": true})
+                );
             }
             other => panic!("expected Return, got {other:?}"),
         }
@@ -3782,8 +3796,7 @@ mod tests {
     #[test]
     fn dispatch_dynamic_tool_not_loaded_returns_not_found() {
         let port = MockDynamicToolPort::new(false);
-        let result =
-            super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
+        let result = super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
         assert!(matches!(
             result,
             monty::ExtFunctionResult::NotFound(ref n) if n == "fixture_echo"
@@ -3797,8 +3810,7 @@ mod tests {
             tool: "fixture_echo".into(),
             reason: "boom".into(),
         }));
-        let result =
-            super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
+        let result = super::dispatch_dynamic_tool(&port, "fixture_echo", &[], &[]);
         assert!(matches!(result, monty::ExtFunctionResult::Error(_)));
     }
 
@@ -3864,11 +3876,7 @@ mod tests {
             _component_id: uuid::Uuid,
             _class_code: i32,
         ) -> Pin<
-            Box<
-                dyn Future<Output = Result<Option<ComponentItem>, ComponentPortError>>
-                    + Send
-                    + '_,
-            >,
+            Box<dyn Future<Output = Result<Option<ComponentItem>, ComponentPortError>> + Send + '_>,
         > {
             Box::pin(async { Err(ComponentPortError::Unavailable) })
         }
@@ -3879,11 +3887,7 @@ mod tests {
             _name: &str,
             _class_code: i32,
         ) -> Pin<
-            Box<
-                dyn Future<Output = Result<Option<ComponentItem>, ComponentPortError>>
-                    + Send
-                    + '_,
-            >,
+            Box<dyn Future<Output = Result<Option<ComponentItem>, ComponentPortError>> + Send + '_>,
         > {
             Box::pin(async { Err(ComponentPortError::Unavailable) })
         }
@@ -3893,9 +3897,7 @@ mod tests {
             _thread: &Thread,
         ) -> Pin<
             Box<
-                dyn Future<Output = Result<Vec<serde_json::Value>, ComponentPortError>>
-                    + Send
-                    + '_,
+                dyn Future<Output = Result<Vec<serde_json::Value>, ComponentPortError>> + Send + '_,
             >,
         > {
             Box::pin(async { Err(ComponentPortError::Unavailable) })
@@ -4119,12 +4121,8 @@ mod tests {
             "chat_history": [],
             "prefix_placeholder": "{{prefix}}",
         });
-        let kwargs = vec![(
-            MontyObject::String("prompt".into()),
-            json_to_monty(&prompt),
-        )];
-        let result =
-            handle_kohai_complete(&[], &kwargs, &thread, Some(&port)).await;
+        let kwargs = vec![(MontyObject::String("prompt".into()), json_to_monty(&prompt))];
+        let result = handle_kohai_complete(&[], &kwargs, &thread, Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -4138,14 +4136,12 @@ mod tests {
     #[tokio::test]
     async fn kohai_complete_port_failure_surfaces_error() {
         let thread = make_validate_thread();
-        let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::failing(
-            KohaiPortError::LlmFailed {
+        let port: Arc<dyn KohaiPort> =
+            Arc::new(MockKohaiPort::failing(KohaiPortError::LlmFailed {
                 reason: "provider 502".into(),
-            },
-        ));
+            }));
         let args = vec![json_to_monty(&serde_json::json!({"user_query": "hi"}))];
-        let result =
-            handle_kohai_complete(&args, &[], &thread, Some(&port)).await;
+        let result = handle_kohai_complete(&args, &[], &thread, Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),

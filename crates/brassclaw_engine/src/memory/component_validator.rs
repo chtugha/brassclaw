@@ -126,8 +126,15 @@ impl ComponentValidator {
                     // tool_name-non-empty check above IS the capability_id-non-empty
                     // Q1 gate. Plus the common-syntax placeholder-grammar + non-nil
                     // includes gate (F-HI-2=A, mirrors class 13).
+                    // Phase I §capability-id: if tool_name is present, it must match
+                    // the capability_id pattern `^[a-z0-9_-]+\.[a-z0-9_.]+$`.
+                    // source="system" tools always require it; user-authored tools are
+                    // only validated when the field is non-empty (may omit capability_id).
                     let mut result = RecipeValidator::validate_tool_skill(skill, available_tools);
                     validate_tool_skill_placeholders(skill, &mut result);
+                    if !skill.tool_name.is_empty() {
+                        validate_capability_id_format(&skill.tool_name, &mut result);
+                    }
                     result
                 }
                 // Generic payload: structural checks run; explicit error tells the operator
@@ -290,12 +297,12 @@ impl ComponentValidator {
                     validate_tool_skill_placeholders(skill, &mut result);
                     result
                 }
-                ComponentPayload::Generic(_) => ValidationResult::from_error(
-                    "ToolSkill class requires a ToolSkill payload",
-                ),
-                ComponentPayload::Recipe(_) => ValidationResult::from_error(
-                    "ToolSkill class requires a ToolSkill payload",
-                ),
+                ComponentPayload::Generic(_) => {
+                    ValidationResult::from_error("ToolSkill class requires a ToolSkill payload")
+                }
+                ComponentPayload::Recipe(_) => {
+                    ValidationResult::from_error("ToolSkill class requires a ToolSkill payload")
+                }
             },
             // Former DocType classes (12, 14, 17-20): soft 10000 (13 has its own arm above)
             12 | 14 | 17..=20 => {
@@ -769,6 +776,76 @@ fn validate_name_skill(name: &str, result: &mut ValidationResult) {
             ));
             break;
         }
+    }
+}
+
+/// Phase I §capability-id — validate that a capability_id string matches the
+/// `^[a-z0-9_-]+\.[a-z0-9_.]+$` pattern required by the Rust execution layer.
+///
+/// Examples of valid capability IDs: `builtin.shell`, `host.resolve_intent`,
+/// `host.run_program`, `github.list_issues`.
+/// Invalid: `shell` (no dot), `BuiltIn.shell` (uppercase), `.shell` (empty segment).
+fn validate_capability_id_format(capability_id: &str, result: &mut ValidationResult) {
+    // Must contain at least one dot.
+    let Some(dot_pos) = capability_id.find('.') else {
+        result.errors.push(format!(
+            "Tool capability_id `{capability_id}` is missing the required dot separator \
+             (expected format: `extension.capability`, e.g. `builtin.shell`)"
+        ));
+        return;
+    };
+    let prefix = &capability_id[..dot_pos];
+    let suffix = &capability_id[dot_pos + 1..];
+
+    // Both segments must be non-empty.
+    if prefix.is_empty() {
+        result.errors.push(format!(
+            "Tool capability_id `{capability_id}` has an empty extension segment before the dot"
+        ));
+        return;
+    }
+    if suffix.is_empty() {
+        result.errors.push(format!(
+            "Tool capability_id `{capability_id}` has an empty capability segment after the dot"
+        ));
+        return;
+    }
+
+    // prefix: `^[a-z0-9_-]+$`
+    for ch in prefix.chars() {
+        if !ch.is_ascii_lowercase() && !ch.is_ascii_digit() && ch != '_' && ch != '-' {
+            result.errors.push(format!(
+                "Tool capability_id `{capability_id}` extension segment `{prefix}` contains \
+                 invalid character `{ch}` — must match [a-z0-9_-]"
+            ));
+            return;
+        }
+    }
+    // suffix: `^[a-z0-9_.]+$` (dots allowed for sub-capability nesting).
+    // Also reject a leading dot in the suffix (which would mean consecutive dots
+    // in the full id, e.g. "host..resolve" → suffix=".resolve").
+    if suffix.starts_with('.') {
+        result.errors.push(format!(
+            "Tool capability_id `{capability_id}` contains consecutive dots — \
+             each sub-segment must be non-empty (e.g. `host.resolve`, not `host..resolve`)"
+        ));
+        return;
+    }
+    for ch in suffix.chars() {
+        if !ch.is_ascii_lowercase() && !ch.is_ascii_digit() && ch != '_' && ch != '.' {
+            result.errors.push(format!(
+                "Tool capability_id `{capability_id}` capability segment `{suffix}` contains \
+                 invalid character `{ch}` — must match [a-z0-9_.]"
+            ));
+            return;
+        }
+    }
+    // No consecutive dots within the suffix itself.
+    if suffix.contains("..") {
+        result.errors.push(format!(
+            "Tool capability_id `{capability_id}` capability segment `{suffix}` contains \
+             consecutive dots — each sub-segment must be non-empty"
+        ));
     }
 }
 
@@ -1797,5 +1874,127 @@ mod tests {
             result.errors.iter().any(|e| e.contains("dual-nature gate")),
             "expected dual-nature gate error through component_validator, got {result:?}"
         );
+    }
+
+    // ── Phase I §capability-id tests ──────────────────────────────────────────
+    #[cfg(test)]
+    mod capability_id_tests {
+        use super::*;
+
+        fn check(id: &str) -> ValidationResult {
+            let mut result = ValidationResult::ok();
+            validate_capability_id_format(id, &mut result);
+            result
+        }
+
+        #[test]
+        fn valid_capability_ids_pass() {
+            for id in &[
+                "builtin.shell",
+                "host.resolve_intent",
+                "github.list_issues",
+                "host.run_program",
+                "my_ext.my_tool",
+                "host.compose.plan", // sub-capability nesting
+                "builtin.read_file",
+            ] {
+                let r = check(id);
+                assert!(r.errors.is_empty(), "expected {id:?} to pass, got {r:?}");
+            }
+        }
+
+        #[test]
+        fn capability_id_no_dot_fails() {
+            let r = check("shell");
+            assert!(
+                r.errors
+                    .iter()
+                    .any(|e| e.contains("missing the required dot")),
+                "expected dot-separator error, got {r:?}"
+            );
+        }
+
+        #[test]
+        fn capability_id_uppercase_prefix_fails() {
+            let r = check("BuiltIn.shell");
+            assert!(
+                r.errors.iter().any(|e| e.contains("invalid character")),
+                "expected invalid-character error for uppercase prefix, got {r:?}"
+            );
+        }
+
+        #[test]
+        fn capability_id_leading_dot_fails() {
+            let r = check(".shell");
+            assert!(
+                r.errors
+                    .iter()
+                    .any(|e| e.contains("empty extension segment")),
+                "expected empty-prefix error for .shell, got {r:?}"
+            );
+        }
+
+        #[test]
+        fn capability_id_trailing_dot_fails() {
+            let r = check("builtin.");
+            assert!(
+                r.errors
+                    .iter()
+                    .any(|e| e.contains("empty capability segment")),
+                "expected empty-suffix error for trailing dot, got {r:?}"
+            );
+        }
+
+        #[test]
+        fn capability_id_double_dot_in_suffix_fails() {
+            // "host..resolve" → first dot at index 4 → prefix="host", suffix=".resolve"
+            // (leading dot in suffix = consecutive dots in the full id).
+            let r = check("host..resolve");
+            assert!(
+                r.errors.iter().any(|e| e.contains("consecutive")),
+                "expected consecutive-dots error, got {r:?}"
+            );
+        }
+
+        #[test]
+        fn class0_with_valid_capability_id_format_passes() {
+            // Phase I §capability-id: tool_name="builtin.shell" matches pattern → Q1 pass.
+            let mut skill = base_skill();
+            skill.tool_name = "builtin.shell".into();
+            let result = ComponentValidator::validate_by_class(
+                0,
+                ComponentPayload::ToolSkill(&skill),
+                &ValidationConfig::default(),
+                &[],
+                &[],
+            );
+            assert!(
+                result.errors.is_empty(),
+                "expected no errors for valid capability_id, got {:?}",
+                result.errors
+            );
+        }
+
+        #[test]
+        fn class0_with_invalid_capability_id_format_fails() {
+            // Phase I §capability-id: tool_name="BUILTIN.shell" (uppercase) → Q1 hard error.
+            let mut skill = base_skill();
+            skill.tool_name = "BUILTIN.shell".into();
+            let result = ComponentValidator::validate_by_class(
+                0,
+                ComponentPayload::ToolSkill(&skill),
+                &ValidationConfig::default(),
+                &[],
+                &[],
+            );
+            assert!(
+                result
+                    .errors
+                    .iter()
+                    .any(|e| e.contains("invalid character")),
+                "expected capability_id format error for uppercase, got {:?}",
+                result.errors
+            );
+        }
     }
 }

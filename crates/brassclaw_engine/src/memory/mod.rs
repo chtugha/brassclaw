@@ -27,7 +27,7 @@ pub use component_validator::{
     ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig,
 };
 pub use composition::{
-    ComposedProgram, ComposedStep, ComponentResolver, ResolvedComponent, RustDirective, SkillRef,
+    ComponentResolver, ComposedProgram, ComposedStep, ResolvedComponent, RustDirective, SkillRef,
 };
 pub use metric_outcome::MetricRecorder;
 pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillMatch};

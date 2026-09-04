@@ -244,10 +244,7 @@ impl ExecutionLoop {
     /// (composition, C.5/C.6) delegates to `DynamicToolLoader`; the engine
     /// orchestrator's `host.<name>` dispatch fallthrough routes unknown calls
     /// through it. Without this the fallthrough is dormant.
-    pub fn with_dynamic_tools(
-        mut self,
-        port: Arc<dyn crate::executor::DynamicToolPort>,
-    ) -> Self {
+    pub fn with_dynamic_tools(mut self, port: Arc<dyn crate::executor::DynamicToolPort>) -> Self {
         self.dynamic_tools = Some(port);
         self
     }
@@ -259,10 +256,7 @@ impl ExecutionLoop {
     /// `host.list_skills`: recipe fetch → IBS `build_instruction` →
     /// `compose_program` → `ComposedProgram`. Without this the host-calls
     /// degrade gracefully.
-    pub fn with_component_port(
-        mut self,
-        port: Arc<dyn crate::executor::ComponentPort>,
-    ) -> Self {
+    pub fn with_component_port(mut self, port: Arc<dyn crate::executor::ComponentPort>) -> Self {
         self.component_port = Some(port);
         self
     }
@@ -271,10 +265,7 @@ impl ExecutionLoop {
     /// The impl (composition) backs `host.kohai_complete`: forensic-packet
     /// capture → optional Sempai → provider-prefix swap → `LlmBackend::complete`
     /// → packet close. Without this the host-call degrades gracefully.
-    pub fn with_kohai_port(
-        mut self,
-        port: Arc<dyn crate::executor::KohaiPort>,
-    ) -> Self {
+    pub fn with_kohai_port(mut self, port: Arc<dyn crate::executor::KohaiPort>) -> Self {
         self.kohai_port = Some(port);
         self
     }

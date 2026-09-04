@@ -109,10 +109,6 @@ pub trait KohaiPort: Send + Sync {
         prompt: serde_json::Value,
         ctx: KohaiCallCtx,
     ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<KohaiAnswer, KohaiPortError>>
-                + Send
-                + 'static,
-        >,
+        Box<dyn std::future::Future<Output = Result<KohaiAnswer, KohaiPortError>> + Send + 'static>,
     >;
 }

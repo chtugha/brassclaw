@@ -366,13 +366,12 @@ mod tests {
                     "Read the file given by slot0",
                     "data = host.read_file(path=\"{{vars.slot0}}\")\nprint(data)",
                 ),
-                py(
-                    pc2,
-                    "pc-step2",
-                    "Print the file data",
-                    "print(data)",
+                py(pc2, "pc-step2", "Print the file data", "print(data)"),
+                skill(
+                    skl,
+                    "skill-read-file",
+                    "# to read a file call host.read_file(path=...)",
                 ),
-                skill(skl, "skill-read-file", "# to read a file call host.read_file(path=...)"),
                 tool(tol, "read_file", "/tools/read_file.so"),
             ]
             .into_iter()
@@ -418,7 +417,10 @@ mod tests {
 
         // step 0:1 — orchestrator-only, no rust counterpart → empty tool_bindings
         assert_eq!(program.steplist[0].step_id, "0:1");
-        assert_eq!(program.steplist[0].instructions, "Read the file given by slot0");
+        assert_eq!(
+            program.steplist[0].instructions,
+            "Read the file given by slot0"
+        );
         assert_eq!(
             program.steplist[0].executable_code,
             "data = host.read_file(path=\"/tmp/notes.txt\")\nprint(data)"
@@ -475,9 +477,8 @@ mod tests {
     #[test]
     fn unresolved_includes_are_skipped_silently() {
         let pc = uuid("pycode-only-------");
-        let resolver = FixtureResolver(
-            [py(pc, "pc", "do thing", "print(1)")].into_iter().collect(),
-        );
+        let resolver =
+            FixtureResolver([py(pc, "pc", "do thing", "print(1)")].into_iter().collect());
         // step 0:1 references a UUID the resolver does not know
         let instruction = BuildInstruction {
             llm_call_required: false,
