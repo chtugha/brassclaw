@@ -572,6 +572,7 @@ registerPack("en", {
   "skills.nameRequired": "Skill name is required.",
   "skills.importSourceRequired": "Provide an HTTPS URL or SKILL.md content.",
   "skills.httpsRequired": "URL must use HTTPS.",
+  "skills.exportSkillMd": "Download SKILL.md",
   "skills.remove": "Remove",
   "skills.confirmRemove": "Remove skill \"{name}\"?",
   "skills.removeFailed": "Remove failed.",

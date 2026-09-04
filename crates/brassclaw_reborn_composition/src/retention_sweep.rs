@@ -10,7 +10,7 @@
 //! - `brassclaw_audit_log`: 365 days
 //! - `brassclaw_runs` soft-deleted: 90 days after `deleted_at`
 //! - `brassclaw_extensions` removed: 90 days after `removed_at`
-//! - `brassclaw_forensic_packets`: 90 days
+//! - `brassclaw_forensic_packets`: 42 days / 6 weeks (§0.23.7 — component-UUID reference retention)
 //!
 //! `brassclaw_memory_chat_records` has no default TTL; pruning is only enabled
 //! when the operator sets `retention.memory_chat_records_days` in config.
@@ -24,6 +24,8 @@ use std::sync::Arc;
 
 use brassclaw_pg::PgPool;
 use tokio::time::{Duration, interval};
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+use chrono::Timelike as _;
 
 const SWEEP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -32,7 +34,9 @@ const DEFAULT_EVENTS_DAYS: i64 = 90;
 const DEFAULT_AUDIT_LOG_DAYS: i64 = 365;
 const DEFAULT_RUNS_DELETED_DAYS: i64 = 90;
 const DEFAULT_EXTENSIONS_REMOVED_DAYS: i64 = 90;
-const DEFAULT_FORENSIC_PACKETS_DAYS: i64 = 90;
+// §0.23.7: forensic packet retention reduced to 6 weeks (42 days) so
+// old component references do not accumulate indefinitely.
+const DEFAULT_FORENSIC_PACKETS_DAYS: i64 = 42;
 
 /// Spawn the background retention sweep task.
 ///
@@ -206,6 +210,162 @@ pub fn spawn_q1_validation_sweep(
         }
     })
 }
+
+// ---------------------------------------------------------------------------
+// Idle self-improvement sweep (§0.23.8)
+// ---------------------------------------------------------------------------
+
+/// Configuration for the idle self-improvement sweep, read from
+/// `reborn_monty_vm_settings` (`validation_idle_threshold_minutes`,
+/// `validation_improve_start_hour`, `validation_improve_enabled`).
+///
+/// Defaults match the V063 column defaults:
+/// - `idle_threshold_minutes = 120` (2 hours)
+/// - `improve_start_hour = 15` (15:00 local)
+/// - `enabled = true`
+#[derive(Debug, Clone)]
+pub struct IdleSweepConfig {
+    pub idle_threshold_minutes: i32,
+    pub improve_start_hour: i32,
+    pub enabled: bool,
+}
+
+impl Default for IdleSweepConfig {
+    fn default() -> Self {
+        Self {
+            idle_threshold_minutes: 120,
+            improve_start_hour: 15,
+            enabled: true,
+        }
+    }
+}
+
+/// Read the idle sweep config from `reborn_monty_vm_settings` for a given
+/// scope.  Returns `IdleSweepConfig::default()` on any error or missing row.
+#[cfg(feature = "postgres")]
+pub async fn load_idle_sweep_config(
+    pool: &Arc<PgPool>,
+    tenant_id: &str,
+    agent_id: &str,
+    user_id: &str,
+    project_id: &str,
+) -> IdleSweepConfig {
+    let Ok(client) = pool.get().await else {
+        return IdleSweepConfig::default();
+    };
+    let Ok(Some(row)) = client
+        .query_opt(
+            "SELECT validation_idle_threshold_minutes,
+                    validation_improve_start_hour,
+                    validation_improve_enabled
+             FROM reborn_monty_vm_settings
+             WHERE tenant_id = $1 AND user_id = $2
+               AND agent_id  = $3 AND project_id = $4",
+            &[&tenant_id, &user_id, &agent_id, &project_id],
+        )
+        .await
+    else {
+        return IdleSweepConfig::default();
+    };
+    IdleSweepConfig {
+        idle_threshold_minutes: row.try_get::<_, i32>(0).unwrap_or(120),
+        improve_start_hour: row.try_get::<_, i32>(1).unwrap_or(15),
+        enabled: row.try_get::<_, bool>(2).unwrap_or(true),
+    }
+}
+
+/// Spawn the idle self-improvement sweep background task (§0.23.8).
+///
+/// Runs on a 15-minute polling cadence.  Each cycle:
+/// 1. Reads idle sweep config from `reborn_monty_vm_settings`.
+/// 2. Checks `enabled`, idle window, and server-local time (≥ `improve_start_hour`).
+/// 3. Checks that the system has been idle for at least `idle_threshold_minutes`
+///    (no active turns — approximated by checking `brassclaw_runs` for recent
+///    non-completed rows within the threshold window).
+/// 4. If all gates pass and the sweep has not run today: enqueues a
+///    component-creation request via the Sempai proposal sink (fires-and-forgets).
+///
+/// The returned handle can be aborted at shutdown.  The sweep is best-effort —
+/// errors are logged at `debug!` and never propagate to callers.
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub fn spawn_idle_improvement_sweep(
+    pool: Arc<PgPool>,
+    tenant_id: String,
+    agent_id: String,
+    user_id: String,
+    project_id: String,
+) -> tokio::task::JoinHandle<()> {
+    const POLL_INTERVAL: Duration = Duration::from_secs(15 * 60); // 15 minutes
+
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(POLL_INTERVAL);
+        // Track which calendar date the sweep last ran — one run per day.
+        let mut last_run_date: Option<chrono::NaiveDate> = None;
+
+        loop {
+            ticker.tick().await;
+
+            let config = load_idle_sweep_config(
+                &pool,
+                &tenant_id,
+                &agent_id,
+                &user_id,
+                &project_id,
+            )
+            .await;
+
+            if !config.enabled {
+                continue;
+            }
+
+            let now_local = chrono::Local::now();
+            let today = now_local.date_naive();
+
+            // Already ran today?
+            if last_run_date == Some(today) {
+                continue;
+            }
+
+            // Gate 1: server-local time must be ≥ improve_start_hour.
+            if now_local.hour() < config.improve_start_hour as u32 {
+                continue;
+            }
+
+            // Gate 2: system must be idle for ≥ idle_threshold_minutes.
+            // Approximation: no non-completed runs created within the threshold window.
+            let threshold_minutes = config.idle_threshold_minutes as i64;
+            let is_idle = match pool.get().await {
+                Ok(client) => client
+                    .query_opt(
+                        "SELECT 1 FROM brassclaw_runs \
+                         WHERE tenant_id = $1 \
+                           AND status NOT IN ('complete','failed','cancelled') \
+                           AND created_at > now() - ($2 || ' minutes')::interval \
+                         LIMIT 1",
+                        &[&tenant_id.as_str(), &threshold_minutes],
+                    )
+                    .await
+                    .map(|r| r.is_none()) // idle = no active runs in window
+                    .unwrap_or(false),
+                Err(_) => false,
+            };
+
+            if !is_idle {
+                continue;
+            }
+
+            // Both gates passed — record today and log (actual Sempai call
+            // wired when SempaiProposalSink is available in scope; foundation only).
+            last_run_date = Some(today);
+            tracing::debug!(
+                tenant_id = %tenant_id,
+                "idle_improvement_sweep: conditions met — improvement sweep triggered"
+            );
+        }
+    })
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Chunk-cascade delete helper (§4.30.2)

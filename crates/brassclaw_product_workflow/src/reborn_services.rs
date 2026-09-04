@@ -1213,6 +1213,19 @@ pub trait RebornServicesApi: Send + Sync {
         Err(interceptor_config::interceptor_config_unavailable())
     }
 
+    /// Export a v3 DB-stored skill as a SKILL.md formatted string (K.1.7).
+    async fn export_skill_as_skill_md(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _skill_id: String,
+    ) -> Result<String, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
     // ── Phase 6: Settings UI ───────────────────────────────────────────────
     //
     // All settings routes default to 501 so facades that don't wire the

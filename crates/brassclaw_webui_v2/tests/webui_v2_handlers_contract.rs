@@ -1073,6 +1073,16 @@ impl RebornServicesApi for StubServices {
             prewarm_last_at: None,
         })
     }
+
+    async fn export_skill_as_skill_md(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _skill_id: String,
+    ) -> Result<String, RebornServicesError> {
+        Ok("---\nname: stub-skill\n---\n\nStub body.".to_string())
+    }
+
+
 }
 
 fn extension_action_response(message: &str) -> RebornExtensionActionResponse {

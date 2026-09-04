@@ -1,18 +1,20 @@
 //! `SempaiProposalSink` — submission port for Sempai-proposed components.
 //!
 //! When the Sempai reviews a Kohai prompt (rerouting mode) it may include
-//! `proposed_recipe_updates` and `proposed_intent_examples` in its
-//! [`crate::SempaiReviewOutcome`].  These proposed blobs must enter the
-//! Q1 validation queue (`validation_status = 'pending'`, `queue_code =
-//! 'q1_auto'`) rather than being written directly to production tables.
+//! `proposed_recipe_updates`, `proposed_intent_examples`, and/or
+//! `proposed_components` in its [`crate::SempaiReviewOutcome`].  These
+//! proposed blobs must enter the Q1 validation queue
+//! (`validation_status = 'pending'`, `queue_code = 'q1_auto'`) rather than
+//! being written directly to production tables.
 //!
 //! This trait is the submission port.  Composition implements it via
-//! `PgSempaiProposalSink` (backed by `PgRecipeStore` insert); a no-op
+//! `PgSempaiProposalSink` (backed by per-class stores); a no-op
 //! implementation is provided for builds where no store is wired.
 
 use async_trait::async_trait;
 
 use crate::error::InterceptorError;
+use crate::packet::ComponentProposal;
 
 /// Result of a [`SempaiProposalSink::submit_proposals`] call.
 #[derive(Debug, Clone)]
@@ -21,6 +23,8 @@ pub struct ProposalSubmitResult {
     pub recipe_updates_queued: u32,
     /// Number of intent-example proposals successfully enqueued in Q1.
     pub intent_examples_queued: u32,
+    /// Number of generalised component proposals successfully enqueued in Q1.
+    pub components_queued: u32,
 }
 
 /// Submission port for Sempai-proposed component updates and intent examples.
@@ -43,6 +47,8 @@ pub trait SempaiProposalSink: Send + Sync {
     /// - `proposed_intent_examples` — raw JSON blobs with at minimum an
     ///   `"input"` field (the example text) and an optional `"class"` field
     ///   (intent class 1–4; defaults to 1).
+    /// - `proposed_components` — generalised multi-class proposals (§0.23.6);
+    ///   each carries a `class_code` and a raw JSON payload.
     ///
     /// Returns counts of successfully queued items.
     async fn submit_proposals(
@@ -51,6 +57,7 @@ pub trait SempaiProposalSink: Send + Sync {
         project_id: &str,
         proposed_recipe_updates: &[serde_json::Value],
         proposed_intent_examples: &[serde_json::Value],
+        proposed_components: &[ComponentProposal],
     ) -> Result<ProposalSubmitResult, InterceptorError>;
 }
 
@@ -68,10 +75,12 @@ impl SempaiProposalSink for NoopProposalSink {
         _project_id: &str,
         _proposed_recipe_updates: &[serde_json::Value],
         _proposed_intent_examples: &[serde_json::Value],
+        _proposed_components: &[ComponentProposal],
     ) -> Result<ProposalSubmitResult, InterceptorError> {
         Ok(ProposalSubmitResult {
             recipe_updates_queued: 0,
             intent_examples_queued: 0,
+            components_queued: 0,
         })
     }
 }

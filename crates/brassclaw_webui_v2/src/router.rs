@@ -23,7 +23,8 @@ use crate::descriptors::{
     WEBUI_V2_PATTERN_INSTALL_SKILL, WEBUI_V2_PATTERN_LIST_AUTOMATIONS,
     WEBUI_V2_PATTERN_LIST_CONNECTABLE_CHANNELS, WEBUI_V2_PATTERN_LIST_EXTENSION_REGISTRY,
     WEBUI_V2_PATTERN_LIST_EXTENSIONS, WEBUI_V2_PATTERN_LIST_LLM_MODELS,
-    WEBUI_V2_PATTERN_LIST_PREFIXES, WEBUI_V2_PATTERN_LIST_RECIPES, WEBUI_V2_PATTERN_LIST_SKILLS,
+    WEBUI_V2_PATTERN_EXPORT_SKILL, WEBUI_V2_PATTERN_LIST_PREFIXES,
+    WEBUI_V2_PATTERN_LIST_RECIPES, WEBUI_V2_PATTERN_LIST_SKILLS,
     WEBUI_V2_PATTERN_LIST_TOOL_SKILLS, WEBUI_V2_PATTERN_LIST_TOOLS,
     WEBUI_V2_PATTERN_RE_REVIEW_COMPONENT, WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME,
     WEBUI_V2_PATTERN_REGENERATE_PREFIX, WEBUI_V2_PATTERN_REJECT_COMPONENT,
@@ -286,6 +287,11 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         .route(
             WEBUI_V2_PATTERN_REGENERATE_PREFIX,
             post(handlers::regenerate_prefix),
+        )
+        // Phase K.1.7 — SKILL.md on-demand export.
+        .route(
+            WEBUI_V2_PATTERN_EXPORT_SKILL,
+            get(handlers::export_skill),
         )
         // Phase 6 — Settings UI routes (10-tab editor).
         // Note: /api/settings/monty-vm/restart and /api/settings/monty-vm/status

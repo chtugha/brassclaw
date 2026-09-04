@@ -80,6 +80,12 @@ pub struct PromptSegment {
     /// path (e.g. `"skill activated: score=45 keyword=ibm"`,
     /// `"recipe matched: wilson=0.82 tier=mature"`).
     pub inclusion_reason: String,
+    /// The UUID of the DB component this segment was assembled from (§0.23.7).
+    /// `None` for segments that do not originate from a component row (e.g.
+    /// system instructions, conversation history).  Enables prompt reassembly
+    /// by reference in the idle self-improvement sweep.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_uuid: Option<uuid::Uuid>,
 }
 
 /// Full budget accounting snapshot taken at prompt-assembly time.
@@ -117,6 +123,24 @@ pub struct CapturedPrompt {
 /// Sempai review outcome — returned by the Sempai provider and stored
 /// alongside the original `ForensicPacket`.
 ///
+/// A single component proposal from the Sempai, carrying the class code
+/// and the raw JSON payload.  All proposed components enter Q1 validation
+/// (`validation_status='pending'`) via [`SempaiProposalSink::submit_proposals`];
+/// the Sempai cannot write to production tables directly.
+///
+/// `class_code` mirrors the integer codes used throughout the component
+/// registry (0=Tool, 1–3=Skill, 13=ToolSkill, 21=Recipe, 22=PythonCode,
+/// 23=ExtensionCatalogue, …).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentProposal {
+    /// Integer class code identifying which component table to insert into.
+    pub class_code: i32,
+    /// Raw JSON payload for the proposed component.  The exact shape depends
+    /// on the class; at minimum a `"name"` and `"description"` field are
+    /// expected.  Missing or malformed entries are skipped by the sink.
+    pub payload: serde_json::Value,
+}
+
 /// The Sempai cannot directly create components or intent inputs; it proposes
 /// changes that enter Q1 of the validation queue instead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +160,8 @@ pub struct SempaiReviewOutcome {
     /// Recipe/ToolSkill updates proposed by the Sempai, as raw JSON
     /// payloads forwarded to the Q1 validation queue.
     /// The Sempai cannot write to production tables directly.
+    /// Kept for backward compatibility; prefer `proposed_components`.
+    #[serde(default)]
     pub proposed_recipe_updates: Vec<serde_json::Value>,
     /// New `intent_examples` entries proposed by the Sempai for existing
     /// components.  Forwarded to Q1 validation; once validated, seeded into
@@ -144,6 +170,11 @@ pub struct SempaiReviewOutcome {
     /// Optional agent-settings adjustments proposed by the Sempai
     /// (forwarded to the settings service for operator-confirmed application).
     pub settings_adjustments: Vec<serde_json::Value>,
+    /// Generalised multi-class component proposals (§0.23.6).  Each entry
+    /// carries a `class_code` and a raw JSON payload.  The sink dispatches
+    /// each entry to the correct class table.
+    #[serde(default)]
+    pub proposed_components: Vec<ComponentProposal>,
 }
 
 /// The central telemetry record for one agent-loop turn.
@@ -269,6 +300,7 @@ mod tests {
                 content: "You are an assistant.".to_string(),
                 estimated_tokens: 6,
                 inclusion_reason: "always included".to_string(),
+                component_uuid: None,
             }],
             token_accounting: TokenAccountingSnapshot {
                 context_window_limit: 128_000,
@@ -322,6 +354,7 @@ mod tests {
             proposed_recipe_updates: vec![],
             proposed_intent_examples: vec![],
             settings_adjustments: vec![],
+            proposed_components: vec![],
         };
         let packet =
             ForensicPacket::new("run-1", 0, make_prompt()).with_sempai_review("OK", None, review);
@@ -338,6 +371,7 @@ mod tests {
             proposed_recipe_updates: vec![],
             proposed_intent_examples: vec![],
             settings_adjustments: vec![],
+            proposed_components: vec![],
         };
         // Simulate the rerouting path: with_sempai_review is called first
         // (empty kohai_response placeholder), then with_kohai_response_sempai_reviewed

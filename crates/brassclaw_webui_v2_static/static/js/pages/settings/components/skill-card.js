@@ -31,19 +31,33 @@ export function SkillCard({ skill, onRemove, isRemoving }) {
           <${SkillMetadata} skill=${skill} />
         </div>
 
-        ${canRemove &&
-        html`
-          <${Button}
-            type="button"
-            variant="danger"
-            size="sm"
-            disabled=${isRemoving}
-            onClick=${() => onRemove(name)}
-          >
-            <${Icon} name="trash" className="h-4 w-4" />
-            ${t("skills.remove")}
-          <//>
-        `}
+        <div className="flex items-center gap-2">
+          ${skill.id &&
+          html`
+            <${Button}
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick=${() => window.location.assign('/api/webchat/v2/skills/' + encodeURIComponent(skill.id) + '/export')}
+            >
+              <${Icon} name="download" className="h-4 w-4" />
+              ${t("skills.exportSkillMd")}
+            <//>
+          `}
+          ${canRemove &&
+          html`
+            <${Button}
+              type="button"
+              variant="danger"
+              size="sm"
+              disabled=${isRemoving}
+              onClick=${() => onRemove(name)}
+            >
+              <${Icon} name="trash" className="h-4 w-4" />
+              ${t("skills.remove")}
+            <//>
+          `}
+        </div>
       </div>
     </div>
   `;

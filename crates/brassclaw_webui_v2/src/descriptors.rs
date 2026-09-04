@@ -73,6 +73,9 @@ pub const WEBUI_V2_ROUTE_GET_INTERCEPTOR_CONFIG: &str = "webui.v2.get_intercepto
 pub const WEBUI_V2_ROUTE_UPDATE_INTERCEPTOR_CONFIG: &str = "webui.v2.update_interceptor_config";
 pub const WEBUI_V2_ROUTE_LIST_PREFIXES: &str = "webui.v2.list_prefixes";
 pub const WEBUI_V2_ROUTE_REGENERATE_PREFIX: &str = "webui.v2.regenerate_prefix";
+// Phase K.1.7 — SKILL.md on-demand export.
+pub const WEBUI_V2_ROUTE_EXPORT_SKILL: &str = "webui.v2.export_skill";
+pub const WEBUI_V2_PATTERN_EXPORT_SKILL: &str = "/api/webchat/v2/skills/{id}/export";
 
 pub const WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG: &str = "/api/webchat/v2/interceptor/config";
 pub const WEBUI_V2_PATTERN_LIST_PREFIXES: &str = "/api/webchat/v2/prefixes";
@@ -241,6 +244,8 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         update_interceptor_config_descriptor(),
         list_prefixes_descriptor(),
         regenerate_prefix_descriptor(),
+        // Phase K.1.7 — SKILL.md export.
+        export_skill_descriptor(),
         // Phase 6 — Settings UI routes (10-tab editor).
         get_settings_skills_descriptor(),
         get_settings_tools_descriptor(),
@@ -965,6 +970,21 @@ fn regenerate_prefix_descriptor() -> IngressRouteDescriptor {
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+// Phase K.1.7 — SKILL.md on-demand export.
+fn export_skill_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_EXPORT_SKILL,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_EXPORT_SKILL,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
         ),
     )
 }

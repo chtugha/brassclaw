@@ -134,6 +134,7 @@ fn build_captured_prompt(
         content: system_prefix.to_string(),
         estimated_tokens: estimate_tokens(system_prefix),
         inclusion_reason: "provider prefix (get_system_bundle)".to_string(),
+        component_uuid: None,
     });
     let history_text = chat_history
         .iter()
@@ -146,6 +147,7 @@ fn build_captured_prompt(
             content: history_text.clone(),
             estimated_tokens: estimate_tokens(&history_text),
             inclusion_reason: "orchestrator-supplied chat history".to_string(),
+            component_uuid: None,
         });
     }
     if !user_query.is_empty() {
@@ -154,6 +156,7 @@ fn build_captured_prompt(
             content: user_query.to_string(),
             estimated_tokens: estimate_tokens(user_query),
             inclusion_reason: "current turn user input".to_string(),
+            component_uuid: None,
         });
     }
 

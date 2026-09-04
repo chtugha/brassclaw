@@ -3244,7 +3244,7 @@ forgotten gap.
 
 ### Phase A — StepDescription Schema + IBS Core
 
-**Status:** [ ] Pending
+**Status:** [x] Done
 
 **Goal:** Define the StepDescription types, add `step_descriptions` JSONB to `reborn_recipes`,
 implement the IBS as a pure-Rust module. This is Phase A because all later phases depend on it.
@@ -3684,7 +3684,7 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 ### Phase A.5 — Validation Queue Table (Decision 2)
 
-**Status:** [ ] Pending
+**Status:** [x] Done
 
 > **§0.23.5 fold-in:** V051 also adds `proposed_payload JSONB` (nullable) to
 > `reborn_validation_queue` — the upgrade-copy payload (§0.23.5). The

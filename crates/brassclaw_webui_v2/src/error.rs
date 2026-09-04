@@ -24,6 +24,18 @@ use serde::Serialize;
 pub struct WebUiV2HttpError(RebornServicesError);
 
 impl WebUiV2HttpError {
+    /// Construct an internal-server-error [`WebUiV2HttpError`] from a free-form
+    /// message. Used only where the `From<RebornServicesError>` path is unavailable
+    /// (e.g., response-builder failures). The message is intentionally discarded —
+    /// `RebornServicesError` carries only the structured error code + HTTP status.
+    pub fn internal(_msg: impl std::fmt::Display) -> Self {
+        Self(RebornServicesError::from_status(
+            RebornServicesErrorCode::Internal,
+            500,
+            false,
+        ))
+    }
+
     pub fn into_response_parts(self) -> (StatusCode, WebUiV2HttpErrorBody) {
         let status = StatusCode::from_u16(self.0.status_code).unwrap_or_else(|_| {
             // Defensive: every call site in `brassclaw_product_workflow` builds

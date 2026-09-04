@@ -1402,6 +1402,34 @@ pub async fn regenerate_prefix(
     Ok(Json(response))
 }
 
+/// Path params for `GET /api/webchat/v2/skills/{id}/export`.
+#[derive(Debug, serde::Deserialize)]
+pub struct ExportSkillPath {
+    pub id: String,
+}
+
+/// `GET /api/webchat/v2/skills/{id}/export`
+///
+/// Export a DB-stored v3 skill as an on-demand SKILL.md download.
+/// Returns `Content-Type: text/plain` with a `Content-Disposition: attachment` header.
+pub async fn export_skill(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ExportSkillPath { id }): Path<ExportSkillPath>,
+) -> Result<axum::response::Response, WebUiV2HttpError> {
+    let skill_md = state.services().export_skill_as_skill_md(caller, id).await?;
+    let response = axum::response::Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(
+            axum::http::header::CONTENT_DISPOSITION,
+            "attachment; filename=\"SKILL.md\"",
+        )
+        .body(axum::body::Body::from(skill_md))
+        .map_err(|e| WebUiV2HttpError::internal(format!("response build: {e}")))?;
+    Ok(response)
+}
+
 pub mod reduction_rules;
 pub mod safety;
 pub mod tokens;

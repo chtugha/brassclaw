@@ -2309,6 +2309,7 @@ impl RebornLoopDriverHost {
                     project_id,
                     &outcome.proposed_recipe_updates,
                     &outcome.proposed_intent_examples,
+                    &outcome.proposed_components,
                 )
                 .await
             {
@@ -2317,6 +2318,7 @@ impl RebornLoopDriverHost {
                         packet_id,
                         recipe_updates = result.recipe_updates_queued,
                         intent_examples = result.intent_examples_queued,
+                        components = result.components_queued,
                         "interceptor: sempai proposals queued in Q1"
                     );
                 }
