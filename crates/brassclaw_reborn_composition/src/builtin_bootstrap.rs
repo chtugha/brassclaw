@@ -4248,21 +4248,174 @@ async fn seed_network_group(
         )
         .await?;
 
-    // Leaf/domain skills, recipes + catalogue appends arrive in chunks 4c–4d.
-    // Suppress unused-variable warnings for the ids minted here until later
-    // chunks consume them.
+    // 5. Leaf Skills (class 1) + Domain Skill (class 2). Transcribed verbatim
+    //    from the doc. Leaf skills are loaded via recipe steps; the domain
+    //    skill `skill-http` carries the HTTP method decision guide.
+    let skill_http_get = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-get",
+                "Leaf skill: how to fetch a URL via HTTP GET and receive the response \
+                 inline.",
+                SKILL_HTTP_GET_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-get",
+        )
+        .await?;
+    let skill_http_post = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-post",
+                "Leaf skill: how to make an HTTP POST request with a body.",
+                SKILL_HTTP_POST_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-post",
+        )
+        .await?;
+    let skill_http_authenticated = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-authenticated",
+                "Leaf skill: how to make an authenticated HTTP request.",
+                SKILL_HTTP_AUTHENTICATED_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-authenticated",
+        )
+        .await?;
+    let skill_http_save_download = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-save-download",
+                "Leaf skill: how to download an HTTP response and save it to a file.",
+                SKILL_HTTP_SAVE_DOWNLOAD_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-save-download",
+        )
+        .await?;
+    let skill_http_save_api = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-save-api",
+                "Leaf skill: how to save a large API response for subsequent parsing.",
+                SKILL_HTTP_SAVE_API_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-save-api",
+        )
+        .await?;
+    let skill_http_patch = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-patch",
+                "Leaf skill: how to make an HTTP PATCH request for partial resource \
+                 update.",
+                SKILL_HTTP_PATCH_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-patch",
+        )
+        .await?;
+    let skill_http_head = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-head",
+                "Leaf skill: how to make an HTTP HEAD request to check resource metadata.",
+                SKILL_HTTP_HEAD_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-head",
+        )
+        .await?;
+    let skill_http_put = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-put",
+                "Leaf skill: how to make an HTTP PUT request to replace a resource.",
+                SKILL_HTTP_PUT_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-put",
+        )
+        .await?;
+    let skill_http_delete = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http-delete",
+                "Leaf skill: how to make an HTTP DELETE request to remove a resource.",
+                SKILL_HTTP_DELETE_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http-delete",
+        )
+        .await?;
+    let skill_web_search = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-web-search",
+                "Leaf skill: how to perform a web search using builtin.http + JSON \
+                 extraction.",
+                SKILL_WEB_SEARCH_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-web-search",
+        )
+        .await?;
+    let skill_http = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-http",
+                "The HTTP domain provides two tools for outbound HTTP requests (inline \
+                 + save), plus a web-search composition.",
+                SKILL_HTTP_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-http",
+        )
+        .await?;
+
+    // Recipes + catalogue appends arrive in chunk 4d. Suppress unused-variable
+    // warnings for the ids minted here until chunk 4d consumes them.
     let _ = (
         cat_network, cat_http, cat_http_save, cat_web_search, tool_http, tool_http_save,
         ts_http_fetch, ts_http_save, ts_web_search, pc_exec_http_get, pc_exec_http_post,
         pc_exec_http_save, pc_exec_http_patch, pc_exec_http_head,
         pc_exec_http_get_authenticated, pc_exec_http_put, pc_exec_http_delete,
         pc_http_status_check, pc_json_extract_field, pc_web_search_extract,
-        pc_web_search_query_build, pc_url_encode,
+        pc_web_search_query_build, pc_url_encode, skill_http_get, skill_http_post,
+        skill_http_authenticated, skill_http_save_download, skill_http_save_api,
+        skill_http_patch, skill_http_head, skill_http_put, skill_http_delete,
+        skill_web_search, skill_http,
     );
 
     tracing::debug!(
         catalogue_id = %cat_network,
-        "seeded network group chunk 4b: 13 PythonCode (8 http executors + 2 pure-logic helpers + 3 web-search helpers) on top of 4a base"
+        "seeded network group chunk 4c: 10 leaf skills + 1 domain skill (skill-http) on top of 4a/4b"
     );
 
     Ok(())
@@ -4644,4 +4797,109 @@ _raw = "{{vars.slot0}}".strip()
 _safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 _encoded = "".join(c if c in _safe else "%" + format(ord(c), "02X") for c in _raw)
 result = {"encoded": _encoded, "raw": _raw}
+"#;
+
+// ---------------------------------------------------------------------------
+// Network group skill bodies (class 1 leaf + class 2 domain) — transcribed
+// verbatim from the doc.
+// ---------------------------------------------------------------------------
+
+const SKILL_HTTP_GET_BODY: &str = r#"Use `ts-http-fetch` with method='get' (via pc-exec-http-get) to fetch a URL and receive
+the response body inline. The body is capped at 256 KiB. If a larger response is needed,
+use skill-http-save instead. Non-2xx status codes appear in the result's status field -
+they are not tool errors. Always inspect the status code after the call.
+"#;
+
+const SKILL_HTTP_POST_BODY: &str = r#"Use `ts-http-fetch` with method='post' and a `body` (string or JSON) to submit data
+to an API or webhook. Add an `Authorization` or `Content-Type` header when required.
+For JSON bodies the server typically expects `Content-Type: application/json`. Non-2xx
+responses are not tool errors - check the status field and handle error responses.
+"#;
+
+const SKILL_HTTP_AUTHENTICATED_BODY: &str = r#"Use `ts-http-fetch` with a `headers` parameter to attach authentication. Common patterns:
+- Bearer token: headers={'Authorization': 'Bearer <token>'}
+- API key: headers={'X-Api-Key': '<key>'}
+- Basic auth: headers={'Authorization': 'Basic <base64(user:pass)>'}
+Never hardcode credentials in the skill body - always receive them from the session
+context or memory. Use skill-http-get or skill-http-post as the base dispatch pattern.
+"#;
+
+const SKILL_HTTP_SAVE_DOWNLOAD_BODY: &str = r#"Use `ts-http-save` (via pc-exec-http-save) when the expected response exceeds 256 KiB
+or when the content must be persisted to disk. Provide the url and a scoped save_to
+path. After the call, use skill-read-file to inspect the saved content or report the
+file path to the user. The response is saved without decoding binary content.
+"#;
+
+const SKILL_HTTP_SAVE_API_BODY: &str = r#"When an API returns more data than can be processed inline (>256 KiB), use
+`ts-http-save` to write the full response to a temp file, then use skill-read-file
+or pc-json-extract-field to extract the needed fields from the saved file. This is
+the recommended pattern for paginated or bulk API responses.
+"#;
+
+const SKILL_HTTP_PATCH_BODY: &str = r#"Use `ts-http-fetch` with method='patch' and a `body` containing only the fields to
+update (via a custom pc-exec-http-patch-like call). PATCH is idempotent partial update
+- unlike PUT which replaces the full resource. Include Content-Type: application/json
+and Authorization headers when required. Non-2xx responses are not tool errors.
+"#;
+
+const SKILL_HTTP_HEAD_BODY: &str = r#"Use `ts-http-fetch` with method='head' (via pc-exec-http-head) when you only need
+the response headers and status code - not the response body. HEAD is cheaper than
+GET for large resources and is the correct method for existence checks, content-type
+inspection, and reachability tests. The response body will be empty; inspect the
+status code (200 = exists, 404 = not found, etc.) and headers.
+"#;
+
+const SKILL_HTTP_PUT_BODY: &str = r#"Use `ts-http-fetch` with method='put' and a `body` (via pc-exec-http-put) when the
+target API uses PUT semantics (idempotent full replacement of a resource). Include a
+Content-Type header (typically 'application/json') and an Authorization header when
+required. Non-2xx responses are not tool errors - always check the status field.
+"#;
+
+const SKILL_HTTP_DELETE_BODY: &str = r#"Use `ts-http-fetch` with method='delete' (via pc-exec-http-delete) to remove a
+resource via REST API. DELETE has ExternalWrite semantics - always confirm with the
+user before dispatching. Include Authorization headers when required. Check the
+response status (204 No Content = success for many REST APIs; 404 = already gone).
+"#;
+
+const SKILL_WEB_SEARCH_BODY: &str = r#"Web search is a composition, not a single tool. The pattern:
+1. Build the search URL: encode the user's query via pc-web-search-query-build and
+   append it to the configured search API base URL.
+2. Issue an HTTP GET via ts-http-get (or directly via builtin.http) with
+   Accept: application/json header and any required API key header.
+3. Parse and extract results from the response JSON using pc-web-search-extract.
+4. Present the top N results (title, URL, snippet) to the user. Ask if they want
+   to fetch any result's full page via builtin.http for deeper reading.
+
+If no search API is configured, inform the user and ask them to configure one
+(endpoint URL + API key) before proceeding.
+"#;
+
+const SKILL_HTTP_BODY: &str = r#"The HTTP domain provides two tools for outbound HTTP requests:
+
+INLINE RESPONSE (<=256 KiB):
+- skill-http-get: GET request, response inline.
+- skill-http-post: POST request with body, response inline.
+- skill-http-authenticated: Any method with auth headers.
+- skill-http-head: HEAD request - metadata only, no body.
+- skill-http-put: PUT request - full resource replacement.
+- skill-http-patch: PATCH request - partial resource update.
+- skill-http-delete: DELETE request - remove a resource.
+
+SAVED RESPONSE (>256 KiB or must persist):
+- skill-http-save-download: Download and save to a workspace file.
+- skill-http-save-api: Save a large API response for later parsing.
+
+Decision guide:
+- Small response needed immediately -> skill-http-get
+- POST with body -> skill-http-post
+- Authenticated request -> skill-http-authenticated (combine with above)
+- Existence/metadata check only -> skill-http-head (no body returned)
+- Full resource replace -> skill-http-put
+- Partial update -> skill-http-patch
+- Delete a resource -> skill-http-delete
+- Response >256 KiB or must be saved -> skill-http-save-download
+- Large API response for later parsing -> skill-http-save-api
+
+Non-2xx HTTP responses are NOT tool errors. Always inspect the status field.
+Use pc-http-status-check to test success programmatically.
 "#;
