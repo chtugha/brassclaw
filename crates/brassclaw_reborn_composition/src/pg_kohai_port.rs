@@ -15,19 +15,20 @@
 //!    query) + the [`CapturedPrompt`] for the forensic packet.
 //! 4. `ForensicPacket::new(run_id, iteration, captured)` → `InterceptorStore::save`
 //!    `[AwaitingKohai]`.
-//! 5. (routing state — no Sempai wired) Build `ThreadMessage`s →
-//!    `LlmBackend::complete` (`force_text`). The Sempai audit step is the same
-//!    path with a Sempai LLM + `SempaiProposalSink`; it lands behind this path
-//!    and is gated on a Sempai sink being wired.
+//! 5. (routing state — no Sempai wired) Build a [`HostManagedModelRequest`] (the
+//!    `interactive_model` profile + system/history/user messages) →
+//!    `HostManagedModelGateway::stream_model`. The Sempai audit step is the same
+//!    path with a Sempai gateway + `SempaiProposalSink`; it lands behind this
+//!    path and is gated on a Sempai sink being wired.
 //! 6. `packet.with_kohai_response(text, usage)` → `InterceptorStore::save`
 //!    `[Complete]`.
 //! 7. Return [`KohaiAnswer`] (content + engine usage).
 //!
-//! The engine's `LlmBackend` is passed INTO the port call (the composition impl
-//! does not own an LLM backend) — Monty drives the provider call via the host fn,
-//! so "Monty, not the Rust agent-loop, drives the LLM" holds. `LlmBackend` reaches
-//! the provider over http internally (the `first_party_tools/http` route in the
-//! seed is the conceptual route).
+//! The composition impl owns the provider [`HostManagedModelGateway`] (the real
+//! working LLM) — the engine no longer threads an `LlmBackend` into the port
+//! (the `LlmBackend` host path retires with the C.6 Kohai re-architecture).
+//! Monty drives the provider call via the host fn, so "Monty, not the Rust
+//! agent-loop, drives the LLM" holds.
 //!
 //! # Feature gate
 //!
@@ -44,18 +45,25 @@
 use brassclaw_engine::executor::kohai_port::{
     KohaiAnswer, KohaiCallCtx, KohaiPort, KohaiPortError, KohaiUsage as EngineKohaiUsage,
 };
-use brassclaw_engine::traits::llm::{LlmBackend, LlmCallConfig};
-use brassclaw_engine::types::message::{MessageRole, ThreadMessage};
-use brassclaw_engine::types::step::{LlmResponse, TokenUsage};
 use brassclaw_interceptor::packet::{
     CapturedPrompt, PromptSegment, TokenAccountingSnapshot,
 };
 use brassclaw_interceptor::{ForensicPacket, KohaiUsage as InterceptorKohaiUsage};
+use brassclaw_loop_support::{
+    HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
+    HostManagedModelResponse,
+};
+use brassclaw_turns::{
+    LoopMessageRef, TurnId, TurnRunId,
+    run_profile::{LoopModelUsage, ModelProfileId, ParentLoopOutput},
+};
 
 #[cfg(feature = "postgres")]
 use std::{future::Future, pin::Pin, sync::Arc};
 #[cfg(feature = "postgres")]
 use brassclaw_interceptor::InterceptorStore;
+#[cfg(feature = "postgres")]
+use brassclaw_loop_support::HostManagedModelGateway;
 #[cfg(feature = "postgres")]
 use crate::pg_basic_prompt_store::{PgBasicPromptStore, get_system_bundle};
 
@@ -166,96 +174,151 @@ fn build_captured_prompt(
     }
 }
 
-/// Map a prompt-dict role string → [`MessageRole`]. Known roles map directly;
-/// anything else defaults to `User` (the Kohai handoff chat history is
-/// orchestrator-supplied and typically user/assistant turns only).
-fn role_from_str(s: &str) -> MessageRole {
+/// Map a captured `(role, content)` role string → the gateway message role.
+/// Known roles map directly; anything else defaults to `User` (the Kohai
+/// handoff chat history is orchestrator-supplied and typically user/assistant
+/// turns only).
+fn gateway_role_from_str(s: &str) -> HostManagedModelMessageRole {
     match s {
-        "system" => MessageRole::System,
-        "assistant" => MessageRole::Assistant,
-        _ => MessageRole::User,
+        "system" => HostManagedModelMessageRole::System,
+        "assistant" => HostManagedModelMessageRole::Assistant,
+        _ => HostManagedModelMessageRole::User,
     }
 }
 
-/// Build the [`ThreadMessage`] sequence for the `LlmBackend::complete` call from
-/// the captured `(role, content)` pairs.
-fn to_thread_messages(messages: &[(String, String)]) -> Vec<ThreadMessage> {
-    messages
-        .iter()
-        .map(|(role, content)| match role_from_str(role) {
-            MessageRole::System => ThreadMessage::system(content.clone()),
-            MessageRole::Assistant => ThreadMessage::assistant(content.clone()),
-            MessageRole::User => ThreadMessage::user(content.clone()),
-            MessageRole::ActionResult => ThreadMessage::user(content.clone()),
-        })
-        .collect()
+/// Build a per-message [`LoopMessageRef`] for the Kohai request. The opaque id
+/// is `kohai-{run_str}-{label}` — `run_str` is a UUID display string (hex +
+/// `-`) and `label` is a caller-supplied literal (`sys` / `h{n}` / `user`), so
+/// the suffix is the `msg:` prefix + only `[A-Za-z0-9_.-]` chars (infallible).
+/// Returns the validator's `Err` string untouched if an invalid `run_str`/label
+/// is ever passed so the caller can map it to a [`KohaiPortError`].
+fn kohai_message_ref(run_str: &str, label: &str) -> Result<LoopMessageRef, String> {
+    LoopMessageRef::new(format!("msg:kohai-{run_str}-{label}"))
 }
 
-/// Map the engine [`TokenUsage`] (u64) → the interceptor packet [`KohaiUsage`]
-/// (u32) for the forensic-packet close.
-fn token_usage_to_interceptor(usage: &TokenUsage) -> InterceptorKohaiUsage {
+/// Build the [`HostManagedModelRequest`] from the captured prompt messages. The
+/// `run_str` is the display string of the resolved [`TurnRunId`] (used only to
+/// mint unique, valid `content_ref`s). Returns the request or a
+/// [`KohaiPortError::InvalidPrompt`] when a `content_ref` fails validation
+/// (only possible for a non-UUID `run_str`).
+fn build_gateway_request(
+    captured: &CapturedPrompt,
+    model_profile_id: ModelProfileId,
+    run_id: TurnRunId,
+    turn_id: TurnId,
+    run_str: &str,
+) -> Result<HostManagedModelRequest, KohaiPortError> {
+    let mut messages = Vec::with_capacity(captured.messages.len());
+    for (idx, (role, content)) in captured.messages.iter().enumerate() {
+        let label = match role.as_str() {
+            "system" => "sys".to_string(),
+            "user" if idx == captured.messages.len() - 1 => "user".to_string(),
+            _ => format!("h{idx}"),
+        };
+        let content_ref = kohai_message_ref(run_str, &label).map_err(|e| {
+            KohaiPortError::InvalidPrompt {
+                reason: format!("message ref: {e}"),
+            }
+        })?;
+        messages.push(HostManagedModelMessage {
+            role: gateway_role_from_str(role),
+            content: content.clone(),
+            content_ref,
+            tool_result_provider_call: None,
+            tool_result_content: None,
+        });
+    }
+    Ok(HostManagedModelRequest {
+        model_profile_id,
+        messages,
+        surface_version: None,
+        resolved_model_route: None,
+        run_id,
+        turn_id,
+    })
+}
+
+/// Extract the answer text from a [`HostManagedModelResponse`]. Prefers the
+/// `AssistantReply.content` (the sanitized final reply); falls back to the
+/// joined `safe_text_deltas` when the output is not an assistant reply (e.g. a
+/// capability-call shape, which the force-text Kohai path does not produce).
+fn gateway_response_text(response: &HostManagedModelResponse) -> String {
+    if let ParentLoopOutput::AssistantReply(reply) = &response.output
+        && !reply.content.is_empty()
+    {
+        return reply.content.clone();
+    }
+    response.safe_text_deltas.join("")
+}
+
+/// Map the gateway [`LoopModelUsage`] (u32) → the interceptor packet
+/// [`KohaiUsage`] (u32) for the forensic-packet close.
+fn loop_usage_to_interceptor(usage: &LoopModelUsage) -> InterceptorKohaiUsage {
     InterceptorKohaiUsage {
-        input_tokens: u32::try_from(usage.input_tokens).unwrap_or(u32::MAX),
-        output_tokens: u32::try_from(usage.output_tokens).unwrap_or(u32::MAX),
-        cache_read_input_tokens: u32::try_from(usage.cache_read_tokens).unwrap_or(u32::MAX),
-        cache_creation_input_tokens: u32::try_from(usage.cache_write_tokens).unwrap_or(u32::MAX),
-    }
-}
-
-/// Map the engine [`TokenUsage`] → the engine [`KohaiAnswer`] usage.
-fn token_usage_to_engine(usage: &TokenUsage) -> EngineKohaiUsage {
-    EngineKohaiUsage {
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
-        cost_usd: usage.cost_usd,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
     }
 }
 
-/// Extract the answer text from an [`LlmResponse`]. `Text` → its string;
-/// `ActionCalls` / `Code` → their optional reasoning `content` (empty when
-/// absent). With `force_text = true` the provider returns `Text`.
-fn llm_response_text(response: &LlmResponse) -> String {
-    match response {
-        LlmResponse::Text(s) => s.clone(),
-        LlmResponse::ActionCalls { content, .. } => content.clone().unwrap_or_default(),
-        LlmResponse::Code { content, .. } => content.clone().unwrap_or_default(),
+/// Map the gateway [`LoopModelUsage`] → the engine [`KohaiAnswer`] usage. The
+/// gateway reports no USD cost (cost is accounted upstream by the budget
+/// accountant from the same usage), so `cost_usd` is zero here.
+fn loop_usage_to_engine(usage: &LoopModelUsage) -> EngineKohaiUsage {
+    EngineKohaiUsage {
+        input_tokens: u64::from(usage.input_tokens),
+        output_tokens: u64::from(usage.output_tokens),
+        cost_usd: 0.0,
     }
 }
 
 // ── DB-bound impl (postgres feature) ────────────────────────────────────────
 
 /// Postgres-backed [`KohaiPort`] (the FULL Kohai flow). Constructed once at
-/// runtime wiring time with the shared interceptor store + basic-prompt store
-/// and plumbed into the engine `ExecutionLoop` via `with_kohai_port`; until that
-/// C.6 wiring lands the engine passes `None` and `host.kohai_complete` degrades
-/// gracefully (`{ok:false, error:"kohai_unavailable"}`).
+/// runtime wiring time with the shared interceptor store + basic-prompt store +
+/// the working provider gateway and plumbed into the engine `ExecutionLoop` via
+/// `with_kohai_port`; until that C.6 wiring lands the engine passes `None` and
+/// `host.kohai_complete` degrades gracefully (`{ok:false,
+/// error:"kohai_unavailable"}`).
 #[cfg(feature = "postgres")]
 pub(crate) struct PgKohaiPort {
     interceptor_store: Arc<dyn InterceptorStore>,
     basic_prompt_store: Arc<PgBasicPromptStore>,
+    kohai_gateway: Arc<dyn HostManagedModelGateway>,
+    model_profile_id: ModelProfileId,
 }
 
 #[cfg(feature = "postgres")]
 impl PgKohaiPort {
+    /// Construct with the shared interceptor store + basic-prompt store + the
+    /// working provider gateway (the "Kohai" LLM). Returns `Err` only if the
+    /// `interactive_model` profile id is invalid (a compiled-in literal —
+    /// infallible in practice).
     pub(crate) fn new(
         interceptor_store: Arc<dyn InterceptorStore>,
         basic_prompt_store: Arc<PgBasicPromptStore>,
-    ) -> Self {
-        Self {
+        kohai_gateway: Arc<dyn HostManagedModelGateway>,
+    ) -> Result<Self, String> {
+        let model_profile_id = ModelProfileId::new("interactive_model")?;
+        Ok(Self {
             interceptor_store,
             basic_prompt_store,
-        }
+            kohai_gateway,
+            model_profile_id,
+        })
     }
 
-    /// The full Kohai flow (steps 1-7 above). Takes the stores by reference so
-    /// the trait impl can clone the call args into owned data and drive the
-    /// future off the cloned `Arc`s.
+    /// The full Kohai flow (steps 1-7 above). Takes the stores + gateway by
+    /// reference so the trait impl can clone the call args into owned data and
+    /// drive the future off the cloned `Arc`s.
     async fn complete_with_stores(
         interceptor_store: &Arc<dyn InterceptorStore>,
         basic_prompt_store: &PgBasicPromptStore,
+        kohai_gateway: &dyn HostManagedModelGateway,
+        model_profile_id: ModelProfileId,
         prompt: serde_json::Value,
         ctx: KohaiCallCtx,
-        llm: &dyn LlmBackend,
     ) -> Result<KohaiAnswer, KohaiPortError> {
         // 1. Parse the prompt dict.
         let chat_history = prompt_chat_history(&prompt);
@@ -282,25 +345,37 @@ impl PgKohaiPort {
                 reason: e.to_string(),
             })?;
 
-        // 5. (routing — no Sempai wired) Build the LLM messages + call.
-        let messages = to_thread_messages(&packet.prompt.messages);
-        let config = LlmCallConfig {
-            force_text: true,
-            ..Default::default()
-        };
-        let output = llm
-            .complete(&messages, &[], &config)
+        // 5. (routing — no Sempai wired) Build the gateway request + call. The
+        //    run id is the engine thread id (a UUID) when parseable, else a
+        //    fresh id; the turn id is fresh per Kohai call.
+        let run_id = TurnRunId::parse(&ctx.run_id).unwrap_or_else(|_| TurnRunId::new());
+        let run_str = run_id.to_string();
+        let turn_id = TurnId::new();
+        let request = build_gateway_request(
+            &packet.prompt,
+            model_profile_id,
+            run_id,
+            turn_id,
+            &run_str,
+        )?;
+        let response = kohai_gateway
+            .stream_model(request)
             .await
             .map_err(|e| KohaiPortError::LlmFailed {
                 reason: e.to_string(),
             })?;
-        let answer_text = llm_response_text(&output.response);
+        let answer_text = gateway_response_text(&response);
 
         // 6. Close [Complete] → save.
-        let packet = packet.with_kohai_response(
-            answer_text.clone(),
-            Some(token_usage_to_interceptor(&output.usage)),
-        );
+        let (engine_usage, interceptor_usage) = match response.usage {
+            Some(usage) => {
+                let engine = loop_usage_to_engine(&usage);
+                let interceptor = loop_usage_to_interceptor(&usage);
+                (engine, Some(interceptor))
+            }
+            None => (EngineKohaiUsage::default(), None),
+        };
+        let packet = packet.with_kohai_response(answer_text.clone(), interceptor_usage);
         interceptor_store
             .save(&packet)
             .await
@@ -311,31 +386,34 @@ impl PgKohaiPort {
         // 7. Return the engine answer.
         Ok(KohaiAnswer {
             content: answer_text,
-            usage: token_usage_to_engine(&output.usage),
+            usage: engine_usage,
         })
     }
 }
 
 #[cfg(feature = "postgres")]
 impl KohaiPort for PgKohaiPort {
-    fn complete<'a>(
-        &'a self,
+    fn complete(
+        &self,
         prompt: serde_json::Value,
         ctx: KohaiCallCtx,
-        llm: &'a dyn LlmBackend,
-    ) -> Pin<Box<dyn Future<Output = Result<KohaiAnswer, KohaiPortError>> + Send + 'a>> {
-        // Clone the Arc stores into owned data so the boxed future borrows only
-        // `llm` for `'a` (the trait's `+ 'a` return captures the borrowed
-        // LlmBackend, which the engine handler holds alive across the `.await`).
+    ) -> Pin<Box<dyn Future<Output = Result<KohaiAnswer, KohaiPortError>> + Send + 'static>> {
+        // Clone the Arc stores + gateway + the owned prompt/ctx into the boxed
+        // future so it borrows nothing (the impl owns the provider gateway — no
+        // borrowed `LlmBackend`), matching the `ComponentPort::compose`
+        // `'static` precedent.
         let interceptor_store = self.interceptor_store.clone();
         let basic_prompt_store = self.basic_prompt_store.clone();
+        let kohai_gateway = self.kohai_gateway.clone();
+        let model_profile_id = self.model_profile_id.clone();
         Box::pin(async move {
             Self::complete_with_stores(
                 &interceptor_store,
                 basic_prompt_store.as_ref(),
+                kohai_gateway.as_ref(),
+                model_profile_id,
                 prompt,
                 ctx,
-                llm,
             )
             .await
         })
@@ -345,7 +423,6 @@ impl KohaiPort for PgKohaiPort {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use brassclaw_engine::types::step::TokenUsage;
 
     #[test]
     fn estimate_tokens_ceil_divides_by_four() {
@@ -423,64 +500,110 @@ mod tests {
     }
 
     #[test]
-    fn role_from_str_maps_known_and_defaults_to_user() {
-        assert_eq!(role_from_str("system"), MessageRole::System);
-        assert_eq!(role_from_str("assistant"), MessageRole::Assistant);
-        assert_eq!(role_from_str("user"), MessageRole::User);
-        assert_eq!(role_from_str("unknown"), MessageRole::User);
+    fn gateway_role_from_str_maps_known_and_defaults_to_user() {
+        assert_eq!(
+            gateway_role_from_str("system"),
+            HostManagedModelMessageRole::System
+        );
+        assert_eq!(
+            gateway_role_from_str("assistant"),
+            HostManagedModelMessageRole::Assistant
+        );
+        assert_eq!(
+            gateway_role_from_str("user"),
+            HostManagedModelMessageRole::User
+        );
+        assert_eq!(
+            gateway_role_from_str("unknown"),
+            HostManagedModelMessageRole::User
+        );
     }
 
     #[test]
-    fn to_thread_messages_builds_correct_roles() {
-        let msgs = vec![
-            ("system".to_string(), "s".to_string()),
-            ("user".to_string(), "u".to_string()),
-            ("assistant".to_string(), "a".to_string()),
+    fn kohai_message_ref_accepts_uuid_run_str() {
+        let run_str = "01234567-89ab-cdef-0123-456789abcdef";
+        let r = kohai_message_ref(run_str, "sys").expect("valid ref");
+        assert_eq!(r.as_str(), format!("msg:kohai-{run_str}-sys"));
+        // A label containing an illegal `:` suffix is rejected (the validator
+        // forbids `:` after the `msg:` prefix colon).
+        assert!(kohai_message_ref(run_str, "b:ad").is_err());
+    }
+
+    #[test]
+    fn build_gateway_request_assembles_messages_with_refs() {
+        let hist = vec![
+            ("user".to_string(), "earlier".to_string()),
+            ("assistant".to_string(), "reply".to_string()),
         ];
-        let tm = to_thread_messages(&msgs);
-        assert_eq!(tm.len(), 3);
-        assert_eq!(tm[0].role, MessageRole::System);
-        assert_eq!(tm[0].content, "s");
-        assert_eq!(tm[1].role, MessageRole::User);
-        assert_eq!(tm[2].role, MessageRole::Assistant);
+        let captured = build_captured_prompt("SYS", &hist, "current q");
+        let run_id = TurnRunId::new();
+        let run_str = run_id.to_string();
+        let profile = ModelProfileId::new("interactive_model").expect("profile id");
+        let request = build_gateway_request(
+            &captured,
+            profile.clone(),
+            run_id,
+            TurnId::new(),
+            &run_str,
+        )
+        .expect("request builds");
+        assert_eq!(request.model_profile_id, profile);
+        assert_eq!(request.messages.len(), 4);
+        assert_eq!(request.messages[0].role, HostManagedModelMessageRole::System);
+        assert_eq!(request.messages[0].content, "SYS");
+        assert_eq!(request.messages[3].role, HostManagedModelMessageRole::User);
+        assert_eq!(request.messages[3].content, "current q");
+        assert!(request.messages[0].content_ref.as_str().starts_with("msg:kohai-"));
     }
 
     #[test]
-    fn token_usage_maps_to_interceptor_and_engine() {
-        let usage = TokenUsage {
+    fn build_gateway_request_rejects_invalid_run_str() {
+        let captured = build_captured_prompt("SYS", &[], "");
+        let run_str = "not a uuid"; // contains a space → illegal opaque-id char
+        let err = build_gateway_request(
+            &captured,
+            ModelProfileId::new("interactive_model").expect("profile id"),
+            TurnRunId::new(),
+            TurnId::new(),
+            run_str,
+        )
+        .expect_err("invalid run_str rejected");
+        assert!(matches!(err, KohaiPortError::InvalidPrompt { .. }));
+    }
+
+    #[test]
+    fn gateway_response_text_prefers_assistant_reply() {
+        let resp = HostManagedModelResponse::assistant_reply("hello");
+        assert_eq!(gateway_response_text(&resp), "hello");
+    }
+
+    #[test]
+    fn gateway_response_text_falls_back_to_deltas_for_non_reply() {
+        let resp = HostManagedModelResponse {
+            safe_text_deltas: vec!["d1".to_string(), "d2".to_string()],
+            safe_reasoning_deltas: Vec::new(),
+            output: ParentLoopOutput::CapabilityCalls(Vec::new()),
+            usage: None,
+        };
+        assert_eq!(gateway_response_text(&resp), "d1d2");
+    }
+
+    #[test]
+    fn loop_usage_maps_to_interceptor_and_engine() {
+        let usage = LoopModelUsage {
             input_tokens: 100,
             output_tokens: 50,
-            cache_read_tokens: 5,
-            cache_write_tokens: 3,
-            cost_usd: 0.01,
+            cache_read_input_tokens: 5,
+            cache_creation_input_tokens: 3,
         };
-        let ic = token_usage_to_interceptor(&usage);
+        let ic = loop_usage_to_interceptor(&usage);
         assert_eq!(ic.input_tokens, 100);
         assert_eq!(ic.output_tokens, 50);
         assert_eq!(ic.cache_read_input_tokens, 5);
         assert_eq!(ic.cache_creation_input_tokens, 3);
-        let en = token_usage_to_engine(&usage);
+        let en = loop_usage_to_engine(&usage);
         assert_eq!(en.input_tokens, 100);
         assert_eq!(en.output_tokens, 50);
-        assert_eq!(en.cost_usd, 0.01);
-    }
-
-    #[test]
-    fn llm_response_text_extracts_text_and_fallbacks() {
-        assert_eq!(llm_response_text(&LlmResponse::Text("hi".into())), "hi");
-        assert_eq!(
-            llm_response_text(&LlmResponse::ActionCalls {
-                calls: vec![],
-                content: Some("reason".into())
-            }),
-            "reason"
-        );
-        assert_eq!(
-            llm_response_text(&LlmResponse::ActionCalls {
-                calls: vec![],
-                content: None
-            }),
-            ""
-        );
+        assert_eq!(en.cost_usd, 0.0);
     }
 }

@@ -1,14 +1,15 @@
 //! Step C.5 — engine-side port trait bridging the orchestrator's
 //! `host.kohai_complete` host-call to the interceptor ingress (the Kohai LLM
 //! handoff: forensic-packet capture → optional Sempai review → provider-prefix
-//! swap → `LlmBackend::complete` → packet close).
+//! swap → provider gateway call → packet close).
 //!
 //! `brassclaw_engine` cannot depend on `brassclaw_reborn_composition` (the
 //! composition layer is downstream of the engine), and the interceptor store
-//! (`PgInterceptorStore`) + the basic-prompt prefix store (`PgBasicPromptStore`)
-//! that the Kohai flow drives live there. The composition layer is the sole crate
-//! that sees both `brassclaw_engine` (for `LlmBackend`) and the interceptor
-//! stores, so it owns the impl. This mirrors the [`crate::executor::ComponentPort`]
+//! (`PgInterceptorStore`), the basic-prompt prefix store (`PgBasicPromptStore`),
+//! and the provider `HostManagedModelGateway` that the Kohai flow drives all
+//! live there. The composition layer is the sole crate that sees both
+//! `brassclaw_engine` and the interceptor stores and provider gateway, so it
+//! owns the impl. This mirrors the [`crate::executor::ComponentPort`]
 //! engine↔composition port precedent (C.4.5.17).
 //!
 //! # Contract
@@ -23,18 +24,17 @@
 //! 3. Resolve the provider-prefix chunk (`get_system_bundle`) → swap the
 //!    `prefix_placeholder`.
 //! 4. Build the final messages (system prefix + chat_history + user_query) →
-//!    `LlmBackend::complete` (the "Kohai" provider call).
+//!    `HostManagedModelGateway::stream_model` (the "Kohai" provider call).
 //! 5. `with_kohai_response(text, usage)` → save `[Complete]`.
 //! 6. Return the answer text + usage.
 //!
-//! The engine's `LlmBackend` is passed INTO the port call (the composition impl
-//! does not own an LLM backend). Until the composition impl is wired, the engine
-//! passes `None` and the handler degrades gracefully
-//! (`{ok:false, error:"kohai_unavailable"}`).
+//! The composition impl owns the provider `HostManagedModelGateway` (the real
+//! working LLM) — the engine no longer threads an `LlmBackend` into the port
+//! (the `LlmBackend` host path retires with the C.6 Kohai re-architecture).
+//! Until the composition impl is wired, the engine passes `None` and the handler
+//! degrades gracefully (`{ok:false, error:"kohai_unavailable"}`).
 
 use thiserror::Error;
-
-use crate::traits::llm::LlmBackend;
 
 /// Errors raised by a [`KohaiPort`] implementation.
 #[derive(Debug, Clone, Error)]
@@ -48,7 +48,7 @@ pub enum KohaiPortError {
     /// The provider-prefix chunk could not be resolved for the scope.
     #[error("provider prefix unavailable: {reason}")]
     PrefixUnavailable { reason: String },
-    /// The underlying `LlmBackend::complete` call failed.
+    /// The underlying provider gateway call failed.
     #[error("kohai llm call failed: {reason}")]
     LlmFailed { reason: String },
     /// A forensic-packet store failure (save capture / save response).
@@ -90,30 +90,29 @@ pub struct KohaiAnswer {
 
 /// Engine-side port over the interceptor ingress (the Kohai LLM handoff). The
 /// implementation lives in the composition layer and drives the forensic-packet
-/// lifecycle + the provider-prefix swap + `LlmBackend::complete`.
+/// lifecycle + the provider-prefix swap + the `HostManagedModelGateway` provider
+/// call (which the composition impl owns).
 ///
-/// `async` because the backing store + LLM calls drive the DB pool / network —
-/// must not be `block_on()`-ed inside a running Tokio runtime (mirrors
-/// [`crate::executor::ComponentPort`]). Unlike `ComponentPort::compose`
-/// (which clones its inputs into owned data and returns a `'static` future),
-/// `complete` must drive the borrowed [`LlmBackend`] inside the future, so the
-/// single lifetime `'a` ties `&self` and `llm` together — the caller (the engine
-/// `host.kohai_complete` handler) always holds both borrows alive for the same
-/// `.await` scope.
+/// `async` because the backing store + gateway calls drive the DB pool / network
+/// — must not be `block_on()`-ed inside a running Tokio runtime (mirrors
+/// [`crate::executor::ComponentPort`]). The impl clones its `Arc` stores + the
+/// provider gateway `Arc` + the owned `prompt`/`ctx` into the boxed future, so
+/// the returned future is `'static` (it borrows neither `&self` nor any
+/// `LlmBackend`) — matching the `ComponentPort::compose` precedent.
 pub trait KohaiPort: Send + Sync {
     /// Run the FULL Kohai flow for `prompt` (`{chat_history, user_query,
-    /// prefix_placeholder}`) under `ctx`, using `llm` for the provider call.
-    /// Returns the provider answer text + usage.
-    fn complete<'a>(
-        &'a self,
+    /// prefix_placeholder}`) under `ctx`. The composition impl drives the
+    /// provider call over its own `HostManagedModelGateway`. Returns the
+    /// provider answer text + usage.
+    fn complete(
+        &self,
         prompt: serde_json::Value,
         ctx: KohaiCallCtx,
-        llm: &'a dyn LlmBackend,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = Result<KohaiAnswer, KohaiPortError>>
                 + Send
-                + 'a,
+                + 'static,
         >,
     >;
 }

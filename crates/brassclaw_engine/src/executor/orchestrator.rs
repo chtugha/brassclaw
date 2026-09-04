@@ -892,13 +892,13 @@ impl MontySession {
                     // C.5: host.kohai_complete(prompt={chat_history, user_query,
                     // prefix_placeholder}) — the Orchestrator→Kohai LLM handoff.
                     // Runs the full interceptor ingress (forensic-packet capture
-                    // → optional Sempai → provider-prefix swap → LlmBackend call
-                    // → packet close) via the composition-side port. Returns
+                    // → optional Sempai → provider-prefix swap → provider gateway
+                    // call → packet close) via the composition-side port. Returns
                     // {ok, answer, usage} on success; {ok:false, error} on no
                     // bridge / invalid prompt / failure. Monty drives this; Rust
                     // is the host.
                     "kohai_complete" if call.method_call => {
-                        handle_kohai_complete(&args[1..], kwargs, thread, llm, kohai_port).await
+                        handle_kohai_complete(&args[1..], kwargs, thread, kohai_port).await
                     }
 
                     // ── C.3 dynamic cdylib Tool fallthrough ─────────────────────
@@ -1891,17 +1891,16 @@ async fn handle_compose_orchestrator(
 /// handoff. Thin-calls [`crate::executor::KohaiPort::complete`], which runs the
 /// full interceptor ingress (forensic-packet capture `[AwaitingKohai]` →
 /// optional Sempai review → provider-prefix swap via `get_system_bundle` →
-/// `LlmBackend::complete` → packet close `[Complete]`) in the composition layer.
-/// Returns `{ok:true, answer, usage}` on success; `{ok:false,
+/// `HostManagedModelGateway::stream_model` → packet close `[Complete]`) in the
+/// composition layer. Returns `{ok:true, answer, usage}` on success; `{ok:false,
 /// error:"invalid prompt: …"}` when the `prompt` argument is missing/not a dict;
-/// `{ok:false, error:"kohai_unavailable"}` when no bridge is wired. The engine's
-/// `LlmBackend` is passed into the port call (the composition impl does not own
-/// an LLM backend).
+/// `{ok:false, error:"kohai_unavailable"}` when no bridge is wired. The
+/// composition impl owns the provider gateway (the engine no longer threads an
+/// `LlmBackend` into the port).
 async fn handle_kohai_complete(
     args: &[MontyObject],
     kwargs: &[(MontyObject, MontyObject)],
     thread: &Thread,
-    llm: &Arc<dyn LlmBackend>,
     kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
 ) -> ExtFunctionResult {
     // `prompt` may be passed as a kwarg (`host.kohai_complete(prompt=…)`, the
@@ -1932,7 +1931,7 @@ async fn handle_kohai_complete(
         project_id: thread.project_id.to_string(),
         tenant_id: thread.tenant_id.clone(),
     };
-    match port.complete(prompt, ctx, &**llm).await {
+    match port.complete(prompt, ctx).await {
         Ok(answer) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
             "ok": true,
             "answer": answer.content,
@@ -4023,9 +4022,8 @@ mod tests {
     };
 
     /// A mock [`KohaiPort`] for the kohai_complete handler tests. Returns a
-    /// canned [`KohaiAnswer`] (or an injected `Err`); ignores the borrowed
-    /// `LlmBackend` (the handler under test does not drive the provider call —
-    /// the mock owns the result).
+    /// canned [`KohaiAnswer`] (or an injected `Err`); the handler under test
+    /// does not drive the provider call — the mock owns the result.
     struct MockKohaiPort {
         result: Mutex<Option<Result<KohaiAnswer, KohaiPortError>>>,
     }
@@ -4055,32 +4053,22 @@ mod tests {
             &self,
             _prompt: serde_json::Value,
             _ctx: KohaiCallCtx,
-            _llm: &dyn LlmBackend,
-        ) -> Pin<Box<dyn Future<Output = Result<KohaiAnswer, KohaiPortError>> + Send + '_>>
+        ) -> Pin<Box<dyn Future<Output = Result<KohaiAnswer, KohaiPortError>> + Send + 'static>>
         {
             let result = self.result.lock().unwrap().clone();
             Box::pin(async move { result.expect("mock result must be injected") })
         }
     }
 
-    /// Shared no-op `LlmBackend` for the kohai handler tests — the mock port
-    /// owns the result, so the provider call is never driven here.
-    fn kohai_test_llm() -> Arc<dyn LlmBackend> {
-        Arc::new(ModelCapturingLlm {
-            captured: tokio::sync::Mutex::new(Vec::new()),
-        })
-    }
-
     #[tokio::test]
     async fn kohai_complete_no_port_returns_unavailable() {
         let thread = make_validate_thread();
-        let llm = kohai_test_llm();
         let args = vec![json_to_monty(&serde_json::json!({
             "user_query": "hi",
             "chat_history": [],
             "prefix_placeholder": "{{prefix}}",
         }))];
-        let result = handle_kohai_complete(&args, &[], &thread, &llm, None).await;
+        let result = handle_kohai_complete(&args, &[], &thread, None).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -4092,9 +4080,8 @@ mod tests {
     #[tokio::test]
     async fn kohai_complete_missing_prompt_returns_error() {
         let thread = make_validate_thread();
-        let llm = kohai_test_llm();
         let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::ok());
-        let result = handle_kohai_complete(&[], &[], &thread, &llm, Some(&port)).await;
+        let result = handle_kohai_complete(&[], &[], &thread, Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -4109,10 +4096,9 @@ mod tests {
     #[tokio::test]
     async fn kohai_complete_non_dict_prompt_returns_error() {
         let thread = make_validate_thread();
-        let llm = kohai_test_llm();
         let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::ok());
         let args = vec![MontyObject::String("not-a-dict".into())];
-        let result = handle_kohai_complete(&args, &[], &thread, &llm, Some(&port)).await;
+        let result = handle_kohai_complete(&args, &[], &thread, Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -4127,7 +4113,6 @@ mod tests {
     #[tokio::test]
     async fn kohai_complete_mock_port_returns_answer() {
         let thread = make_validate_thread();
-        let llm = kohai_test_llm();
         let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::ok());
         let prompt = serde_json::json!({
             "user_query": "hi",
@@ -4139,7 +4124,7 @@ mod tests {
             json_to_monty(&prompt),
         )];
         let result =
-            handle_kohai_complete(&[], &kwargs, &thread, &llm, Some(&port)).await;
+            handle_kohai_complete(&[], &kwargs, &thread, Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -4153,7 +4138,6 @@ mod tests {
     #[tokio::test]
     async fn kohai_complete_port_failure_surfaces_error() {
         let thread = make_validate_thread();
-        let llm = kohai_test_llm();
         let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::failing(
             KohaiPortError::LlmFailed {
                 reason: "provider 502".into(),
@@ -4161,7 +4145,7 @@ mod tests {
         ));
         let args = vec![json_to_monty(&serde_json::json!({"user_query": "hi"}))];
         let result =
-            handle_kohai_complete(&args, &[], &thread, &llm, Some(&port)).await;
+            handle_kohai_complete(&args, &[], &thread, Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
