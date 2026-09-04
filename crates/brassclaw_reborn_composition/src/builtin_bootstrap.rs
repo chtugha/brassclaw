@@ -376,6 +376,10 @@ pub async fn seed_builtin_components(
     // Pass 2 — network group (http, http.save, web-search composition).
     seed_network_group(&stores).await?;
 
+    // Pass 3 — memory group (memory_search, memory_write, memory_read,
+    // memory_tree + search-and-read combined recipe).
+    seed_memory_group(&stores).await?;
+
     Ok(())
 }
 
@@ -5466,3 +5470,511 @@ const RECIPE_WEB_SEARCH_YAML: &str = r#"step_descriptions: [
   }
 ]
 "#;
+
+// ---------------------------------------------------------------------------
+// Memory group (Pass 3) — builtin.memory_search / memory_write / memory_read
+// / memory_tree + the search-and-read combined Tier-1 recipe.
+// ---------------------------------------------------------------------------
+
+/// Memory domain ExtensionCatalogue name (Step 23).
+const CAT_MEMORY: &str = "builtin-memory";
+
+const CAT_EXT_MEMORY_SEARCH_OVERVIEW: &str = r#"# Memory Search Capability
+Tool: builtin.memory_search
+Effect: read_memory
+Permission: Allow
+
+Searches the agent's persistent memory store with a natural language query and
+returns the most relevant documents ranked by semantic similarity. Limit defaults
+to 5; maximum 20. Empty results are not an error.
+
+Approaches:
+- Focused recall: query -> memory-search recipe (Tier 0)
+- Wide recall at session start: query + limit=20 -> memory-search-broad recipe (Tier 0)
+- Search + read top result: -> memory-search-and-read recipe (Tier 1, LLM picks result)
+"#;
+
+const CAT_EXT_MEMORY_WRITE_OVERVIEW: &str = r#"# Memory Write Capability
+Tool: builtin.memory_write
+Effect: write_memory
+Permission: Allow
+
+Writes or appends content to the agent's persistent memory. Default target is
+'daily_log' (today's dated log). Other targets: 'memory' (MEMORY.md),
+'heartbeat' (HEARTBEAT.md), 'bootstrap' (clears BOOTSTRAP.md), or any relative
+memory document path. Supports patch mode (old_string/new_string).
+
+Approaches:
+- Log a progress note (default daily_log): -> memory-write-log recipe (Tier 0)
+- Update MEMORY.md: -> memory-write-main recipe (Tier 0, target='memory')
+- Generic write: -> memory-write recipe (Tier 0)
+- Targeted patch of a section: -> memory-write-patch recipe (Tier 0, patch mode)
+"#;
+
+const CAT_EXT_MEMORY_READ_OVERVIEW: &str = r#"# Memory Read Capability
+Tool: builtin.memory_read
+Effect: read_memory
+Permission: Allow
+
+Reads a specific memory document by its relative path and returns the full
+content. Use memory_search for semantic discovery; use memory_read when the
+exact path is known.
+
+Approaches:
+- Read a known path: -> memory-read recipe (Tier 0)
+- Read MEMORY.md: -> memory-read-main recipe (Tier 0, path='MEMORY.md')
+- Read HEARTBEAT.md: -> memory-read-heartbeat recipe (Tier 0, path='HEARTBEAT.md')
+"#;
+
+const CAT_EXT_MEMORY_TREE_OVERVIEW: &str = r#"# Memory Tree Capability
+Tool: builtin.memory_tree
+Effect: read_memory
+Permission: Allow
+
+Lists the directory tree of the agent's persistent memory up to a given depth.
+Used to discover memory structure before targeted reads.
+
+Approaches:
+- Browse memory structure: -> memory-tree recipe (Tier 0)
+"#;
+
+const CAT_MEMORY_OVERVIEW: &str = r#"# Memory Capabilities
+
+The memory domain gives the agent durable persistent storage for notes, decisions,
+session context, and long-term project state. All memory operations go through
+four tools; the orchestrator never touches the memory filesystem directly.
+
+## Tools in this domain
+- builtin.memory_search - semantic search across memory documents
+- builtin.memory_write - write/append/patch a memory document
+- builtin.memory_read  - read a memory document by exact path
+- builtin.memory_tree  - browse the memory directory structure
+
+## Common targets
+- 'daily_log' (default) - today's dated log; lightest-weight, append-only
+- 'memory'              - MEMORY.md, the primary durable context document
+- 'heartbeat'           - HEARTBEAT.md, the rolling status/checklist file
+- relative path         - any other memory document
+
+## Constraints
+- The orchestrator must NEVER use datetime.now() in PythonCode. Always call
+  skill-time-now first to get a timestamp, then pass it to pc-memory-format-entry.
+- Patch mode requires both old_string and new_string; old_string not found is a
+  tool error.
+- Empty search results are not an error.
+"#;
+
+/// Seed the memory domain group: the primary `builtin-memory` catalogue + 4
+/// per-tool catalogues + 4 Tool rows + 4 ToolSkill rows.
+///
+/// PythonCode, leaf/domain Skills, and Recipes are added in chunks 5b-5d;
+/// their ids are appended to the catalogues' `child_component_ids` as they
+/// are minted (dedup makes this idempotent).
+async fn seed_memory_group(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
+    //    appended to as children are minted below and in later chunks).
+    let cat_memory = stores
+        .upsert_catalogue(memory_primary_catalogue_row(&tenant), CAT_MEMORY)
+        .await?;
+    let cat_memory_search = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-memory-search",
+                "Memory search capability (builtin.memory_search).",
+                CAT_EXT_MEMORY_SEARCH_OVERVIEW,
+                json!([
+                    {"group_name": "memory-search-focused", "description": "Focused semantic recall (default limit)"},
+                    {"group_name": "memory-search-broad", "description": "Wide recall with limit=20"}
+                ]),
+            ),
+            "ext-memory-search",
+        )
+        .await?;
+    let cat_memory_write = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-memory-write",
+                "Memory write capability (builtin.memory_write).",
+                CAT_EXT_MEMORY_WRITE_OVERVIEW,
+                json!([
+                    {"group_name": "memory-write-log", "description": "Append to today's daily_log"},
+                    {"group_name": "memory-write-main", "description": "Update the main MEMORY.md document"},
+                    {"group_name": "memory-write-patch", "description": "Targeted patch of an existing memory document"}
+                ]),
+            ),
+            "ext-memory-write",
+        )
+        .await?;
+    let cat_memory_read = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-memory-read",
+                "Memory read capability (builtin.memory_read).",
+                CAT_EXT_MEMORY_READ_OVERVIEW,
+                json!([
+                    {"group_name": "memory-read-path", "description": "Read a memory document by exact path"},
+                    {"group_name": "memory-read-main", "description": "Read MEMORY.md"},
+                    {"group_name": "memory-read-heartbeat", "description": "Read HEARTBEAT.md"}
+                ]),
+            ),
+            "ext-memory-read",
+        )
+        .await?;
+    let cat_memory_tree = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-memory-tree",
+                "Memory directory tree capability (builtin.memory_tree).",
+                CAT_EXT_MEMORY_TREE_OVERVIEW,
+                json!([
+                    {"group_name": "memory-tree", "description": "Browse the memory directory structure"}
+                ]),
+            ),
+            "ext-memory-tree",
+        )
+        .await?;
+
+    // 2. Tool rows (class 0) — capability_id taken from the live
+    //    `*_CAPABILITY_ID` constant in `first_party_tools/memory.rs`.
+    let tool_memory_search = stores
+        .upsert_tool(tool_memory_search_row(&tenant), "memory_search")
+        .await?;
+    let tool_memory_write = stores
+        .upsert_tool(tool_memory_write_row(&tenant), "memory_write")
+        .await?;
+    let tool_memory_read = stores
+        .upsert_tool(tool_memory_read_row(&tenant), "memory_read")
+        .await?;
+    let tool_memory_tree = stores
+        .upsert_tool(tool_memory_tree_row(&tenant), "memory_tree")
+        .await?;
+
+    // 3. ToolSkill rows (class 13).
+    let ts_memory_search = stores
+        .upsert_tool_skill(ts_memory_search_row(&tenant), "ts-memory-search")
+        .await?;
+    let ts_memory_write = stores
+        .upsert_tool_skill(ts_memory_write_row(&tenant), "ts-memory-write")
+        .await?;
+    let ts_memory_read = stores
+        .upsert_tool_skill(ts_memory_read_row(&tenant), "ts-memory-read")
+        .await?;
+    let ts_memory_tree = stores
+        .upsert_tool_skill(ts_memory_tree_row(&tenant), "ts-memory-tree")
+        .await?;
+
+    // 4-7. PythonCode, leaf/domain Skills, Recipes, and catalogue appends are
+    //      added in chunks 5b-5d. Suppress unused-id warnings until then.
+    let _ = (
+        cat_memory, cat_memory_search, cat_memory_write, cat_memory_read, cat_memory_tree,
+        tool_memory_search, tool_memory_write, tool_memory_read, tool_memory_tree,
+        ts_memory_search, ts_memory_write, ts_memory_read, ts_memory_tree,
+    );
+
+    tracing::debug!(
+        "seeded memory group chunk 5a: 5 catalogues + 4 tools + 4 toolskills"
+    );
+
+    Ok(())
+}
+
+fn memory_primary_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
+    NewPgExtensionCatalogue {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: CAT_MEMORY.to_string(),
+        description: "Memory domain capability catalogue (memory_search, memory_write, \
+                       memory_read, memory_tree)."
+            .to_string(),
+        version: "1.0".into(),
+        overview_doc: CAT_MEMORY_OVERVIEW.into(),
+        task_groups: json!([
+            {"group_name": "memory-search", "description": "Semantic search and recall"},
+            {"group_name": "memory-write", "description": "Log, update, and patch memory documents"},
+            {"group_name": "memory-read", "description": "Read memory documents by path"},
+            {"group_name": "memory-tree", "description": "Browse the memory directory structure"}
+        ]),
+        child_component_ids: Vec::new(),
+        intent_index: None,
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        dependency_registry: None,
+    }
+}
+
+fn tool_memory_search_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "memory_search".to_string(),
+        description: "Search the agent's persistent memory store using a natural language \
+                       query. Returns the most relevant memory documents ranked by semantic \
+                       similarity. Limit defaults to 5; maximum is 20."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Natural language search query"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}
+            },
+            "required": ["query"],
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({"query": "{{query}}"})),
+        effect_type: "read_memory".to_string(),
+        preconditions: Some("query must not be empty".into()),
+        error_handling: Some(
+            "empty result is not an error; memory backend unavailable -> tool error".into(),
+        ),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.memory_search".into(),
+    }
+}
+
+fn tool_memory_write_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "memory_write".to_string(),
+        description: "Write or append content to the agent's persistent memory. Default \
+                       target is 'daily_log' (today's dated log). Other targets: 'memory' \
+                       (MEMORY.md), 'heartbeat' (HEARTBEAT.md), 'bootstrap' (clears \
+                       BOOTSTRAP.md), or any relative memory document path. Supports patch \
+                       mode (old_string/new_string)."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "content":     {"type": "string",  "description": "Content to write or append"},
+                "target":      {"type": "string",  "description": "Destination: 'memory', 'daily_log' (default), 'heartbeat', 'bootstrap', or relative path"},
+                "append":      {"type": "boolean", "description": "Append when true; replace when false", "default": true},
+                "metadata":    {"type": "object",  "description": "Optional document metadata"},
+                "old_string":  {"type": "string",  "description": "Exact text to replace (patch mode)"},
+                "new_string":  {"type": "string",  "description": "Replacement text (patch mode)"},
+                "replace_all": {"type": "boolean", "description": "Replace every old_string occurrence"},
+                "timezone":    {"type": "string",  "description": "IANA timezone for daily_log date resolution"}
+            },
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({"content": "{{content}}"})),
+        effect_type: "write_memory".to_string(),
+        preconditions: Some("content required unless using bootstrap target".into()),
+        error_handling: Some(
+            "old_string not found in patch mode -> tool error; write failure -> tool error".into(),
+        ),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.memory_write".into(),
+    }
+}
+
+fn tool_memory_read_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "memory_read".to_string(),
+        description: "Read a specific memory document by its relative path. Returns the full \
+                       document content. Use memory_search for semantic discovery; use \
+                       memory_read when you know the exact path."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Relative memory document path to read"}
+            },
+            "required": ["path"],
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({"path": "{{path}}"})),
+        effect_type: "read_memory".to_string(),
+        preconditions: Some("path must not be empty".into()),
+        error_handling: Some("document not found -> tool error".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.memory_read".into(),
+    }
+}
+
+fn tool_memory_tree_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "memory_tree".to_string(),
+        description: "List the directory tree of the agent's persistent memory. Returns \
+                       entry names and types up to the specified depth. Used to discover \
+                       memory structure before targeted reads."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "path":  {"type": "string",  "description": "Relative memory directory path (omit for root)"},
+                "depth": {"type": "integer", "minimum": 1, "maximum": 10, "default": 1}
+            },
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({})),
+        effect_type: "read_memory".to_string(),
+        preconditions: Some("path, if supplied, must resolve within the memory mount".into()),
+        error_handling: Some("path not found in memory -> tool error".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.memory_tree".into(),
+    }
+}
+
+fn ts_memory_search_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-memory-search".to_string(),
+        description: "Executor binding for memory_search. Required: query (natural language). \
+                       Optional: limit (1-20, default 5). Returns ranked memory documents with \
+                       content and relevance scores."
+            .to_string(),
+        content: "Call `host.memory_search(query=<natural language query>, limit=<optional \
+                  1..20>)` to search the agent's persistent memory. Results are ranked by \
+                  semantic similarity. Empty results are not an error - check the returned \
+                  list length before using a result."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("memory_search".to_string()),
+        param_schema: Some(json!([
+            {"name": "query", "param_type": "string", "required": true, "description": "Natural language search query"},
+            {"name": "limit", "param_type": "integer", "required": false, "description": "Max results to return (1..20, default 5)"}
+        ])),
+        param_template: Some(json!({"query": "{{query}}"})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_memory_write_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-memory-write".to_string(),
+        description: "Executor binding for memory_write. Default writes to 'daily_log' (append \
+                       mode). Use target='memory' for MEMORY.md. Patch mode: supply old_string \
+                       + new_string. Setting append=false replaces the full document."
+            .to_string(),
+        content: "Call `host.memory_write(content=<text>, target=<optional 'memory'|'daily_log'|\
+                  'heartbeat'|'bootstrap'|relative path>, append=<optional bool>, old_string=\
+                  <optional>, new_string=<optional>, replace_all=<optional bool>, timezone=\
+                  <optional IANA>)` to write to persistent memory. Default target is 'daily_log' \
+                  with append=true. Patch mode requires both old_string and new_string."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("memory_write".to_string()),
+        param_schema: Some(json!([
+            {"name": "content", "param_type": "string", "required": false, "description": "Content to write or append"},
+            {"name": "target", "param_type": "string", "required": false, "description": "Destination: memory|daily_log|heartbeat|bootstrap|relative path"},
+            {"name": "append", "param_type": "boolean", "required": false, "description": "Append (true) or replace (false)"},
+            {"name": "old_string", "param_type": "string", "required": false, "description": "Exact text to replace (patch mode)"},
+            {"name": "new_string", "param_type": "string", "required": false, "description": "Replacement text (patch mode)"},
+            {"name": "replace_all", "param_type": "boolean", "required": false, "description": "Replace every old_string occurrence"},
+            {"name": "timezone", "param_type": "string", "required": false, "description": "IANA timezone for daily_log date resolution"}
+        ])),
+        param_template: Some(json!({"content": "{{content}}"})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_memory_read_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-memory-read".to_string(),
+        description: "Executor binding for memory_read. Required: path (relative memory \
+                       document path). Returns the full document content. Use for known \
+                       paths; use ts-memory-search for semantic discovery."
+            .to_string(),
+        content: "Call `host.memory_read(path=<relative memory document path>)` to read a \
+                  memory document by exact path. Returns the full document content. Use \
+                  ts-memory-search when the path is unknown."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("memory_read".to_string()),
+        param_schema: Some(json!([
+            {"name": "path", "param_type": "string", "required": true, "description": "Relative memory document path to read"}
+        ])),
+        param_template: Some(json!({"path": "{{path}}"})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_memory_tree_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-memory-tree".to_string(),
+        description: "Executor binding for memory_tree. Optional: path (relative memory dir, \
+                       defaults to root), depth (1-10, default 1). Returns the directory tree \
+                       of persistent memory."
+            .to_string(),
+        content: "Call `host.memory_tree(path=<optional relative dir>, depth=<optional 1..10>)` \
+                  to list the memory directory tree. Omit both to get the root at depth=1. Use \
+                  the result to decide which documents to read with ts-memory-read."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("memory_tree".to_string()),
+        param_schema: Some(json!([
+            {"name": "path", "param_type": "string", "required": false, "description": "Relative memory directory path (omit for root)"},
+            {"name": "depth", "param_type": "integer", "required": false, "description": "Max directory depth (1..10, default 1)"}
+        ])),
+        param_template: Some(json!({})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
