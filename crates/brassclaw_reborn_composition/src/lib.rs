@@ -113,6 +113,7 @@ pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
 pub(crate) mod pg_composition_port;
+pub(crate) mod pg_kohai_port;
 pub(crate) mod pg_security_settings_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_skill_store;

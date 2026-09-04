@@ -173,5 +173,18 @@ does not own an LLM backend).
     `port.complete(prompt,ctx,&**llm)` → `{ok:true,answer,usage}`/err;
     5 `MockKohaiPort` unit tests (no-port, missing-prompt, non-dict-prompt,
     mock-success, port-failure); both configs clippy-clean + 10 handler tests green).
-    [ ] 1c — `PgKohaiPort` FULL flow impl. [ ] slice 2 — `basic_mode.py`.
+    [x] 1c DONE (2026-09-03 — `PgKohaiPort` FULL routing flow impl in composition
+    `pg_kohai_port.rs`: parse prompt dict (chat_history + user_query +
+    prefix_placeholder) → resolve per-scope provider prefix via
+    `get_system_bundle` (infallible fallback) → build final messages + forensic
+    `CapturedPrompt` → `ForensicPacket::new` + `InterceptorStore::save`
+    [AwaitingKohai] → `ThreadMessage`s + `LlmBackend::complete(force_text)` →
+    `with_kohai_response` + save [Complete] → return `KohaiAnswer`; Sempai path
+    deferred (routing first, Sempai behind the same path when a sink is wired).
+    Trait sig refined to `complete<'a>(&'a self, …, llm: &'a dyn LlmBackend) ->
+    Future + 'a` (unifies `&self`+`llm` — the impl must drive the borrowed LLM
+    inside the future, unlike `compose`'s `'static`). `#[cfg(feature="postgres")]`
+    on the DB struct/impl; pure helpers + 10 unit tests ungated (both configs).
+    Registered in composition `lib.rs`. Both configs clippy-clean (engine +
+    composition) + 10 tests green). [ ] slice 2 — `basic_mode.py`.
     [ ] slice 3 — `DEFAULT_ORCHESTRATOR` swap + both-configs green. Then C.6.

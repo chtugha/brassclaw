@@ -94,22 +94,26 @@ pub struct KohaiAnswer {
 ///
 /// `async` because the backing store + LLM calls drive the DB pool / network —
 /// must not be `block_on()`-ed inside a running Tokio runtime (mirrors
-/// [`crate::executor::CompositionPort`]). The borrowed `LlmBackend` is captured
-/// by the returned future (`+ '_`).
+/// [`crate::executor::CompositionPort`]). Unlike `CompositionPort::compose`
+/// (which clones its inputs into owned data and returns a `'static` future),
+/// `complete` must drive the borrowed [`LlmBackend`] inside the future, so the
+/// single lifetime `'a` ties `&self` and `llm` together — the caller (the engine
+/// `host.kohai_complete` handler) always holds both borrows alive for the same
+/// `.await` scope.
 pub trait KohaiPort: Send + Sync {
     /// Run the FULL Kohai flow for `prompt` (`{chat_history, user_query,
     /// prefix_placeholder}`) under `ctx`, using `llm` for the provider call.
     /// Returns the provider answer text + usage.
-    fn complete(
-        &self,
+    fn complete<'a>(
+        &'a self,
         prompt: serde_json::Value,
         ctx: KohaiCallCtx,
-        llm: &dyn LlmBackend,
+        llm: &'a dyn LlmBackend,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = Result<KohaiAnswer, KohaiPortError>>
                 + Send
-                + '_,
+                + 'a,
         >,
     >;
 }
