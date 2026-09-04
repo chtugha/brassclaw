@@ -2655,3 +2655,45 @@ remove/evict + unit tests; slice 4 = `TurnRunnerWorker` direct path uses it
 (bypass `driver_registry`, retrieve-or-create per conversation, `drive_to_yield`
 with the new input, apply the yield: Complete→turn done; AwaitNextTurn→park +
 turn done).
+
+**C.6 slice 3 SHIPPED (+ layering fork LOCKED A, `MontySession` Send/!Sync
+finding):** Resolved the slice-3/4 layering fork. `MontySession::drive_to_yield`
+needs 14 raw engine deps (`&Arc<dyn LlmBackend>`, `&Arc<dyn EffectExecutor>`,
+`&Arc<LeaseManager>`, `&Arc<PolicyEngine>`, `&mut SignalReceiver`,
+`Option<&broadcast::Sender<ThreadEvent>>`, `Option<&RetrievalEngine>`,
+`Option<&Arc<dyn Store>>`, `Option<&PlatformInfo>`, `&Arc<dyn GateController>`,
+`Option<&Arc<dyn RetrievalSource>>`, `Option<&Arc<dyn DynamicToolPort>>`,
+`Option<&Arc<dyn CompositionPort>>`, `Option<&Arc<dyn KohaiPort>>`, `&mut
+Thread`, `Option<MontyObject>`; `pg_pool` is `#[cfg(skills-db)]`). The worker
+(`brassclaw_reborn`) only gets `Box<dyn AgentLoopDriverHost>` (a turns-layer port
+trait exposing NONE of those) from `HostFactory::create_host`, and reborn must
+not depend on engine. So the worker CANNOT call `drive_to_yield` itself.
+**Fork C6-S3 = A (user):** new `MontyTurnDriverPort` trait in `brassclaw_turns`
+(one `drive_turn` behavior method); composition impls it and OWNS the
+`MontySessionRegistry`; `TurnRunnerWorker` holds `Arc<dyn MontyTurnDriverPort>`
+and calls it for Monty turns → bypasses `driver_registry` (C6-1=B kept). No
+reborn→engine coupling; `MontySession` hidden in composition. (B rejected:
+engine-dep-on-reborn + 14-dep data-bag seam + yield→exit mapping pulled into
+reborn → blurs Loop boundary into Products.)
+**Registry = `crates/brassclaw_reborn_composition/src/session_registry.rs`**
+(`pub(crate) mod` in lib.rs). Generic core `SessionRegistry<K,V>` =
+`tokio::sync::Mutex<HashMap<K, Entry<V>>>`, `Entry<V>{value, last_used:
+Instant}`; bounds `K: Hash+Eq+Clone+Send+'static`, `V: Send+'static`. Methods:
+`checkout_or_create(key, init)` (remove+return if present; else release lock +
+run init — drives happen OUTSIDE the lock; same-key concurrency prevented by the
+turn lease), `park(key,value)` (insert+stamp idle; overwrites stale),
+`drop_session(key)->Option<V>` (on Complete), `evict_expired(ttl)->usize`
+(`retain` idle≤ttl), `len`/`is_empty`/`contains`. Alias
+`type MontySessionRegistry = SessionRegistry<TurnScope, MontySession>`.
+**KEY finding: `MontySession: !Sync` but `Send`** (Monty `Heap` in
+`RunProgress<LimitedTracker>` is `!Sync`). Registry only needs `V: Send`;
+`tokio::sync::Mutex` → `MontySessionRegistry: Send+Sync` (shareable via `Arc`).
+Compile-time test asserts `MontySession: Send` + `MontySessionRegistry:
+Send+Sync`. Transient `#![allow(dead_code)]` until slice 4 wires it. Gates:
+composition clippy clean (default+skills-db, `-D warnings`), composition `--lib`
+704 passed (697+7 new: checkout-create, park→checkout-no-init, drop_session,
+evict-drops, evict-keeps-fresh, park-overwrites, Send/Sync-alias).
+**Next: slice 4 = `MontyTurnDriverPort` trait (turns) + composition impl owning
+`Arc<MontySessionRegistry>` (build the 14-dep arg list, `checkout_or_create`→
+`drive_to_yield`→`park`/`drop_session`, map `OrchestratorYield`→`LoopExit`) +
+`TurnRunnerWorker` direct path (bypass `driver_registry`).**

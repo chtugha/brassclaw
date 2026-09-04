@@ -254,11 +254,70 @@ resume plumbing re-covered at slice 4). Gates: engine clippy clean (default +
 skills-db), 565 default / 576 skills-db lib tests pass, 99 orchestrator-module
 tests pass both configs.
 
+## Slice 3 result (SHIPPED `5b9c7261`, 2026-09-04)
+
+**Layering fork resolved (user LOCKED A).** `MontySession::drive_to_yield`
+needs 14 raw engine deps (`&Arc<dyn LlmBackend>`, `&Arc<dyn EffectExecutor>`,
+`&Arc<LeaseManager>`, `&Arc<PolicyEngine>`, `&mut SignalReceiver`,
+`Option<&broadcast::Sender<ThreadEvent>>`, `Option<&RetrievalEngine>`,
+`Option<&Arc<dyn Store>>`, `Option<&PlatformInfo>`, `&Arc<dyn GateController>`,
+`Option<&Arc<dyn RetrievalSource>>`, `Option<&Arc<dyn DynamicToolPort>>`,
+`Option<&Arc<dyn CompositionPort>>`, `Option<&Arc<dyn KohaiPort>>`, plus
+`&mut Thread` + `Option<MontyObject>`; the `pg_pool` arg is
+`#[cfg(feature="skills-db")]`). `TurnRunnerWorker` (brassclaw_reborn) only gets
+`Box<dyn AgentLoopDriverHost>` from `HostFactory::create_host` — a turns-layer
+port trait that exposes NONE of those engine refs — and brassclaw_reborn does
+not (and must not) depend on brassclaw_engine. So the worker cannot assemble the
+`drive_to_yield` call itself.
+
+- **A (chosen) — port trait in `brassclaw_turns`, impl + registry in
+  `brassclaw_reborn_composition`.** Composition already depends on engine +
+  owns `PgCompositionPort`/`PgKohaiPort`, so it can build the `drive_to_yield`
+  arg list. A new `MontyTurnDriverPort` trait (turns) with one behavior method
+  (`drive_turn`) is impl'd in composition, which owns the
+  `MontySessionRegistry`. `TurnRunnerWorker` holds `Arc<dyn MontyTurnDriverPort>`
+  and calls it for Monty turns → bypasses `driver_registry` (C6-1=B kept). No
+  reborn→engine coupling; `MontySession` stays hidden in composition. (B — add
+  engine dep to reborn + a 14-dep data-bag seam + pull the yield→exit mapping
+  into reborn — rejected: reinvents the port as a leaky bag and blurs the
+  Loop boundary into the Products layer.)
+
+**Registry implemented** (`crates/brassclaw_reborn_composition/src/
+session_registry.rs`, `pub(crate) mod` in `lib.rs`). Core is generic:
+`SessionRegistry<K, V>` = `tokio::sync::Mutex<HashMap<K, Entry<V>>>` where
+`Entry<V>{value, last_used: Instant}`; bounds `K: Hash+Eq+Clone+Send+'static`,
+`V: Send+'static`. Methods: `checkout_or_create(key, init)` (remove+return if
+present; else release lock + run `init` — drives happen outside the lock;
+same-key concurrency prevented by the turn lease), `park(key, value)` (insert,
+stamp idle now; overwrites stale), `drop_session(key) -> Option<V>` (on
+Complete), `evict_expired(ttl) -> usize` (`retain` idle age ≤ ttl), `len`/
+`is_empty`/`contains`. Production alias
+`type MontySessionRegistry = SessionRegistry<TurnScope, MontySession>`.
+
+**Critical `Send`/`Sync` finding (de-risks slice 4).** `MontySession` is
+`!Sync` (the Monty `Heap` inside `RunProgress<LimitedTracker>` is `!Sync`) but
+IS `Send`. The registry only requires `V: Send`; `tokio::sync::Mutex` makes
+`SessionRegistry<TurnScope, MontySession>: Send + Sync` when the inner map is
+`Send` (`TurnScope: Send`, `MontySession: Send`) → the registry is shareable via
+`Arc` (slice 4 will hold `Arc<MontySessionRegistry>` inside the port impl). A
+compile-time test (`production_alias_type_args_satisfy_registry_bounds_and_
+are_shareable`) asserts `MontySession: Send`, `TurnScope: Send+Sync`, and
+`MontySessionRegistry: Send+Sync`.
+
+**Transient `#![allow(dead_code)]`** on the module: the registry is landed
+ahead of its prod consumer (slice 4 wires it into the `MontyTurnDriverPort`
+impl); removed in slice 4.
+
+Gates: composition clippy clean (default + skills-db, `-D warnings`);
+composition `--lib` tests 704 passed / 0 failed (incl. 7 new registry tests:
+checkout-create, park→checkout-without-init, drop_session, evict-expired-drops,
+evict-expired-keeps-fresh, park-overwrites, Send/Sync-alias).
+
 ## Status
 
 [x] slice 1 — engine `MontySession` + park/resume primitive (SHIPPED `d26d08b7`).
 [x] slice 2 — rework `basic_mode.py` into a resumable long-running loop (SHIPPED `f5e3e59b`).
-[ ] slice 3 — conversation-keyed Monty session registry.
-[ ] slice 4 — `TurnRunnerWorker` direct path (bypass driver_registry).
+[x] slice 3 — conversation-keyed Monty session registry (SHIPPED `5b9c7261`).
+[ ] slice 4 — `MontyTurnDriverPort` trait (turns) + composition impl owning the registry; `TurnRunnerWorker` direct path (bypass driver_registry).
 [ ] slice 5 — retire `canonical.rs` stage pipeline + reuse stage logic as host fns.
 [ ] slice 6 — both configs clippy + tests + mark C.6 done. Then C.7.
