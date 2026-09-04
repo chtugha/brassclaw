@@ -165,6 +165,8 @@ impl BootstrapStores {
 
     /// Insert-or-recover a PythonCode id (class 22). `insert` is not
     /// ON-CONFLICT, so get-then-insert via [`PgPythonCodeStore::get_by_name`].
+    /// Builtins bypass Q1, so the row is graduated to `validated` directly
+    /// (the DDL default is `pending`, which the SEC-01 delivery filter hides).
     async fn upsert_python_code(
         &self,
         row: NewPgPythonCode,
@@ -181,7 +183,19 @@ impl BootstrapStores {
         {
             return Ok(existing.id);
         }
-        self.python_code.insert(row).await.map_err(map)
+        let id = self.python_code.insert(row).await.map_err(map)?;
+        self.python_code
+            .update_validation_status(
+                &self.tenant,
+                SEED_USER,
+                SEED_AGENT,
+                SEED_PROJECT,
+                id,
+                "validated",
+            )
+            .await
+            .map_err(map)?;
+        Ok(id)
     }
 
     /// Insert-or-recover a Recipe id (class 21). `insert` is not ON-CONFLICT,
@@ -440,49 +454,149 @@ async fn seed_filesystem_group(
         .upsert_tool_skill(ts_apply_patch_row(&tenant), "ts-apply-patch")
         .await?;
 
-    // 4. Append the minted tool + toolskill ids to each per-tool catalogue
-    //    (PythonCode / Skill / Recipe ids appended in later chunks).
-    stores
-        .append_children(cat_read_file, &[tool_read_file, ts_read_file])
+    // 4. PythonCode rows (class 22) — the orchestrator executor bodies that
+    //    drive every Tier-0 recipe. Transcribed verbatim from
+    //    builtin_stuff_v3.md Steps 2.3 / 3.3 / 4.3 / 5.3 / 6.3 / 7.x.1.
+    //    consumer_tags omit `05:validator` (builtins bypass Q1; the SEC-01
+    //    delivery filter would otherwise hide the row even when validated).
+    let pc_read_file = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-read-file",
+                "Orchestrator executor: calls host.<tool> to read a file via \
+                 builtin.read_file. Input: path (string), range (optional string, \
+                 e.g. '1-50'). Output: tool result dict {content, line_count, path}.",
+                PC_EXEC_READ_FILE_CONTENT,
+            ),
+            "pc-exec-read-file",
+        )
         .await?;
-    stores
-        .append_children(cat_write_file, &[tool_write_file, ts_write_file])
+    let pc_write_file = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-write-file",
+                "Orchestrator executor: calls host.<tool> to write a file via \
+                 builtin.write_file. Input: path (string), content (string). Output: \
+                 tool result dict {path, bytes_written}.",
+                PC_EXEC_WRITE_FILE_CONTENT,
+            ),
+            "pc-exec-write-file",
+        )
         .await?;
-    stores
-        .append_children(cat_list_dir, &[tool_list_dir, ts_list_dir])
+    let pc_list_dir = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-list-dir",
+                "Orchestrator executor: calls host.<tool> to list a directory via \
+                 builtin.list_dir. Input: path (string, omit for workspace root), \
+                 recursive (bool, default false), max_depth (int, optional).",
+                PC_EXEC_LIST_DIR_CONTENT,
+            ),
+            "pc-exec-list-dir",
+        )
         .await?;
-    stores
-        .append_children(cat_glob, &[tool_glob, ts_glob])
+    let pc_glob = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-glob",
+                "Orchestrator executor: calls host.<tool> to find files via \
+                 builtin.glob. Input: pattern (string), path (optional string), \
+                 max_results (optional int). Output: tool result with list of \
+                 matching paths.",
+                PC_EXEC_GLOB_CONTENT,
+            ),
+            "pc-exec-glob",
+        )
         .await?;
-    stores
-        .append_children(cat_grep, &[tool_grep, ts_grep])
+    let pc_grep = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-grep",
+                "Orchestrator executor: calls host.<tool> to search content via \
+                 builtin.grep. Input: pattern (string), path (optional), output_mode \
+                 (optional, default files_with_matches), glob (optional), \
+                 case_insensitive (optional bool).",
+                PC_EXEC_GREP_CONTENT,
+            ),
+            "pc-exec-grep",
+        )
         .await?;
-    stores
-        .append_children(cat_apply_patch, &[tool_apply_patch, ts_apply_patch])
+    let pc_apply_patch = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-apply-patch",
+                "Orchestrator executor: calls host.<tool> to apply a targeted patch \
+                 via builtin.apply_patch. Input: path (string), old_string (string), \
+                 new_string (string), replace_all (optional bool). Output: {path, \
+                 replacements_made}.",
+                PC_EXEC_APPLY_PATCH_CONTENT,
+            ),
+            "pc-exec-apply-patch",
+        )
         .await?;
 
-    // 5. Append all filesystem tool + toolskill ids to the primary catalogue.
+    // 5. Append the minted tool + toolskill + python_code ids to each per-tool
+    //    catalogue (leaf Skill / Recipe ids appended in later chunks).
+    stores
+        .append_children(cat_read_file, &[tool_read_file, ts_read_file, pc_read_file])
+        .await?;
+    stores
+        .append_children(
+            cat_write_file,
+            &[tool_write_file, ts_write_file, pc_write_file],
+        )
+        .await?;
+    stores
+        .append_children(cat_list_dir, &[tool_list_dir, ts_list_dir, pc_list_dir])
+        .await?;
+    stores
+        .append_children(cat_glob, &[tool_glob, ts_glob, pc_glob])
+        .await?;
+    stores
+        .append_children(cat_grep, &[tool_grep, ts_grep, pc_grep])
+        .await?;
+    stores
+        .append_children(
+            cat_apply_patch,
+            &[tool_apply_patch, ts_apply_patch, pc_apply_patch],
+        )
+        .await?;
+
+    // 6. Append all filesystem tool + toolskill + python_code ids to the
+    //    primary catalogue.
     stores
         .append_children(
             cat_filesystem,
             &[
                 tool_read_file,
                 ts_read_file,
+                pc_read_file,
                 tool_write_file,
                 ts_write_file,
+                pc_write_file,
                 tool_list_dir,
                 ts_list_dir,
+                pc_list_dir,
                 tool_glob,
                 ts_glob,
+                pc_glob,
                 tool_grep,
                 ts_grep,
+                pc_grep,
                 tool_apply_patch,
                 ts_apply_patch,
+                pc_apply_patch,
             ],
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 1: catalogues + tools + toolskills)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 2a: + 6 base PythonCode executors)");
     Ok(())
 }
 
@@ -1133,3 +1247,108 @@ fn ts_apply_patch_row(tenant: &str) -> NewPgToolSkill {
         includes: vec![],
     }
 }
+
+// ---------------------------------------------------------------------------
+// Row builders — PythonCode (class 22). The orchestrator executor bodies
+// that drive every Tier-0 recipe. Bodies use `{{vars.slotN}}` (substituted
+// by IBS before execution) and `host.<tool>(...)` dispatch. No imports, no
+// I/O — pure sandbox dispatch. Transcribed verbatim from builtin_stuff_v3.md.
+// ---------------------------------------------------------------------------
+
+/// Build a `NewPgPythonCode` builtin row. `consumer_tags` omit `05:validator`
+/// (builtins bypass Q1; the SEC-01 delivery filter hides `05:validator` rows
+/// even when `validated`). The row is graduated to `validated` by
+/// [`BootstrapStores::upsert_python_code`].
+fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPythonCode {
+    NewPgPythonCode {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: name.to_string(),
+        description: description.to_string(),
+        content: content.to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        dependency_registry: None,
+        includes: vec![],
+    }
+}
+
+const PC_EXEC_READ_FILE_CONTENT: &str = r#"# Orchestrator executor body. host.<tool> is provided by the runtime sandbox.
+# IBS bakes in path and range values as {{vars.slot0}} / {{vars.slot1}} before execution.
+# No I/O, no imports — pure orchestrator dispatch.
+_path = "{{vars.slot0}}"
+_range = "{{vars.slot1}}"
+_params = {"path": _path}
+if _range and _range != "":
+    _params["range"] = _range
+result = host.read_file(**_params)
+"#;
+
+const PC_EXEC_WRITE_FILE_CONTENT: &str = r#"# Orchestrator executor body. host.<tool> is provided by the runtime sandbox.
+# IBS bakes in path and content as {{vars.slot0}} / {{vars.slot1}} before execution.
+# No I/O, no imports — pure orchestrator dispatch.
+_path = "{{vars.slot0}}"
+_content = "{{vars.slot1}}"
+result = host.write_file(path=_path, content=_content)
+"#;
+
+const PC_EXEC_LIST_DIR_CONTENT: &str = r#"# Orchestrator executor body. host.<tool> provided by runtime sandbox.
+# IBS bakes in path/recursive/max_depth as slot0/slot1/slot2.
+_path = "{{vars.slot0}}"
+_recursive = {{vars.slot1}}
+_max_depth = {{vars.slot2}}
+_params = {}
+if _path and _path != "":
+    _params["path"] = _path
+if _recursive:
+    _params["recursive"] = True
+if _max_depth and _max_depth > 0:
+    _params["max_depth"] = _max_depth
+result = host.list_dir(**_params)
+"#;
+
+const PC_EXEC_GLOB_CONTENT: &str = r#"# Orchestrator executor body.
+_pattern = "{{vars.slot0}}"
+_path = "{{vars.slot1}}"
+_max_results = {{vars.slot2}}
+_params = {"pattern": _pattern}
+if _path and _path != "":
+    _params["path"] = _path
+if _max_results and _max_results > 0:
+    _params["max_results"] = _max_results
+result = host.glob(**_params)
+"#;
+
+const PC_EXEC_GREP_CONTENT: &str = r#"# Orchestrator executor body.
+_pattern = "{{vars.slot0}}"
+_path = "{{vars.slot1}}"
+_output_mode = "{{vars.slot2}}"
+_glob = "{{vars.slot3}}"
+_case_insensitive = {{vars.slot4}}
+_params = {"pattern": _pattern}
+if _path and _path != "":
+    _params["path"] = _path
+if _output_mode and _output_mode != "":
+    _params["output_mode"] = _output_mode
+if _glob and _glob != "":
+    _params["glob"] = _glob
+if _case_insensitive:
+    _params["case_insensitive"] = True
+result = host.grep(**_params)
+"#;
+
+const PC_EXEC_APPLY_PATCH_CONTENT: &str = r#"# Orchestrator executor body.
+_path = "{{vars.slot0}}"
+_old = "{{vars.slot1}}"
+_new = "{{vars.slot2}}"
+_replace_all = {{vars.slot3}}
+_params = {"path": _path, "old_string": _old, "new_string": _new}
+if _replace_all:
+    _params["replace_all"] = True
+result = host.apply_patch(**_params)
+"#;
