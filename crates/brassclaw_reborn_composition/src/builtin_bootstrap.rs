@@ -12291,3 +12291,339 @@ Safety rules:
 - System-scope skills cannot be modified from user-scope authority.
 - After install, the skill is 'pending' — not usable until Q2 graduates it.
 "#;
+
+// ---------------------------------------------------------------------------
+// Recipe YAML sources — management group (chunk 7c)
+// Transcribed verbatim from builtin_stuff_v3.md (the doc's flat step format).
+// 15 Tier-0 (llm_call_required=false) + 2 Tier-1 (skill-install, skill-remove).
+// ---------------------------------------------------------------------------
+
+const RECIPE_TIME_NOW_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-now>"],
+    "label":   "Pre-load ts-time-now ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-now>"],
+    "label":   "PythonCode calls host.time(operation=now)"
+  }
+]
+"#;
+
+const RECIPE_TIME_NOW_TZ_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-now>"],
+    "label":   "Pre-load ts-time-now ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-now>"],
+    "label":   "PythonCode calls host.time(operation=now, timezone=<tz>)"
+  }
+]
+"#;
+
+const RECIPE_TIME_PARSE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-parse>"],
+    "label":   "Pre-load ts-time-parse ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-parse>"],
+    "label":   "PythonCode calls host.time(operation=parse, input)"
+  }
+]
+"#;
+
+const RECIPE_TIME_CONVERT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-convert>"],
+    "label":   "Pre-load ts-time-convert ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-convert>"],
+    "label":   "PythonCode calls host.time(operation=convert, input, to_timezone)"
+  }
+]
+"#;
+
+const RECIPE_TIME_DIFF_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-diff>"],
+    "label":   "Pre-load ts-time-diff ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-diff>"],
+    "label":   "PythonCode calls host.time(operation=diff, input, timestamp2)"
+  }
+]
+"#;
+
+const RECIPE_TIME_FORMAT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-format>"],
+    "label":   "Pre-load ts-time-format ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-format>"],
+    "label":   "PythonCode calls host.time(operation=format, input, format_string?)"
+  }
+]
+"#;
+
+const RECIPE_JSON_QUERY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-query>"],
+    "label":   "Pre-load ts-json-query ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-query>"],
+    "label":   "PythonCode calls host.json(operation=query, data, path)"
+  }
+]
+"#;
+
+const RECIPE_JSON_STRINGIFY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-stringify>"],
+    "label":   "Pre-load ts-json-stringify ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-stringify>"],
+    "label":   "PythonCode calls host.json(operation, data)"
+  }
+]
+"#;
+
+const RECIPE_JSON_PARSE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-stringify>"],
+    "label":   "Pre-load ts-json-stringify ToolSkill binding (handles parse operation)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-stringify>"],
+    "label":   "PythonCode calls host.json(operation='parse', data)"
+  }
+]
+"#;
+
+const RECIPE_JSON_VALIDATE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-validate>"],
+    "label":   "Pre-load ts-json-validate ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-validate>"],
+    "label":   "PythonCode calls host.json(operation='validate', data)"
+  }
+]
+"#;
+
+const RECIPE_JSON_PARSE_AND_QUERY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-validate>"],
+    "label":   "Pre-load ts-json-validate ToolSkill binding (validate first)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-validate>"],
+    "label":   "PythonCode validates the JSON string before proceeding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-query>"],
+    "label":   "Pre-load ts-json-query ToolSkill binding"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-query>"],
+    "label":   "PythonCode calls host.json(operation='query', path=slot1) on parsed data"
+  }
+]
+"#;
+
+const RECIPE_SKILL_LIST_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>"],
+    "label":   "Pre-load ts-skill-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-skill-list>"],
+    "label":   "PythonCode calls host.skill_list(scope)"
+  }
+]
+"#;
+
+const RECIPE_SKILL_LIST_USER_ONLY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>"],
+    "label":   "Pre-load ts-skill-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-skill-list>"],
+    "label":   "PythonCode calls host.skill_list(scope='user')"
+  }
+]
+"#;
+
+const RECIPE_SKILL_LIST_SYSTEM_ONLY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>"],
+    "label":   "Pre-load ts-skill-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-skill-list>"],
+    "label":   "PythonCode calls host.skill_list(scope='system')"
+  }
+]
+"#;
+
+const RECIPE_SKILL_INSTALL_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-skill-install>"],
+    "label":   "Load skill-skill-install leaf skill body (install procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM confirms URL with user, explains pending state, calls ts-skill-install"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>", "<uuid:ts-skill-install>"],
+    "label":   "Pre-load ToolSkill bindings for list (pre-check) and install"
+  }
+]
+"#;
+
+const RECIPE_SKILL_REMOVE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-skill-remove>"],
+    "label":   "Load skill-skill-remove leaf skill body (removal procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM confirms skill name, warns about irreversibility, calls ts-skill-remove"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>", "<uuid:ts-skill-remove>"],
+    "label":   "Pre-load ToolSkill bindings for list (pre-check) and remove"
+  }
+]
+"#;
+
+const RECIPE_ECHO_PING_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-echo>"],
+    "label":   "Pre-load ts-echo ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-echo>"],
+    "label":   "PythonCode calls host.echo(message) — returned verbatim"
+  }
+]
+"#;
