@@ -36,8 +36,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::collections::HashMap;
 
 use monty::{
-    DictPairs, ExtFunctionResult, LimitedTracker, MontyObject, MontyRun, NameLookupResult,
-    PrintWriter, ResourceLimits, RunProgress,
+    DictPairs, ExtFunctionResult, FunctionCall, LimitedTracker, MontyObject, MontyRun,
+    NameLookupResult, PrintWriter, ResourceLimits, RunProgress,
 };
 use tracing::{debug, warn};
 
@@ -112,6 +112,19 @@ pub struct OrchestratorResult {
     /// through the Tier-0 recipe branch (v3 Phase H4.6). Built by
     /// [`build_tier_zero_outcome`] in the `RunProgress::Complete` arm.
     pub tier_zero_outcome: Option<TierZeroOutcome>,
+}
+
+/// Outcome of driving a [`MontySession`] one step. `Complete` carries the
+/// orchestrator result; `AwaitNextTurn` means the script called
+/// `host.await_next_turn()` and the VM is parked, awaiting the next turn's
+/// input to resume. The non-persistent [`execute_orchestrator`] caller maps
+/// `AwaitNextTurn` to an error; the cross-turn-persistent driver (C.6 slice 4)
+/// parks the session in a conversation-keyed registry and resumes it next turn.
+pub enum OrchestratorYield {
+    /// The orchestrator finished and produced a result.
+    Complete(Box<OrchestratorResult>),
+    /// The orchestrator called `host.await_next_turn()` and is parked.
+    AwaitNextTurn,
 }
 
 /// Build the [`TierZeroOutcome`] for a completed orchestrator turn (v3
@@ -517,126 +530,201 @@ fn load_failure_count(docs: &[crate::types::memory::MemoryDoc]) -> u64 {
 /// `reborn_monty_vm_settings.max_duration_secs` by the caller.
 /// Pass `None` in DB-less / test contexts to use the env-var / compiled-in default.
 #[allow(clippy::too_many_arguments)]
-pub async fn execute_orchestrator(
-    code: &str,
-    thread: &mut Thread,
-    llm: &Arc<dyn LlmBackend>,
-    effects: &Arc<dyn EffectExecutor>,
-    leases: &Arc<LeaseManager>,
-    policy: &Arc<PolicyEngine>,
-    signal_rx: &mut SignalReceiver,
-    event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
-    retrieval: Option<&RetrievalEngine>,
-    store: Option<&Arc<dyn Store>>,
-    platform_info: Option<&crate::executor::prompt::PlatformInfo>,
-    gate_controller: &Arc<dyn crate::gate::GateController>,
-    persisted_state: &serde_json::Value,
-    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
-    _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
-    dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
-    composition_port: Option<&Arc<dyn crate::executor::CompositionPort>>,
-    kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
-    max_duration_override: Option<std::time::Duration>,
-) -> Result<OrchestratorResult, EngineError> {
-    let mut total_tokens = TokenUsage::default();
+pub struct MontySession {
+    progress: Option<RunProgress<LimitedTracker>>,
+    parked_call: Option<FunctionCall<LimitedTracker>>,
+    total_tokens: TokenUsage,
+    final_result: Option<serde_json::Value>,
+    stdout: String,
+}
 
-    // Build context variables for the orchestrator
-    let (input_names, input_values) = build_orchestrator_inputs(thread, persisted_state);
+impl MontySession {
+    /// Parse + start the orchestrator script. Extracts the setup phase of
+    /// [`execute_orchestrator`]: builds the bootstrap inputs, compiles the
+    /// script, resolves the resource budget, and runs the module top-level
+    /// up to the first host call (or `Complete`). The session is then ready
+    /// to be driven by [`MontySession::drive_to_yield`].
+    pub fn new(
+        code: &str,
+        thread: &Thread,
+        persisted_state: &serde_json::Value,
+        max_duration_override: Option<std::time::Duration>,
+    ) -> Result<Self, EngineError> {
+        let total_tokens = TokenUsage::default();
 
-    // Parse and compile
-    let runner = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        MontyRun::new(code.to_string(), "orchestrator.py", input_names)
-    })) {
-        Ok(Ok(runner)) => runner,
-        Ok(Err(e)) => {
-            // Route parse failures through the same typed sanitizer so
-            // a bad `default.py` deploy can't leak Monty internals to
-            // the channel edge.
-            return Err(EngineError::Orchestrator(classify_orchestrator_failure(
-                "Orchestrator parse error",
-                &e.to_string(),
-            )));
-        }
-        Err(_) => {
-            return Err(EngineError::Orchestrator(orchestrator_vm_panic(
-                "Orchestrator parse error",
-                "orchestrator parsing",
-            )));
-        }
-    };
+        // Build context variables for the orchestrator
+        let (input_names, input_values) = build_orchestrator_inputs(thread, persisted_state);
 
-    // Resolve wall-clock budget: DB-backed value takes priority over the
-    // env-var / compiled-in DB-less fallback (Step 9.3 demotion).
-    let effective_duration = max_duration_override.unwrap_or_else(orchestrator_max_duration);
-    let effective_limits = ResourceLimits::new()
-        .max_duration(effective_duration)
-        .max_allocations(ORCHESTRATOR_MAX_ALLOCATIONS)
-        .max_memory(128 * 1024 * 1024); // 128 MB
-
-    // Start execution
-    let mut stdout = String::new();
-    let tracker = LimitedTracker::new(effective_limits);
-
-    let run_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        runner.start(
-            input_values,
-            tracker,
-            PrintWriter::CollectString(&mut stdout),
-        )
-    }));
-
-    let mut progress = match run_result {
-        Ok(Ok(p)) => p,
-        Ok(Err(e)) => {
-            return Err(EngineError::Orchestrator(classify_orchestrator_failure(
-                "Orchestrator runtime error",
-                &e.to_string(),
-            )));
-        }
-        Err(_) => {
-            return Err(EngineError::Orchestrator(orchestrator_vm_panic(
-                "Orchestrator runtime error",
-                "orchestrator start",
-            )));
-        }
-    };
-
-    // Drive the orchestrator dispatch loop
-    let mut final_result: Option<serde_json::Value> = None;
-
-    loop {
-        match progress {
-            RunProgress::Complete(obj) => {
-                // Use FINAL result if set, otherwise fall back to VM return value
-                let result = if let Some(ref fr) = final_result {
-                    fr.clone()
-                } else {
-                    monty_to_json(&obj)
-                };
-                sync_runtime_state(thread, result.get("state"));
-                let outcome = parse_outcome(&result);
-                sync_visible_outcome(thread, &outcome);
-                normalize_pause_outcome(thread, &outcome)?;
-                let tier_zero_outcome = build_tier_zero_outcome(&result, &thread.events);
-                return Ok(OrchestratorResult {
-                    outcome,
-                    tokens_used: total_tokens,
-                    tier_zero_outcome,
-                });
+        // Parse and compile
+        let runner = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            MontyRun::new(code.to_string(), "orchestrator.py", input_names)
+        })) {
+            Ok(Ok(runner)) => runner,
+            Ok(Err(e)) => {
+                return Err(EngineError::Orchestrator(classify_orchestrator_failure(
+                    "Orchestrator parse error",
+                    &e.to_string(),
+                )));
             }
+            Err(_) => {
+                return Err(EngineError::Orchestrator(orchestrator_vm_panic(
+                    "Orchestrator parse error",
+                    "orchestrator parsing",
+                )));
+            }
+        };
 
-            RunProgress::FunctionCall(call) => {
-                let action_name = call.function_name.clone();
-                let args = &call.args;
-                let kwargs = &call.kwargs;
+        // Resolve wall-clock budget: DB-backed value takes priority over the
+        // env-var / compiled-in DB-less fallback (Step 9.3 demotion).
+        let effective_duration = max_duration_override.unwrap_or_else(orchestrator_max_duration);
+        let effective_limits = ResourceLimits::new()
+            .max_duration(effective_duration)
+            .max_allocations(ORCHESTRATOR_MAX_ALLOCATIONS)
+            .max_memory(128 * 1024 * 1024); // 128 MB
 
-                debug!(action = %action_name, "orchestrator: host function call");
+        // Start execution
+        let mut stdout = String::new();
+        let tracker = LimitedTracker::new(effective_limits);
+
+        let run_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runner.start(
+                input_values,
+                tracker,
+                PrintWriter::CollectString(&mut stdout),
+            )
+        }));
+
+        let progress = match run_result {
+            Ok(Ok(p)) => p,
+            Ok(Err(e)) => {
+                return Err(EngineError::Orchestrator(classify_orchestrator_failure(
+                    "Orchestrator runtime error",
+                    &e.to_string(),
+                )));
+            }
+            Err(_) => {
+                return Err(EngineError::Orchestrator(orchestrator_vm_panic(
+                    "Orchestrator runtime error",
+                    "orchestrator start",
+                )));
+            }
+        };
+
+        Ok(Self {
+            progress: Some(progress),
+            parked_call: None,
+            total_tokens,
+            final_result: None,
+            stdout,
+        })
+    }
+
+    /// Drive the session until it either completes or parks on
+    /// `host.await_next_turn()`. When called after a park, `new_input` is fed
+    /// to the suspended `await_next_turn()` call as its return value before
+    /// continuing the dispatch loop. All host-call handler arms are identical
+    /// to [`execute_orchestrator`]; only the accumulated state
+    /// (`progress`/`total_tokens`/`final_result`/`stdout`) lives on `self` so
+    /// it survives across turns (C.6 D-C1 cross-turn persistence).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn drive_to_yield(
+        &mut self,
+        thread: &mut Thread,
+        llm: &Arc<dyn LlmBackend>,
+        effects: &Arc<dyn EffectExecutor>,
+        leases: &Arc<LeaseManager>,
+        policy: &Arc<PolicyEngine>,
+        signal_rx: &mut SignalReceiver,
+        event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
+        retrieval: Option<&RetrievalEngine>,
+        store: Option<&Arc<dyn Store>>,
+        platform_info: Option<&crate::executor::prompt::PlatformInfo>,
+        gate_controller: &Arc<dyn crate::gate::GateController>,
+        #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+        _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
+        dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
+        composition_port: Option<&Arc<dyn crate::executor::CompositionPort>>,
+        kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
+        new_input: Option<MontyObject>,
+    ) -> Result<OrchestratorYield, EngineError> {
+        // If we parked on host.await_next_turn() last drive, resume the
+        // suspended call with the new turn's input before continuing the
+        // dispatch loop.
+        if let Some(call) = self.parked_call.take() {
+            let ext_result = ExtFunctionResult::Return(new_input.unwrap_or(MontyObject::None));
+            self.progress = Some(
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    call.resume(ext_result, PrintWriter::CollectString(&mut self.stdout))
+                })) {
+                    Ok(Ok(p)) => p,
+                    Ok(Err(e)) => {
+                        return Err(EngineError::Orchestrator(classify_orchestrator_failure(
+                            "Orchestrator error after await_next_turn resume",
+                            &e.to_string(),
+                        )));
+                    }
+                    Err(_) => {
+                        return Err(EngineError::Orchestrator(orchestrator_vm_panic(
+                            "Orchestrator error after await_next_turn resume",
+                            "orchestrator resume",
+                        )));
+                    }
+                },
+            );
+        }
+
+        loop {
+            let progress = match self.progress.take() {
+                Some(p) => p,
+                None => {
+                    return Err(EngineError::Orchestrator(classify_orchestrator_failure(
+                        "Orchestrator session driven with no pending progress",
+                        "drive_to_yield on a completed/empty session",
+                    )));
+                }
+            };
+            match progress {
+                RunProgress::Complete(obj) => {
+                    // Use FINAL result if set, otherwise fall back to VM return value
+                    let result = if let Some(ref fr) = self.final_result {
+                        fr.clone()
+                    } else {
+                        monty_to_json(&obj)
+                    };
+                    sync_runtime_state(thread, result.get("state"));
+                    let outcome = parse_outcome(&result);
+                    sync_visible_outcome(thread, &outcome);
+                    normalize_pause_outcome(thread, &outcome)?;
+                    let tier_zero_outcome = build_tier_zero_outcome(&result, &thread.events);
+                    return Ok(OrchestratorYield::Complete(Box::new(OrchestratorResult {
+                        outcome,
+                        tokens_used: self.total_tokens,
+                        tier_zero_outcome,
+                    })));
+                }
+
+                RunProgress::FunctionCall(call) => {
+                    let action_name = call.function_name.clone();
+                    // Park: host.await_next_turn() suspends the VM until the
+                    // next turn's input arrives. Retain the suspended call so
+                    // the session can be resumed later (true cross-turn
+                    // persistence). The non-persistent caller treats this as
+                    // an error; the persistent driver parks the session.
+                    if call.method_call && action_name == "await_next_turn" {
+                        debug!("orchestrator: host.await_next_turn() - parking session");
+                        self.parked_call = Some(call);
+                        return Ok(OrchestratorYield::AwaitNextTurn);
+                    }
+                    let args = &call.args;
+                    let kwargs = &call.kwargs;
+
+                    debug!(action = %action_name, "orchestrator: host function call");
 
                 let ext_result = match action_name.as_str() {
                     // FINAL(result) — orchestrator returns its outcome
                     "FINAL" => {
                         let val = args.first().map(monty_to_json).unwrap_or_default();
-                        final_result = Some(val);
+                        self.final_result = Some(val);
                         ExtFunctionResult::Return(MontyObject::None)
                     }
 
@@ -653,7 +741,7 @@ pub async fn execute_orchestrator(
                                 store,
                                 platform_info,
                             },
-                            &mut total_tokens,
+                            &mut self.total_tokens,
                         )
                         .await
                     }
@@ -875,85 +963,153 @@ pub async fn execute_orchestrator(
                     other => ExtFunctionResult::NotFound(other.to_string()),
                 };
 
-                // Resume the orchestrator VM
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    call.resume(ext_result, PrintWriter::CollectString(&mut stdout))
-                })) {
-                    Ok(Ok(p)) => progress = p,
-                    Ok(Err(e)) => {
-                        return Err(EngineError::Orchestrator(classify_orchestrator_failure(
-                            "Orchestrator error after resume",
-                            &e.to_string(),
-                        )));
-                    }
-                    Err(_) => {
-                        return Err(EngineError::Orchestrator(orchestrator_vm_panic(
-                            "Orchestrator error after resume",
-                            "orchestrator resume",
-                        )));
-                    }
-                }
+                    // Resume the orchestrator VM
+                    self.progress = Some(
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            call.resume(ext_result, PrintWriter::CollectString(&mut self.stdout))
+                        })) {
+                            Ok(Ok(p)) => p,
+                            Ok(Err(e)) => {
+                                return Err(EngineError::Orchestrator(classify_orchestrator_failure(
+                                    "Orchestrator error after resume",
+                                    &e.to_string(),
+                                )));
+                            }
+                            Err(_) => {
+                                return Err(EngineError::Orchestrator(orchestrator_vm_panic(
+                                    "Orchestrator error after resume",
+                                    "orchestrator resume",
+                                )));
+                            }
+                        },
+                    );
 
-                // If FINAL was called, the VM should complete on next iteration
-                if final_result.is_some() {
-                    continue;
-                }
-            }
-
-            RunProgress::NameLookup(lookup) => {
-                let name = lookup.name.clone();
-                // C.1: the Monty namespace IS the tool registry. The `host` object is a
-                // frozen Dataclass with empty attrs. `host.<tool>(...)` compiles to
-                // `CallAttr`; the dataclass `py_call_attr` routes any public attr that is
-                // not in attrs to `MethodCall`, which surfaces as
-                // `FunctionCall{function_name:"<tool>", method_call:true, args[0]=self}`.
-                // The host dispatches on the bare tool name (skipping args[0]); kwargs are
-                // untouched. Storing `Function` values in attrs would raise TypeError on
-                // CallAttr, so the namespace deliberately carries no attrs.
-                let result = if name == "host" {
-                    debug!(name = %name, "orchestrator: resolved host namespace");
-                    NameLookupResult::Value(MontyObject::Dataclass {
-                        name: "host".to_string(),
-                        type_id: HOST_NAMESPACE_TYPE_ID,
-                        field_names: Vec::new(),
-                        attrs: DictPairs::from(Vec::new()),
-                        frozen: true,
-                    })
-                } else {
-                    debug!(name = %name, "orchestrator: unresolved name");
-                    NameLookupResult::Undefined
-                };
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    lookup.resume(result, PrintWriter::CollectString(&mut stdout))
-                })) {
-                    Ok(Ok(p)) => progress = p,
-                    Ok(Err(e)) => {
-                        return Err(EngineError::Orchestrator(classify_orchestrator_failure(
-                            &format!("Orchestrator NameError '{name}'"),
-                            &e.to_string(),
-                        )));
-                    }
-                    Err(_) => {
-                        return Err(EngineError::Orchestrator(orchestrator_vm_panic(
-                            &format!("Orchestrator NameError '{name}'"),
-                            "name lookup",
-                        )));
+                    // If FINAL was called, the VM should complete on next iteration
+                    if self.final_result.is_some() {
+                        continue;
                     }
                 }
-            }
 
-            RunProgress::OsCall(_) => {
-                return Err(EngineError::Effect {
-                    reason: "Orchestrator attempted OS call (blocked)".into(),
-                });
-            }
+                RunProgress::NameLookup(lookup) => {
+                    let name = lookup.name.clone();
+                    // C.1: the Monty namespace IS the tool registry. The `host` object is a
+                    // frozen Dataclass with empty attrs. `host.<tool>(...)` compiles to
+                    // `CallAttr`; the dataclass `py_call_attr` routes any public attr that is
+                    // not in attrs to `MethodCall`, which surfaces as
+                    // `FunctionCall{function_name:"<tool>", method_call:true, args[0]=self}`.
+                    // The host dispatches on the bare tool name (skipping args[0]); kwargs are
+                    // untouched. Storing `Function` values in attrs would raise TypeError on
+                    // CallAttr, so the namespace deliberately carries no attrs.
+                    let result = if name == "host" {
+                        debug!(name = %name, "orchestrator: resolved host namespace");
+                        NameLookupResult::Value(MontyObject::Dataclass {
+                            name: "host".to_string(),
+                            type_id: HOST_NAMESPACE_TYPE_ID,
+                            field_names: Vec::new(),
+                            attrs: DictPairs::from(Vec::new()),
+                            frozen: true,
+                        })
+                    } else {
+                        debug!(name = %name, "orchestrator: unresolved name");
+                        NameLookupResult::Undefined
+                    };
+                    self.progress = Some(
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            lookup.resume(result, PrintWriter::CollectString(&mut self.stdout))
+                        })) {
+                            Ok(Ok(p)) => p,
+                            Ok(Err(e)) => {
+                                return Err(EngineError::Orchestrator(classify_orchestrator_failure(
+                                    &format!("Orchestrator NameError '{name}'"),
+                                    &e.to_string(),
+                                )));
+                            }
+                            Err(_) => {
+                                return Err(EngineError::Orchestrator(orchestrator_vm_panic(
+                                    &format!("Orchestrator NameError '{name}'"),
+                                    "name lookup",
+                                )));
+                            }
+                        },
+                    );
+                }
 
-            RunProgress::ResolveFutures(_) => {
-                return Err(EngineError::Effect {
-                    reason: "Orchestrator attempted async (not supported)".into(),
-                });
+                RunProgress::OsCall(_) => {
+                    return Err(EngineError::Effect {
+                        reason: "Orchestrator attempted OS call (blocked)".into(),
+                    });
+                }
+
+                RunProgress::ResolveFutures(_) => {
+                    return Err(EngineError::Effect {
+                        reason: "Orchestrator attempted async (not supported)".into(),
+                    });
+                }
             }
         }
+    }
+}
+
+/// Drive an orchestrator script once to completion (non-persistent path).
+///
+/// Thin delegation over [`MontySession`]: parse + start, then drive until the
+/// script completes. If the script calls `host.await_next_turn()` (which only
+/// the cross-turn-persistent driver in C.6 slice 4 handles), this returns an
+/// [`EngineError::Orchestrator`] — the non-persistent path cannot park a VM
+/// across turns.
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_orchestrator(
+    code: &str,
+    thread: &mut Thread,
+    llm: &Arc<dyn LlmBackend>,
+    effects: &Arc<dyn EffectExecutor>,
+    leases: &Arc<LeaseManager>,
+    policy: &Arc<PolicyEngine>,
+    signal_rx: &mut SignalReceiver,
+    event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
+    retrieval: Option<&RetrievalEngine>,
+    store: Option<&Arc<dyn Store>>,
+    platform_info: Option<&crate::executor::prompt::PlatformInfo>,
+    gate_controller: &Arc<dyn crate::gate::GateController>,
+    persisted_state: &serde_json::Value,
+    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+    _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
+    dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
+    composition_port: Option<&Arc<dyn crate::executor::CompositionPort>>,
+    kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
+    max_duration_override: Option<std::time::Duration>,
+) -> Result<OrchestratorResult, EngineError> {
+    let mut session = MontySession::new(code, thread, persisted_state, max_duration_override)?;
+    match session
+        .drive_to_yield(
+            thread,
+            llm,
+            effects,
+            leases,
+            policy,
+            signal_rx,
+            event_tx,
+            retrieval,
+            store,
+            platform_info,
+            gate_controller,
+            #[cfg(feature = "skills-db")]
+            pg_pool,
+            _retrieval_source,
+            dynamic_tools,
+            composition_port,
+            kohai_port,
+            None,
+        )
+        .await?
+    {
+        OrchestratorYield::Complete(result) => Ok(*result),
+        OrchestratorYield::AwaitNextTurn => Err(EngineError::Orchestrator(
+            classify_orchestrator_failure(
+                "Orchestrator parked awaiting next turn",
+                "host.await_next_turn() in non-persistent mode",
+            ),
+        )),
     }
 }
 
@@ -4199,6 +4355,153 @@ mod tests {
             (ORCHESTRATOR_MIN_MAX_DURATION_SECS..=ORCHESTRATOR_MAX_MAX_DURATION_SECS)
                 .contains(&secs),
             "orchestrator_max_duration must be within [{ORCHESTRATOR_MIN_MAX_DURATION_SECS}, {ORCHESTRATOR_MAX_MAX_DURATION_SECS}], got {secs}"
+        );
+    }
+
+    // ── C.6 slice 1: MontySession park/resume primitive ──────────────────────
+    //
+    // Drives a live Monty session through `host.await_next_turn()` + FINAL to
+    // validate (a) the refactor that extracted execute_orchestrator's loop into
+    // MontySession::drive_to_yield still completes a plain FINAL script, and
+    // (b) the new `host.await_next_turn()` arm parks the VM and a second drive
+    // resumes it to completion. The park/resume + FINAL path never touches the
+    // LLM/effects/etc., so the mocks only need to exist.
+
+    #[allow(clippy::type_complexity)]
+    fn session_host_deps() -> (
+        Arc<dyn LlmBackend>,
+        Arc<dyn EffectExecutor>,
+        Arc<LeaseManager>,
+        Arc<PolicyEngine>,
+        Arc<dyn crate::gate::GateController>,
+    ) {
+        (
+            Arc::new(ModelCapturingLlm {
+                captured: tokio::sync::Mutex::new(Vec::new()),
+            }),
+            Arc::new(NoopEffects),
+            Arc::new(LeaseManager::new()),
+            Arc::new(PolicyEngine::new()),
+            Arc::new(crate::gate::CancellingGateController),
+        )
+    }
+
+    fn session_fresh_thread() -> Thread {
+        let mut thread = Thread::new(
+            "goal",
+            crate::types::thread::ThreadType::Foreground,
+            ProjectId::new(),
+            "test-user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        thread.transition_to(ThreadState::Running, None).unwrap();
+        thread
+    }
+
+    #[tokio::test]
+    async fn monty_session_drives_final_only_to_complete() {
+        let (llm, effects, leases, policy, gate) = session_host_deps();
+        let mut thread = session_fresh_thread();
+        let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
+        let state = serde_json::json!({});
+        let script = r#"FINAL({"outcome":"completed","response":"done"})"#;
+        let mut session = MontySession::new(script, &thread, &state, None).unwrap();
+        let yielded = session
+            .drive_to_yield(
+                &mut thread,
+                &llm,
+                &effects,
+                &leases,
+                &policy,
+                &mut signal_rx,
+                None,
+                None,
+                None,
+                None,
+                &gate,
+                #[cfg(feature = "skills-db")]
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(yielded, OrchestratorYield::Complete(_)),
+            "plain FINAL script must complete"
+        );
+    }
+
+    #[tokio::test]
+    async fn monty_session_parks_on_await_next_turn_then_resumes() {
+        let (llm, effects, leases, policy, gate) = session_host_deps();
+        let mut thread = session_fresh_thread();
+        let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
+        let state = serde_json::json!({});
+        let script =
+            "host.await_next_turn()\nFINAL({\"outcome\":\"completed\",\"response\":\"done\"})";
+        let mut session = MontySession::new(script, &thread, &state, None).unwrap();
+
+        // First drive: the script calls host.await_next_turn() → park.
+        let first = session
+            .drive_to_yield(
+                &mut thread,
+                &llm,
+                &effects,
+                &leases,
+                &policy,
+                &mut signal_rx,
+                None,
+                None,
+                None,
+                None,
+                &gate,
+                #[cfg(feature = "skills-db")]
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(first, OrchestratorYield::AwaitNextTurn),
+            "host.await_next_turn() must park the session"
+        );
+
+        // Second drive: resume the parked call with the next turn's input,
+        // then run FINAL to completion.
+        let second = session
+            .drive_to_yield(
+                &mut thread,
+                &llm,
+                &effects,
+                &leases,
+                &policy,
+                &mut signal_rx,
+                None,
+                None,
+                None,
+                None,
+                &gate,
+                #[cfg(feature = "skills-db")]
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(json_to_monty(&serde_json::json!("next-turn-input"))),
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(second, OrchestratorYield::Complete(_)),
+            "resumed session must complete"
         );
     }
 
