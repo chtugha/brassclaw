@@ -369,9 +369,12 @@ pub async fn seed_builtin_components(
     let stores = BootstrapStores::new(pool, tenant_id);
 
     // Pass 1 — filesystem group (read_file, write_file, list_dir, glob, grep,
-    // apply_patch). Subsequent chunks add network / memory / process /
-    // management groups here.
+    // apply_patch). Subsequent chunks add memory / process / management groups
+    // here.
     seed_filesystem_group(&stores).await?;
+
+    // Pass 2 — network group (http, http.save, web-search composition).
+    seed_network_group(&stores).await?;
 
     Ok(())
 }
@@ -3909,3 +3912,424 @@ const RECIPE_FILE_LIST_AND_FILTER_YAML: &str = r#"step_descriptions: [
   }
 ]
 "#;
+
+// ---------------------------------------------------------------------------
+// Network group (Pass 2)
+// ---------------------------------------------------------------------------
+
+/// Network domain ExtensionCatalogue name (Step 23).
+const CAT_NETWORK: &str = "builtin-network";
+
+const CAT_EXT_HTTP_OVERVIEW: &str = r#"# HTTP Inline-Response Capability
+Tool: builtin.http
+Effect: network_egress
+Permission: Ask
+
+Issues HTTP requests (GET, POST, PUT, PATCH, DELETE, HEAD) and returns the response
+inline (body capped at 256 KiB). For larger responses use ext-http-save.
+
+Approaches:
+- GET a URL: -> http-get recipe (Tier 0)
+- GET JSON API: -> http-get-json recipe (Tier 0, Accept:application/json header)
+- GET authenticated: -> http-authenticated-get recipe (Tier 0, Bearer token)
+- HEAD (metadata only): -> http-head recipe (Tier 0)
+- POST JSON body: -> http-post recipe (Tier 1, LLM composes body)
+- POST webhook: -> http-post-json-webhook recipe (Tier 0, pre-structured body)
+- PUT (replace resource): -> http-put recipe (Tier 1, LLM composes body)
+- PATCH (partial update): -> http-patch recipe (Tier 1, LLM composes partial body)
+- DELETE (remove resource): -> http-delete recipe (Tier 1, user confirmation required)
+"#;
+
+const CAT_EXT_HTTP_SAVE_OVERVIEW: &str = r#"# HTTP Save-to-File Capability
+Tool: builtin.http.save
+Effect: network_egress + write_filesystem
+Permission: Ask
+
+Issues an HTTP request and saves the response body to a scoped workspace file.
+Use when the response exceeds 256 KiB or must be persisted for later processing.
+
+Approaches:
+- Download and save: url + save_to -> http-save recipe (Tier 0)
+- Save large API response for parsing: url + save_to -> http-save recipe (Tier 0)
+- Save with explicit large cap (5 MiB): -> http-save-large recipe (Tier 0)
+"#;
+
+const CAT_EXT_WEB_SEARCH_OVERVIEW: &str = r#"# Web Search Composition Capability
+Tool: builtin.http (composed - no dedicated web_search capability)
+Effect: network_egress (read)
+
+Web search is a composed capability: builtin.http GET + JSON extraction.
+A search API endpoint must be configured in the session scope first.
+
+Approaches:
+- Search the web: -> web-search recipe (Tier 1 - LLM formulates query, interprets results)
+"#;
+
+const CAT_NETWORK_OVERVIEW: &str = r#"# Network Capabilities
+
+The network domain gives the agent structured HTTP access to external services.
+All HTTP calls are subject to the session's outbound allowlist. Raw socket access
+is not available - only HTTP(S) via the http and http.save tools.
+
+## Tools in this domain
+- builtin.http - issue an HTTP request and receive the response body inline
+- builtin.http.save - issue an HTTP request and save the response body to a file
+
+## Web search (composition)
+Web search is not a separate tool - it is a composition of builtin.http + structured
+JSON extraction (pc-web-search-extract). A search API endpoint must be configured
+in the session scope before web search can be used.
+
+## Constraints
+- Response body cap: 15 MiB (builtin.http); same for http.save
+- Default timeout: 10 s (connect) / 30 s (read)
+- Redirect following: up to 5 hops
+- Headers: set Accept and Content-Type explicitly for JSON APIs
+
+## Scope and safety
+- Outbound URLs are validated against the session's allowed-hosts list.
+- POST requests with user-controlled bodies must be confirmed before sending.
+- API keys in headers are resolved from the secrets layer - never hardcode them
+  in recipe vars or PythonCode bodies.
+"#;
+
+/// Seed the network domain group (chunk 4a): the primary `builtin-network`
+/// catalogue + 3 per-tool catalogues (`ext-http`, `ext-http-save`,
+/// `ext-web-search`) + 2 Tool rows (`http`, `http.save`) + 3 ToolSkill rows
+/// (`ts-http-fetch`, `ts-http-save`, `ts-web-search`).
+///
+/// PythonCode, leaf/domain Skills, and Recipes are added in chunks 4b–4d;
+/// their ids are appended to the catalogues' `child_component_ids` as they
+/// are minted (dedup makes this idempotent).
+async fn seed_network_group(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
+    //    appended to as children are minted below and in later chunks).
+    let cat_network = stores
+        .upsert_catalogue(network_primary_catalogue_row(&tenant), CAT_NETWORK)
+        .await?;
+    let cat_http = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-http",
+                "HTTP inline-response capability (builtin.http).",
+                CAT_EXT_HTTP_OVERVIEW,
+                json!([
+                    {"group_name": "http-get", "description": "GET requests (various auth/format variants)"},
+                    {"group_name": "http-mutate", "description": "POST, PUT, DELETE requests"},
+                    {"group_name": "http-head", "description": "HEAD requests for metadata/existence checks"}
+                ]),
+            ),
+            "ext-http",
+        )
+        .await?;
+    let cat_http_save = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-http-save",
+                "HTTP save-to-file capability (builtin.http.save).",
+                CAT_EXT_HTTP_SAVE_OVERVIEW,
+                json!([
+                    {"group_name": "http-save-download", "description": "Download and save to workspace file"},
+                    {"group_name": "http-save-api", "description": "Save large API response for later processing"}
+                ]),
+            ),
+            "ext-http-save",
+        )
+        .await?;
+    let cat_web_search = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-web-search",
+                "Web search composition capability (builtin.http + JSON extraction).",
+                CAT_EXT_WEB_SEARCH_OVERVIEW,
+                json!([
+                    {"group_name": "web-search", "description": "Query a configured search API and extract results"}
+                ]),
+            ),
+            "ext-web-search",
+        )
+        .await?;
+
+    // 2. Tool rows (class 0) — capability_id taken from the live
+    //    `*_CAPABILITY_ID` constant in `first_party_tools/http.rs`.
+    let tool_http = stores.upsert_tool(tool_http_row(&tenant), "http").await?;
+    let tool_http_save = stores
+        .upsert_tool(tool_http_save_row(&tenant), "http.save")
+        .await?;
+
+    // 3. ToolSkill rows (class 13).
+    let ts_http_fetch = stores
+        .upsert_tool_skill(ts_http_fetch_row(&tenant), "ts-http-fetch")
+        .await?;
+    let ts_http_save = stores
+        .upsert_tool_skill(ts_http_save_row(&tenant), "ts-http-save")
+        .await?;
+    let ts_web_search = stores
+        .upsert_tool_skill(ts_web_search_row(&tenant), "ts-web-search")
+        .await?;
+
+    // PythonCode, leaf/domain skills, recipes + catalogue appends arrive in
+    // chunks 4b–4d. Suppress unused-variable warnings for the ids minted here
+    // until later chunks consume them.
+    let _ = (
+        cat_network, cat_http, cat_http_save, cat_web_search, tool_http, tool_http_save,
+        ts_http_fetch, ts_http_save, ts_web_search,
+    );
+
+    tracing::debug!(
+        catalogue_id = %cat_network,
+        "seeded network group chunk 4a: 1 primary + 3 per-tool catalogues, 2 tools, 3 toolskills"
+    );
+
+    Ok(())
+}
+
+fn network_primary_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
+    NewPgExtensionCatalogue {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: CAT_NETWORK.to_string(),
+        description: "Network domain capability catalogue (http, http.save, web-search \
+                       composition)."
+            .to_string(),
+        version: "1.0".into(),
+        overview_doc: CAT_NETWORK_OVERVIEW.into(),
+        task_groups: json!([
+            {"group_name": "http-fetch", "description": "GET and POST requests with inline response body"},
+            {"group_name": "http-download", "description": "Requests that save the response body to a file"},
+            {"group_name": "web-search", "description": "Search API composition (http + JSON extraction)"}
+        ]),
+        child_component_ids: Vec::new(),
+        intent_index: None,
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        dependency_registry: None,
+    }
+}
+
+fn tool_http_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "http".to_string(),
+        description: "Perform an HTTP or HTTPS request and return the response inline. \
+                       Supports GET, POST, PUT, PATCH, DELETE, HEAD. Response body capped \
+                       at 256 KiB inline; larger responses should use builtin.http.save."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Absolute HTTP or HTTPS URL"},
+                "method": {"type": "string", "enum": ["get","post","put","patch","delete","head"],
+                           "description": "HTTP method. Defaults to get."},
+                "headers": {"description": "HTTP headers as an object or [{name,value}] array"},
+                "body": {"description": "String or JSON request body"},
+                "body_base64": {"type": "string", "description": "Base64-encoded request body"},
+                "response_body_limit": {"type": "integer", "minimum": 1, "maximum": 262144,
+                            "description": "Max inline response bytes, capped at 256 KiB."},
+                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 30000, "default": 10000}
+            },
+            "required": ["url"],
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({"url": "{{url}}"})),
+        effect_type: "network_egress".to_string(),
+        preconditions: Some(
+            "url must be absolute http/https; network egress must be permitted by policy".into(),
+        ),
+        error_handling: Some(
+            "connection failure -> tool error; body over limit -> truncated with guidance; \
+             non-2xx -> in output (not a tool error)"
+                .into(),
+        ),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.http".into(),
+    }
+}
+
+fn tool_http_save_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "http.save".to_string(),
+        description: "Perform an HTTP or HTTPS request and save the sanitized response body \
+                       to a scoped file path. Accepts up to 10 MiB of response body. Used when \
+                       the response is too large for inline delivery or must be persisted."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Absolute HTTP or HTTPS URL"},
+                "save_to": {"type": "string", "description": "Scoped path to save the response body"},
+                "method": {"type": "string", "enum": ["get","post","put","patch","delete","head"]},
+                "headers": {"description": "HTTP headers as an object or [{name,value}] array"},
+                "body": {"description": "String or JSON request body"},
+                "body_base64": {"type": "string"},
+                "response_body_limit": {"type": "integer", "minimum": 1, "maximum": 10485760,
+                            "description": "Max response body bytes to save. Default 10 MiB."},
+                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 30000, "default": 10000}
+            },
+            "required": ["url", "save_to"],
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({"url": "{{url}}", "save_to": "{{save_to}}"})),
+        effect_type: "mixed".to_string(),
+        preconditions: Some(
+            "url must be absolute http/https; save_to must be within workspace mount".into(),
+        ),
+        error_handling: Some(
+            "connection failure -> tool error; save_to outside mount -> tool error".into(),
+        ),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.http.save".into(),
+    }
+}
+
+fn ts_http_fetch_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-http-fetch".to_string(),
+        description: "Executor binding for builtin.http. Required: url. Optional: method \
+                       (default get), headers, body, body_base64, response_body_limit (max \
+                       256 KiB), timeout_ms (max 30 000). Non-2xx status codes are returned \
+                       in output - not errors."
+            .to_string(),
+        content: "Call `host.http(url=<absolute url>, method=<get|post|put|patch|delete|head>, \
+                  headers=<optional>, body=<optional>, body_base64=<optional>, \
+                  response_body_limit=<optional 1..262144>, timeout_ms=<optional 1..30000>)` \
+                  to issue an outbound HTTP request and receive the response inline. The \
+                  inline body is capped at 256 KiB; use ts-http-save for larger responses. \
+                  Non-2xx status codes appear in the result's status field - they are not \
+                  tool errors. Always inspect the status code after the call."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("http".to_string()),
+        param_schema: Some(json!([
+            {"name": "url", "param_type": "string", "required": true, "description": "Absolute http/https URL"},
+            {"name": "method", "param_type": "string", "required": false, "description": "HTTP method (default get)"},
+            {"name": "headers", "param_type": "object", "required": false, "description": "HTTP headers object or [{name,value}]"},
+            {"name": "body", "param_type": "string", "required": false, "description": "String or JSON request body"},
+            {"name": "body_base64", "param_type": "string", "required": false, "description": "Base64-encoded request body"},
+            {"name": "response_body_limit", "param_type": "integer", "required": false, "description": "Max inline response bytes (1..262144)"},
+            {"name": "timeout_ms", "param_type": "integer", "required": false, "description": "Request timeout ms (1..30000)"}
+        ])),
+        param_template: Some(json!({"url": "{{url}}"})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_http_save_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-http-save".to_string(),
+        description: "Executor binding for builtin.http.save. Required: url, save_to (scoped \
+                       path). Optional: method, headers, body, body_base64, \
+                       response_body_limit (default and max 10 MiB), timeout_ms (max 30 000). \
+                       Returns metadata (status, bytes_saved)."
+            .to_string(),
+        content: "Call `host.http.save(url=<absolute url>, save_to=<scoped path>, \
+                  method=<get|post|put|patch|delete|head>, headers=<optional>, \
+                  body=<optional>, body_base64=<optional>, response_body_limit=<optional \
+                  1..10485760>, timeout_ms=<optional 1..30000>)` to issue an outbound HTTP \
+                  request and save the sanitized response body to a workspace file. Use this \
+                  when the response exceeds 256 KiB or must be persisted. Returns metadata \
+                  with the status code and bytes_saved - inspect the status field."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("http.save".to_string()),
+        param_schema: Some(json!([
+            {"name": "url", "param_type": "string", "required": true, "description": "Absolute http/https URL"},
+            {"name": "save_to", "param_type": "string", "required": true, "description": "Scoped workspace path to save response body"},
+            {"name": "method", "param_type": "string", "required": false, "description": "HTTP method (default get)"},
+            {"name": "headers", "param_type": "object", "required": false, "description": "HTTP headers object or [{name,value}]"},
+            {"name": "body", "param_type": "string", "required": false, "description": "String or JSON request body"},
+            {"name": "body_base64", "param_type": "string", "required": false, "description": "Base64-encoded request body"},
+            {"name": "response_body_limit", "param_type": "integer", "required": false, "description": "Max response body bytes to save (1..10485760)"},
+            {"name": "timeout_ms", "param_type": "integer", "required": false, "description": "Request timeout ms (1..30000)"}
+        ])),
+        param_template: Some(json!({"url": "{{url}}", "save_to": "{{save_to}}"})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
+
+fn ts_web_search_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-web-search".to_string(),
+        description: "ToolSkill: web search via HTTP + structured extraction composition."
+            .to_string(),
+        content: "Tool used: builtin.http (no dedicated builtin.web_search capability \
+                  exists). Effect: Read - issues an HTTP GET to a search API endpoint, \
+                  extracts results.\n\nComposition pattern:\n\
+                  1. Use builtin.http to GET a search API endpoint (e.g. DuckDuckGo Instant \
+                  Answer API, SerpAPI, a configured search provider endpoint).\n\
+                  2. The response body is JSON. Use pc-json-extract-field (or a local \
+                  PythonCode step) to extract the relevant results array from the response.\n\
+                  3. Filter, rank, or summarize the results as needed.\n\n\
+                  Parameter guidance:\n\
+                  - url: the search API endpoint, with the query embedded as a URL param.\n\
+                  - headers: include 'Accept: application/json' and any required API key \
+                  header.\n\
+                  - method: always GET for search.\n\n\
+                  Constraints:\n\
+                  - The agent has no built-in search engine - it must use a configured \
+                  search API. If no search API is configured in the current scope, inform \
+                  the user.\n\
+                  - Respect the 15 MiB response cap from builtin.http.\n\
+                  - Do not embed raw user PII in search queries without consent."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("http".to_string()),
+        param_schema: Some(json!([
+            {"name": "url", "param_type": "string", "required": true, "description": "Search API endpoint URL with query embedded"},
+            {"name": "headers", "param_type": "object", "required": false, "description": "Accept: application/json + API key header"},
+            {"name": "method", "param_type": "string", "required": false, "description": "Always GET for search"}
+        ])),
+        param_template: Some(json!({"url": "{{url}}"})),
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
+}
