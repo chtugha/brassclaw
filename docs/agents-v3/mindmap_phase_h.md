@@ -2734,3 +2734,42 @@ calls it directly for Monty turns (bypass `driver_registry`, C6-1=B kept).
 **Open: how minimal can the `LoopExit` be (does the worker need
 `reply_message_refs`/`final_checkpoint_id` populated, or can the orchestrator's
 own `host.*` side effects suffice)? + Monty-turn detection in worker.**
+
+### C.6 slice 4a — prepare_monty_session helper (portion 140)
+
+**Forks locked (slice 4):** F4-2=B (factor engine bootstrap helper), F4-4=B
+(always Monty — worker bypasses driver_registry every turn; matches C6-3=B
+delete canonical outright). F4-1 forced (driver owns 14 engine-dep Arcs —
+turns-layer host exposes none; reborn can't dep on engine). F4-3 de-risked
+(minimal `LoopExit::Completed` w/ empty refs — `loop_exit_applier.rs:232`
+treats empty refs as trusted; orchestrator already persisted reply via
+`host.post_reply`/`host.save_history`).
+
+**F4-2b (bootstrap scope) resolved by reading, not asking:**
+`build_orchestrator_inputs` passes thread messages as `context` + persisted_state
+as `state`; `basic_mode.py` seeds in-VM `history` from `context` (dropping last
+User) and assembles ALL prompts itself via `host.*` — it does NOT rely on the
+Model-A codeact system prompt in `thread.messages`. So the new path needs only a
+MINIMAL bootstrap: load `Thread` + load orchestrator code + persisted_state (from
+`thread.metadata.runtime_checkpoint`) + `MontySession::new`. Skip Model-A
+`refresh_system_prompt`/`persist_runtime_state`/`store_runtime_checkpoint`
+(orchestrator persists via `host.save_history`; runner/applier handles turn
+state). `load_orchestrator_from_docs(docs, allow_self_modify)` returns
+`DEFAULT_ORCHESTRATOR` (= basic_mode.py) when self-modify off (default) — docs
+unused. `RUNTIME_CHECKPOINT_METADATA_KEY` is `pub const` in
+`runtime::manager`; `self_modify_enabled()` reachable as
+`crate::runtime::self_modify_enabled()`; `Thread::transition_to` pub.
+
+**Shipped (4a):** `prepare_monty_session(thread, store, max_dur) ->
+Result<MontySession, EngineError>` in `orchestrator.rs:1071` — the FRESH-SESSION
+half of the bootstrap (fetch system_docs → load_orchestrator_from_docs → extract
+persisted_state → `MontySession::new`). The composition `PersistentMontyDriver`
+(4c) will call it inside `MontySessionRegistry::checkout_or_create`'s init
+closure so a session is built only when no parked session exists; the per-turn
+half (load Thread via `store.load_thread(thread_id)` + transition to Running)
+lives in the composition driver. +2 unit tests
+(`prepare_monty_session_constructs_from_fresh_thread`,
+`prepare_monty_session_loads_real_orchestrator_and_parks`). Gates: engine clippy
+clean (default + skills-db, `-D warnings`), engine `--lib` 567 passed (565+2).
+**Next: 4b = `MontyTurnDriverPort` trait in turns; 4c = composition impl; 4d =
+worker always-Monty direct path.**

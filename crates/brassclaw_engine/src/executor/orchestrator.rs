@@ -1050,6 +1050,57 @@ impl MontySession {
     }
 }
 
+/// Construct a fresh cross-turn-persistent [`MontySession`] for one
+/// conversation (C.6 slice 4a). This is the *fresh-session* half of the
+/// persistent-Monty turn bootstrap: it loads the versioned orchestrator code
+/// and the runtime checkpoint's `persisted_state`, then parses + starts the
+/// script up to the first host call via [`MontySession::new`].
+///
+/// The per-turn half (load the `Thread` from the store, transition it to
+/// `Running`, hand the new turn's input to a checked-out session via
+/// [`MontySession::drive_to_yield`]) is owned by the composition-side
+/// `PersistentMontyDriver`, which calls this inside the session registry's
+/// `checkout_or_create` init closure so a session is built only when no parked
+/// session exists for the conversation.
+///
+/// Deliberately minimal vs the retired `ExecutionLoop::run` bootstrap: the
+/// orchestrator (`basic_mode.py`) assembles every LLM prompt itself via
+/// `host.*` and persists history via `host.save_history`, so the Model-A
+/// `refresh_system_prompt` / `persist_runtime_state` / `store_runtime_checkpoint`
+/// steps are NOT replicated here.
+pub async fn prepare_monty_session(
+    thread: &Thread,
+    store: Option<&Arc<dyn Store>>,
+    max_duration_override: Option<std::time::Duration>,
+) -> Result<MontySession, EngineError> {
+    // Pre-fetch shared memory docs — only consulted when self-modification is
+    // enabled; otherwise load_orchestrator_from_docs returns the compiled-in
+    // DEFAULT_ORCHESTRATOR and the docs are unused.
+    let system_docs = match store {
+        Some(store) => match store.list_shared_memory_docs(thread.project_id).await {
+            Ok(docs) => docs,
+            Err(error) => {
+                debug!("failed to load shared docs for orchestrator: {error}");
+                Vec::new()
+            }
+        },
+        None => Vec::new(),
+    };
+
+    let allow_self_modify = crate::runtime::self_modify_enabled();
+    let (orchestrator_code, _orchestrator_version) =
+        load_orchestrator_from_docs(&system_docs, allow_self_modify);
+
+    let persisted_state = thread
+        .metadata
+        .get(crate::runtime::manager::RUNTIME_CHECKPOINT_METADATA_KEY)
+        .and_then(|value| value.get("persisted_state"))
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    MontySession::new(&orchestrator_code, thread, &persisted_state, max_duration_override)
+}
+
 /// Drive an orchestrator script once to completion (non-persistent path).
 ///
 /// Thin delegation over [`MontySession`]: parse + start, then drive until the
@@ -4502,6 +4553,68 @@ mod tests {
         assert!(
             matches!(second, OrchestratorYield::Complete(_)),
             "resumed session must complete"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_monty_session_constructs_from_fresh_thread() {
+        // A brand-new thread (no runtime checkpoint metadata, not yet
+        // transitioned to Running) must yield a session: prepare_monty_session
+        // loads the compiled-in DEFAULT_ORCHESTRATOR and an empty
+        // persisted_state without requiring any Model-A bootstrap step.
+        let thread = Thread::new(
+            "goal",
+            crate::types::thread::ThreadType::Foreground,
+            ProjectId::new(),
+            "test-user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        let session = prepare_monty_session(&thread, None, None).await;
+        assert!(
+            session.is_ok(),
+            "prepare_monty_session must construct a session from a fresh thread"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_monty_session_loads_real_orchestrator_and_parks() {
+        // End-to-end: prepare_monty_session loads the real basic_mode.py
+        // (DEFAULT_ORCHESTRATOR), builds the session, and the first drive parks
+        // at host.await_next_turn() — the same gate as
+        // default_orchestrator_parses_and_parks_at_first_await_next_turn, but
+        // driven through the prepare helper the composition driver will use.
+        let (llm, effects, leases, policy, gate) = session_host_deps();
+        let mut thread = session_fresh_thread();
+        let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
+        let mut session = prepare_monty_session(&thread, None, None)
+            .await
+            .expect("prepare must construct a session");
+        let yielded = session
+            .drive_to_yield(
+                &mut thread,
+                &llm,
+                &effects,
+                &leases,
+                &policy,
+                &mut signal_rx,
+                None,
+                None,
+                None,
+                None,
+                &gate,
+                #[cfg(feature = "skills-db")]
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("first drive must not error");
+        assert!(
+            matches!(yielded, OrchestratorYield::AwaitNextTurn),
+            "prepared real DEFAULT_ORCHESTRATOR must park at first await_next_turn"
         );
     }
 
