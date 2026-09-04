@@ -5957,12 +5957,22 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   grounded to shipped state). Both configs clippy-clean (C.4.5.19: engine +
 >   composition default & skills-db, extensions postgres, skills). Zenflow step
 >   `94a810b6` (HI.10) Completed. **Resume C.5.**
-> - **C.5 — Basic-mode orchestrator script.** The built-in Phase-1 harness
+> - **C.5 — Basic-mode orchestrator script. COMPLETE (2026-09-04, shipped
+>   `167cdc7d`/`be2129c5`/`cbc8bdef`/`26b0b153`).** The built-in Phase-1 harness
 >   (receive input → `host.resolve_intent` → dispatch). Match →
 >   `host.compose_orchestrator` + run the assembled recipe program (Tier-0 calls
 >   / Tier-1 fallback prior-knowledge + `host.kohai_complete` Kohai-mediated LLM
 >   call). No-match → prompt-assembly recipe + `host.kohai_complete` + answer.
 >   Answer → `host.post_reply` tool → `host-save-history` recipe → kohai/sempai.
+>   Delivered: slice 1a/b/c = `KohaiPort` trait + `handle_kohai_complete` handler
+>   (5 MockKohaiPort tests) + `PgKohaiPort` FULL flow (10 tests); slice 2 =
+>   `orchestrator/basic_mode.py` (the v3 `orchestrator:main` compiled-in script);
+>   slice 3 = `DEFAULT_ORCHESTRATOR` swap to `basic_mode.py` + Model-A test
+>   retirement (select_skills/Phase H.1/H.2 harness/segment-reduction block + 5
+>   orphaned constants deleted; C.7's test-deletion pulled forward). Both engine +
+>   composition configs clippy-clean; engine tests green. Seeded host recipes lack
+>   variants → script degrades gracefully to direct `host.kohai_complete` (seed
+>   default-variant fix deferred to C.2 refinement). **Continue into C.6.**
 > - **C.6 — Production driver switch.** Replace `TurnRunnerWorker` → agent-loop
 >   stages with `TurnRunnerWorker` → one cross-turn persistent Monty session
 >   (D-C1) running the basic-mode orchestrator. Retire `canonical.rs` stage

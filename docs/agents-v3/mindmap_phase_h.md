@@ -2517,3 +2517,18 @@ verify in C.6).
   snippet tests (action_errors_*, regex_match reachability) SURVIVE (no helper
   deps). This is C.7's test-deletion pulled forward by the swap — final-version
   state.
+
+### C.5 COMPLETE (2026-09-04, shipped `26b0b153`)
+Deleted the 5 orphaned test constants (TEST_LARGE_CONTENT_SIZE/TEST_TRUNCATE_MAX
+_OUTPUT/TEST_CONTENT_8K/TEST_CONTENT_4K/TEST_ESTIMATED_TOKENS) that the
+segment-reduction deletion orphaned. Both engine configs + both composition
+configs clippy-clean; engine tests green (96 orchestrator-module + 5
+compose_orchestrator + 564 lib). basic_mode.py is now the compiled-in
+`DEFAULT_ORCHESTRATOR`; the Model-A test scaffolding is gone (C.7's test-deletion
+pulled forward). **C.5 done. Next: C.6 — production driver switch.** The driver
+moves the dormant `host.*` arms + `host` namespace out of `execute_orchestrator`
+into a cross-turn-persistent Monty session (D-C1) that runs basic_mode.py as the
+turn driver, replacing the `canonical.rs` stage pipeline; end-to-end verify the
+script drives a turn. Then C.7 retires `execute_orchestrator`/`default.py` +
+updates the stale doc-comments at orchestrator.rs :1946/:2011/:2220/:2240/:2298/
+:3154.

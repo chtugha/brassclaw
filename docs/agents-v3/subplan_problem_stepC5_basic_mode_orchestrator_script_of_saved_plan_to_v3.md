@@ -186,5 +186,31 @@ does not own an LLM backend).
     inside the future, unlike `compose`'s `'static`). `#[cfg(feature="postgres")]`
     on the DB struct/impl; pure helpers + 10 unit tests ungated (both configs).
     Registered in composition `lib.rs`. Both configs clippy-clean (engine +
-    composition) + 10 tests green). [ ] slice 2 — `basic_mode.py`.
-    [ ] slice 3 — `DEFAULT_ORCHESTRATOR` swap + both-configs green. Then C.6.
+    composition) + 10 tests green). [x] slice 2 DONE (2026-09-04 — authored
+    `crates/brassclaw_engine/orchestrator/basic_mode.py`, 172 ln: `def main`
+    + helpers `_last_user_input`/`_chat_history`/`_stringify`/`_run_steplist`/
+    `_compose_and_run`/`_non_match_answer`/`_save_history`; entry
+    `result=main(...); FINAL(result)`. Monty is sole execution authority:
+    `host.check_signals` → extract last User msg → `host.resolve_intent` →
+    match=compose_orchestrator+run_steplist (carries `program.skills`);
+    disambig/no_match/error=`_non_match_answer` (host-non-match-llm-answer
+    recipe, ultimate fallback direct `host.kohai_complete`) → `host.post_reply`
+    → best-effort `host-save-history` → `FINAL({outcome,response,state})`.
+    Monty 0.0.16 subset only (no f-strings/format/exec/eval/compile/re/imports).
+    Graceful degradation: seeded host-save-history/host-non-match-llm-answer
+    recipes lack variants → compose NoVariantMatch → script falls through to
+    the ultimate `host.kohai_complete`; seed default-variant fix deferred
+    (C.2 refinement)). [x] slice 3 DONE (2026-09-04 — swapped
+    `DEFAULT_ORCHESTRATOR` `default.py`→`basic_mode.py` (orchestrator.rs:71);
+    retired the Model-A test scaffolding that sliced the old `run_loop`/helper
+    section: deleted the `select_skills`, `_parse_orchestrator_channel_steps`,
+    Phase H.2 `execute_recipe_orchestrator_channel` harness (run_python_tier0
+    _channel+step_result+11 phase_h2_*), and segment-reduction Phase 3 block
+    (eval_python_object+run_python_final_with_driver+9 tests) + 5 orphaned
+    test constants; updated `load_orchestrator_*` asserts (`run_loop`→`def
+    main`, `__llm_complete__`→`host.resolve_intent`) and the surviving slicing
+    find markers (`\ndef run_loop(`→`\ndef main(`). This pulls C.7's Model-A
+    test-deletion forward to the final-version state. Both engine configs +
+    both composition configs clippy-clean; engine tests green (96
+    orchestrator-module + 5 compose_orchestrator + 564 lib). Shipped
+    `26b0b153`.) **C.5 COMPLETE. Continue into C.6.**
