@@ -5671,16 +5671,116 @@ async fn seed_memory_group(
         .upsert_tool_skill(ts_memory_tree_row(&tenant), "ts-memory-tree")
         .await?;
 
-    // 4-7. PythonCode, leaf/domain Skills, Recipes, and catalogue appends are
-    //      added in chunks 5b-5d. Suppress unused-id warnings until then.
+    // 4. PythonCode rows (class 22) — orchestrator executors + pure-logic
+    //    helpers. Transcribed verbatim from the doc (Q1 decision A); bodies
+    //    use `host.<tool>(kwarg=value)` dispatch with `{{vars.slotN}}` vars.
+    let pc_exec_memory_search = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-memory-search",
+                "Orchestrator executor: calls host.<tool> to search persistent memory \
+                 via builtin.memory_search. Input: query (string), limit (optional int \
+                 1-20). Output: ranked memory documents.",
+                PC_EXEC_MEMORY_SEARCH_CONTENT,
+            ),
+            "pc-exec-memory-search",
+        )
+        .await?;
+    let pc_exec_memory_write = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-memory-write",
+                "Orchestrator executor: calls host.<tool> to write to persistent memory \
+                 via builtin.memory_write. Input: content (string), target (optional \
+                 string, default 'daily_log'), append (optional bool, default true).",
+                PC_EXEC_MEMORY_WRITE_CONTENT,
+            ),
+            "pc-exec-memory-write",
+        )
+        .await?;
+    let pc_exec_memory_patch = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-memory-patch",
+                "Orchestrator executor: calls host.<tool> for a targeted patch to a \
+                 memory document via builtin.memory_write patch mode. Input: target \
+                 (string), old_string (string), new_string (string), replace_all \
+                 (optional bool).",
+                PC_EXEC_MEMORY_PATCH_CONTENT,
+            ),
+            "pc-exec-memory-patch",
+        )
+        .await?;
+    let pc_exec_memory_read = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-memory-read",
+                "Orchestrator executor: calls host.<tool> to read a memory document by \
+                 path via builtin.memory_read. Input: path (string). Output: full \
+                 document content.",
+                PC_EXEC_MEMORY_READ_CONTENT,
+            ),
+            "pc-exec-memory-read",
+        )
+        .await?;
+    let pc_exec_memory_tree = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-memory-tree",
+                "Orchestrator executor: calls host.<tool> to list the memory directory \
+                 tree via builtin.memory_tree. Input: path (optional string), depth \
+                 (optional int).",
+                PC_EXEC_MEMORY_TREE_CONTENT,
+            ),
+            "pc-exec-memory-tree",
+        )
+        .await?;
+    let pc_memory_extract_section = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-memory-extract-section",
+                "Pure-logic helper: extracts a named section from a Markdown document \
+                 using heading matching. Input: content (string), heading (string - \
+                 heading text without # prefix). Output: {section_content, heading, \
+                 found}.",
+                PC_MEMORY_EXTRACT_SECTION_CONTENT,
+            ),
+            "pc-memory-extract-section",
+        )
+        .await?;
+    let pc_memory_format_entry = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-memory-format-entry",
+                "Pure-logic helper: formats a memory entry string ready for appending \
+                 to a memory document. Input: text (string), timestamp_str (string - \
+                 caller supplies pre-fetched timestamp). Output: {formatted_entry}.",
+                PC_MEMORY_FORMAT_ENTRY_CONTENT,
+            ),
+            "pc-memory-format-entry",
+        )
+        .await?;
+
+    // 5-7. Leaf/domain Skills, Recipes, and catalogue appends are added in
+    //      chunks 5c-5d. Suppress unused-id warnings until then.
     let _ = (
         cat_memory, cat_memory_search, cat_memory_write, cat_memory_read, cat_memory_tree,
         tool_memory_search, tool_memory_write, tool_memory_read, tool_memory_tree,
         ts_memory_search, ts_memory_write, ts_memory_read, ts_memory_tree,
+        pc_exec_memory_search, pc_exec_memory_write, pc_exec_memory_patch,
+        pc_exec_memory_read, pc_exec_memory_tree, pc_memory_extract_section,
+        pc_memory_format_entry,
     );
 
     tracing::debug!(
-        "seeded memory group chunk 5a: 5 catalogues + 4 tools + 4 toolskills"
+        "seeded memory group chunk 5b: 7 PythonCode (5 executors + 2 pure-logic helpers)"
     );
 
     Ok(())
@@ -5978,3 +6078,83 @@ fn ts_memory_tree_row(tenant: &str) -> NewPgToolSkill {
         includes: vec![],
     }
 }
+
+// ---------------------------------------------------------------------------
+// Memory group PythonCode bodies (class 22) — transcribed verbatim from the
+// doc. Bodies use `host.<tool>(kwarg=value)` dispatch with `{{vars.slotN}}`
+// vars; no imports.
+// ---------------------------------------------------------------------------
+
+const PC_EXEC_MEMORY_SEARCH_CONTENT: &str = r#"# Orchestrator executor body.
+_query = "{{vars.slot0}}"
+_limit = {{vars.slot1}}
+_params = {"query": _query}
+if _limit and _limit > 0:
+    _params["limit"] = _limit
+result = host.memory_search(**_params)
+"#;
+
+const PC_EXEC_MEMORY_WRITE_CONTENT: &str = r#"# Orchestrator executor body.
+_content = "{{vars.slot0}}"
+_target = "{{vars.slot1}}"
+_append = {{vars.slot2}}
+_params = {"content": _content}
+if _target and _target != "":
+    _params["target"] = _target
+if _append is not None:
+    _params["append"] = _append
+result = host.memory_write(**_params)
+"#;
+
+const PC_EXEC_MEMORY_PATCH_CONTENT: &str = r#"# Orchestrator executor body.
+_target = "{{vars.slot0}}"
+_old = "{{vars.slot1}}"
+_new = "{{vars.slot2}}"
+_replace_all = {{vars.slot3}}
+_params = {"target": _target, "old_string": _old, "new_string": _new}
+if _replace_all:
+    _params["replace_all"] = True
+result = host.memory_write(**_params)
+"#;
+
+const PC_EXEC_MEMORY_READ_CONTENT: &str = r#"# Orchestrator executor body.
+_path = "{{vars.slot0}}"
+result = host.memory_read(path=_path)
+"#;
+
+const PC_EXEC_MEMORY_TREE_CONTENT: &str = r#"# Orchestrator executor body.
+_path = "{{vars.slot0}}"
+_depth = {{vars.slot1}}
+_params = {}
+if _path and _path != "":
+    _params["path"] = _path
+if _depth and _depth > 0:
+    _params["depth"] = _depth
+result = host.memory_tree(**_params)
+"#;
+
+const PC_MEMORY_EXTRACT_SECTION_CONTENT: &str = r##"# No I/O, no imports. IBS bakes in content and heading before execution.
+content = "{{vars.slot0}}"
+heading = "{{vars.slot1}}"
+lines = content.split("\n")
+in_section = False
+section_lines = []
+for line in lines:
+    stripped = line.lstrip("#").strip()
+    if stripped == heading and line.startswith("#"):
+        in_section = True
+        continue
+    if in_section:
+        if line.startswith("#"):
+            break
+        section_lines.append(line)
+section_content = "\n".join(section_lines).strip() if section_lines else None
+result = {"section_content": section_content, "heading": heading, "found": section_content is not None}
+"##;
+
+const PC_MEMORY_FORMAT_ENTRY_CONTENT: &str = r####"# No I/O, no imports, no datetime. Caller must supply timestamp_str.
+text = "{{vars.slot0}}"
+timestamp_str = "{{vars.slot1}}"
+formatted_entry = f"### {timestamp_str}\n\n{text}\n"
+result = {"formatted_entry": formatted_entry}
+"####;
