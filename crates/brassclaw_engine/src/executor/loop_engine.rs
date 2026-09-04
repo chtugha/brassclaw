@@ -104,6 +104,7 @@ impl RuntimeCheckpoint {
 /// The core execution loop for a thread.
 pub struct ExecutionLoop {
     pub thread: Thread,
+    #[allow(dead_code)]
     llm: Arc<dyn LlmBackend>,
     effects: Arc<dyn EffectExecutor>,
     leases: Arc<LeaseManager>,
@@ -517,7 +518,6 @@ impl ExecutionLoop {
         let result = crate::executor::orchestrator::execute_orchestrator(
             &orchestrator_code,
             &mut self.thread,
-            &self.llm,
             &self.effects,
             &self.leases,
             &self.policy,

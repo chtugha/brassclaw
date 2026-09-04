@@ -519,7 +519,7 @@ fn build_context_inputs(
 pub async fn execute_code(
     code: &str,
     thread: &Thread,
-    llm: &Arc<dyn LlmBackend>,
+    llm: Option<&Arc<dyn LlmBackend>>,
     effects: &Arc<dyn EffectExecutor>,
     leases: &LeaseManager,
     policy: &PolicyEngine,
@@ -550,7 +550,7 @@ pub async fn execute_code(
 pub async fn execute_code_with_skills(
     code: &str,
     thread: &Thread,
-    llm: &Arc<dyn LlmBackend>,
+    llm: Option<&Arc<dyn LlmBackend>>,
     effects: &Arc<dyn EffectExecutor>,
     leases: &LeaseManager,
     policy: &PolicyEngine,
@@ -587,7 +587,7 @@ pub async fn execute_code_with_skills(
 async fn execute_code_with_skills_inner(
     code: &str,
     thread: &Thread,
-    llm: &Arc<dyn LlmBackend>,
+    llm: Option<&Arc<dyn LlmBackend>>,
     effects: &Arc<dyn EffectExecutor>,
     leases: &LeaseManager,
     policy: &PolicyEngine,
@@ -783,42 +783,69 @@ async fn execute_code_with_skills_inner(
                     // LLM calls are async — spawn tokio task, resume_pending.
                     // This allows asyncio.gather(llm_query(...), tool(...))
                     // to run the LLM call and tool call concurrently.
-                    "llm_query" => {
-                        let args = call.args.clone();
-                        let kwargs = call.kwargs.clone();
-                        let llm = llm.clone();
-                        let handle = tokio::spawn(async move {
-                            handle_llm_query_standalone(&args, &kwargs, &llm).await
-                        });
-                        pending_futures.insert(monty_call_id, PendingFuture::Llm { handle });
-                        None // handled as async below
-                    }
-                    "llm_query_batched" => {
-                        let args = call.args.clone();
-                        let kwargs = call.kwargs.clone();
-                        let llm = llm.clone();
-                        let handle = tokio::spawn(async move {
-                            handle_llm_query_batched_standalone(&args, &kwargs, &llm).await
-                        });
-                        pending_futures.insert(monty_call_id, PendingFuture::Llm { handle });
-                        None
-                    }
+                    "llm_query" => match llm {
+                        Some(llm) => {
+                            let args = call.args.clone();
+                            let kwargs = call.kwargs.clone();
+                            let llm = llm.clone();
+                            let handle = tokio::spawn(async move {
+                                handle_llm_query_standalone(&args, &kwargs, &llm).await
+                            });
+                            pending_futures.insert(monty_call_id, PendingFuture::Llm { handle });
+                            None // handled as async below
+                        }
+                        None => Some(ExtFunctionResult::Error(MontyException::new(
+                            ExcType::RuntimeError,
+                            Some(
+                                "llm_query() is not available in this execution context (no LLM backend)"
+                                    .into(),
+                            ),
+                        ))),
+                    },
+                    "llm_query_batched" => match llm {
+                        Some(llm) => {
+                            let args = call.args.clone();
+                            let kwargs = call.kwargs.clone();
+                            let llm = llm.clone();
+                            let handle = tokio::spawn(async move {
+                                handle_llm_query_batched_standalone(&args, &kwargs, &llm).await
+                            });
+                            pending_futures.insert(monty_call_id, PendingFuture::Llm { handle });
+                            None
+                        }
+                        None => Some(ExtFunctionResult::Error(MontyException::new(
+                            ExcType::RuntimeError,
+                            Some(
+                                "llm_query_batched() is not available in this execution context (no LLM backend)"
+                                    .into(),
+                            ),
+                        ))),
+                    },
                     // rlm_query stays synchronous — it spawns a child Monty VM
                     // which isn't Send, so it can't run in tokio::spawn.
-                    "rlm_query" => Some(
-                        handle_rlm_query(
-                            &call.args,
-                            &call.kwargs,
-                            thread,
-                            llm,
-                            effects,
-                            leases,
-                            policy,
-                            &mut recursive_tokens,
-                            &execution_context.gate_controller,
-                        )
-                        .await,
-                    ),
+                    "rlm_query" => match llm {
+                        Some(llm) => Some(
+                            handle_rlm_query(
+                                &call.args,
+                                &call.kwargs,
+                                thread,
+                                llm,
+                                effects,
+                                leases,
+                                policy,
+                                &mut recursive_tokens,
+                                &execution_context.gate_controller,
+                            )
+                            .await,
+                        ),
+                        None => Some(ExtFunctionResult::Error(MontyException::new(
+                            ExcType::RuntimeError,
+                            Some(
+                                "rlm_query() is not available in this execution context (no LLM backend)"
+                                    .into(),
+                            ),
+                        ))),
+                    },
                     "globals" | "locals" => {
                         let entries: Vec<(MontyObject, MontyObject)> = known_actions
                             .iter()
@@ -3105,7 +3132,7 @@ mod tests {
         execute_code(
             code,
             thread,
-            &(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>),
+            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
             &effects,
             &leases,
             &policy,
@@ -3748,7 +3775,7 @@ except Exception as e:
         let result = execute_code(
             code,
             &thread,
-            &(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>),
+            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
             &effects,
             &leases,
             &policy,
@@ -3852,7 +3879,7 @@ except Exception as e:
         let result = execute_code(
             code,
             &thread,
-            &(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>),
+            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
             &effects,
             &leases,
             &policy,
@@ -3947,7 +3974,7 @@ except Exception as e:
         let result = execute_code(
             code,
             &thread,
-            &(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>),
+            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
             &effects,
             &leases,
             &policy,
@@ -4493,7 +4520,7 @@ except Exception as e:
 result = await tool_info(name="mission-create", detail="schema")
 "#,
             &thread,
-            &(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>),
+            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
             &effects,
             &leases,
             &policy,
@@ -4684,7 +4711,7 @@ result = await github_search(query="repo:foo")
 print(result)
 "#,
             &thread,
-            &(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>),
+            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
             &effects_dyn,
             &leases,
             &policy,
@@ -4761,7 +4788,7 @@ result = await github_create_issue(title="x")
 print(result)
 "#,
             &thread,
-            &(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>),
+            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
             &effects_dyn,
             &leases,
             &policy,
@@ -4847,7 +4874,7 @@ except RuntimeError as e:
 print(outcome)
 "#,
             &thread,
-            &(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>),
+            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
             &effects_dyn,
             &leases,
             &policy,

@@ -7185,7 +7185,7 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
 
 ### Phase I — Q1 Validator Upgrades
 
-**Status:** [ ] Pending
+**Status:** [x] Complete — commit b214bf9d
 
 **File:** `crates/brassclaw_engine/src/memory/component_validator.rs`
 
@@ -7378,7 +7378,7 @@ Q1 runs `parse_template` against every intent expression in `intent_examples`. R
 
 ### Phase J — Skill `intent_examples` + Dependency Registry
 
-**Status:** [ ] Pending
+**Status:** [x] Complete — commit 904cd293 (J.1 V055 migration; J.2 run_python_code_body light executor; J.3 resolve_dependencies + DependencyEntry)
 
 > **§0.23.4 fold-in (J.2):** V055 also adds `formatted_content TEXT` (nullable) to
 > all 13 component tables — the persisted LLM-formatted version computed at save
