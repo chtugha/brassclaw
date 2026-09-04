@@ -705,6 +705,7 @@ async fn user_message_no_profile_uses_product_live_runtime_and_persists_reply() 
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
+        monty_driver: None,
     })
     .expect("product-live runtime should build");
 
@@ -884,6 +885,7 @@ async fn user_message_no_profile_can_cancel_product_live_run_from_product_path()
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
+        monty_driver: None,
     })
     .expect("product-live runtime should build");
 
@@ -1075,6 +1077,7 @@ async fn product_live_runtime_rejects_unretained_cancellation_factory() {
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
+        monty_driver: None,
     }) {
         Ok(_) => panic!("product-live readiness must reject inert cancellation"),
         Err(error) => error,

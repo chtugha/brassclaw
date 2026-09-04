@@ -5973,36 +5973,26 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   composition configs clippy-clean; engine tests green. Seeded host recipes lack
 >   variants → script degrades gracefully to direct `host.kohai_complete` (seed
 >   default-variant fix deferred to C.2 refinement). **Continue into C.6.**
-> - **C.6 — Production driver switch.** Replace `TurnRunnerWorker` → agent-loop
->   stages with `TurnRunnerWorker` → one cross-turn persistent Monty session
->   (D-C1) running the basic-mode orchestrator. Retire `canonical.rs` stage
->   pipeline as the driver; reuse stage logic as host fns.
->   **C.6 nested subplan (2026-09-04):**
->   `./docs/agents-v3/subplan_problem_stepC6_production_driver_switch_of_saved_plan_to_v3.md`.
->   Locked forks: C6-1=B (direct `TurnRunnerWorker` path, bypass
->   `driver_registry`); C6-2=B (TRUE VM persistence — live `MontyRun`/
->   `RunProgress` handle per conversation across turns; rework `basic_mode.py`
->   into a resumable long-running loop + VM park/resume primitive +
->   conversation-keyed session registry; feasibility CONFIRMED —
->   `RunProgress::FunctionCall` is owned/`Send`, resumed with a fresh print
->   writer, already held across `.await` in `execute_orchestrator`);
->   C6-3=B (delete `canonical.rs` stage pipeline outright in C.6; stage logic
->   already in the `host.*` arms); C6-4=C (CI/Docker e2e only, skip local).
->   Slices: 1=engine `MontySession`+park/resume primitive (`host.await_next_
->   turn()`), 2=rework `basic_mode.py` into a resumable loop, 3=conversation-
->   keyed session registry, 4=`TurnRunnerWorker` direct path, 5=retire
->   `canonical.rs` stages, 6=both configs clippy + tests + mark done.
-> - **C.7 — Retire dead Model-A code + verify both configs green.** Delete
->   `execute_orchestrator`/`ExecutionLoop`/`ThreadManager`/`brassclaw_engine::
->   runtime` + `default.py` (the sole caller of the retired meta-primitives);
->   rework the H.12 `orchestrator_lookup` bridge (Monty calls host fns directly).
->   **NOTE:** the Model-A engine TEST mods (`executor::loop_engine::tests` +
->   `runtime::manager::tests`) were already deleted in C.1 (the meta-primitive
->   retirement broke them — `default.py::run_loop` calls `__execute_action__`),
->   so C.7 only deletes the production code + `default.py`. `CARGO_TARGET_DIR=
->   /Users/ollama/brassclaw-target` on every build; `df -h` first — `cargo clean`
->   (scoped `-p` ok) if Avail<15GB or >90%. Mark C done; commit + push; proceed
->   to **A**.
+> - **C.6 — Production driver switch. COMPLETE (2026-09-05, shipped `d9e06eba`).**
+>   Replace `TurnRunnerWorker` → agent-loop stages with `TurnRunnerWorker` →
+>   one cross-turn persistent Monty session (D-C1) running the basic-mode
+>   orchestrator. Retire `canonical.rs` stage pipeline as the driver; reuse stage
+>   logic as host fns. All 6 slices shipped: engine `MontySession`+park/resume
+>   primitive, resumable `basic_mode.py` loop, conversation-keyed session registry,
+>   `TurnRunnerWorker` direct path (bypass `driver_registry`), retire `canonical.rs`
+>   stages, both configs clippy-clean + engine tests green.
+> - **C.7 — Retire dead Model-A code + verify both configs green. COMPLETE
+>   (2026-09-05).** Deleted `execute_orchestrator`/`ExecutionLoop`/`ThreadManager`/
+>   `brassclaw_engine::runtime::{manager,conversation,tree,lease_refresh}` +
+>   `default.py` + `retrieval.rs`/`retrieval_dbless.rs` + `context.rs` +
+>   `RamSource` + `rlm_query` arm + `engine_v2_skill_codeact` integration test.
+>   Removed 7 dead re-exports from `lib.rs`. Moved `reconcile_dynamic_tool_lease`
+>   inline into `orchestrator.rs`. Fixed stale doc-comments across 6 files. Fixed
+>   `builtin_bootstrap.rs` recipe variable declarations (removed spurious `_`
+>   prefix that shadowed the usages). Both `brassclaw_engine` and
+>   `brassclaw_reborn_composition` pass `cargo clippy --all-targets -D warnings`
+>   with zero warnings. Engine: 562 passed. Composition: 706 passed. Phase C
+>   DONE. Proceed to **Phase A**.
 >
 > Subplan doc
 > `./docs/agents-v3/subplan_problem_stepC_model_a_retirement_of_saved_plan_to_v3.md`

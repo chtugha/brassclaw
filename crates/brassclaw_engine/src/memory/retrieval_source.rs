@@ -1,19 +1,10 @@
-//! `RetrievalSource` — abstraction over DB-backed and DB-less prior-knowledge retrieval.
-//!
-//! Phase 5 (Step 6.1) replaces the `RetrievalEngine::retrieve_context` stub inside
-//! `__assemble_prior_knowledge__` with this two-backend system:
+//! `RetrievalSource` — abstraction over DB-backed prior-knowledge retrieval.
 //!
 //! - [`PostgresSource`] — reads all validated component tables via a single UNION ALL
 //!   query (PERF-05 "single-query fetch"). Available when the `skills-db` feature is
 //!   active and a `PgPool` is wired in.
-//! - [`RamSource`] — keyword-retrieval over a `Store` (in production the store is
-//!   `PgMemoryDocStore`, i.e. keyword-retrieval **over postgres**, not a postgres-less
-//!   path). The static filesystem fallback-content file that previously supported
-//!   "fully offline / DB-less deployments" has been removed (Postgres is mandatory).
-//!   This legacy keyword path is replaced by intent-driven `PostgresSource` in v3
-//!   Phase K.
 //!
-//! Both enforce:
+//! Enforces:
 //!   `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`
 //!
 //! # Token budget
@@ -22,16 +13,16 @@
 //! `token_budget` is exhausted (estimated at `TOKENS_PER_BYTE` tokens per byte).
 //! The entire budget is honoured — partial rows are not split.
 
+#[cfg(feature = "skills-db")]
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::traits::store::Store;
 use crate::types::error::EngineError;
-use crate::types::project::ProjectId;
 
 /// Approximate tokens-per-byte for English prose (~4 bytes/token).
+#[cfg(any(feature = "skills-db", test))]
 const TOKENS_PER_BYTE: f64 = 0.25;
 
 /// A single retrieved component row normalised across all class tables.
@@ -241,10 +232,10 @@ pub trait RetrievalSource: Send + Sync {
     /// 1. Attempt intent resolution via `reborn_intent_inputs`.
     /// 2. On a unique match: fetch the specific component by ID + increment score.
     /// 3. On disambiguation: return the candidates for UX surfacing.
-    /// 4. On no-match / DB-less: fall back to `fetch_for_consumer` (keyword path).
+    /// 4. On no-match: fall back to `fetch_for_consumer` (keyword path).
     ///
-    /// The default implementation delegates to `fetch_for_consumer` (used by
-    /// `RamSource` which has no intent store). DB-backed sources override this.
+    /// The default implementation delegates to `fetch_for_consumer`. DB-backed
+    /// sources override this to use the intent store.
     async fn fetch_for_turn(
         &self,
         scope: &ComponentScope,
@@ -256,99 +247,6 @@ pub trait RetrievalSource: Send + Sync {
             .fetch_for_consumer(scope, query, token_budget, sender_class_code)
             .await?;
         Ok(FetchForTurnResult::Components(items))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// RamSource — keyword-retrieval over a Store (postgres-backed in production)
-// ---------------------------------------------------------------------------
-
-/// Keyword-retrieval source.
-///
-/// Wraps the legacy `Store`-based `RetrievalEngine` and maps `MemoryDoc` rows
-/// to `ComponentItem` using the `doc_type_to_class_code` table below.
-/// In production the `Store` is `PgMemoryDocStore` (postgres-backed), so this is
-/// keyword-retrieval **over postgres** — not a postgres-less backend. The static
-/// filesystem fallback-content file (`BRASSCLAW_FALLBACK_CONTENT_FILE`) that
-/// previously supported "fully offline / DB-less deployments" has been removed:
-/// Postgres is mandatory.
-///
-/// This legacy keyword path does NOT use the intent system (`resolve_intent`); it
-/// is replaced by intent-driven `PostgresSource` in v3 Phase K.
-pub struct RamSource {
-    engine: super::RetrievalEngine,
-}
-
-impl RamSource {
-    /// Create a `RamSource` backed by `store`.
-    pub fn new(store: Arc<dyn Store>) -> Self {
-        Self {
-            engine: super::RetrievalEngine::new(store),
-        }
-    }
-}
-
-#[async_trait]
-impl RetrievalSource for RamSource {
-    async fn fetch_for_consumer(
-        &self,
-        scope: &ComponentScope,
-        query: &str,
-        token_budget: usize,
-        _consumer_tag: &str,
-    ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
-        // Parse project_id UUID for the Store query.
-        let project_id = scope
-            .project_id
-            .parse::<uuid::Uuid>()
-            .map(ProjectId)
-            .unwrap_or_else(|_| ProjectId::new());
-
-        // Use a generous upper bound — we'll truncate by token budget ourselves.
-        const RAM_MAX_DOCS: usize = 200;
-        let docs = self
-            .engine
-            .retrieve_context(project_id, &scope.user_id, query, RAM_MAX_DOCS)
-            .await
-            .map_err(RetrievalSourceError::from)?;
-
-        // If the live store returned results, use them.
-        if !docs.is_empty() {
-            let mut items = Vec::new();
-            let mut tokens_used = 0usize;
-
-            for doc in docs {
-                let (class_code, _label) = doc_type_to_class_code(doc.doc_type);
-                let cost = estimate_tokens(doc.content.len());
-                if tokens_used + cost > token_budget && !items.is_empty() {
-                    break;
-                }
-                tokens_used += cost;
-                items.push(ComponentItem {
-                    id: doc.id.0,
-                    class_code,
-                    // MemoryDoc has no prompt_uid — use a monotonically increasing
-                    // counter so ordering is stable within a retrieval batch.
-                    prompt_uid: items.len() as i64,
-                    name: doc.title.clone(),
-                    description: String::new(),
-                    effective_content: doc.content.clone(),
-                    override_prompt_creation: false,
-                    // RamSource is a prompt-assembly path; executable Action
-                    // steps are not surfaced here (Q-G-STUB1).
-                    steps: None,
-                    allowed_tools: None,
-                });
-            }
-
-            // Sort by (class_code, prompt_uid) for deterministic assembly order.
-            items.sort_by_key(|item| (item.class_code, item.prompt_uid));
-            return Ok(items);
-        }
-
-        // No filesystem fallback (Postgres is mandatory). When the live store
-        // returns nothing, retrieval is simply empty for this scope/query.
-        Ok(vec![])
     }
 }
 
@@ -1070,6 +968,7 @@ impl PostgresSource {
 // ---------------------------------------------------------------------------
 
 /// Estimate token cost from byte length.
+#[cfg(any(feature = "skills-db", test))]
 fn estimate_tokens(byte_len: usize) -> usize {
     ((byte_len as f64 * TOKENS_PER_BYTE) as usize).max(1)
 }
@@ -1505,9 +1404,7 @@ pub async fn lookup_component_class(
 }
 
 /// Map a `DocType` to its class code.
-///
-/// This is the authoritative table for DocType → class_code mapping in the
-/// DB-less retrieval path.
+#[cfg(any(feature = "skills-db", test))]
 fn doc_type_to_class_code(doc_type: crate::types::memory::DocType) -> (i32, &'static str) {
     use crate::types::memory::DocType;
     match doc_type {
@@ -1732,117 +1629,7 @@ async fn fetch_dependency_registry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::memory::{DocType, MemoryDoc};
-
-    fn make_store(docs: Vec<MemoryDoc>) -> Arc<crate::tests::InMemoryStore> {
-        Arc::new(crate::tests::InMemoryStore::with_docs(docs))
-    }
-
-    fn test_scope(project_id: &str) -> ComponentScope {
-        ComponentScope {
-            tenant_id: "default".to_string(),
-            user_id: "test-user".to_string(),
-            agent_id: "test-agent".to_string(),
-            project_id: project_id.to_string(),
-        }
-    }
-
-    #[tokio::test]
-    async fn ram_source_returns_empty_for_empty_store() {
-        let project = ProjectId::new();
-        let store = make_store(vec![]);
-        let source = RamSource::new(store);
-        let scope = test_scope(&project.to_string());
-
-        let result = source
-            .fetch_for_consumer(&scope, "anything", 100_000, "02")
-            .await
-            .unwrap();
-        assert!(result.is_empty());
-    }
-
-    #[tokio::test]
-    async fn ram_source_returns_docs_ordered_by_class_then_uid() {
-        let project = ProjectId::new();
-        let store = make_store(vec![
-            MemoryDoc::new(
-                project,
-                "test-user",
-                DocType::Note,
-                "Note A",
-                "note content",
-            ),
-            MemoryDoc::new(
-                project,
-                "test-user",
-                DocType::Spec,
-                "Spec A",
-                "spec content",
-            ),
-            MemoryDoc::new(
-                project,
-                "test-user",
-                DocType::Lesson,
-                "Lesson A",
-                "lesson content",
-            ),
-        ]);
-        let source = RamSource::new(store);
-        let scope = test_scope(&project.to_string());
-
-        let result = source
-            .fetch_for_consumer(&scope, "content", 100_000, "02")
-            .await
-            .unwrap();
-
-        // Should be sorted by class_code: Spec(12) < Lesson(18) < Note(20)
-        assert!(!result.is_empty());
-        let codes: Vec<i32> = result.iter().map(|item| item.class_code).collect();
-        let mut sorted = codes.clone();
-        sorted.sort();
-        assert_eq!(codes, sorted, "results should be sorted by class_code");
-    }
-
-    #[tokio::test]
-    async fn ram_source_respects_token_budget() {
-        let project = ProjectId::new();
-        // Create docs with large content that will exceed the budget
-        let large_content = "x".repeat(50_000); // ~12,500 tokens
-        let store = make_store(vec![
-            MemoryDoc::new(
-                project,
-                "test-user",
-                DocType::Lesson,
-                "Lesson 1",
-                &large_content,
-            ),
-            MemoryDoc::new(
-                project,
-                "test-user",
-                DocType::Lesson,
-                "Lesson 2",
-                &large_content,
-            ),
-            MemoryDoc::new(
-                project,
-                "test-user",
-                DocType::Lesson,
-                "Lesson 3",
-                &large_content,
-            ),
-        ]);
-        let source = RamSource::new(store);
-        let scope = test_scope(&project.to_string());
-
-        // Budget of 15,000 tokens — only one doc should fit
-        let result = source
-            .fetch_for_consumer(&scope, "lesson", 15_000, "02")
-            .await
-            .unwrap();
-
-        // First doc is always included regardless of budget (empty-items check)
-        assert!(result.len() <= 2, "token budget should limit results");
-    }
+    use crate::types::memory::DocType;
 
     #[test]
     fn estimate_tokens_never_zero() {
@@ -1855,7 +1642,6 @@ mod tests {
     #[test]
     fn doc_type_class_codes_match_intent_system() {
         // Verify our mapping matches the authoritative table in intent_system::class_label.
-        use crate::types::memory::DocType;
         assert_eq!(doc_type_to_class_code(DocType::Spec).0, 12);
         assert_eq!(doc_type_to_class_code(DocType::ToolSkill).0, 13);
         assert_eq!(doc_type_to_class_code(DocType::Plan).0, 14);

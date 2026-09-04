@@ -280,10 +280,8 @@ fn loop_usage_to_engine(usage: &LoopModelUsage) -> EngineKohaiUsage {
 
 /// Postgres-backed [`KohaiPort`] (the FULL Kohai flow). Constructed once at
 /// runtime wiring time with the shared interceptor store + basic-prompt store +
-/// the working provider gateway and plumbed into the engine `ExecutionLoop` via
-/// `with_kohai_port`; until that C.6 wiring lands the engine passes `None` and
-/// `host.kohai_complete` degrades gracefully (`{ok:false,
-/// error:"kohai_unavailable"}`).
+/// the working provider gateway and plumbed into the composition driver via
+/// `with_kohai_port`.
 #[cfg(feature = "postgres")]
 pub(crate) struct PgKohaiPort {
     interceptor_store: Arc<dyn InterceptorStore>,

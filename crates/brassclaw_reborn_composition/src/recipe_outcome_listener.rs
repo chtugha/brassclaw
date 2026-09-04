@@ -14,17 +14,12 @@
 //! between the engine `event_tx` broadcast and the `RecipeLookup`
 //! store.
 //!
-//! **Dormant-runtime-ready (Option A):** the engine `ThreadManager`
-//! runtime that emits on `event_tx` is dormant in the live agent-loop
-//! path today (`execute_orchestrator` is only called from
-//! `loop_engine.rs:471`; the live driver is the agent-loop stack whose
-//! `TurnEventSink` only sees turn-lifecycle events). So this listener
-//! is built + unit tested here and wired into the live event stream
-//! when Phase H.6–H.13 route Tier-0 execution through the engine pub
-//! fns that emit on `event_tx`. The listener logic itself is fully
-//! implemented (no stub): `handle_event` is a pure async fn over a
-//! `&ThreadEvent` and is unit-tested directly with a spy
-//! `RecipeLookup`.
+//! **Runtime wiring (Option A):** this listener is built + unit tested here
+//! and wired into the live event stream when Phase H.6–H.13 route Tier-0
+//! execution through the engine pub fns that emit on `event_tx`. The
+//! listener logic itself is fully implemented (no stub): `handle_event` is
+//! a pure async fn over a `&ThreadEvent` and is unit-tested directly with a
+//! spy `RecipeLookup`.
 //!
 //! **Reused by Model B/C (v3 Phase H.5 O4):** the `RecipeTierZero*`
 //! events this listener consumes are emitted by the Model B/C

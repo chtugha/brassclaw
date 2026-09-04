@@ -88,13 +88,7 @@ pub use gate::{
 // ── Re-exports: runtime ───────────────────────────────────────
 
 pub use executor::prompt::PlatformInfo;
-pub use runtime::conversation::ConversationManager;
-pub use runtime::manager::{
-    ENGINE_RESTART_RECOVERY_METADATA_KEY, PENDING_APPROVAL_METADATA_KEY,
-    RUNTIME_CHECKPOINT_METADATA_KEY, ThreadManager,
-};
 pub use runtime::messaging::ThreadOutcome;
-pub use runtime::tree::ThreadTree;
 
 pub use types::conversation::{
     ConversationEntry, ConversationId, ConversationSurface, EntrySender,
@@ -102,14 +96,12 @@ pub use types::conversation::{
 
 // ── Re-exports: executor ──────────────────────────────────────
 
-pub use executor::ExecutionLoop;
 pub use executor::TierZeroOrchestrator;
 pub use executor::run_python_code_body;
 
 // ── Re-exports: memory ────────────────────────────────────────
 
 pub use memory::MemoryStore;
-pub use memory::RetrievalEngine;
 
 // ── Re-exports: reliability ──────────────────────────────────
 

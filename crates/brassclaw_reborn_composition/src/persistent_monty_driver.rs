@@ -1,4 +1,4 @@
-//! Cross-turn-persistent Monty turn driver (C.6 slice 4c).
+//! Cross-turn-persistent Monty turn driver (C.6 slice 4c/4d).
 //!
 //! [`PersistentMontyDriver`] is the composition-layer impl of the turns-native
 //! [`MontyTurnDriverPort`] (slice 4b). It owns the conversation-keyed
@@ -18,6 +18,14 @@
 //! `await_next_turn()`, then a **resume** (`drive_to_yield(Some(turn1_input))`)
 //! that feeds turn 1's input, processes it, and parks again. Turn 2+ reuses the
 //! parked session with a single resume drive.
+//!
+//! ## Effect executor (per-run)
+//!
+//! The [`TierZeroEffectExecutorBuilder`] held by the driver builds a
+//! production [`EffectExecutor`] at the start of each [`drive_turn`] call (one
+//! per turn, not one per driver lifetime) by snapshotting the extension surface
+//! and resolving grants for the turn's run context. This is the same
+//! build-per-run pattern used by `PgOrchestratorLookup::run_tier_zero`.
 //!
 //! ## Signals (user-locked A — signal broker)
 //!
@@ -39,20 +47,23 @@
 //! last-user-input extraction, the exit-id construction, and a `Send + Sync`
 //! assert on the driver.
 
-// Transient: the driver is landed ahead of its production consumer. C.6 slice 4d
-// wires `PersistentMontyDriver` into the assembled runtime + `TurnRunnerWorker`
-// direct path, at which point this allow should be removed.
-#![allow(dead_code)]
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "skills-db")]
 use std::collections::HashMap;
+#[cfg(feature = "skills-db")]
 use std::sync::Arc;
 
+#[cfg(feature = "skills-db")]
 use async_trait::async_trait;
+#[cfg(feature = "skills-db")]
 use monty::MontyObject;
+#[cfg(feature = "skills-db")]
 use tokio::sync::Mutex;
+#[cfg(feature = "skills-db")]
 use tracing::debug;
 
+#[cfg(feature = "skills-db")]
 use brassclaw_engine::{
     capability::{lease::LeaseManager, policy::PolicyEngine},
     executor::{
@@ -69,6 +80,7 @@ use brassclaw_engine::{
     },
     Store,
 };
+#[cfg(feature = "skills-db")]
 use brassclaw_turns::{
     run_profile::{
         AgentLoopDriverError, AgentLoopDriverHost, AgentLoopDriverRunRequest, LoopRunContext,
@@ -76,7 +88,9 @@ use brassclaw_turns::{
     },
     LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, TurnRunId, TurnScope,
 };
-
+#[cfg(feature = "skills-db")]
+use crate::runtime::TierZeroEffectExecutorBuilder;
+#[cfg(feature = "skills-db")]
 use crate::session_registry::MontySessionRegistry;
 
 /// Per-conversation signal-channel broker (user-locked A). Holds the
@@ -85,10 +99,12 @@ use crate::session_registry::MontySessionRegistry;
 /// `host.check_signals` mid-drive. A session is driven outside the registry
 /// lock; the broker only ever holds the sender for the in-flight turn, cleared
 /// when `drive_turn` returns.
+#[cfg(feature = "skills-db")]
 pub(crate) struct SignalBroker {
     senders: Mutex<HashMap<TurnScope, SignalSender>>,
 }
 
+#[cfg(feature = "skills-db")]
 impl SignalBroker {
     pub(crate) fn new() -> Self {
         Self {
@@ -111,6 +127,10 @@ impl SignalBroker {
     /// Forward `signal` to the in-flight turn for `scope`. No-op when no turn is
     /// in flight for that conversation. The sender is cloned out of the lock
     /// before awaiting the send so the lock is never held across the await.
+    ///
+    /// Called from slice 4d: the turn runner forwards `Stop`/`Suspend`/
+    /// `InjectMessage` signals into the in-flight turn via this method.
+    #[allow(dead_code)]
     pub(crate) async fn send(&self, scope: &TurnScope, signal: ThreadSignal) {
         let tx = {
             let senders = self.senders.lock().await;
@@ -122,6 +142,7 @@ impl SignalBroker {
     }
 }
 
+#[cfg(feature = "skills-db")]
 impl Default for SignalBroker {
     fn default() -> Self {
         Self::new()
@@ -132,14 +153,17 @@ impl Default for SignalBroker {
 /// at runtime-wiring time (slice 4d) and shared via `Arc<dyn
 /// MontyTurnDriverPort>`. All mutable state (the session registry + signal
 /// broker) is behind `Arc`/`Mutex`, so `drive_turn` takes `&self`.
+#[cfg(feature = "skills-db")]
 pub(crate) struct PersistentMontyDriver {
     registry: Arc<MontySessionRegistry>,
     signal_broker: Arc<SignalBroker>,
-    /// Canonical loader for the live engine [`Thread`] (mirrors
-    /// `PgOrchestratorLookup::thread_store`) AND the shared-memory-docs store
-    /// passed to `prepare_monty_session` / `drive_to_yield`.
+    /// Canonical loader for the live engine [`Thread`] AND the shared-memory-docs
+    /// store passed to `prepare_monty_session` / `drive_to_yield`.
     store: Arc<dyn Store>,
-    effects: Arc<dyn EffectExecutor>,
+    /// Per-run [`EffectExecutor`] builder (build_for_run is called once per
+    /// [`drive_turn`] to snapshot the extension surface for the current run
+    /// context, matching the pattern used by `PgOrchestratorLookup::run_tier_zero`).
+    effect_executor_builder: Arc<TierZeroEffectExecutorBuilder>,
     leases: Arc<LeaseManager>,
     policy: Arc<PolicyEngine>,
     event_tx: Option<tokio::sync::broadcast::Sender<ThreadEvent>>,
@@ -151,13 +175,14 @@ pub(crate) struct PersistentMontyDriver {
     max_duration_secs: Option<u64>,
 }
 
+#[cfg(feature = "skills-db")]
 impl PersistentMontyDriver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         registry: Arc<MontySessionRegistry>,
         signal_broker: Arc<SignalBroker>,
         store: Arc<dyn Store>,
-        effects: Arc<dyn EffectExecutor>,
+        effect_executor_builder: Arc<TierZeroEffectExecutorBuilder>,
         leases: Arc<LeaseManager>,
         policy: Arc<PolicyEngine>,
         event_tx: Option<tokio::sync::broadcast::Sender<ThreadEvent>>,
@@ -171,7 +196,7 @@ impl PersistentMontyDriver {
             registry,
             signal_broker,
             store,
-            effects,
+            effect_executor_builder,
             leases,
             policy,
             event_tx,
@@ -214,24 +239,20 @@ impl PersistentMontyDriver {
         session: &mut MontySession,
         thread: &mut Thread,
         signal_rx: &mut SignalReceiver,
+        effects: &Arc<dyn EffectExecutor>,
         user_input: Option<&str>,
     ) -> Result<OrchestratorYield, AgentLoopDriverError> {
         let new_input = user_input.map(|s| MontyObject::String(s.to_string()));
         session
             .drive_to_yield(
                 thread,
-                &self.effects,
+                effects,
                 &self.leases,
                 &self.policy,
                 signal_rx,
                 self.event_tx.as_ref(),
-                // retrieval / platform_info / _retrieval_source are unused by
-                // the v3 host.* dispatch arms and retire in C.7; None here.
-                None,
                 Some(&self.store),
-                None,
                 &self.gate_controller,
-                None,
                 self.dynamic_tools.as_ref(),
                 self.component_port.as_ref(),
                 self.kohai_port.as_ref(),
@@ -254,6 +275,16 @@ impl PersistentMontyDriver {
         user_input: String,
         max_duration_override: Option<std::time::Duration>,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        // Build the per-run EffectExecutor (snapshot extension surface for this
+        // turn's run context — same pattern as PgOrchestratorLookup::run_tier_zero).
+        let effects = self
+            .effect_executor_builder
+            .build_for_run(context)
+            .await
+            .map_err(|e| AgentLoopDriverError::Failed {
+                reason_kind: format!("monty turn driver: build_for_run failed: {e}"),
+            })?;
+
         // Checkout a parked session for this conversation, or build a fresh one
         // (turn 1). Turn 1 needs a prime drive (None) to reach the first
         // host.await_next_turn() park, THEN the resume drive (Some(input)).
@@ -268,7 +299,7 @@ impl PersistentMontyDriver {
                         })?;
                 // Prime: drive the fresh VM to its first await_next_turn() park.
                 match self
-                    .drive_one(&mut fresh, thread, signal_rx, None)
+                    .drive_one(&mut fresh, thread, signal_rx, &effects, None)
                     .await?
                 {
                     OrchestratorYield::AwaitNextTurn => {}
@@ -285,7 +316,7 @@ impl PersistentMontyDriver {
 
         // Resume the parked await_next_turn() with this turn's user input.
         let yield_ = self
-            .drive_one(&mut session, thread, signal_rx, Some(&user_input))
+            .drive_one(&mut session, thread, signal_rx, &effects, Some(&user_input))
             .await?;
 
         match yield_ {
@@ -318,6 +349,7 @@ impl PersistentMontyDriver {
 
 /// Build the [`LoopExitId`] for a completed turn (`exit:<run_id>-completed`).
 /// Mirrors `brassclaw_agent_loop::executor::exit_helpers::exit_id`.
+#[cfg(feature = "skills-db")]
 fn completed_exit_id(run_id: &TurnRunId) -> Result<LoopExitId, AgentLoopDriverError> {
     LoopExitId::new(format!("exit:{run_id}-completed")).map_err(|_| AgentLoopDriverError::Failed {
         reason_kind: "run id could not be represented as loop exit id".to_string(),
@@ -326,6 +358,7 @@ fn completed_exit_id(run_id: &TurnRunId) -> Result<LoopExitId, AgentLoopDriverEr
 
 /// The content of the last `User` message in `messages`, or `""` when there is
 /// none. Mirrors `basic_mode.py::_last_user_input`.
+#[cfg(feature = "skills-db")]
 fn last_user_input_from_messages(messages: &[ThreadMessage]) -> String {
     let mut last = String::new();
     for msg in messages {
@@ -341,6 +374,7 @@ fn last_user_input_from_messages(messages: &[ThreadMessage]) -> String {
 /// else the user-visible `messages`). Mirrors `build_orchestrator_inputs`'
 /// `bootstrap_messages` choice so the input delivered via
 /// `host.await_next_turn()` is the same message `_seed_history` dropped.
+#[cfg(feature = "skills-db")]
 fn last_user_input_string(thread: &Thread) -> String {
     let messages = if thread.internal_messages.is_empty() {
         &thread.messages
@@ -350,6 +384,7 @@ fn last_user_input_string(thread: &Thread) -> String {
     last_user_input_from_messages(messages)
 }
 
+#[cfg(feature = "skills-db")]
 #[async_trait]
 impl MontyTurnDriverPort for PersistentMontyDriver {
     async fn drive_turn(
@@ -388,7 +423,7 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "skills-db"))]
 mod tests {
     use super::*;
     use brassclaw_engine::types::message::ThreadMessage;

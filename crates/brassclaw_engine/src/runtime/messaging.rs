@@ -61,8 +61,8 @@ pub enum ThreadOutcome {
 
 /// A mailbox for sending signals to a running thread.
 ///
-/// Each thread gets a `(sender, receiver)` pair. The `ThreadManager` holds
-/// the sender; the `ExecutionLoop` holds the receiver.
+/// Each thread gets a `(sender, receiver)` pair. The driver holds the sender;
+/// the Monty session holds the receiver.
 pub type SignalSender = tokio::sync::mpsc::Sender<ThreadSignal>;
 pub type SignalReceiver = tokio::sync::mpsc::Receiver<ThreadSignal>;
 

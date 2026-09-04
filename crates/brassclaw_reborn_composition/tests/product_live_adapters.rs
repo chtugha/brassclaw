@@ -1279,6 +1279,7 @@ async fn adapter_bundle_satisfies_product_live_runtime_readiness_gate() {
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
+        monty_driver: None,
     })
     .expect("adapter bundle should satisfy the product-live readiness gate");
 

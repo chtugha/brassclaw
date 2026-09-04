@@ -2598,17 +2598,54 @@ pub async fn build_reborn_runtime(
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
             })?;
+        // Clone the builder so both PgOrchestratorLookup and PersistentMontyDriver
+        // can hold a reference (Arc::clone — no deep copy).
+        let executor_builder_for_lookup = Arc::clone(&tier_zero_executor_builder);
         Some(
             Arc::new(crate::orchestrator_lookup_impl::PgOrchestratorLookup::new(
                 Arc::new(runtime),
                 thread_store,
-                tier_zero_executor_builder,
+                executor_builder_for_lookup,
             )) as Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>,
         )
     };
     #[cfg(not(feature = "skills-db"))]
     let orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>> =
         None;
+
+    // C.6 slice 4d — build the cross-turn-persistent Monty orchestrator driver.
+    // Under `skills-db` the driver is wired into `TurnRunnerWorker` directly so
+    // every production turn bypasses the canonical stage pipeline (C6-1=B / C6-3=B).
+    // Under the default feature set the slot stays `None` (pre-C.6 path remains active).
+    #[cfg(feature = "skills-db")]
+    let monty_driver: Option<Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>> = {
+        use brassclaw_engine::{
+            CancellingGateController,
+            capability::{lease::LeaseManager, policy::PolicyEngine},
+        };
+        let thread_store_for_driver: Arc<dyn brassclaw_engine::Store> =
+            Arc::new(crate::pg_thread_engine_store::PgThreadEngineStore::new(
+                Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
+                validated_identity.tenant_id.as_str(),
+            ));
+        let driver = crate::persistent_monty_driver::PersistentMontyDriver::new(
+            Arc::new(crate::session_registry::MontySessionRegistry::new()),
+            Arc::new(crate::persistent_monty_driver::SignalBroker::new()),
+            thread_store_for_driver,
+            tier_zero_executor_builder,
+            Arc::new(LeaseManager::new()),
+            Arc::new(PolicyEngine::new()),
+            None, // event_tx — v3 host.* arms don't emit ThreadEvents (retired in C.7)
+            CancellingGateController::arc(),
+            None, // dynamic_tools — no cdylib tools wired yet (C.3 deferred)
+            None, // component_port (PgCompositionPort) — wired in a follow-up slice
+            None, // kohai_port (PgKohaiPort) — wired in a follow-up slice
+            resolved_max_turn_duration.map(|d| d.as_secs()),
+        );
+        Some(Arc::new(driver) as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>)
+    };
+    #[cfg(not(feature = "skills-db"))]
+    let monty_driver: Option<Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>> = None;
 
     // v3 Phase E.0 / plan §H3: wire SkillActivationMessageTextResolver so the
     // production host can resolve the raw accepted-message body via the
@@ -2754,6 +2791,7 @@ pub async fn build_reborn_runtime(
         proposal_sink,
         #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
         system_bundle_source,
+        monty_driver,
     })?;
     let default_resolved_run_profile = composition
         .run_profile_resolver

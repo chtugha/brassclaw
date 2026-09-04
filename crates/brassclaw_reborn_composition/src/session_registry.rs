@@ -9,21 +9,19 @@
 //! be unit-tested with trivial stand-ins; the production alias
 //! [`MontySessionRegistry`] fixes `K = TurnScope`, `V = MontySession`.
 
-// Transient: the registry is landed ahead of its production consumer. C.6
-// slice 4 wires it into the `MontyTurnDriverPort` impl, at which point this
-// allow should be removed.
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 
+#[cfg(feature = "skills-db")]
 use brassclaw_engine::executor::orchestrator::MontySession;
+#[cfg(feature = "skills-db")]
 use brassclaw_turns::TurnScope;
 
 /// A parked registry entry: the session value plus the instant it went idle.
+#[allow(dead_code)]
 struct Entry<V> {
     value: V,
     last_used: Instant,
@@ -34,6 +32,7 @@ struct Entry<V> {
 /// different conversations concurrently; a session is removed from the map
 /// while being driven (see [`SessionRegistry::try_checkout`]) so the
 /// lock is never held across a turn's work.
+#[cfg_attr(not(feature = "skills-db"), allow(dead_code))]
 pub(crate) struct SessionRegistry<K, V> {
     entries: Mutex<HashMap<K, Entry<V>>>,
 }
@@ -50,6 +49,7 @@ where
     }
 }
 
+#[cfg_attr(not(feature = "skills-db"), allow(dead_code))]
 impl<K, V> SessionRegistry<K, V>
 where
     K: Hash + Eq + Clone + Send + 'static,
@@ -104,6 +104,7 @@ where
     /// Evict entries idle for longer than `ttl`; returns the count evicted.
     /// Sessions being driven (checked out) are not in the map and are never
     /// evicted.
+    #[allow(dead_code)]
     pub(crate) async fn evict_expired(&self, ttl: Duration) -> usize {
         let mut entries = self.entries.lock().await;
         let now = Instant::now();
@@ -113,16 +114,19 @@ where
     }
 
     /// Number of parked sessions (diagnostics/tests).
+    #[allow(dead_code)]
     pub(crate) async fn len(&self) -> usize {
         self.entries.lock().await.len()
     }
 
     /// Whether the registry holds no parked sessions.
+    #[allow(dead_code)]
     pub(crate) async fn is_empty(&self) -> bool {
         self.entries.lock().await.is_empty()
     }
 
     /// Whether a session is parked for `key` (tests).
+    #[allow(dead_code)]
     pub(crate) async fn contains(&self, key: &K) -> bool {
         self.entries.lock().await.contains_key(key)
     }
@@ -130,6 +134,7 @@ where
 
 /// Production registry: one cross-turn-persistent Monty VM session per
 /// conversation (`TurnScope`).
+#[cfg(feature = "skills-db")]
 pub(crate) type MontySessionRegistry = SessionRegistry<TurnScope, MontySession>;
 
 #[cfg(test)]
@@ -209,6 +214,7 @@ mod tests {
         assert_eq!(got.id, 2);
     }
 
+    #[cfg(feature = "skills-db")]
     #[test]
     fn production_alias_type_args_satisfy_registry_bounds_and_are_shareable() {
         // De-risks slice 4: the production registry can be constructed and

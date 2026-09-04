@@ -1,18 +1,16 @@
 //! Python orchestrator — the self-modifiable execution loop.
 //!
-//! Replaces the Rust `ExecutionLoop::run()` with versioned Python code
-//! executed via Monty. The orchestrator is the "glue layer" between the
-//! LLM and tools — tool dispatch, output formatting, state management,
-//! truncation — all in Python, patchable by the self-improvement validation loop.
+//! The orchestrator is the "glue layer" between the LLM and tools — tool
+//! dispatch, output formatting, state management, truncation — all in Python
+//! (`orchestrator/basic_mode.py`), patchable by the self-improvement
+//! validation loop.
 //!
 //! Host functions exposed to the orchestrator Python:
 //! - `__check_signals__` — poll for stop/inject signals
 //! - `__emit_event__` — broadcast a ThreadEvent
 //! - `__save_checkpoint__` — persist thread state
 //! - `__transition_to__` — change thread state (validated)
-//! - `__retrieve_docs__` — retired (v3 Phase C.6 Kohai re-arch); dropped together
-//!   with `__get_reduction_rules__` (prior knowledge now flows via the
-//!   `assemble_prior_knowledge_with_hint` library call / seeded Recipe)
+//! - `__retrieve_docs__` — retired (v3 Phase C.6 Kohai re-arch)
 //! - `__assemble_prior_knowledge__` — retired (v3 Phase H8.4); replaced by the
 //!   `pub` `assemble_prior_knowledge_with_hint` library call (§3.13/§3.14)
 //! - `__check_budget__` — remaining tokens/time/USD
@@ -22,10 +20,7 @@
 //! Monty namespace (the `host` Dataclass → `MethodCall` path). The
 //! `__execute_action__` / `__execute_code_step__` / `__execute_actions_parallel__`
 //! meta-primitives are RETIRED — a recipe step calls the ToolSkill directly via
-//! `host.X(...)`, and "call N tools" is a sequential recipe with N steps
-//! (Monty is single-threaded, so a parallel helper would degrade to sequential
-//! anyway). C.2 reclassifies the remaining `__*__` arms; C.7 retires this
-//! `execute_orchestrator` fn itself once C.6 activates the cross-turn driver.
+//! `host.X(...)`. C.2 reclassifies the remaining `__*__` arms.
 
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -46,8 +41,7 @@ use super::scripting::{execute_code, json_to_monty, monty_to_json, monty_to_stri
 use super::thread_context::thread_execution_context;
 use crate::capability::lease::LeaseManager;
 use crate::capability::policy::PolicyEngine;
-use crate::memory::{ComponentScope, RetrievalEngine, RetrievalSource};
-use crate::runtime::lease_refresh::reconcile_dynamic_tool_lease;
+use crate::memory::{ComponentScope, RetrievalSource};
 use crate::runtime::messaging::{SignalReceiver, ThreadOutcome, ThreadSignal};
 use crate::traits::effect::EffectExecutor;
 use crate::traits::llm::LlmBackend;
@@ -59,6 +53,11 @@ use crate::types::project::ProjectId;
 use crate::types::shared_owner_id;
 use crate::types::step::{ActionCall, StepId, TokenUsage};
 use crate::types::thread::{Thread, ThreadState};
+
+/// Metadata key for the serialized Monty VM checkpoint stored in thread metadata.
+/// Set by the cross-turn driver when it parks the session; read by
+/// [`prepare_monty_session`] on the next turn to restore `persisted_state`.
+pub(crate) const RUNTIME_CHECKPOINT_METADATA_KEY: &str = "runtime_checkpoint";
 
 /// Stable Python-level `type_id` for the injected `host` namespace Dataclass (C.1).
 /// `host.<tool>(...)` compiles to `CallAttr`; the dataclass `py_call_attr` routes any
@@ -117,9 +116,8 @@ pub struct OrchestratorResult {
 /// Outcome of driving a [`MontySession`] one step. `Complete` carries the
 /// orchestrator result; `AwaitNextTurn` means the script called
 /// `host.await_next_turn()` and the VM is parked, awaiting the next turn's
-/// input to resume. The non-persistent [`execute_orchestrator`] caller maps
-/// `AwaitNextTurn` to an error; the cross-turn-persistent driver (C.6 slice 4)
-/// parks the session in a conversation-keyed registry and resumes it next turn.
+/// input to resume. The cross-turn-persistent driver (C.6 slice 4) parks the
+/// session in a conversation-keyed registry and resumes it next turn.
 pub enum OrchestratorYield {
     /// The orchestrator finished and produced a result.
     Complete(Box<OrchestratorResult>),
@@ -304,6 +302,110 @@ const MAX_FAILURES_BEFORE_ROLLBACK: u64 = 3;
 const FAILURE_TRACKER_TITLE: &str = "orchestrator:failures";
 const LEASE_REFRESH_WARN_INTERVAL_SECS: u64 = 60;
 
+// ── Dynamic lease refresh ────────────────────────────────────
+
+/// Reconcile the dynamic tool lease for the current thread by querying
+/// the effect executor for available actions. Previously in
+/// `runtime::lease_refresh`; moved here in C.7 (only caller).
+async fn reconcile_dynamic_tool_lease(
+    thread: &mut Thread,
+    effects: &Arc<dyn EffectExecutor>,
+    leases: &Arc<LeaseManager>,
+    store: Option<&Arc<dyn Store>>,
+    lease_planner: &crate::capability::planner::LeasePlanner,
+) -> Result<(), EngineError> {
+    use std::collections::HashSet;
+    use crate::capability::registry::CapabilityRegistry;
+    use crate::types::capability::GrantedActions;
+    use crate::types::step::StepId;
+    use crate::Capability;
+
+    let active_leases = leases.active_for_thread(thread.id).await;
+    let context = crate::executor::thread_context::thread_execution_context(
+        thread,
+        StepId::new(),
+        None,
+        crate::gate::CancellingGateController::arc(),
+    );
+    let actions = effects.available_actions(&active_leases, &context).await?;
+    if actions.is_empty() {
+        return Ok(());
+    }
+
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(Capability {
+        name: "tools".into(),
+        description: "Available tools".into(),
+        actions,
+        knowledge: vec![],
+        policies: vec![],
+    });
+
+    let Some(grant) = lease_planner
+        .plan_for_thread(thread.thread_type, &capabilities)
+        .into_iter()
+        .find(|grant| grant.capability_name == "tools")
+    else {
+        return Ok(());
+    };
+
+    let desired_actions: HashSet<String> = match grant.granted_actions {
+        GrantedActions::All => return Ok(()),
+        GrantedActions::Specific(actions) => actions.into_iter().collect(),
+    };
+
+    if desired_actions.is_empty() {
+        return Ok(());
+    }
+
+    if let Some(existing) = active_leases
+        .iter()
+        .find(|lease| lease.capability_name == "tools")
+    {
+        if existing.granted_actions.is_all() {
+            return Ok(());
+        }
+
+        let mut merged: HashSet<String> =
+            existing.granted_actions.actions().iter().cloned().collect();
+        let before = merged.len();
+        merged.extend(desired_actions);
+        if merged.len() == before {
+            return Ok(());
+        }
+
+        let mut merged_actions: Vec<String> = merged.into_iter().collect();
+        merged_actions.sort();
+        let updated = leases
+            .update_granted_actions(existing.id, GrantedActions::Specific(merged_actions))
+            .await?;
+        if let Some(store) = store {
+            store.save_lease(&updated).await?;
+        }
+        return Ok(());
+    }
+
+    let mut actions: Vec<String> = desired_actions.into_iter().collect();
+    actions.sort();
+    let lease = leases
+        .grant(
+            thread.id,
+            "tools",
+            GrantedActions::Specific(actions),
+            None,
+            None,
+        )
+        .await?;
+    if let Some(store) = store {
+        store.save_lease(&lease).await?;
+    }
+    if !thread.capability_leases.contains(&lease.id) {
+        thread.capability_leases.push(lease.id);
+    }
+
+    Ok(())
+}
+
 fn warn_on_lease_refresh_failure(context: &'static str, error: &crate::types::error::EngineError) {
     static LAST_WARN_TS: AtomicU64 = AtomicU64::new(0);
 
@@ -360,7 +462,7 @@ pub async fn load_orchestrator(
 /// avoid a duplicate Store query. Returns `(code, version)`.
 ///
 /// Respects `allow_self_modify` — when false, always returns the compiled-in
-/// default. The caller in `loop_engine.rs` passes this from engine config.
+/// default.
 pub fn load_orchestrator_from_docs(
     docs: &[crate::types::memory::MemoryDoc],
     allow_self_modify: bool,
@@ -518,18 +620,12 @@ fn load_failure_count(docs: &[crate::types::memory::MemoryDoc]) -> u64 {
         .unwrap_or(0)
 }
 
-/// Execute the orchestrator Python code with host function dispatch.
-///
-/// This is the core function that replaces `ExecutionLoop::run()`'s inner loop.
-/// The orchestrator Python calls host functions via Monty's suspension mechanism,
-/// and this function handles each suspension by delegating to the appropriate
-/// Rust implementation.
+/// Parsed + started orchestrator VM session.
 ///
 /// `max_duration_override` — when `Some`, overrides the DB-less-fallback
 /// `orchestrator_max_duration()` with the value read from
 /// `reborn_monty_vm_settings.max_duration_secs` by the caller.
 /// Pass `None` in DB-less / test contexts to use the env-var / compiled-in default.
-#[allow(clippy::too_many_arguments)]
 pub struct MontySession {
     progress: Option<RunProgress<LimitedTracker>>,
     parked_call: Option<FunctionCall<LimitedTracker>>,
@@ -539,11 +635,10 @@ pub struct MontySession {
 }
 
 impl MontySession {
-    /// Parse + start the orchestrator script. Extracts the setup phase of
-    /// [`execute_orchestrator`]: builds the bootstrap inputs, compiles the
-    /// script, resolves the resource budget, and runs the module top-level
-    /// up to the first host call (or `Complete`). The session is then ready
-    /// to be driven by [`MontySession::drive_to_yield`].
+    /// Parse + start the orchestrator script. Builds the bootstrap inputs,
+    /// compiles the script, resolves the resource budget, and runs the module
+    /// top-level up to the first host call (or `Complete`). The session is
+    /// then ready to be driven by [`MontySession::drive_to_yield`].
     pub fn new(
         code: &str,
         thread: &Thread,
@@ -622,8 +717,7 @@ impl MontySession {
     /// Drive the session until it either completes or parks on
     /// `host.await_next_turn()`. When called after a park, `new_input` is fed
     /// to the suspended `await_next_turn()` call as its return value before
-    /// continuing the dispatch loop. All host-call handler arms are identical
-    /// to [`execute_orchestrator`]; only the accumulated state
+    /// continuing the dispatch loop. The accumulated state
     /// (`progress`/`total_tokens`/`final_result`/`stdout`) lives on `self` so
     /// it survives across turns (C.6 D-C1 cross-turn persistence).
     #[allow(clippy::too_many_arguments)]
@@ -635,11 +729,8 @@ impl MontySession {
         policy: &Arc<PolicyEngine>,
         signal_rx: &mut SignalReceiver,
         event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
-        _retrieval: Option<&RetrievalEngine>,
         store: Option<&Arc<dyn Store>>,
-        _platform_info: Option<&crate::executor::prompt::PlatformInfo>,
         gate_controller: &Arc<dyn crate::gate::GateController>,
-        _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
         dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
         component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
         kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
@@ -1022,7 +1113,7 @@ pub async fn prepare_monty_session(
 
     let persisted_state = thread
         .metadata
-        .get(crate::runtime::manager::RUNTIME_CHECKPOINT_METADATA_KEY)
+        .get(RUNTIME_CHECKPOINT_METADATA_KEY)
         .and_then(|value| value.get("persisted_state"))
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
@@ -1033,64 +1124,6 @@ pub async fn prepare_monty_session(
         &persisted_state,
         max_duration_override,
     )
-}
-
-/// Drive an orchestrator script once to completion (non-persistent path).
-///
-/// Thin delegation over [`MontySession`]: parse + start, then drive until the
-/// script completes. If the script calls `host.await_next_turn()` (which only
-/// the cross-turn-persistent driver in C.6 slice 4 handles), this returns an
-/// [`EngineError::Orchestrator`] — the non-persistent path cannot park a VM
-/// across turns.
-#[allow(clippy::too_many_arguments)]
-pub async fn execute_orchestrator(
-    code: &str,
-    thread: &mut Thread,
-    effects: &Arc<dyn EffectExecutor>,
-    leases: &Arc<LeaseManager>,
-    policy: &Arc<PolicyEngine>,
-    signal_rx: &mut SignalReceiver,
-    event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
-    retrieval: Option<&RetrievalEngine>,
-    store: Option<&Arc<dyn Store>>,
-    platform_info: Option<&crate::executor::prompt::PlatformInfo>,
-    gate_controller: &Arc<dyn crate::gate::GateController>,
-    persisted_state: &serde_json::Value,
-    _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
-    dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
-    component_port: Option<&Arc<dyn crate::executor::ComponentPort>>,
-    kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
-    max_duration_override: Option<std::time::Duration>,
-) -> Result<OrchestratorResult, EngineError> {
-    let mut session = MontySession::new(code, thread, persisted_state, max_duration_override)?;
-    match session
-        .drive_to_yield(
-            thread,
-            effects,
-            leases,
-            policy,
-            signal_rx,
-            event_tx,
-            retrieval,
-            store,
-            platform_info,
-            gate_controller,
-            _retrieval_source,
-            dynamic_tools,
-            component_port,
-            kohai_port,
-            None,
-        )
-        .await?
-    {
-        OrchestratorYield::Complete(result) => Ok(*result),
-        OrchestratorYield::AwaitNextTurn => {
-            Err(EngineError::Orchestrator(classify_orchestrator_failure(
-                "Orchestrator parked awaiting next turn",
-                "host.await_next_turn() in non-persistent mode",
-            )))
-        }
-    }
 }
 
 // ── Host function handlers ──────────────────────────────────
@@ -4061,10 +4094,7 @@ mod tests {
                 &mut signal_rx,
                 None,
                 None,
-                None,
-                None,
                 &gate,
-                None,
                 None,
                 None,
                 None,
@@ -4098,10 +4128,7 @@ mod tests {
                 &mut signal_rx,
                 None,
                 None,
-                None,
-                None,
                 &gate,
-                None,
                 None,
                 None,
                 None,
@@ -4125,10 +4152,7 @@ mod tests {
                 &mut signal_rx,
                 None,
                 None,
-                None,
-                None,
                 &gate,
-                None,
                 None,
                 None,
                 None,
@@ -4184,10 +4208,7 @@ mod tests {
                 &mut signal_rx,
                 None,
                 None,
-                None,
-                None,
                 &gate,
-                None,
                 None,
                 None,
                 None,
@@ -4225,10 +4246,7 @@ mod tests {
                 &mut signal_rx,
                 None,
                 None,
-                None,
-                None,
                 &gate,
-                None,
                 None,
                 None,
                 None,

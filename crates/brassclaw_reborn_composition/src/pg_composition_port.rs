@@ -125,11 +125,10 @@ impl<'a> ComponentResolver for MapComponentResolver<'a> {
 
 /// Postgres-backed [`ComponentPort`] (the IBS). Constructed once at runtime
 /// wiring time with the shared `PgPool` (+ optional `Store` for the
-/// MemoryDoc `list_skills` fallback) and plumbed into the engine
-/// `ThreadManager` via `with_component_port`; until that C.5/C.6 wiring lands
-/// the engine passes `None` and the `host.*` component handlers degrade
-/// gracefully. The pool the SEC-01-validated host fns read lives inside this
-/// port now (C.6 slice 4c-prep collapsed the separate `pg_pool` plumbing).
+/// MemoryDoc `list_skills` fallback) and plumbed into the composition
+/// driver via `with_component_port`. The pool the SEC-01-validated host fns
+/// read lives inside this port (C.6 slice 4c-prep collapsed the separate
+/// `pg_pool` plumbing).
 #[cfg(feature = "skills-db")]
 pub(crate) struct PgCompositionPort {
     pool: Arc<PgPool>,

@@ -821,31 +821,6 @@ async fn execute_code_with_skills_inner(
                             ),
                         ))),
                     },
-                    // rlm_query stays synchronous — it spawns a child Monty VM
-                    // which isn't Send, so it can't run in tokio::spawn.
-                    "rlm_query" => match llm {
-                        Some(llm) => Some(
-                            handle_rlm_query(
-                                &call.args,
-                                &call.kwargs,
-                                thread,
-                                llm,
-                                effects,
-                                leases,
-                                policy,
-                                &mut recursive_tokens,
-                                &execution_context.gate_controller,
-                            )
-                            .await,
-                        ),
-                        None => Some(ExtFunctionResult::Error(MontyException::new(
-                            ExcType::RuntimeError,
-                            Some(
-                                "rlm_query() is not available in this execution context (no LLM backend)"
-                                    .into(),
-                            ),
-                        ))),
-                    },
                     "globals" | "locals" => {
                         let entries: Vec<(MontyObject, MontyObject)> = known_actions
                             .iter()
@@ -1695,7 +1670,7 @@ enum PendingFuture {
         lease_id: crate::types::capability::LeaseId,
         params_summary: Option<String>,
     },
-    /// LLM call (llm_query / llm_query_batched / rlm_query).
+    /// LLM call (llm_query / llm_query_batched).
     Llm {
         handle: tokio::task::JoinHandle<(ExtFunctionResult, TokenUsage)>,
     },
@@ -2087,174 +2062,6 @@ async fn handle_llm_query_batched(
     recursive_tokens.output_tokens += total_output;
 
     ExtFunctionResult::Return(MontyObject::List(results))
-}
-
-// ── rlm_query() — full recursive sub-agent (RLM 3.5) ─────────
-
-/// Handle `rlm_query(prompt)` — spawn a child CodeAct thread with its own
-/// execution loop, tools, and iteration budget.
-///
-/// Unlike `llm_query()` (single-shot LLM call), `rlm_query()` creates a
-/// child thread with full CodeAct capabilities. The child inherits the
-/// parent's remaining budget and tool access.
-#[allow(clippy::too_many_arguments)]
-async fn handle_rlm_query(
-    args: &[MontyObject],
-    kwargs: &[(MontyObject, MontyObject)],
-    parent_thread: &Thread,
-    llm: &Arc<dyn LlmBackend>,
-    effects: &Arc<dyn EffectExecutor>,
-    leases: &LeaseManager,
-    policy: &PolicyEngine,
-    recursive_tokens: &mut TokenUsage,
-    gate_controller: &Arc<dyn crate::gate::GateController>,
-) -> ExtFunctionResult {
-    let prompt = extract_string_arg(args, kwargs, "prompt", 0);
-    let prompt = match prompt {
-        Some(p) => p,
-        None => {
-            return ExtFunctionResult::Error(MontyException::new(
-                ExcType::TypeError,
-                Some("rlm_query() requires a 'prompt' argument".into()),
-            ));
-        }
-    };
-
-    // Depth check — refuse if at max recursion depth
-    let current_depth = parent_thread.config.depth;
-    let max_depth = parent_thread.config.max_depth;
-    if current_depth >= max_depth {
-        return ExtFunctionResult::Error(MontyException::new(
-            ExcType::RuntimeError,
-            Some(format!(
-                "rlm_query() depth limit reached: depth {current_depth} >= max {max_depth}"
-            )),
-        ));
-    }
-
-    // Build child thread with inherited budget
-    let child_config = crate::types::thread::ThreadConfig {
-        max_iterations: parent_thread.config.max_iterations.min(20), // cap child iterations
-        enable_tool_intent_nudge: false,
-        max_tokens_total: parent_thread
-            .config
-            .max_tokens_total
-            .map(|max| max.saturating_sub(parent_thread.total_tokens_used)),
-        max_budget_usd: parent_thread
-            .config
-            .max_budget_usd
-            .map(|max| (max - parent_thread.total_cost_usd).max(0.0)),
-        max_duration: parent_thread.config.max_duration,
-        depth: current_depth + 1,
-        max_depth,
-        ..crate::types::thread::ThreadConfig::default()
-    };
-
-    let mut child_thread = crate::types::thread::Thread::new(
-        &prompt,
-        crate::types::thread::ThreadType::Research,
-        parent_thread.project_id,
-        &parent_thread.user_id,
-        child_config,
-    )
-    .with_parent(parent_thread.id)
-    // v3 Phase F.2: the subagent child inherits the parent's tenant + agent
-    // identity — the one engine `Thread::new` site where these are already in
-    // scope. Engine spawn-created threads (manager `spawn_*`) keep the empty
-    // `#[serde(default)]` (no `brassclaw_turns` identity source in the engine);
-    // the LIVE retrieval path sources tenant from `LoopRunContext.scope.tenant_id`
-    // (F.4).
-    .with_tenant_agent(
-        parent_thread.tenant_id.clone(),
-        parent_thread.agent_id.clone(),
-    );
-
-    // Add the prompt as a user message
-    child_thread.add_message(ThreadMessage::user(&prompt));
-
-    // Create signal channel and child's lease manager
-    let (_tx, rx) = crate::runtime::messaging::signal_channel(8);
-    let child_leases = Arc::new(LeaseManager::new());
-
-    // Grant the child the same leases as the parent (in the child's manager)
-    let parent_leases = leases.active_for_thread(parent_thread.id).await;
-    let now = chrono::Utc::now();
-    for parent_lease in &parent_leases {
-        // Convert parent's expires_at to remaining duration
-        let remaining_duration = parent_lease
-            .expires_at
-            .and_then(|exp| (exp - now).to_std().ok())
-            .map(|d| chrono::Duration::from_std(d).unwrap_or(chrono::Duration::hours(1)));
-        let lease = match child_leases
-            .grant(
-                child_thread.id,
-                &parent_lease.capability_name,
-                parent_lease.granted_actions.clone(),
-                remaining_duration,
-                parent_lease.max_uses,
-            )
-            .await
-        {
-            Ok(l) => l,
-            Err(e) => {
-                debug!(error = %e, "rlm_query: skipping invalid lease for child thread");
-                continue;
-            }
-        };
-        child_thread.capability_leases.push(lease.id);
-    }
-    let mut child_policy_engine = PolicyEngine::new();
-    // Copy denied effects from parent policy
-    for effect in &policy.denied_effects {
-        child_policy_engine.deny_effect(*effect);
-    }
-    let child_policy = Arc::new(child_policy_engine);
-
-    let mut child_loop = crate::executor::ExecutionLoop::new(
-        child_thread,
-        Arc::clone(llm),
-        Arc::clone(effects),
-        child_leases,
-        child_policy,
-        rx,
-        "rlm_child".to_string(),
-        gate_controller.clone(),
-    );
-
-    debug!(
-        parent_thread = %parent_thread.id,
-        depth = current_depth + 1,
-        prompt_len = prompt.len(),
-        "rlm_query: spawning child CodeAct thread"
-    );
-
-    // Run the child loop (Box::pin to avoid infinite future size from recursion)
-    match Box::pin(child_loop.run()).await {
-        Ok(outcome) => {
-            // Track child's token usage
-            recursive_tokens.input_tokens += child_loop.thread.total_tokens_used;
-            recursive_tokens.cost_usd += child_loop.thread.total_cost_usd;
-
-            let response = match outcome {
-                crate::runtime::messaging::ThreadOutcome::Completed { response } => {
-                    response.unwrap_or_default()
-                }
-                crate::runtime::messaging::ThreadOutcome::Failed { error, .. } => {
-                    format!("rlm_query child failed: {error}")
-                }
-                crate::runtime::messaging::ThreadOutcome::MaxIterations => {
-                    "rlm_query child reached max iterations".to_string()
-                }
-                _ => String::new(),
-            };
-
-            ExtFunctionResult::Return(MontyObject::String(response))
-        }
-        Err(e) => ExtFunctionResult::Error(MontyException::new(
-            ExcType::RuntimeError,
-            Some(format!("rlm_query failed: {e}")),
-        )),
-    }
 }
 
 // ── Standalone async handlers (for tokio::spawn) ────────────
@@ -3851,54 +3658,6 @@ FINAL(str(x))
     }
 
     // ── Additional sandbox security negative tests ─────────────
-
-    /// rlm_query() at max depth must be refused with a clear error.
-    #[tokio::test]
-    async fn sandbox_enforces_rlm_query_depth_limit() {
-        let effects: Arc<dyn EffectExecutor> = Arc::new(MockEffects::new(vec![], vec![]));
-        let mut thread = make_test_thread();
-        // Set depth at max — rlm_query should refuse to recurse further.
-        thread.config.depth = 2;
-        thread.config.max_depth = 2;
-
-        let code = r#"
-try:
-    result = await rlm_query(prompt="nested call")
-    FINAL("ESCAPED: " + str(result))
-except Exception as e:
-    FINAL("blocked: " + str(e))
-"#;
-        let leases = LeaseManager::new();
-        let policy = PolicyEngine::new();
-        let ctx = make_exec_context(&thread);
-        leases
-            .grant(thread.id, "tools", GrantedActions::All, None, None)
-            .await
-            .unwrap();
-
-        let result = execute_code(
-            code,
-            &thread,
-            Some(&(Arc::new(StubLlm) as Arc<dyn crate::traits::llm::LlmBackend>)),
-            &effects,
-            &leases,
-            &policy,
-            &ctx,
-            &[],
-            &serde_json::json!({}),
-        )
-        .await
-        .unwrap();
-        let answer = result.final_answer.as_deref().unwrap_or("");
-        assert!(
-            !answer.starts_with("ESCAPED"),
-            "rlm_query should be blocked at max depth, got: {answer}",
-        );
-        assert!(
-            answer.contains("depth limit"),
-            "error should mention depth limit, got: {answer}",
-        );
-    }
 
     /// FINAL() payloads must be captured literally, not interpreted.
     #[tokio::test]
