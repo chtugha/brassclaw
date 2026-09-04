@@ -5768,8 +5768,132 @@ async fn seed_memory_group(
         )
         .await?;
 
-    // 5-7. Leaf/domain Skills, Recipes, and catalogue appends are added in
-    //      chunks 5c-5d. Suppress unused-id warnings until then.
+    // 5. Leaf Skills (class 1) + Domain Skill (class 2). Transcribed verbatim
+    //    from the doc (Q1 decision A). All carry LEAF_SKILL_TAGS
+    //    [02:orchestrator, 05:validator] — the skill store has no SEC-01
+    //    05:validator-hiding filter, so this is safe.
+    let skill_memory_search = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-search",
+                "Leaf skill: how to retrieve relevant information from the agent's persistent \
+                 memory.",
+                SKILL_MEMORY_SEARCH_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-search",
+        )
+        .await?;
+    let skill_memory_search_broad = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-search-broad",
+                "Leaf skill: how to perform a broad memory recall across many documents.",
+                SKILL_MEMORY_SEARCH_BROAD_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-search-broad",
+        )
+        .await?;
+    let skill_memory_write_log = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-write-log",
+                "Leaf skill: how to log a note or progress update to today's daily log.",
+                SKILL_MEMORY_WRITE_LOG_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-write-log",
+        )
+        .await?;
+    let skill_memory_write_main = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-write-main",
+                "Leaf skill: how to update the main MEMORY.md document.",
+                SKILL_MEMORY_WRITE_MAIN_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-write-main",
+        )
+        .await?;
+    let skill_memory_write_patch = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-write-patch",
+                "Leaf skill: how to make a targeted edit to an existing memory document.",
+                SKILL_MEMORY_WRITE_PATCH_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-write-patch",
+        )
+        .await?;
+    let skill_memory_read = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-read",
+                "Leaf skill: how to read a specific memory document by its exact path.",
+                SKILL_MEMORY_READ_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-read",
+        )
+        .await?;
+    let skill_memory_tree = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-tree",
+                "Leaf skill: how to browse the structure of the agent's persistent memory.",
+                SKILL_MEMORY_TREE_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-tree",
+        )
+        .await?;
+    let skill_memory_search_and_read = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-search-and-read",
+                "Leaf skill: how to search memory and immediately read the top result.",
+                SKILL_MEMORY_SEARCH_AND_READ_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-search-and-read",
+        )
+        .await?;
+    let skill_memory = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory",
+                "The memory domain provides four tools for the agent's persistent memory \
+                 store (search, write, read, tree) plus a search-and-read combined recipe.",
+                SKILL_MEMORY_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory",
+        )
+        .await?;
+
+    // 6-7. Recipes and catalogue appends are added in chunk 5d. Suppress
+    //      unused-id warnings until then.
     let _ = (
         cat_memory, cat_memory_search, cat_memory_write, cat_memory_read, cat_memory_tree,
         tool_memory_search, tool_memory_write, tool_memory_read, tool_memory_tree,
@@ -5777,10 +5901,13 @@ async fn seed_memory_group(
         pc_exec_memory_search, pc_exec_memory_write, pc_exec_memory_patch,
         pc_exec_memory_read, pc_exec_memory_tree, pc_memory_extract_section,
         pc_memory_format_entry,
+        skill_memory_search, skill_memory_search_broad, skill_memory_write_log,
+        skill_memory_write_main, skill_memory_write_patch, skill_memory_read,
+        skill_memory_tree, skill_memory_search_and_read, skill_memory,
     );
 
     tracing::debug!(
-        "seeded memory group chunk 5b: 7 PythonCode (5 executors + 2 pure-logic helpers)"
+        "seeded memory group chunk 5c: 8 leaf skills + 1 domain skill (skill-memory)"
     );
 
     Ok(())
@@ -6158,3 +6285,66 @@ timestamp_str = "{{vars.slot1}}"
 formatted_entry = f"### {timestamp_str}\n\n{text}\n"
 result = {"formatted_entry": formatted_entry}
 "####;
+
+// ---------------------------------------------------------------------------
+// Memory group skill bodies — transcribed verbatim from the doc (Q1=A).
+// Leaf skills are class 1; skill-memory is the class-2 domain skill. Em-dash
+// list markers match the existing SKILL_FILESYSTEM_BODY convention.
+// ---------------------------------------------------------------------------
+
+const SKILL_MEMORY_SEARCH_BODY: &str = r#"Use `ts-memory-search` (via pc-exec-memory-search) when you need to recall past work, find saved notes, or check whether something was previously recorded. Provide a natural language query that describes what you are looking for. Set limit higher (up to 20) when broader recall coverage is needed. Review the returned documents and surface only those relevant to the current context.
+"#;
+
+const SKILL_MEMORY_SEARCH_BROAD_BODY: &str = r#"When a topic may span multiple memory documents, use `ts-memory-search` with `limit=20` to cast a wider net. Review all returned documents before deciding which are relevant. This is useful for session start — recovering full context about a project or topic before beginning work.
+"#;
+
+const SKILL_MEMORY_WRITE_LOG_BODY: &str = r#"Use `ts-memory-write` (via pc-exec-memory-write) with the default target='daily_log' and append=true to add timestamped progress notes, decisions, or session context to today's dated log. This is the lightest-weight memory write — use it frequently to maintain a running record of work within a session.
+"#;
+
+const SKILL_MEMORY_WRITE_MAIN_BODY: &str = r#"Use `ts-memory-write` with target='memory' to update the primary MEMORY.md document. With append=true, content is added to the end. With append=false, the entire document is replaced — use this only when intentionally rebuilding the memory from scratch. For targeted updates (patch a section), use skill-memory-write-patch instead.
+"#;
+
+const SKILL_MEMORY_WRITE_PATCH_BODY: &str = r#"Use `ts-memory-write` in patch mode (old_string + new_string) to replace a specific section of a memory document without rewriting the whole file. Read the document first with skill-memory-read to find the exact text to replace. Use replace_all=true when the same string appears multiple times and all occurrences should change.
+"#;
+
+const SKILL_MEMORY_READ_BODY: &str = r#"Use `ts-memory-read` (via pc-exec-memory-read) when you know the exact path of a memory document (e.g. MEMORY.md, HEARTBEAT.md, or a specific note file). Returns the full content of the document. If you do not know the exact path, use skill-memory-search to discover it first, or use skill-memory-tree to browse the directory structure.
+"#;
+
+const SKILL_MEMORY_TREE_BODY: &str = r#"Use `ts-memory-tree` (via pc-exec-memory-tree) to discover what memory documents exist. Call with no parameters to get the root structure at depth=1. Increase depth to see deeper levels. Use the returned structure to decide which documents to read with skill-memory-read or to inform a skill-memory-search query.
+"#;
+
+const SKILL_MEMORY_SEARCH_AND_READ_BODY: &str = r#"Use when the user wants to recall information and immediately see the full content — not just the search summary. The pattern:
+1. Call ts-memory-search with the topic query (via pc-exec-memory-search).
+2. Take the highest-scoring result's path from the search output.
+3. Call ts-memory-read with that path (via pc-exec-memory-read).
+4. Return the full document content.
+
+If no results are found, report that no memory matches the topic. Do not fabricate a document path. Always check the search result before reading.
+"#;
+
+const SKILL_MEMORY_BODY: &str = r#"The memory domain provides four tools for the agent's persistent memory store:
+
+READING / DISCOVERING:
+— skill-memory-search: Semantic search by topic — use when path is unknown.
+— skill-memory-search-broad: Wide recall with limit=20 for session start.
+— skill-memory-search-and-read: Search + immediately read the top result.
+— skill-memory-read: Read a specific document by exact path.
+— skill-memory-tree: Browse the directory structure.
+
+WRITING:
+— skill-memory-write-log: Append a note to today's daily_log (default).
+— skill-memory-write-main: Update the main MEMORY.md document.
+— skill-memory-write-patch: Targeted patch of an existing memory document.
+
+Decision guide:
+— Recalling by topic (summary list) -> skill-memory-search
+— Recalling + reading the top result in one step -> skill-memory-search-and-read
+— Session start full recall -> skill-memory-search-broad
+— Reading a known file -> skill-memory-read
+— Logging progress -> skill-memory-write-log
+— Updating permanent context -> skill-memory-write-main
+— Patching a section -> skill-memory-write-patch
+— Discovering what files exist -> skill-memory-tree
+
+Orchestrator note: NEVER use datetime.now() in PythonCode. Always call skill-time-now first to get a timestamp, then pass it to pc-memory-format-entry.
+"#;
