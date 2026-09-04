@@ -7182,18 +7182,412 @@ async fn seed_process_group(
         .upsert_tool_skill(ts_trigger_remove_row(&tenant), "ts-trigger-remove")
         .await?;
 
-    // 4-7. PythonCode, leaf Skills, Domain Skills, Recipes, and the catalogue
-    //      `child_component_ids` appends are added in subsequent chunks (6b-6g).
-    //      The bindings above are consumed there; until then, touch them so the
-    //      compiler does not warn about unused ids.
-    let _ = (
-        cat_process, cat_shell, cat_spawn, cat_trigger, tool_shell, tool_spawn_subagent,
-        tool_trigger_create, tool_trigger_list, tool_trigger_remove, ts_shell_run,
-        ts_spawn_subagent, ts_trigger_create, ts_trigger_list, ts_trigger_remove,
-    );
+    // 4. PythonCode rows (class 22) — shell executors. Transcribed verbatim from
+    //    the doc (Q1 decision A); bodies use `host.shell(command=...)` dispatch.
+    //    pc_row overrides the doc's `05:validator` tag with the SEC-01-safe
+    //    `["01:monty","02:orchestrator"]` (pg_python_code_store hides
+    //    `05:validator` rows even when validated).
+    let pc_exec_shell_git_status = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-status",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git status' in the workspace \
+                 root via builtin.shell. Command is a fixed literal. No user input enters the \
+                 command string. Output: {output, exit_code, success}.",
+                PC_EXEC_SHELL_GIT_STATUS_CONTENT,
+            ),
+            "pc-exec-shell-git-status",
+        )
+        .await?;
+    let pc_exec_shell_git_log = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-log",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git log --oneline -20' to get \
+                 the last 20 commits. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_LOG_CONTENT,
+            ),
+            "pc-exec-shell-git-log",
+        )
+        .await?;
+    let pc_exec_shell_git_diff_stat = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-diff-stat",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git diff --stat' to show \
+                 changed file summary. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_DIFF_STAT_CONTENT,
+            ),
+            "pc-exec-shell-git-diff-stat",
+        )
+        .await?;
+    let pc_exec_shell_git_branch = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-branch",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git branch -a' to list all \
+                 local and remote branches. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_BRANCH_CONTENT,
+            ),
+            "pc-exec-shell-git-branch",
+        )
+        .await?;
+    let pc_exec_shell_git_stash_list = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-stash-list",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git stash list' to show the \
+                 stash stack. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_STASH_LIST_CONTENT,
+            ),
+            "pc-exec-shell-git-stash-list",
+        )
+        .await?;
+    let pc_exec_shell_git_log_n = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-log-n",
+                "Orchestrator executor (§shell-safe-fixed variant): runs 'git log --oneline -N' \
+                 where N is a validated integer (1–100). Input: count (int, 1–100).",
+                PC_EXEC_SHELL_GIT_LOG_N_CONTENT,
+            ),
+            "pc-exec-shell-git-log-n",
+        )
+        .await?;
+    let pc_exec_shell_git_remote = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-remote",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git remote -v' to list all \
+                 configured remote repositories and their URLs. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_REMOTE_CONTENT,
+            ),
+            "pc-exec-shell-git-remote",
+        )
+        .await?;
+    let pc_exec_shell_git_show_stat = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-show-stat",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git show --stat HEAD' to show \
+                 the last commit's changed files and line counts. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_SHOW_STAT_CONTENT,
+            ),
+            "pc-exec-shell-git-show-stat",
+        )
+        .await?;
+    let pc_exec_shell_git_tag_list = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-tag-list",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git tag --list' to enumerate \
+                 all tags in the repository. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_TAG_LIST_CONTENT,
+            ),
+            "pc-exec-shell-git-tag-list",
+        )
+        .await?;
+    let pc_exec_shell_git_diff_name_only = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-diff-name-only",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git diff --name-only HEAD' to \
+                 list only the names of files changed since the last commit. No content shown. \
+                 Fixed literal command — no slot interpolation.",
+                PC_EXEC_SHELL_GIT_DIFF_NAME_ONLY_CONTENT,
+            ),
+            "pc-exec-shell-git-diff-name-only",
+        )
+        .await?;
+    let pc_exec_shell_git_log_stat = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-log-stat",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git log --stat --oneline -5' \
+                 to show the last 5 commits with file-change counts per commit. Fixed literal.",
+                PC_EXEC_SHELL_GIT_LOG_STAT_CONTENT,
+            ),
+            "pc-exec-shell-git-log-stat",
+        )
+        .await?;
+    let pc_exec_shell_git_stash_show = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-stash-show",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git stash show' to show the \
+                 diff summary of the most recent stash entry. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_STASH_SHOW_CONTENT,
+            ),
+            "pc-exec-shell-git-stash-show",
+        )
+        .await?;
+    let pc_exec_shell_git_config_list = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-config-list",
+                "Orchestrator executor (§shell-safe-fixed): runs 'git config --list' to show all \
+                 active git configuration values. Fixed literal command.",
+                PC_EXEC_SHELL_GIT_CONFIG_LIST_CONTENT,
+            ),
+            "pc-exec-shell-git-config-list",
+        )
+        .await?;
+    let pc_exec_shell_git_add = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-add",
+                "Orchestrator executor: calls host.<tool> to run 'git add <path>'. Input: \
+                 vars.slot0 = path(s) to stage. Use '.' to stage all changes. §shell-guard-custom \
+                 — path is user/LLM-supplied. Tier 1 only.",
+                PC_EXEC_SHELL_GIT_ADD_CONTENT,
+            ),
+            "pc-exec-shell-git-add",
+        )
+        .await?;
+    let pc_exec_shell_git_commit = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-commit",
+                "Orchestrator executor: calls host.<tool> to run 'git commit -m <msg>'. Input: \
+                 vars.slot0 = commit message (user-supplied, LLM-validated). Tier 1 only.",
+                PC_EXEC_SHELL_GIT_COMMIT_CONTENT,
+            ),
+            "pc-exec-shell-git-commit",
+        )
+        .await?;
+    let pc_exec_shell_git_push = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-push",
+                "Orchestrator executor: calls host.<tool> to run 'git push <remote> <branch>'. \
+                 Input: vars.slot0 = remote (e.g. 'origin'), vars.slot1 = branch (e.g. 'main'). \
+                 Tier 1 only.",
+                PC_EXEC_SHELL_GIT_PUSH_CONTENT,
+            ),
+            "pc-exec-shell-git-push",
+        )
+        .await?;
+    let pc_exec_shell_git_pull = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-pull",
+                "Orchestrator executor: calls host.<tool> to run 'git pull <remote> <branch>'. \
+                 Input: vars.slot0 = remote, vars.slot1 = branch. Tier 1 only.",
+                PC_EXEC_SHELL_GIT_PULL_CONTENT,
+            ),
+            "pc-exec-shell-git-pull",
+        )
+        .await?;
+    let pc_exec_shell_git_fetch = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-git-fetch",
+                "Orchestrator executor: calls host.<tool> to run 'git fetch --all'. Tier 0 safe.",
+                PC_EXEC_SHELL_GIT_FETCH_CONTENT,
+            ),
+            "pc-exec-shell-git-fetch",
+        )
+        .await?;
+    let pc_exec_shell_pwd = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-pwd",
+                "Orchestrator executor (§shell-safe-fixed): runs 'pwd' to show the current \
+                 working directory. Fixed literal command.",
+                PC_EXEC_SHELL_PWD_CONTENT,
+            ),
+            "pc-exec-shell-pwd",
+        )
+        .await?;
+    let pc_exec_shell_df = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-df",
+                "Orchestrator executor (§shell-safe-fixed): runs 'df -h' to show disk usage in \
+                 human-readable format. Fixed literal command.",
+                PC_EXEC_SHELL_DF_CONTENT,
+            ),
+            "pc-exec-shell-df",
+        )
+        .await?;
+    let pc_exec_shell_ps = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-ps",
+                "Orchestrator executor (§shell-safe-fixed): runs 'ps aux' to list running \
+                 processes. Fixed literal command.",
+                PC_EXEC_SHELL_PS_CONTENT,
+            ),
+            "pc-exec-shell-ps",
+        )
+        .await?;
+    let pc_exec_shell_env = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-env",
+                "Orchestrator executor (§shell-safe-fixed): runs 'env' to list all environment \
+                 variables in the current session. Fixed literal command.",
+                PC_EXEC_SHELL_ENV_CONTENT,
+            ),
+            "pc-exec-shell-env",
+        )
+        .await?;
+    let pc_exec_shell_uname = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-uname",
+                "Orchestrator executor (§shell-safe-fixed): runs 'uname -a' to show OS/kernel \
+                 information. Fixed literal command.",
+                PC_EXEC_SHELL_UNAME_CONTENT,
+            ),
+            "pc-exec-shell-uname",
+        )
+        .await?;
+    let pc_exec_shell_which = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-which",
+                "Orchestrator executor (§shell-safe-fixed variant): runs 'which <toolname>' to \
+                 locate a binary. Input: tool_name (string, must be a safe identifier matching \
+                 [a-zA-Z0-9_-]+). Validates before dispatch.",
+                PC_EXEC_SHELL_WHICH_CONTENT,
+            ),
+            "pc-exec-shell-which",
+        )
+        .await?;
+    let pc_exec_shell_date = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-date",
+                "Orchestrator executor (§shell-safe-fixed): runs 'date -u +%Y-%m-%dT%H:%M:%SZ' \
+                 to print the current UTC date/time as ISO-8601. Fixed literal command.",
+                PC_EXEC_SHELL_DATE_CONTENT,
+            ),
+            "pc-exec-shell-date",
+        )
+        .await?;
+    let pc_exec_shell_hostname = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-hostname",
+                "Orchestrator executor (§shell-safe-fixed): runs 'hostname' to print the machine \
+                 hostname. Fixed literal command.",
+                PC_EXEC_SHELL_HOSTNAME_CONTENT,
+            ),
+            "pc-exec-shell-hostname",
+        )
+        .await?;
+    let pc_exec_shell_whoami = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-whoami",
+                "Orchestrator executor (§shell-safe-fixed): runs 'whoami' to print the current \
+                 user account name. Fixed literal command.",
+                PC_EXEC_SHELL_WHOAMI_CONTENT,
+            ),
+            "pc-exec-shell-whoami",
+        )
+        .await?;
+    let pc_exec_shell_uptime = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-uptime",
+                "Orchestrator executor (§shell-safe-fixed): runs 'uptime' to show system uptime, \
+                 load average, and logged-in user count. Fixed literal command.",
+                PC_EXEC_SHELL_UPTIME_CONTENT,
+            ),
+            "pc-exec-shell-uptime",
+        )
+        .await?;
+    let pc_exec_shell_free = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-free",
+                "Orchestrator executor (§shell-safe-fixed): runs 'free -h' to show memory usage \
+                 in human-readable format. Fixed literal command.",
+                PC_EXEC_SHELL_FREE_CONTENT,
+            ),
+            "pc-exec-shell-free",
+        )
+        .await?;
+    let pc_exec_shell_wc_l = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-shell-wc-l",
+                "Orchestrator executor (§shell-safe-fixed variant): runs 'wc -l <filepath>' to \
+                 count lines in a file. Input: filepath (string — must be a safe scoped \
+                 workspace path matching no special characters). Validates before dispatch.",
+                PC_EXEC_SHELL_WC_L_CONTENT,
+            ),
+            "pc-exec-shell-wc-l",
+        )
+        .await?;
+
+    // Append the shell tool + toolskill + 30 PythonCode ids to ext-shell and the
+    // primary catalogue (dedup-idempotent). Leaf skills, domain skill, and recipes
+    // are appended in chunks 6c/6d.
+    let ext_shell_children: Vec<Uuid> = vec![
+        tool_shell, ts_shell_run, pc_exec_shell_git_status, pc_exec_shell_git_log,
+        pc_exec_shell_git_diff_stat, pc_exec_shell_git_branch, pc_exec_shell_git_stash_list,
+        pc_exec_shell_git_log_n, pc_exec_shell_git_remote, pc_exec_shell_git_show_stat,
+        pc_exec_shell_git_tag_list, pc_exec_shell_git_diff_name_only, pc_exec_shell_git_log_stat,
+        pc_exec_shell_git_stash_show, pc_exec_shell_git_config_list, pc_exec_shell_git_add,
+        pc_exec_shell_git_commit, pc_exec_shell_git_push, pc_exec_shell_git_pull,
+        pc_exec_shell_git_fetch, pc_exec_shell_pwd, pc_exec_shell_df, pc_exec_shell_ps,
+        pc_exec_shell_env, pc_exec_shell_uname, pc_exec_shell_which, pc_exec_shell_date,
+        pc_exec_shell_hostname, pc_exec_shell_whoami, pc_exec_shell_uptime, pc_exec_shell_free,
+        pc_exec_shell_wc_l,
+    ];
+    stores.append_children(cat_shell, &ext_shell_children).await?;
+    stores.append_children(cat_process, &ext_shell_children).await?;
+
+    // Append the spawn tool + toolskill to ext-spawn-subagent and the primary
+    // (leaf skills + recipes appended in chunk 6e).
+    let ext_spawn_children: Vec<Uuid> = vec![tool_spawn_subagent, ts_spawn_subagent];
+    stores.append_children(cat_spawn, &ext_spawn_children).await?;
+    stores.append_children(cat_process, &ext_spawn_children).await?;
+
+    // Append the 3 trigger tools + 3 toolskills to ext-trigger-management and the
+    // primary (PythonCode + leaf skills + recipes appended in chunk 6f).
+    let ext_trigger_children: Vec<Uuid> = vec![
+        tool_trigger_create, ts_trigger_create, tool_trigger_list, ts_trigger_list,
+        tool_trigger_remove, ts_trigger_remove,
+    ];
+    stores.append_children(cat_trigger, &ext_trigger_children).await?;
+    stores.append_children(cat_process, &ext_trigger_children).await?;
 
     tracing::debug!(
-        "seeded process group chunk 6a: 4 catalogues + 5 tools + 5 toolskills - shell/spawn/trigger bindings ready"
+        "seeded process group chunk 6b: 30 shell PythonCode + catalogue appends (shell/spawn/trigger tool+ts+pc bound)"
     );
 
     Ok(())
@@ -7578,3 +7972,152 @@ Safety:
         includes: vec![],
     }
 }
+
+// ---------------------------------------------------------------------------
+// Process group chunk 6b — shell PythonCode content bodies (verbatim from the
+// doc; Q1 decision A). Bodies dispatch via `host.shell(command=...)`. Slot
+// markers `{{vars.slotN}}` are stored verbatim (Rust raw strings do not
+// interpret braces).
+// ---------------------------------------------------------------------------
+
+const PC_EXEC_SHELL_GIT_STATUS_CONTENT: &str = r#"# §shell-safe-fixed: command is a compile-time constant — no injection surface.
+result = host.shell(command="git status")
+"#;
+
+const PC_EXEC_SHELL_GIT_LOG_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
+result = host.shell(command="git log --oneline -20")
+"#;
+
+const PC_EXEC_SHELL_GIT_DIFF_STAT_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
+result = host.shell(command="git diff --stat")
+"#;
+
+const PC_EXEC_SHELL_GIT_BRANCH_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
+result = host.shell(command="git branch -a")
+"#;
+
+const PC_EXEC_SHELL_GIT_STASH_LIST_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
+result = host.shell(command="git stash list")
+"#;
+
+const PC_EXEC_SHELL_GIT_LOG_N_CONTENT: &str = r#"_n = {{vars.slot0}}
+# Validate: only safe integer in 1–100 range
+if not isinstance(_n, int) or not (1 <= _n <= 100):
+    _n = 20
+result = host.shell(command=f"git log --oneline -{_n}")
+"#;
+
+const PC_EXEC_SHELL_GIT_REMOTE_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="git remote -v")
+"#;
+
+const PC_EXEC_SHELL_GIT_SHOW_STAT_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="git show --stat HEAD")
+"#;
+
+const PC_EXEC_SHELL_GIT_TAG_LIST_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="git tag --list")
+"#;
+
+const PC_EXEC_SHELL_GIT_DIFF_NAME_ONLY_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
+result = host.shell(command="git diff --name-only HEAD")
+"#;
+
+const PC_EXEC_SHELL_GIT_LOG_STAT_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
+result = host.shell(command="git log --stat --oneline -5")
+"#;
+
+const PC_EXEC_SHELL_GIT_STASH_SHOW_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
+result = host.shell(command="git stash show")
+"#;
+
+const PC_EXEC_SHELL_GIT_CONFIG_LIST_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input, no injection surface.
+result = host.shell(command="git config --list")
+"#;
+
+const PC_EXEC_SHELL_GIT_ADD_CONTENT: &str = r#"# §shell-guard-custom — path is user/LLM-supplied. Tier 1 only.
+_path = "{{vars.slot0}}" or "."
+result = host.shell(command="git add " + _path)
+"#;
+
+const PC_EXEC_SHELL_GIT_COMMIT_CONTENT: &str = r#"# §shell-guard-custom — commit message is user/LLM-supplied. Tier 1 only.
+_msg = "{{vars.slot0}}"
+result = host.shell(command="git commit -m " + repr(_msg))
+"#;
+
+const PC_EXEC_SHELL_GIT_PUSH_CONTENT: &str = r#"# §shell-guard-custom — remote/branch are user-supplied. Tier 1 only.
+_remote = "{{vars.slot0}}" or "origin"
+_branch = "{{vars.slot1}}" or "main"
+result = host.shell(command="git push " + _remote + " " + _branch)
+"#;
+
+const PC_EXEC_SHELL_GIT_PULL_CONTENT: &str = r#"# §shell-guard-custom — remote/branch are user-supplied. Tier 1 only.
+_remote = "{{vars.slot0}}" or "origin"
+_branch = "{{vars.slot1}}" or ""
+_cmd = "git pull " + _remote
+if _branch:
+    _cmd = _cmd + " " + _branch
+result = host.shell(command=_cmd)
+"#;
+
+const PC_EXEC_SHELL_GIT_FETCH_CONTENT: &str = r#"# §shell-safe-fixed — 'git fetch --all' is a fixed read-only remote query. No user input in command.
+result = host.shell(command="git fetch --all")
+"#;
+
+const PC_EXEC_SHELL_PWD_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="pwd")
+"#;
+
+const PC_EXEC_SHELL_DF_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="df -h")
+"#;
+
+const PC_EXEC_SHELL_PS_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="ps aux")
+"#;
+
+const PC_EXEC_SHELL_ENV_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="env")
+"#;
+
+const PC_EXEC_SHELL_UNAME_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="uname -a")
+"#;
+
+const PC_EXEC_SHELL_WHICH_CONTENT: &str = r#"import re as _re
+_tool = "{{vars.slot0}}"
+# Validate: only safe identifiers allowed (no injection surface)
+if not _re.match(r'^[a-zA-Z0-9_\-]{1,64}$', _tool):
+    result = {"error": "Invalid tool name — must be a safe identifier", "success": False}
+else:
+    result = host.shell(command=f"which {_tool}")
+"#;
+
+const PC_EXEC_SHELL_DATE_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="date -u +%Y-%m-%dT%H:%M:%SZ")
+"#;
+
+const PC_EXEC_SHELL_HOSTNAME_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="hostname")
+"#;
+
+const PC_EXEC_SHELL_WHOAMI_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="whoami")
+"#;
+
+const PC_EXEC_SHELL_UPTIME_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="uptime")
+"#;
+
+const PC_EXEC_SHELL_FREE_CONTENT: &str = r#"# §shell-safe-fixed: fixed command, no user input.
+result = host.shell(command="free -h")
+"#;
+
+const PC_EXEC_SHELL_WC_L_CONTENT: &str = r#"import re as _re
+_filepath = "{{vars.slot0}}"
+# Validate: only allow safe relative paths (no shell metacharacters)
+if not _re.match(r'^[a-zA-Z0-9_\-./]{1,256}$', _filepath):
+    result = {"error": "Invalid filepath — must be a safe relative path", "success": False}
+else:
+    result = host.shell(command=f"wc -l {_filepath}")
+"#;
