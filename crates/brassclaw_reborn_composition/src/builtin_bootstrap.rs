@@ -2889,6 +2889,12 @@ fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPy
 /// safe and matches the doc source.
 const LEAF_SKILL_TAGS: &[&str] = &["02:orchestrator", "05:validator"];
 
+/// consumer_tags for spawn-subagent skills (class 1 + domain class 2) —
+/// transcribed verbatim from the doc. Spawn/delegation skills are orchestrator-only
+/// (the validator never delegates child runs), so `05:validator` is intentionally
+/// absent, unlike `LEAF_SKILL_TAGS`.
+const SPAWN_SKILL_TAGS: &[&str] = &["02:orchestrator"];
+
 /// Build a `NewPgSkill` row from the variable parts. `intent_examples` is
 /// `json!([])` because the doc's leaf/domain skill definitions carry no
 /// intent examples (leaf skills are loaded via recipe steps, not direct intent
@@ -8741,11 +8747,252 @@ async fn seed_process_group(
         .append_children(cat_process, &ext_shell_recipe_children)
         .await?;
 
+    // 8. Spawn-subagent Leaf Skills (class 1) + Domain Skill (class 2) — chunk 6e.
+    //    All spawn skills carry consumer_tags ["02:orchestrator"] (orchestrator-only;
+    //    the validator never delegates child runs), transcribed verbatim from the doc.
+    //    Bodies are transcribed verbatim from Step 18.3/18.4/18.x.1-18.x.4/18.5.
+    let skill_spawn_subagent = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-spawn-subagent",
+                "Leaf skill: how to spawn a child agent run for a delegated sub-task.",
+                SKILL_SPAWN_SUBAGENT_BODY,
+                1,
+                SPAWN_SKILL_TAGS,
+            ),
+            "skill-spawn-subagent",
+        )
+        .await?;
+    let skill_spawn_named_procedure = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-spawn-named-procedure",
+                "Leaf skill: how to run a named recipe as a child agent procedure.",
+                SKILL_SPAWN_NAMED_PROCEDURE_BODY,
+                1,
+                SPAWN_SKILL_TAGS,
+            ),
+            "skill-spawn-named-procedure",
+        )
+        .await?;
+    let skill_spawn_research = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-spawn-research",
+                "Leaf skill: how to delegate a research or information-gathering sub-task.",
+                SKILL_SPAWN_RESEARCH_BODY,
+                1,
+                SPAWN_SKILL_TAGS,
+            ),
+            "skill-spawn-research",
+        )
+        .await?;
+    let skill_spawn_coding = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-spawn-coding",
+                "Leaf skill: how to delegate a focused coding sub-task to a child agent.",
+                SKILL_SPAWN_CODING_BODY,
+                1,
+                SPAWN_SKILL_TAGS,
+            ),
+            "skill-spawn-coding",
+        )
+        .await?;
+    let skill_spawn_exploration = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-spawn-exploration",
+                "Leaf skill: how to delegate a deep read-only workspace exploration task.",
+                SKILL_SPAWN_EXPLORATION_BODY,
+                1,
+                SPAWN_SKILL_TAGS,
+            ),
+            "skill-spawn-exploration",
+        )
+        .await?;
+    let skill_spawn_query = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-spawn-query",
+                "Leaf skill: how to delegate a focused lookup query to a child agent.",
+                SKILL_SPAWN_QUERY_BODY,
+                1,
+                SPAWN_SKILL_TAGS,
+            ),
+            "skill-spawn-query",
+        )
+        .await?;
+    let skill_subagent = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-subagent",
+                "Domain skill: child agent delegation via spawn_subagent.",
+                SKILL_SUBAGENT_BODY,
+                2,
+                SPAWN_SKILL_TAGS,
+            ),
+            "skill-subagent",
+        )
+        .await?;
+
+    // 9. Spawn-subagent Recipes (class 21) — chunk 6e. ALL Tier 1
+    //    (§spawn_subagent-guard: llm_call_required=true; no Tier-0 spawn dispatch).
+    //    Each is a 3-step delegation: (1) orchestrator loads the flavour leaf skill,
+    //    (2) LLM frames the goal (text annotation), (3) rust pre-loads ts-spawn-subagent.
+    //    step_link synthesized "0:1-0:E"; stepnumber = 1-based position; the doc's flat
+    //    step format is preserved verbatim in the RECIPE_SUBAGENT_*_YAML constants.
+    let recipe_subagent_spawn = stores
+        .seed_recipe(
+            &tenant,
+            "subagent-spawn",
+            "Spawn a child agent for a delegated sub-task or named procedure.",
+            false,
+            RECIPE_SUBAGENT_SPAWN_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load spawn leaf skills (goal delegation + named procedure patterns)", "component", &[skill_spawn_subagent, skill_spawn_named_procedure]),
+                step_entry(2, "orchestrator", "LLM frames the goal, decides generic-vs-recipe delegation, confirms with user, calls ts-spawn-subagent", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-spawn-subagent ToolSkill binding", "component", &[ts_spawn_subagent]),
+            ],
+            &[
+                json!({"input": "spawn a child agent to do X", "class": 1}),
+                json!({"input": "delegate this task to a subagent", "class": 1}),
+                json!({"input": "run procedure Y in a child session", "class": 1}),
+                json!({"input": "create a child agent for this sub-task", "class": 1}),
+                json!({"input": "use a subagent for this long-running task", "class": 2}),
+                json!({"input": "subagent spawn", "class": 1}),
+                json!({"input": "hand off this work to a child agent", "class": 2}),
+                json!({"input": "run this recipe in a child session", "class": 2}),
+                json!({"input": "spawn subagent with this goal", "class": 1}),
+                json!({"input": "delegate this to a parallel agent", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_subagent_research = stores
+        .seed_recipe(
+            &tenant,
+            "subagent-research",
+            "Delegate a focused research or information-gathering task to a child agent.",
+            false,
+            RECIPE_SUBAGENT_RESEARCH_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load research delegation leaf skill body", "component", &[skill_spawn_research]),
+                step_entry(2, "orchestrator", "LLM frames focused research goal string, sets context, calls ts-spawn-subagent", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-spawn-subagent ToolSkill binding", "component", &[ts_spawn_subagent]),
+            ],
+            &[
+                json!({"input": "research this topic using a child agent", "class": 1}),
+                json!({"input": "have a subagent look this up", "class": 1}),
+                json!({"input": "delegate this research to a child", "class": 1}),
+                json!({"input": "spawn a researcher subagent", "class": 1}),
+                json!({"input": "research X in a child session", "class": 2}),
+                json!({"input": "use a subagent to find information about X", "class": 2}),
+                json!({"input": "gather information on X via child agent", "class": 2}),
+                json!({"input": "let a subagent research this and report back", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_subagent_coding = stores
+        .seed_recipe(
+            &tenant,
+            "subagent-coding",
+            "Delegate a focused code-reading, code-writing, or debugging task to a child agent.",
+            false,
+            RECIPE_SUBAGENT_CODING_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load coding delegation leaf skill body", "component", &[skill_spawn_coding]),
+                step_entry(2, "orchestrator", "LLM scopes the code task, includes file paths + constraints in context, calls ts-spawn-subagent", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-spawn-subagent ToolSkill binding", "component", &[ts_spawn_subagent]),
+            ],
+            &[
+                json!({"input": "have a child agent fix this bug", "class": 1}),
+                json!({"input": "delegate this coding task to a subagent", "class": 1}),
+                json!({"input": "spawn a coder subagent to handle this", "class": 1}),
+                json!({"input": "let a child agent write this code", "class": 1}),
+                json!({"input": "use a subagent to refactor this file", "class": 2}),
+                json!({"input": "have a child agent apply this patch", "class": 2}),
+                json!({"input": "delegate the code changes to a child session", "class": 2}),
+                json!({"input": "subagent coding task", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_subagent_exploration = stores
+        .seed_recipe(
+            &tenant,
+            "subagent-exploration",
+            "Delegate a deep read-only workspace or codebase exploration to a child agent.",
+            false,
+            RECIPE_SUBAGENT_EXPLORATION_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load exploration delegation leaf skill body", "component", &[skill_spawn_exploration]),
+                step_entry(2, "orchestrator", "LLM defines exploration scope and output format, calls ts-spawn-subagent", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-spawn-subagent ToolSkill binding", "component", &[ts_spawn_subagent]),
+            ],
+            &[
+                json!({"input": "have a subagent explore this codebase area", "class": 1}),
+                json!({"input": "spawn an explorer to map out the structure", "class": 1}),
+                json!({"input": "delegate a deep exploration to a child agent", "class": 1}),
+                json!({"input": "have a child agent catalogue this directory", "class": 2}),
+                json!({"input": "explore the codebase with a subagent", "class": 2}),
+                json!({"input": "subagent explore", "class": 1}),
+                json!({"input": "use a child agent to analyse code patterns", "class": 2}),
+                json!({"input": "have a child agent trace this dependency", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_subagent_query = stores
+        .seed_recipe(
+            &tenant,
+            "subagent-query",
+            "Delegate a focused single-question lookup to a child agent.",
+            false,
+            RECIPE_SUBAGENT_QUERY_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load query delegation leaf skill body", "component", &[skill_spawn_query]),
+                step_entry(2, "orchestrator", "LLM formulates focused single-question goal, expected output shape, calls ts-spawn-subagent", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-spawn-subagent ToolSkill binding", "component", &[ts_spawn_subagent]),
+            ],
+            &[
+                json!({"input": "ask a child agent to look this up", "class": 1}),
+                json!({"input": "have a subagent answer this question", "class": 1}),
+                json!({"input": "delegate this lookup to a child session", "class": 1}),
+                json!({"input": "spawn a query subagent", "class": 1}),
+                json!({"input": "use a child agent to find the answer to X", "class": 2}),
+                json!({"input": "subagent query", "class": 1}),
+                json!({"input": "let a child agent fetch this information", "class": 2}),
+                json!({"input": "have a child agent check this value", "class": 2}),
+            ],
+        )
+        .await?;
+
     // Append the spawn tool + toolskill to ext-spawn-subagent and the primary
-    // (leaf skills + recipes appended in chunk 6e).
+    // (dedup-idempotent; seeded in chunk 6a).
     let ext_spawn_children: Vec<Uuid> = vec![tool_spawn_subagent, ts_spawn_subagent];
     stores.append_children(cat_spawn, &ext_spawn_children).await?;
     stores.append_children(cat_process, &ext_spawn_children).await?;
+
+    // Append the 6 spawn leaf skills + 1 domain + 5 recipes to ext-spawn-subagent
+    // and the primary (dedup-idempotent). Completes the ext-spawn-subagent child
+    // set: tool + ts + 6 leaf skills + 1 domain + 5 recipes.
+    let ext_spawn_skill_recipe_children: Vec<Uuid> = vec![
+        skill_spawn_subagent, skill_spawn_named_procedure, skill_spawn_research,
+        skill_spawn_coding, skill_spawn_exploration, skill_spawn_query, skill_subagent,
+        recipe_subagent_spawn, recipe_subagent_research, recipe_subagent_coding,
+        recipe_subagent_exploration, recipe_subagent_query,
+    ];
+    stores
+        .append_children(cat_spawn, &ext_spawn_skill_recipe_children)
+        .await?;
+    stores
+        .append_children(cat_process, &ext_spawn_skill_recipe_children)
+        .await?;
 
     // Append the 3 trigger tools + 3 toolskills to ext-trigger-management and the
     // primary (PythonCode + leaf skills + recipes appended in chunk 6f).
@@ -8757,7 +9004,7 @@ async fn seed_process_group(
     stores.append_children(cat_process, &ext_trigger_children).await?;
 
     tracing::debug!(
-        "seeded process group chunk 6d: 31 shell recipes (25 Tier-0 + 6 Tier-1) + catalogue appends (shell subgroup COMPLETE: 1 tool + 1 ts + 30 pc + 31 leaf skills + 1 domain + 31 recipes)"
+        "seeded process group chunk 6e: spawn subgroup (6 leaf skills + 1 domain + 5 Tier-1 recipes) + catalogue appends (spawn subgroup COMPLETE: 1 tool + 1 ts + 6 leaf skills + 1 domain + 5 recipes)"
     );
 
     Ok(())
@@ -10628,4 +10875,226 @@ result = host.skill_list(scope=_scope)
 const PC_EXEC_ECHO_CONTENT: &str = r#"# Diagnostic executor body. host.<tool> provided by runtime sandbox.
 _message = "{{vars.slot0}}"
 result = host.echo(message=_message)
+"#;
+
+// ---------------------------------------------------------------------------
+// Process group chunk 6e — spawn-subagent skill bodies (verbatim doc source)
+// + spawn recipe YAML sources (verbatim doc flat format).
+// ---------------------------------------------------------------------------
+
+const SKILL_SPAWN_SUBAGENT_BODY: &str = r#"Use `ts-spawn-subagent` to create a child agent run for a self-contained sub-goal.
+
+Before spawning:
+1. Ensure the goal is truly self-contained — include all necessary context in the
+   'context' field since the child cannot see the parent conversation.
+2. Confirm with the user if the sub-task has any destructive or external effects.
+3. Set budget_tokens if the sub-task should be bounded.
+
+After spawning:
+- The child result is returned as a structured object. Check result.status for
+  'completed' | 'failed' | 'budget_exceeded'.
+- If the child fails, report the failure reason to the user and decide whether to
+  retry, rephrase the goal, or handle the sub-task in the parent context instead.
+"#;
+
+const SKILL_SPAWN_NAMED_PROCEDURE_BODY: &str = r#"Use `ts-spawn-subagent` with recipe_name set to invoke a known, stable procedure.
+
+Use this when:
+- You have a validated Recipe that encodes a complete procedure (e.g. 'file-patch',
+  'memory-write', a user-installed skill recipe).
+- You want the child to follow that procedure's recipe structure exactly rather than
+  improvise from a goal description.
+
+Pass relevant slot variables in 'context' as a structured key-value description:
+  "vars: {slot0: '/path/to/file', slot1: 'search term'}"
+The child's recipe loader will extract these into its vars map.
+"#;
+
+const SKILL_SPAWN_RESEARCH_BODY: &str = r#"Use `ts-spawn-subagent` with a goal written as a focused research question. Research
+delegation works best when:
+- The question is self-contained and answerable from memory, files, or web search.
+- You want the answer returned as a structured summary (not inline back-and-forth).
+- The child will need to call multiple tools (memory_search, glob, grep, or http).
+
+Frame the goal as a question: "Research and summarise X, focusing on Y. Return a
+structured summary with: key findings, relevant files/sources, open questions."
+Include all constraints in the context field — the child has no access to parent state.
+"#;
+
+const SKILL_SPAWN_CODING_BODY: &str = r#"Use `ts-spawn-subagent` with a goal written as a concrete code task. Coding delegation
+works best when:
+- The task is scoped to a specific file, function, or module.
+- The child needs to read files, apply patches, and report a result.
+- The task is too long to inline and benefits from isolated execution.
+
+Frame the goal concretely: "Read /path/to/file, fix the bug described by X, write the
+corrected version back. Return the diff of changes made."
+Include all file paths and error descriptions in the context field.
+Set budget_tokens appropriately — coding tasks can be token-heavy.
+"#;
+
+const SKILL_SPAWN_EXPLORATION_BODY: &str = r#"Use `ts-spawn-subagent` with a goal written as a deep-analysis question. Exploration
+delegation works best when:
+- The task is read-only (no file writes, no shell execution with side effects).
+- You want the child to map out a codebase area, trace a dependency, or catalogue
+  patterns across many files.
+- The result is a structured report or inventory.
+
+Frame the goal as an analysis assignment: "Explore all Rust files under crates/X/,
+identify all public trait definitions, and return a structured inventory with trait
+names, file paths, and method signatures."
+Explicitly state "read-only — do not modify any files" in the goal if needed.
+"#;
+
+const SKILL_SPAWN_QUERY_BODY: &str = r#"Use `ts-spawn-subagent` when the user asks a specific factual question that requires
+one or two tool lookups (memory_search, grep, glob, or a quick http fetch) to answer.
+Query delegation avoids cluttering the parent context with intermediate tool results.
+
+Frame the goal as a direct question with expected output shape: "Find the current
+version of X in Cargo.toml and return it. Return only the version string."
+Keep goals short and unambiguous — the child will return a text result, not continue
+a conversation.
+"#;
+
+const SKILL_SUBAGENT_BODY: &str = r#"Delegation gives the parent agent a way to hand off a well-scoped sub-task to a
+child run with full tool access and its own budget.
+
+Choosing a delegation grain:
+- skill-spawn-subagent: general goal delegation — write a clear, self-contained goal
+- skill-spawn-named-procedure: procedure delegation — use an existing validated Recipe
+- skill-spawn-research: research/info-gathering delegation — returns structured summary
+- skill-spawn-coding: coding task delegation — file reads, patches, reports changes
+- skill-spawn-exploration: read-only deep analysis — returns catalogue or report
+- skill-spawn-query: focused single-question lookup — returns direct answer
+
+Decision guide:
+• Generic open-ended sub-goal → skill-spawn-subagent
+• Run a known recipe in a child → skill-spawn-named-procedure
+• Research / web lookups / memory searches → skill-spawn-research
+• File editing, debugging, writing code → skill-spawn-coding
+• Mapping codebase structure, tracing deps → skill-spawn-exploration
+• Single factual question needing 1-2 tool calls → skill-spawn-query
+
+Critical safety invariants (§spawn_subagent-guard):
+- Any Recipe binding spawn_subagent MUST have llm_call_required=true (hard Q1 rule).
+  There is NO Tier-0 spawn recipe — the LLM must always be in the loop to frame
+  the goal and confirm delegation.
+- Child cannot exceed parent scope or authority.
+- Budget inheritance is from the session default, not parent remaining balance.
+- Include all needed context explicitly — child has no parent conversation access.
+"#;
+
+const RECIPE_SUBAGENT_SPAWN_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-subagent>", "<uuid:skill-spawn-named-procedure>"],
+    "label":   "Load spawn leaf skills (goal delegation + named procedure patterns)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM frames the goal, decides generic-vs-recipe delegation, confirms with user, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+"#;
+
+const RECIPE_SUBAGENT_RESEARCH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-research>"],
+    "label":   "Load research delegation leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM frames focused research goal string, sets context, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+"#;
+
+const RECIPE_SUBAGENT_CODING_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-coding>"],
+    "label":   "Load coding delegation leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM scopes the code task, includes file paths + constraints in context, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+"#;
+
+const RECIPE_SUBAGENT_EXPLORATION_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-exploration>"],
+    "label":   "Load exploration delegation leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM defines exploration scope and output format, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+"#;
+
+const RECIPE_SUBAGENT_QUERY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-query>"],
+    "label":   "Load query delegation leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM formulates focused single-question goal, expected output shape, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
 "#;
