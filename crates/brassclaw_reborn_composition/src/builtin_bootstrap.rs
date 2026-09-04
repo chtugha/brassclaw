@@ -4075,17 +4075,194 @@ async fn seed_network_group(
         .upsert_tool_skill(ts_web_search_row(&tenant), "ts-web-search")
         .await?;
 
-    // PythonCode, leaf/domain skills, recipes + catalogue appends arrive in
-    // chunks 4b–4d. Suppress unused-variable warnings for the ids minted here
-    // until later chunks consume them.
+    // 4. PythonCode rows (class 22) — orchestrator executors + pure-logic
+    //    helpers. Transcribed verbatim from the doc (Q1 decision A); bodies
+    //    use `host.<tool>(kwarg=value)` dispatch with `{{vars.slotN}}` vars.
+    let pc_exec_http_get = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-http-get",
+                "Orchestrator executor: calls host.<tool> for an HTTP GET request via \
+                 builtin.http. Input: url (string), response_body_limit (optional int). \
+                 Output: tool result with status, headers, body.",
+                PC_EXEC_HTTP_GET_CONTENT,
+            ),
+            "pc-exec-http-get",
+        )
+        .await?;
+    let pc_exec_http_post = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-http-post",
+                "Orchestrator executor: calls host.<tool> for an HTTP POST request via \
+                 builtin.http. Input: url (string), body (JSON value), headers (optional \
+                 dict). Output: tool result with status, headers, body.",
+                PC_EXEC_HTTP_POST_CONTENT,
+            ),
+            "pc-exec-http-post",
+        )
+        .await?;
+    let pc_exec_http_save = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-http-save",
+                "Orchestrator executor: calls host.<tool> for builtin.http.save. Input: \
+                 url (string), save_to (string - scoped path). Output: metadata dict \
+                 with status code and bytes_saved.",
+                PC_EXEC_HTTP_SAVE_CONTENT,
+            ),
+            "pc-exec-http-save",
+        )
+        .await?;
+    let pc_exec_http_patch = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-http-patch",
+                "Orchestrator executor: calls host.<tool> for an HTTP PATCH request via \
+                 builtin.http. Input: url (string), body (JSON value), headers (optional \
+                 dict). Output: status + body.",
+                PC_EXEC_HTTP_PATCH_CONTENT,
+            ),
+            "pc-exec-http-patch",
+        )
+        .await?;
+    let pc_exec_http_head = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-http-head",
+                "Orchestrator executor: calls host.<tool> for an HTTP HEAD request via \
+                 builtin.http. Input: url (string). Output: status code and headers only.",
+                PC_EXEC_HTTP_HEAD_CONTENT,
+            ),
+            "pc-exec-http-head",
+        )
+        .await?;
+    let pc_exec_http_get_authenticated = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-http-get-authenticated",
+                "Orchestrator executor: calls host.<tool> for an authenticated HTTP GET \
+                 via builtin.http. Input: url (string), auth_header_value (string - full \
+                 value for the Authorization header, e.g. 'Bearer <token>'). Output: \
+                 status + body.",
+                PC_EXEC_HTTP_GET_AUTHENTICATED_CONTENT,
+            ),
+            "pc-exec-http-get-authenticated",
+        )
+        .await?;
+    let pc_exec_http_put = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-http-put",
+                "Orchestrator executor: calls host.<tool> for an HTTP PUT request via \
+                 builtin.http. Input: url (string), body (JSON value), headers (optional \
+                 dict). Output: status + body.",
+                PC_EXEC_HTTP_PUT_CONTENT,
+            ),
+            "pc-exec-http-put",
+        )
+        .await?;
+    let pc_exec_http_delete = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-http-delete",
+                "Orchestrator executor: calls host.<tool> for an HTTP DELETE request via \
+                 builtin.http. Input: url (string), headers (optional dict with auth). \
+                 Output: status + body.",
+                PC_EXEC_HTTP_DELETE_CONTENT,
+            ),
+            "pc-exec-http-delete",
+        )
+        .await?;
+    let pc_http_status_check = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-http-status-check",
+                "Pure-logic helper: returns True when the HTTP status code indicates \
+                 success (2xx range), False otherwise. Input: status_code (integer). \
+                 Output: {is_success, status_code}.",
+                PC_HTTP_STATUS_CHECK_CONTENT,
+            ),
+            "pc-http-status-check",
+        )
+        .await?;
+    let pc_json_extract_field = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-json-extract-field",
+                "Pure-logic helper: extracts a value from a JSON object by dot-separated \
+                 path. Input: data (dict), path (dot-separated string e.g. \
+                 'result.items.0'). Output: {value, path, found}.",
+                PC_JSON_EXTRACT_FIELD_CONTENT,
+            ),
+            "pc-json-extract-field",
+        )
+        .await?;
+    let pc_web_search_extract = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-web-search-extract",
+                "PythonCode helper: extract title+url+snippet list from a search API JSON \
+                 response. Input: response body string. Output: [{title, url, snippet}] \
+                 or error.",
+                PC_WEB_SEARCH_EXTRACT_CONTENT,
+            ),
+            "pc-web-search-extract",
+        )
+        .await?;
+    let pc_web_search_query_build = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-web-search-query-build",
+                "PythonCode helper: URL-encode a search query for embedding in an API URL. \
+                 No imports - uses pure built-in percent-encoding (same as pc-url-encode). \
+                 Input: raw query string. Output: {encoded, raw}.",
+                PC_WEB_SEARCH_QUERY_BUILD_CONTENT,
+            ),
+            "pc-web-search-query-build",
+        )
+        .await?;
+    let pc_url_encode = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-url-encode",
+                "Pure-logic helper: URL-encodes a string (percent-encoding, spaces as \
+                 %20). No imports - uses pure built-in character-by-character encoding. \
+                 Input: raw string. Output: {encoded, raw}.",
+                PC_URL_ENCODE_CONTENT,
+            ),
+            "pc-url-encode",
+        )
+        .await?;
+
+    // Leaf/domain skills, recipes + catalogue appends arrive in chunks 4c–4d.
+    // Suppress unused-variable warnings for the ids minted here until later
+    // chunks consume them.
     let _ = (
         cat_network, cat_http, cat_http_save, cat_web_search, tool_http, tool_http_save,
-        ts_http_fetch, ts_http_save, ts_web_search,
+        ts_http_fetch, ts_http_save, ts_web_search, pc_exec_http_get, pc_exec_http_post,
+        pc_exec_http_save, pc_exec_http_patch, pc_exec_http_head,
+        pc_exec_http_get_authenticated, pc_exec_http_put, pc_exec_http_delete,
+        pc_http_status_check, pc_json_extract_field, pc_web_search_extract,
+        pc_web_search_query_build, pc_url_encode,
     );
 
     tracing::debug!(
         catalogue_id = %cat_network,
-        "seeded network group chunk 4a: 1 primary + 3 per-tool catalogues, 2 tools, 3 toolskills"
+        "seeded network group chunk 4b: 13 PythonCode (8 http executors + 2 pure-logic helpers + 3 web-search helpers) on top of 4a base"
     );
 
     Ok(())
@@ -4333,3 +4510,138 @@ fn ts_web_search_row(tenant: &str) -> NewPgToolSkill {
         includes: vec![],
     }
 }
+
+// ---------------------------------------------------------------------------
+// Network group PythonCode bodies (class 22) — transcribed verbatim from the
+// doc. Bodies use `host.<tool>(kwarg=value)` dispatch with `{{vars.slotN}}`
+// vars; no imports.
+// ---------------------------------------------------------------------------
+
+const PC_EXEC_HTTP_GET_CONTENT: &str = r#"# Orchestrator executor body.
+_url = "{{vars.slot0}}"
+_limit = {{vars.slot1}}
+_params = {"url": _url, "method": "get"}
+if _limit and _limit > 0:
+    _params["response_body_limit"] = _limit
+result = host.http(**_params)
+"#;
+
+const PC_EXEC_HTTP_POST_CONTENT: &str = r#"# Orchestrator executor body.
+_url = "{{vars.slot0}}"
+_body = {{vars.slot1}}
+_headers = {{vars.slot2}}
+_params = {"url": _url, "method": "post", "body": _body}
+if _headers:
+    _params["headers"] = _headers
+result = host.http(**_params)
+"#;
+
+const PC_EXEC_HTTP_SAVE_CONTENT: &str = r#"# Orchestrator executor body.
+_url = "{{vars.slot0}}"
+_save_to = "{{vars.slot1}}"
+result = host.http.save(url=_url, save_to=_save_to)
+"#;
+
+const PC_EXEC_HTTP_PATCH_CONTENT: &str = r#"# Orchestrator executor body.
+_url = "{{vars.slot0}}"
+_body = {{vars.slot1}}
+_headers = {{vars.slot2}}
+_params = {"url": _url, "method": "patch", "body": _body}
+if _headers:
+    _params["headers"] = _headers
+result = host.http(**_params)
+"#;
+
+const PC_EXEC_HTTP_HEAD_CONTENT: &str = r#"# Orchestrator executor body.
+_url = "{{vars.slot0}}"
+result = host.http(url=_url, method="head")
+"#;
+
+const PC_EXEC_HTTP_GET_AUTHENTICATED_CONTENT: &str = r#"# Orchestrator executor body.
+_url = "{{vars.slot0}}"
+_auth = "{{vars.slot1}}"
+_params = {"url": _url, "method": "get", "headers": {"Authorization": _auth}}
+result = host.http(**_params)
+"#;
+
+const PC_EXEC_HTTP_PUT_CONTENT: &str = r#"# Orchestrator executor body.
+_url = "{{vars.slot0}}"
+_body = {{vars.slot1}}
+_headers = {{vars.slot2}}
+_params = {"url": _url, "method": "put", "body": _body}
+if _headers:
+    _params["headers"] = _headers
+result = host.http(**_params)
+"#;
+
+const PC_EXEC_HTTP_DELETE_CONTENT: &str = r#"# Orchestrator executor body.
+_url = "{{vars.slot0}}"
+_headers = {{vars.slot1}}
+_params = {"url": _url, "method": "delete"}
+if _headers:
+    _params["headers"] = _headers
+result = host.http(**_params)
+"#;
+
+const PC_HTTP_STATUS_CHECK_CONTENT: &str = r#"# No I/O, no imports. IBS bakes in status_code as {{vars.slot0}} before execution.
+status_code = {{vars.slot0}}
+is_success = 200 <= status_code < 300
+result = {"is_success": is_success, "status_code": status_code}
+"#;
+
+const PC_JSON_EXTRACT_FIELD_CONTENT: &str = r#"# No I/O, no imports. IBS bakes in 'data' and 'path' before execution.
+data = {{vars.slot0}}
+path = "{{vars.slot1}}"
+parts = path.split(".")
+current = data
+for part in parts:
+    if isinstance(current, dict) and part in current:
+        current = current[part]
+    elif isinstance(current, list):
+        try:
+            current = current[int(part)]
+        except (ValueError, IndexError):
+            current = None
+            break
+    else:
+        current = None
+        break
+result = {"value": current, "path": path, "found": current is not None}
+"#;
+
+const PC_WEB_SEARCH_EXTRACT_CONTENT: &str = r#"# Pure orchestrator body - no imports. slot0 = pre-parsed response dict
+# (the http tool's JSON response is already a dict in the execution context).
+_data = "{{vars.slot0}}"
+if isinstance(_data, dict):
+    _results = (
+        _data.get("results") or
+        _data.get("organic_results") or
+        _data.get("items") or
+        _data.get("RelatedTopics") or
+        []
+    )
+    result = [
+        {
+            "title":   r.get("title") or r.get("Text", ""),
+            "url":     r.get("url") or r.get("link") or r.get("FirstURL", ""),
+            "snippet": r.get("snippet") or r.get("description") or ""
+        }
+        for r in _results if isinstance(r, dict)
+    ]
+else:
+    result = {"error": "expected parsed dict from http response", "raw": str(_data)[:500]}
+"#;
+
+const PC_WEB_SEARCH_QUERY_BUILD_CONTENT: &str = r#"# No imports - pure built-in percent-encoding (mirrors pc-url-encode logic).
+_raw = "{{vars.slot0}}".strip()
+_safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+_encoded = "".join(c if c in _safe else "%" + format(ord(c), "02X") for c in _raw)
+result = {"encoded": _encoded, "raw": _raw}
+"#;
+
+const PC_URL_ENCODE_CONTENT: &str = r#"# No imports - pure built-in percent-encoding. Covers all non-unreserved chars.
+_raw = "{{vars.slot0}}".strip()
+_safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+_encoded = "".join(c if c in _safe else "%" + format(ord(c), "02X") for c in _raw)
+result = {"encoded": _encoded, "raw": _raw}
+"#;
