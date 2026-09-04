@@ -89,8 +89,8 @@ call is performed by Kohai (wrapping the provider gateway).
 
 ## Slices (one-by-one; both configs clippy-clean + commit + push each)
 
-- **K1+K2 — KohaiPort→gateway + route LLM via `host.kohai_complete` + retire
-  `__llm_complete__`.** (a) `KohaiPort::complete` drops the `llm` param;
+- **K1+K2 — DONE (`314645bd`/`bd5d92e9`).** KohaiPort→gateway + route LLM via
+  `host.kohai_complete` + retire `__llm_complete__`.** (a) `KohaiPort::complete` drops the `llm` param;
   `PgKohaiPort` holds `Arc<dyn HostManagedModelGateway>` (Kohai gateway) +
   `Option<Arc<dyn HostManagedModelGateway>>` (Sempai gateway) + the stores; the
   provider call uses the gateway (`stream_model`). (b) The engine
@@ -100,8 +100,14 @@ call is performed by Kohai (wrapping the provider gateway).
   (d) Delete `__llm_complete__`/`handle_llm_complete` + the `Arc<dyn LlmBackend>`
   dep from `drive_to_yield`/`execute_orchestrator`/`MontySession`. (e) Update
   `basic_mode.py` + tests.
-- **K3 — drop `__retrieve_docs__`/`__get_reduction_rules__`.** Delete both arms +
-  handlers; update `basic_mode.py` (remove calls) + tests.
+- **K3 — DONE (`a3ecad97`).** Drop `__retrieve_docs__`/`__get_reduction_rules__`.
+  Deleted both arms + `handle_retrieve_docs`/`handle_get_reduction_rules` +
+  `load_reduction_rules` + 4 tests + `make_rule_doc`/`REDUCTION_RULES_TEST_LOCK`;
+  renamed `drive_to_yield`'s `retrieval` param → `_retrieval`. Kept
+  `invalidate_reduction_rules_cache` + `REDUCTION_RULE_CACHE` (composition
+  `reduction_rules_store`/webui still call the flush API). `basic_mode.py` had no
+  calls; the lone `__get_reduction_rules__()` call left in `default.py` is in
+  orphaned legacy code retired wholesale in C.7.
 - **K6 — `compose_orchestrator` rewrite + Recipe/Component structure update
   (crux).** Rewrite `handle_compose_orchestrator` (Rust part significantly
   reduced); update `ComposedProgram`/`ComposedStep`/`RustDirective`/`SkillRef`
