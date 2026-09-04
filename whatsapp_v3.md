@@ -1590,34 +1590,162 @@ pub fn validate_whatsapp_v1_v2_exclusivity(v1_channel_artifacts_present: bool) {
 
 ### 4.2 Wiring into `factory.rs` / startup
 
-**File to modify:** `crates/brassclaw_reborn_composition/src/factory.rs`
+> **⚠️ Audit finding — no Telegram precedent exists in composition; use the
+> live runner pattern instead.**
+>
+> The `validate_whatsapp_v1_v2_exclusivity` function above references
+> `validate_telegram_v1_v2_exclusivity` as a mirror. That function **does not
+> exist** in any composition crate source file — the Telegram adapter crate
+> (`brassclaw_telegram_v2_adapter`) compiles and is tested in isolation but has
+> never been wired into `brassclaw_reborn_composition`. There is no `telegram.rs`
+> composition module, no startup registration block, no `validate_telegram_v1_v2_exclusivity`.
+>
+> The correct wiring pattern for WhatsApp is therefore based on the **live
+> `NativeProductAdapterRunner` pattern** in `brassclaw_product_adapters`, not on
+> any hypothetical Telegram precedent. Follow the steps below exactly.
 
-> **⚠️ Audit finding — verify Telegram wiring location before implementing.**
-> The `validate_whatsapp_v1_v2_exclusivity` function above is described as mirroring
-> `validate_telegram_v1_v2_exclusivity`. As of the codebase audit (V075 high water
-> mark), **no Telegram wiring exists in `brassclaw_reborn_composition/src/`** — there
-> is no `telegram.rs` module and no `validate_telegram_v1_v2_exclusivity` function
-> in that crate. The Telegram adapter crate (`brassclaw_telegram_v2_adapter`) exists
-> but its composition wiring has not been implemented. Before implementing the
-> WhatsApp version here, read `crates/brassclaw_reborn_composition/src/factory.rs`
-> and `product_live_adapters.rs` to understand the actual live adapter-registration
-> pattern and mirror that — not a hypothetical Telegram precedent.
+**Step 1 — Add `brassclaw_whatsapp_v2_adapter` to `factory.rs` / composition `Cargo.toml`.**
 
-In the Reborn service builder, after DB is up:
+Open [`crates/brassclaw_reborn_composition/Cargo.toml`](crates/brassclaw_reborn_composition/Cargo.toml).
+Under `[dependencies]`, add (feature-gated identically to how other adapter crates are declared):
+
+```toml
+brassclaw_whatsapp_v2_adapter = { path = "../brassclaw_whatsapp_v2_adapter", optional = true }
+```
+
+If `brassclaw_reborn_composition` uses a `postgres` feature that gates DB-backed stores, gate
+this dependency the same way. Check the `[features]` table to confirm the right feature name.
+
+**Step 2 — Build the `NativeProductAdapterRunner` for WhatsApp at startup.**
+
+The live runner (defined in [`brassclaw_product_adapters/src/runner.rs:238`](crates/brassclaw_product_adapters/src/runner.rs:238))
+takes three arguments: `Arc<dyn ProductAdapter>`, `Arc<dyn ProductWorkflow>`, and a `WebhookAuth`.
+WhatsApp uses HMAC-SHA256 over the raw body with no timestamp header, so the `WebhookAuth` is
+`WebhookAuth::Hmac(HmacWebhookAuth::new(secret, "X-Hub-Signature-256", None))`.
+
+In `factory.rs`, in the section where the Reborn service is being assembled (after the DB pool
+and secrets store are ready), add:
 
 ```rust
 #[cfg(feature = "postgres")]
-if std::env::var("REBORN_WHATSAPP_V2_ENABLED").as_deref() == Ok("true") {
-    validate_whatsapp_v1_v2_exclusivity(false); // pass v1 detection result
-    let store = WhatsAppInstallationStore::new(Arc::clone(&pg_pool));
-    let installations = store.list_enabled(&tenant_id, &agent_id).await
-        .map_err(|e| RebornBuildError::Config(e.to_string()))?;
-    for inst in &installations {
-        let adapter = build_adapter_from_installation(inst)
-            .map_err(|e| RebornBuildError::Config(e))?;
-        adapter_registry.register(Arc::new(adapter));
-    }
+let whatsapp_runner: Option<Arc<NativeProductAdapterRunner>> =
+    if std::env::var("REBORN_WHATSAPP_V2_ENABLED").as_deref() == Ok("true") {
+        use brassclaw_whatsapp_v2_adapter::WhatsAppV2Adapter;
+        use brassclaw_product_adapters::runner::{NativeProductAdapterRunner, WebhookAuth};
+        use brassclaw_product_adapters::auth_verifier::HmacWebhookAuth;
+        use crate::whatsapp_installation_store::WhatsAppInstallationStore;
+        use crate::whatsapp::build_adapter_from_installation;
+
+        let store = WhatsAppInstallationStore::new(Arc::clone(&pg_pool));
+        let installations = store
+            .list_enabled(&tenant_id, &agent_id)
+            .await
+            .map_err(|e| RebornBuildError::Config(e.to_string()))?;
+
+        // For the initial single-installation slice, take the first enabled row.
+        // Multi-installation dispatch (different phone_number_id → different runner)
+        // is deferred to Phase WA-H.
+        if let Some(inst) = installations.first() {
+            let adapter = build_adapter_from_installation(inst)
+                .map_err(RebornBuildError::Config)?;
+
+            // Resolve the HMAC key (whatsapp_app_secret) from the secret store.
+            // The runner holds only the verifier, not the raw secret value — the
+            // secret is resolved once at startup to build the HmacWebhookAuth.
+            let app_secret = secret_store
+                .get(&inst.app_secret_name)
+                .await
+                .map_err(|e| RebornBuildError::Config(e.to_string()))?;
+            let hmac_auth = HmacWebhookAuth::new(
+                app_secret.expose_secret().as_bytes().to_vec(),
+                "X-Hub-Signature-256",
+                None, // WhatsApp has no timestamp header
+            );
+
+            Some(Arc::new(NativeProductAdapterRunner::new(
+                Arc::new(adapter),
+                Arc::clone(&product_workflow), // Arc<dyn ProductWorkflow>
+                WebhookAuth::Hmac(hmac_auth),
+            )))
+        } else {
+            None // no enabled installation yet — routes registered but runner absent
+        }
+    } else {
+        None
+    };
+```
+
+> **Security note:** `app_secret.expose_secret()` is called once here at startup
+> to seed the HMAC verifier. The verifier retains the key material in memory for
+> the lifetime of the runner. This matches the pattern used by Slack's HMAC auth
+> in this codebase. The raw secret value is never logged or serialised.
+
+Store `whatsapp_runner` in the service struct so the axum route handlers can borrow it.
+Pass it into `WhatsAppWebhookState`:
+
+```rust
+let whatsapp_state = whatsapp_runner.as_ref().map(|runner| WhatsAppWebhookState {
+    runner: Arc::clone(runner),
+    secret_store: Arc::clone(&secret_store),
+});
+```
+
+**Step 3 — Drop `validate_whatsapp_v1_v2_exclusivity`.**
+
+The v1 WhatsApp channel artifacts in this codebase are absent (the original v1
+channel never shipped). The exclusivity guard function in §4.1 is unnecessary
+boilerplate. Do not add it. If a v1/v2 guard is ever needed, add it at that time.
+
+**Step 4 — Update `WhatsAppWebhookState` to carry the runner instead of the raw adapter.**
+
+Revise `WhatsAppWebhookState` (defined in §4.1) to carry the `NativeProductAdapterRunner`
+rather than the raw adapter + workflow separately. The runner already encapsulates both.
+The GET challenge handler still needs the `secret_store` for verify-token resolution:
+
+```rust
+#[derive(Clone)]
+pub struct WhatsAppWebhookState {
+    /// Runner: owns adapter, workflow, and HMAC verifier.
+    pub runner: Arc<brassclaw_product_adapters::runner::NativeProductAdapterRunner>,
+    /// Secret store: used only for verify_token resolution in the GET handler.
+    pub secret_store: Arc<dyn brassclaw_secrets::SecretStore>,
 }
+```
+
+**Step 5 — Update the POST handler to use the runner.**
+
+Replace the manual `parse_inbound` + `TrustedInboundContext` + `submit_inbound` sequence
+in §3.3 with a single call to the runner. The runner already performs HMAC re-verification
+(evidence is already stamped by the middleware at this point), `prepare_inbound_envelope`,
+and dispatches to the workflow:
+
+```rust
+pub async fn handle_whatsapp_inbound(
+    State(state): State<WhatsAppWebhookState>,
+    Extension(evidence): Extension<brassclaw_product_adapters::ProtocolAuthEvidence>,
+    body: axum::body::Bytes,
+) -> impl axum::response::IntoResponse {
+    // The HMAC middleware already verified the signature and injected `evidence`.
+    // `process_verified_webhook_immediate_ack` stamps TrustedInboundContext and
+    // dispatches to the workflow without blocking on the workflow result.
+    // Always return 200 — Meta retries on any non-200.
+    let _ = state.runner
+        .process_verified_webhook_immediate_ack(&http::HeaderMap::new(), &body)
+        .await;
+    axum::http::StatusCode::OK
+}
+```
+
+> **Note:** the headers arg to `process_verified_webhook_immediate_ack` is only
+> used internally for a second auth check that is skipped when evidence is already
+> stamped. Pass an empty `HeaderMap` — or pass the real headers if the runner is
+> called before the middleware injects evidence.
+
+**Validation:**
+
+```bash
+cargo clippy -p brassclaw_reborn_composition --all-targets -- -D warnings
+cargo test -p brassclaw_reborn_composition
 ```
 
 ### 4.3 `StaticConnectableChannelsProductFacade` registration
@@ -1694,39 +1822,83 @@ changes to the engine, LLM, or adapter crates.
 
 ### 4.7 Fix proactive messaging hint in `reasoning.rs`
 
-**File to modify:** `crates/brassclaw_llm/src/reasoning.rs`
+**File to modify:** [`crates/brassclaw_llm/src/reasoning.rs`](crates/brassclaw_llm/src/reasoning.rs)
 
 > **Audit confirmed — not yet implemented.** As of V075, `reasoning.rs:1056`
 > still reads `"Send messages via Signal, Telegram, Slack, or other connected
 > channels"` — WhatsApp is absent. The `"whatsapp"` channel formatting case at
-> line 1033 is already correct. Only the proactive messaging hint block needs
-> updating as described below.
+> [`reasoning.rs:1033`](crates/brassclaw_llm/src/reasoning.rs:1033) is already
+> correct and requires no changes. Only the three locations in
+> `message_tool_hint` (lines 1056, 1062–1065, 1067–1070) need updating.
 
-At line 1056 the `message_tool_hint` string lists the channels the agent can
-proactively reach users on. WhatsApp is missing. Update the hint:
+**Step 1 — Update the channel list at line 1056.**
+
+Find the string at line 1056 in `build_channel_section()` and add `WhatsApp`:
 
 ```rust
-// Before (line 1056):
+// Before:
 "Send messages via Signal, Telegram, Slack, or other connected channels:\n\
 
 // After:
 "Send messages via Signal, Telegram, Slack, WhatsApp, or other connected channels:\n\
 ```
 
-Also add WhatsApp to the `Target formats:` section (after `Slack:`):
+**Step 2 — Add WhatsApp to the `Target formats:` block.**
+
+After the `Slack:` line (currently line 1065), add:
 
 ```
 - WhatsApp: E.164 phone number (`+4915112345678`)
 ```
 
-And add an example in the `Examples` block:
+So the full Target formats block reads:
+
+```rust
+"Target formats:\n\
+- Signal: E.164 phone number (`+1234567890`) or group ID\n\
+- Telegram: username or chat ID\n\
+- Slack: channel name (`#general`) or user ID\n\
+- WhatsApp: E.164 phone number (`+4915112345678`)\n\
+```
+
+**Step 3 — Add WhatsApp to the `Examples` block.**
+
+After the Slack message-a-different-group example (currently line 1070), add:
 
 ```
-- Send to a WhatsApp number: {"channel": "whatsapp", "target": "+4915112345678", "content": "Hi!"}
+- Send to a WhatsApp number: {\"channel\": \"whatsapp\", \"target\": \"+4915112345678\", \"content\": \"Hi!\"}
 ```
 
-This ensures the LLM is informed it can proactively message users via WhatsApp
-when the adapter is enabled, consistent with how Telegram and Slack are described.
+**Step 4 — Verify `with_channel` is unchanged.**
+
+[`reasoning.rs:365`](crates/brassclaw_llm/src/reasoning.rs:365) — `with_channel()` is already
+defined. **Do not modify it.** The WhatsApp-specific formatting logic at line 1033 is already
+present and correct. No other changes to `reasoning.rs` are needed beyond the three `message_tool_hint`
+string additions above.
+
+**Validation:**
+
+```bash
+cargo test -p brassclaw_llm
+cargo clippy -p brassclaw_llm --all-targets -- -D warnings
+```
+
+The existing test at [`reasoning.rs:2994`](crates/brassclaw_llm/src/reasoning.rs:2994)
+(`build_channel_section_with_channel_telegram`) tests the Telegram path. Add a
+parallel test for WhatsApp to prove the hint is injected:
+
+```rust
+#[test]
+fn build_channel_section_with_channel_whatsapp_includes_hint() {
+    let reasoning = make_test_reasoning().with_channel("whatsapp");
+    let section = reasoning.build_channel_section();
+    assert!(section.contains("WhatsApp"), "WhatsApp not mentioned in channel section");
+    assert!(section.contains("+4915112345678"), "WhatsApp example target absent");
+    assert!(section.contains("Proactive Messaging"), "proactive messaging block absent");
+}
+```
+
+Add this test inside the `#[cfg(test)]` block near the existing `build_channel_section_*` tests.
 
 ### 4.8 Validation for Phase WA-D
 
@@ -1747,15 +1919,20 @@ WhatsApp as a reply target.
 
 ### 5.1 `TraceChannel::WhatsApp`
 
-**File to modify:** `crates/brassclaw_reborn_traces/src/contribution.rs`
+> **Audit confirmed — not yet implemented.** Three files require changes. All
+> are exhaustive enums or exhaustive matches — the compiler will catch any missing
+> arm the moment `WhatsApp` is added to `TraceChannel`, so fix all three files
+> before running `cargo check`.
 
-> **Audit confirmed — not yet implemented.** As of V075, `TraceChannel` in
-> [`contribution.rs:138`](crates/brassclaw_reborn_traces/src/contribution.rs:138)
-> is `{ Web, Cli, Telegram, Slack, Routine, Other }` — `WhatsApp` is absent.
-> [`client.rs:258`](crates/brassclaw_reborn_traces/src/client.rs:258) likewise has
-> no `"whatsapp"` arm in `trace_channel_from_host_channel`. Both must be added.
-> `TraceChannelArg` in the CLI (`brassclaw_reborn_cli/src/commands/traces/mod.rs:316`)
-> is also missing the `WhatsApp` variant and its `Display` / `From` impls.
+**File 1: [`crates/brassclaw_reborn_traces/src/contribution.rs`](crates/brassclaw_reborn_traces/src/contribution.rs)**
+
+The live enum at line 138 is:
+
+```rust
+pub enum TraceChannel { Web, Cli, Telegram, Slack, Routine, Other }
+```
+
+Add `WhatsApp` between `Slack` and `Routine`:
 
 ```rust
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -1771,24 +1948,62 @@ pub enum TraceChannel {
 }
 ```
 
-Also update the exhaustive `channel_label()` match in the same file:
+The `channel_label()` function (live at line 2673) is an exhaustive match. The compiler
+will reject a build with the new variant unless this is updated at the same time.
+Add the arm between `Slack` and `Routine`:
 
 ```rust
 fn channel_label(channel: TraceChannel) -> &'static str {
     match channel {
-        TraceChannel::Web => "web",
-        TraceChannel::Cli => "cli",
+        TraceChannel::Web     => "web",
+        TraceChannel::Cli     => "cli",
         TraceChannel::Telegram => "telegram",
-        TraceChannel::Slack => "slack",
+        TraceChannel::Slack   => "slack",
         TraceChannel::WhatsApp => "whatsapp",  // ← ADD
         TraceChannel::Routine => "routine",
-        TraceChannel::Other => "other",
+        TraceChannel::Other   => "other",
     }
 }
 ```
 
-Also update the `TraceChannelArg` enum and its `From<TraceChannelArg>` impl in
-`crates/brassclaw_reborn_cli/src/commands/traces/mod.rs`:
+Search the rest of `contribution.rs` for any other exhaustive match on `TraceChannel`
+(e.g. `PartialOrd` derivation is automatic, but any manual match or `impl Display`
+must also be updated). Run `cargo check -p brassclaw_reborn_traces` after editing
+to catch every missed arm.
+
+**File 2: [`crates/brassclaw_reborn_traces/src/client.rs`](crates/brassclaw_reborn_traces/src/client.rs)**
+
+The live `trace_channel_from_host_channel` function at line 258 is:
+
+```rust
+pub fn trace_channel_from_host_channel(channel: &str) -> trace::TraceChannel {
+    match channel {
+        "gateway" | "web" => trace::TraceChannel::Web,
+        "cli" | "repl" | "tui" => trace::TraceChannel::Cli,
+        "telegram" => trace::TraceChannel::Telegram,
+        "slack" => trace::TraceChannel::Slack,
+        "routine" | "heartbeat" => trace::TraceChannel::Routine,
+        _ => trace::TraceChannel::Other,
+    }
+}
+```
+
+Add the `"whatsapp"` arm immediately after the `"slack"` arm:
+
+```rust
+"slack" => trace::TraceChannel::Slack,
+"whatsapp" | "whatsapp_v2" => trace::TraceChannel::WhatsApp,  // ← ADD
+"routine" | "heartbeat" => trace::TraceChannel::Routine,
+```
+
+The `"whatsapp_v2"` alias ensures any legacy string stored in DB or emitted by
+old code is normalised to `WhatsApp` rather than falling through to `Other`.
+
+**File 3: [`crates/brassclaw_reborn_cli/src/commands/traces/mod.rs`](crates/brassclaw_reborn_cli/src/commands/traces/mod.rs)**
+
+The live `TraceChannelArg` enum starts at line 316. Add `WhatsApp` between `Slack`
+and `Routine` in all three places — the enum definition, the `Display` impl, and the
+`From<TraceChannelArg> for TraceChannel` impl:
 
 ```rust
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -1805,13 +2020,13 @@ pub enum TraceChannelArg {
 impl std::fmt::Display for TraceChannelArg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value = match self {
-            Self::Web => "web",
-            Self::Cli => "cli",
+            Self::Web      => "web",
+            Self::Cli      => "cli",
             Self::Telegram => "telegram",
-            Self::Slack => "slack",
+            Self::Slack    => "slack",
             Self::WhatsApp => "whatsapp",  // ← ADD
-            Self::Routine => "routine",
-            Self::Other => "other",
+            Self::Routine  => "routine",
+            Self::Other    => "other",
         };
         write!(f, "{value}")
     }
@@ -1820,24 +2035,65 @@ impl std::fmt::Display for TraceChannelArg {
 impl From<TraceChannelArg> for TraceChannel {
     fn from(value: TraceChannelArg) -> Self {
         match value {
-            TraceChannelArg::Web => TraceChannel::Web,
-            TraceChannelArg::Cli => TraceChannel::Cli,
+            TraceChannelArg::Web      => TraceChannel::Web,
+            TraceChannelArg::Cli      => TraceChannel::Cli,
             TraceChannelArg::Telegram => TraceChannel::Telegram,
-            TraceChannelArg::Slack => TraceChannel::Slack,
+            TraceChannelArg::Slack    => TraceChannel::Slack,
             TraceChannelArg::WhatsApp => TraceChannel::WhatsApp,  // ← ADD
-            TraceChannelArg::Routine => TraceChannel::Routine,
-            TraceChannelArg::Other => TraceChannel::Other,
+            TraceChannelArg::Routine  => TraceChannel::Routine,
+            TraceChannelArg::Other    => TraceChannel::Other,
         }
     }
 }
 ```
 
-**File to modify:** `crates/brassclaw_reborn_traces/src/client.rs`
+**Architecture boundary test — File 4 (WA-G §7.4):**
 
-In `trace_channel_from_host_channel(channel: &str) -> TraceChannel`:
+[`crates/brassclaw_architecture/tests/reborn_dependency_boundaries.rs`](crates/brassclaw_architecture/tests/reborn_dependency_boundaries.rs)
+currently has `brassclaw_telegram_v2_adapter` in the untrusted adapter source roots
+list at line 282. Add `brassclaw_whatsapp_v2_adapter` immediately after it:
 
 ```rust
-"whatsapp" | "whatsapp_v2" => TraceChannel::WhatsApp,
+"crates/brassclaw_telegram_v2_adapter/src",
+"crates/brassclaw_whatsapp_v2_adapter/src",   // ← ADD
+```
+
+This ensures the architecture test verifies the new crate does not import from
+`brassclaw_dispatcher`, `brassclaw_host_runtime`, `brassclaw_secrets`, etc.
+
+**Validation:**
+
+```bash
+cargo test -p brassclaw_reborn_traces
+cargo clippy -p brassclaw_reborn_traces --all-targets -- -D warnings
+cargo test -p brassclaw_reborn_cli
+cargo clippy -p brassclaw_reborn_cli --all-targets -- -D warnings
+cargo test -p brassclaw_architecture
+```
+
+Add a unit test in `contribution.rs` to prevent future regressions:
+
+```rust
+#[test]
+fn trace_channel_whatsapp_label_round_trips() {
+    assert_eq!(channel_label(TraceChannel::WhatsApp), "whatsapp");
+}
+```
+
+Add a unit test in `client.rs`:
+
+```rust
+#[test]
+fn trace_channel_from_host_channel_whatsapp() {
+    assert_eq!(
+        trace_channel_from_host_channel("whatsapp"),
+        trace::TraceChannel::WhatsApp,
+    );
+    assert_eq!(
+        trace_channel_from_host_channel("whatsapp_v2"),
+        trace::TraceChannel::WhatsApp,
+    );
+}
 ```
 
 ### 5.2 Outbound delivery target for WhatsApp
