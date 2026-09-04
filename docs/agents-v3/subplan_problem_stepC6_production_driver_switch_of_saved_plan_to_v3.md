@@ -120,7 +120,11 @@ this step; its stage logic already lives in the `host.*` arms
   create on turn 1) the `MontySession`, `drive_to_yield` with the new input,
   apply the resulting `LoopExit` (Complete→turn done; AwaitNextTurn→park +
   turn done, VM stays alive for the next turn). Wire host deps + ports into the
-  session (the `PgCompositionPort`/`PgKohaiPort` from C.4.5.17/C.5).
+  session (the `PgCompositionPort`/`PgKohaiPort` from C.4.5.17/C.5). **Split
+  into 4a/4b/4c-prep/4c (SHIPPED) + 4d (the production wire-up). See
+  `./subplan_problem_stepC6_4d_production_driver_wiring_of_saved_plan_to_v3.md`
+  for slice 4d's grounding + the blocking architectural fork (LLM source for
+  production Monty).**
 - **Slice 5 — retire `canonical.rs` stage pipeline (C6-3=B).** Delete
   `DefaultExecutorPipeline::execute` + the stages as the turn driver; confirm
   stage logic is in the `host.*` arms; remove `driver_registry` → canonical.rs
