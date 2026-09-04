@@ -5892,22 +5892,392 @@ async fn seed_memory_group(
         )
         .await?;
 
-    // 6-7. Recipes and catalogue appends are added in chunk 5d. Suppress
-    //      unused-id warnings until then.
-    let _ = (
-        cat_memory, cat_memory_search, cat_memory_write, cat_memory_read, cat_memory_tree,
-        tool_memory_search, tool_memory_write, tool_memory_read, tool_memory_tree,
-        ts_memory_search, ts_memory_write, ts_memory_read, ts_memory_tree,
-        pc_exec_memory_search, pc_exec_memory_write, pc_exec_memory_patch,
-        pc_exec_memory_read, pc_exec_memory_tree, pc_memory_extract_section,
-        pc_memory_format_entry,
-        skill_memory_search, skill_memory_search_broad, skill_memory_write_log,
-        skill_memory_write_main, skill_memory_write_patch, skill_memory_read,
-        skill_memory_tree, skill_memory_search_and_read, skill_memory,
-    );
+    // 5b. Step 11.x variant components: pc-exec-memory-append (class 22) +
+    //      skill-memory-write-append (class 1). Minted here (chunk 5d) rather
+    //      than in 5b/5c because the memory-write-append Tier-1 recipe is the
+    //      only consumer and chunk 5d consumes every id via append_children.
+    let pc_exec_memory_append = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-memory-append",
+                "Orchestrator executor: appends text to an existing memory document. Reads the \
+                 current content via memory_read, then writes combined content via memory_write. \
+                 Input: vars.slot0 = path, vars.slot1 = text to append.",
+                PC_EXEC_MEMORY_APPEND_CONTENT,
+            ),
+            "pc-exec-memory-append",
+        )
+        .await?;
+    let skill_memory_write_append = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-memory-write-append",
+                "Leaf skill: how to append new text to an existing memory document.",
+                SKILL_MEMORY_WRITE_APPEND_BODY,
+                1,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-memory-write-append",
+        )
+        .await?;
+
+    // 6. Memory Recipes (class 21) — transcribed from the doc's flat format
+    //    into the IBS authoring model (Q1 decision A). Tier-0 recipes are
+    //    deterministic 2-step dispatches (rust toolskill + orchestrator
+    //    PythonCode); the two Tier-1 recipes (memory-write-append,
+    //    memory-search-and-read) add an LLM-annotation `text` step and load
+    //    leaf-skill context first. step_link is synthesized as "0:1-0:E".
+    let recipe_memory_search = stores
+        .seed_recipe(
+            &tenant,
+            "memory-search",
+            "Search the agent's persistent memory.",
+            true,
+            RECIPE_MEMORY_SEARCH_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-search ToolSkill binding", "component", &[ts_memory_search]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_search(query, limit)", "component", &[pc_exec_memory_search]),
+            ],
+            &[
+                json!({"input": "what do you remember about this project", "class": 2}),
+                json!({"input": "search memory for authentication notes", "class": 2}),
+                json!({"input": "find any saved notes about this topic", "class": 2}),
+                json!({"input": "recall what we discussed last time", "class": 2}),
+                json!({"input": "memory search", "class": 1}),
+                json!({"input": "do you have notes on this", "class": 2}),
+                json!({"input": "search my memory for database setup", "class": 2}),
+                json!({"input": "recall my earlier decisions about this module", "class": 2}),
+                json!({"input": "find memory entries about this feature", "class": 2}),
+                json!({"input": "memory recall", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_memory_search_broad = stores
+        .seed_recipe(
+            &tenant,
+            "memory-search-broad",
+            "Search the agent's persistent memory with a wide recall (limit=20).",
+            true,
+            RECIPE_MEMORY_SEARCH_BROAD_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-search ToolSkill binding", "component", &[ts_memory_search]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_search(query, limit=20)", "component", &[pc_exec_memory_search]),
+            ],
+            &[
+                json!({"input": "recall everything you know about this project", "class": 2}),
+                json!({"input": "broad memory recall for this topic", "class": 2}),
+                json!({"input": "search all my memory about this feature", "class": 2}),
+                json!({"input": "full memory recall at session start", "class": 2}),
+                json!({"input": "memory broad search", "class": 1}),
+                json!({"input": "find all notes I have on this", "class": 2}),
+                json!({"input": "recall all prior decisions about this system", "class": 2}),
+                json!({"input": "wide memory search for onboarding context", "class": 2}),
+                json!({"input": "deep recall across all memory docs", "class": 2}),
+                json!({"input": "start-of-session full memory restore", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_memory_write = stores
+        .seed_recipe(
+            &tenant,
+            "memory-write",
+            "Write or append content to the agent's persistent memory.",
+            true,
+            RECIPE_MEMORY_WRITE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-write ToolSkill binding", "component", &[ts_memory_write]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_write(content, target, append)", "component", &[pc_exec_memory_write]),
+            ],
+            &[
+                json!({"input": "save this to memory", "class": 2}),
+                json!({"input": "remember this for later", "class": 2}),
+                json!({"input": "log this progress note", "class": 2}),
+                json!({"input": "update MEMORY.md with this decision", "class": 2}),
+                json!({"input": "add this to my daily log", "class": 1}),
+                json!({"input": "write a note to memory", "class": 2}),
+                json!({"input": "store this for later", "class": 2}),
+                json!({"input": "persist this outcome to memory", "class": 2}),
+                json!({"input": "memory write", "class": 1}),
+                json!({"input": "append this to the daily log", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_memory_write_log = stores
+        .seed_recipe(
+            &tenant,
+            "memory-write-log",
+            "Append a note or progress entry to today's daily log in persistent memory.",
+            true,
+            RECIPE_MEMORY_WRITE_LOG_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-write ToolSkill binding", "component", &[ts_memory_write]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_write(content, target='daily_log', append=true)", "component", &[pc_exec_memory_write]),
+            ],
+            &[
+                json!({"input": "log this progress note", "class": 1}),
+                json!({"input": "add to my daily log", "class": 1}),
+                json!({"input": "append a note to today's log", "class": 1}),
+                json!({"input": "write a progress update to the daily log", "class": 1}),
+                json!({"input": "daily log entry", "class": 1}),
+                json!({"input": "record this in the daily log", "class": 1}),
+                json!({"input": "log what I did today", "class": 2}),
+                json!({"input": "log session progress", "class": 1}),
+                json!({"input": "note this down in my activity log", "class": 2}),
+                json!({"input": "add this to today's memory log", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_memory_write_main = stores
+        .seed_recipe(
+            &tenant,
+            "memory-write-main",
+            "Append content to the main MEMORY.md document in persistent memory.",
+            true,
+            RECIPE_MEMORY_WRITE_MAIN_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-write ToolSkill binding", "component", &[ts_memory_write]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_write(content, target='memory', append=true)", "component", &[pc_exec_memory_write]),
+            ],
+            &[
+                json!({"input": "update MEMORY.md with this", "class": 1}),
+                json!({"input": "add this decision to MEMORY.md", "class": 1}),
+                json!({"input": "write this to the main memory document", "class": 1}),
+                json!({"input": "append to MEMORY.md", "class": 1}),
+                json!({"input": "update my main memory", "class": 1}),
+                json!({"input": "save this finding to MEMORY.md", "class": 1}),
+                json!({"input": "add a permanent note to memory", "class": 2}),
+                json!({"input": "write to the memory document", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_memory_write_patch = stores
+        .seed_recipe(
+            &tenant,
+            "memory-write-patch",
+            "Patch a specific section of an existing memory document using search-replace.",
+            true,
+            RECIPE_MEMORY_WRITE_PATCH_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-write ToolSkill binding", "component", &[ts_memory_write]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_write(target, old_string, new_string)", "component", &[pc_exec_memory_patch]),
+            ],
+            &[
+                json!({"input": "patch a section in MEMORY.md", "class": 1}),
+                json!({"input": "replace this text in my memory document", "class": 1}),
+                json!({"input": "update a specific section of a memory file", "class": 1}),
+                json!({"input": "memory write patch mode", "class": 1}),
+                json!({"input": "fix a section in HEARTBEAT.md", "class": 2}),
+                json!({"input": "search and replace in a memory document", "class": 2}),
+                json!({"input": "targeted edit to a memory file", "class": 1}),
+                json!({"input": "update one section without replacing the file", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_memory_write_append = stores
+        .seed_recipe(
+            &tenant,
+            "memory-write-append",
+            "Append new content to an existing memory document (read-concat-write).",
+            false,
+            RECIPE_MEMORY_WRITE_APPEND_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load append + read leaf skills", "component", &[skill_memory_write_append, skill_memory_read]),
+                step_entry(2, "orchestrator", "LLM composes the new text to append based on current context", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-memory-read and ts-memory-write ToolSkill bindings", "component", &[ts_memory_read, ts_memory_write]),
+            ],
+            &[
+                json!({"input": "append to my memory document", "class": 2}),
+                json!({"input": "add a note to my memory file", "class": 2}),
+                json!({"input": "log this to my memory", "class": 2}),
+                json!({"input": "add an entry to the log", "class": 2}),
+                json!({"input": "append to CHANGELOG.md", "class": 1}),
+                json!({"input": "add this to my running notes", "class": 2}),
+                json!({"input": "update memory log with this entry", "class": 2}),
+                json!({"input": "memory append", "class": 1}),
+                json!({"input": "add a new session entry to memory", "class": 2}),
+                json!({"input": "log this decision to memory", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_memory_read = stores
+        .seed_recipe(
+            &tenant,
+            "memory-read",
+            "Read a specific memory document by path.",
+            true,
+            RECIPE_MEMORY_READ_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-read ToolSkill binding", "component", &[ts_memory_read]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_read(path)", "component", &[pc_exec_memory_read]),
+            ],
+            &[
+                json!({"input": "read MEMORY.md", "class": 1}),
+                json!({"input": "show me the contents of HEARTBEAT.md", "class": 1}),
+                json!({"input": "read my memory document", "class": 2}),
+                json!({"input": "open this memory file", "class": 2}),
+                json!({"input": "show memory at this path", "class": 1}),
+                json!({"input": "read the file at this memory path", "class": 1}),
+                json!({"input": "memory read", "class": 1}),
+                json!({"input": "open the notes at this memory location", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_memory_read_main = stores
+        .seed_recipe(
+            &tenant,
+            "memory-read-main",
+            "Read the main MEMORY.md document from persistent memory.",
+            true,
+            RECIPE_MEMORY_READ_MAIN_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-read ToolSkill binding", "component", &[ts_memory_read]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_read(path='MEMORY.md')", "component", &[pc_exec_memory_read]),
+            ],
+            &[
+                json!({"input": "read MEMORY.md", "class": 1}),
+                json!({"input": "show me MEMORY.md", "class": 1}),
+                json!({"input": "open the main memory document", "class": 1}),
+                json!({"input": "read my persistent memory", "class": 2}),
+                json!({"input": "what is in MEMORY.md", "class": 1}),
+                json!({"input": "show me the contents of memory", "class": 2}),
+                json!({"input": "display MEMORY.md", "class": 1}),
+                json!({"input": "read main memory file", "class": 1}),
+                json!({"input": "show me my durable context document", "class": 2}),
+                json!({"input": "read the primary memory doc at session start", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_memory_read_heartbeat = stores
+        .seed_recipe(
+            &tenant,
+            "memory-read-heartbeat",
+            "Read the HEARTBEAT.md status document from persistent memory.",
+            true,
+            RECIPE_MEMORY_READ_HEARTBEAT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-read ToolSkill binding", "component", &[ts_memory_read]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_read(path='HEARTBEAT.md')", "component", &[pc_exec_memory_read]),
+            ],
+            &[
+                json!({"input": "read HEARTBEAT.md", "class": 1}),
+                json!({"input": "show me the heartbeat document", "class": 1}),
+                json!({"input": "what is in HEARTBEAT.md", "class": 1}),
+                json!({"input": "read the agent heartbeat status", "class": 2}),
+                json!({"input": "show me the current heartbeat", "class": 2}),
+                json!({"input": "display HEARTBEAT.md", "class": 1}),
+                json!({"input": "read heartbeat", "class": 1}),
+                json!({"input": "open the heartbeat memory file", "class": 1}),
+                json!({"input": "show the latest heartbeat checkpoint", "class": 2}),
+                json!({"input": "what does my heartbeat status say", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_memory_tree = stores
+        .seed_recipe(
+            &tenant,
+            "memory-tree",
+            "List the directory structure of the agent's persistent memory.",
+            true,
+            RECIPE_MEMORY_TREE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-tree ToolSkill binding", "component", &[ts_memory_tree]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_tree(path, depth)", "component", &[pc_exec_memory_tree]),
+            ],
+            &[
+                json!({"input": "what files are in my memory", "class": 2}),
+                json!({"input": "show me the memory directory structure", "class": 2}),
+                json!({"input": "list all memory documents", "class": 1}),
+                json!({"input": "browse my memory files", "class": 2}),
+                json!({"input": "memory tree", "class": 1}),
+                json!({"input": "what memory documents exist", "class": 2}),
+                json!({"input": "show me the memory hierarchy", "class": 2}),
+                json!({"input": "memory directory listing", "class": 1}),
+                json!({"input": "what notes do I have stored", "class": 2}),
+                json!({"input": "explore my memory structure", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_memory_search_and_read = stores
+        .seed_recipe(
+            &tenant,
+            "memory-search-and-read",
+            "Search persistent memory by topic and read the top matching document in one flow.",
+            false,
+            RECIPE_MEMORY_SEARCH_AND_READ_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load search-and-read combined leaf skill body", "component", &[skill_memory_search_and_read]),
+                step_entry(2, "rust", "Pre-load both ToolSkill bindings", "component", &[ts_memory_search, ts_memory_read]),
+                step_entry(3, "orchestrator", "PythonCode: search memory, take top result path, read document", "component", &[pc_exec_memory_search, pc_exec_memory_read]),
+                step_entry(4, "orchestrator", "LLM interprets query intent, selects best result path, presents content", "text", &[]),
+            ],
+            &[
+                json!({"input": "recall what I know about this topic", "class": 2}),
+                json!({"input": "search memory and show me the full document", "class": 1}),
+                json!({"input": "find and read the memory about X", "class": 1}),
+                json!({"input": "look up this topic in my memory and show it", "class": 2}),
+                json!({"input": "recall and display this memory doc", "class": 2}),
+                json!({"input": "search then read the result", "class": 1}),
+                json!({"input": "find this note and open it", "class": 2}),
+                json!({"input": "memory search and read", "class": 1}),
+                json!({"input": "recall the document about X", "class": 2}),
+                json!({"input": "find this memory entry and show its contents", "class": 1}),
+            ],
+        )
+        .await?;
+
+    // 7. Append children to the per-tool catalogues (dedup-idempotent).
+    let ext_memory_search_children: Vec<Uuid> = vec![
+        tool_memory_search, ts_memory_search, pc_exec_memory_search,
+        skill_memory_search, skill_memory_search_broad, skill_memory_search_and_read,
+        recipe_memory_search, recipe_memory_search_broad, recipe_memory_search_and_read,
+    ];
+    let ext_memory_write_children: Vec<Uuid> = vec![
+        tool_memory_write, ts_memory_write, pc_exec_memory_write, pc_exec_memory_patch,
+        pc_exec_memory_append, pc_memory_format_entry,
+        skill_memory_write_log, skill_memory_write_main, skill_memory_write_patch,
+        skill_memory_write_append, skill_memory,
+        recipe_memory_write, recipe_memory_write_log, recipe_memory_write_main,
+        recipe_memory_write_patch, recipe_memory_write_append,
+    ];
+    let ext_memory_read_children: Vec<Uuid> = vec![
+        tool_memory_read, ts_memory_read, pc_exec_memory_read, pc_memory_extract_section,
+        skill_memory_read,
+        recipe_memory_read, recipe_memory_read_main, recipe_memory_read_heartbeat,
+    ];
+    let ext_memory_tree_children: Vec<Uuid> = vec![
+        tool_memory_tree, ts_memory_tree, pc_exec_memory_tree,
+        skill_memory_tree, recipe_memory_tree,
+    ];
+    stores
+        .append_children(cat_memory_search, &ext_memory_search_children)
+        .await?;
+    stores
+        .append_children(cat_memory_write, &ext_memory_write_children)
+        .await?;
+    stores
+        .append_children(cat_memory_read, &ext_memory_read_children)
+        .await?;
+    stores
+        .append_children(cat_memory_tree, &ext_memory_tree_children)
+        .await?;
+    // Primary catalogue owns the union of all four per-tool child sets.
+    stores
+        .append_children(cat_memory, &ext_memory_search_children)
+        .await?;
+    stores
+        .append_children(cat_memory, &ext_memory_write_children)
+        .await?;
+    stores
+        .append_children(cat_memory, &ext_memory_read_children)
+        .await?;
+    stores
+        .append_children(cat_memory, &ext_memory_tree_children)
+        .await?;
 
     tracing::debug!(
-        "seeded memory group chunk 5c: 8 leaf skills + 1 domain skill (skill-memory)"
+        "seeded memory group chunk 5d: 12 recipes (10 Tier-0 + 2 Tier-1) + catalogue appends - memory group COMPLETE (4 tools + 4 toolskills + 8 PythonCode + 10 skills + 12 recipes + 5 catalogues)"
     );
 
     Ok(())
@@ -6347,4 +6717,264 @@ Decision guide:
 — Discovering what files exist -> skill-memory-tree
 
 Orchestrator note: NEVER use datetime.now() in PythonCode. Always call skill-time-now first to get a timestamp, then pass it to pc-memory-format-entry.
+"#;
+
+// ---------------------------------------------------------------------------
+// Memory group chunk 5d — Step 11.x variant component bodies.
+// ---------------------------------------------------------------------------
+
+const PC_EXEC_MEMORY_APPEND_CONTENT: &str = r#"# Append pattern: read existing, concat new content, write back.
+_path    = "{{vars.slot0}}"
+_new_txt = "{{vars.slot1}}"
+_existing = host.memory_read(path=_path)
+_current = _existing.get("content", "") if isinstance(_existing, dict) else ""
+_combined = _current.rstrip("\n") + "\n\n" + _new_txt
+result = host.memory_write(path=_path, content=_combined)
+"#;
+
+const SKILL_MEMORY_WRITE_APPEND_BODY: &str = r#"Use pc-exec-memory-append to add content to an existing memory document without overwriting
+it. This pattern reads the current content, appends the new text (with blank line separation),
+and writes back. Use for:
+- Running logs (CHANGELOG.md, decision_log.md)
+- Incremental session notes where each session adds an entry
+- Any document that grows over time
+If the document does not exist yet, use skill-memory-write-log to create it first.
+"#;
+
+// ---------------------------------------------------------------------------
+// Memory group chunk 5d — recipe YAML sources (verbatim doc step_descriptions
+// blocks; WebUI renderer reads these, the IBS reads the resolved `steps`).
+// ---------------------------------------------------------------------------
+
+const RECIPE_MEMORY_SEARCH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-search>"],
+    "label":   "Pre-load ts-memory-search ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-search>"],
+    "label":   "PythonCode calls host.memory_search(query, limit)"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_SEARCH_BROAD_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-search>"],
+    "label":   "Pre-load ts-memory-search ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-search>"],
+    "label":   "PythonCode calls host.memory_search(query, limit=20)"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_WRITE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-write ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-write>"],
+    "label":   "PythonCode calls host.memory_write(content, target, append)"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_WRITE_LOG_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-write ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-write>"],
+    "label":   "PythonCode calls host.memory_write(content, target='daily_log', append=true)"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_WRITE_MAIN_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-write ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-write>"],
+    "label":   "PythonCode calls host.memory_write(content, target='memory', append=true)"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_WRITE_PATCH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-write ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-patch>"],
+    "label":   "PythonCode calls host.memory_write(target, old_string, new_string)"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_WRITE_APPEND_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-memory-write-append>", "<uuid:skill-memory-read>"],
+    "label":   "Load append + read leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM composes the new text to append based on current context"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>", "<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-read and ts-memory-write ToolSkill bindings"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_READ_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>"],
+    "label":   "Pre-load ts-memory-read ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-read>"],
+    "label":   "PythonCode calls host.memory_read(path)"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_READ_MAIN_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>"],
+    "label":   "Pre-load ts-memory-read ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-read>"],
+    "label":   "PythonCode calls host.memory_read(path='MEMORY.md')"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_READ_HEARTBEAT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>"],
+    "label":   "Pre-load ts-memory-read ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-read>"],
+    "label":   "PythonCode calls host.memory_read(path='HEARTBEAT.md')"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_TREE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-tree>"],
+    "label":   "Pre-load ts-memory-tree ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-tree>"],
+    "label":   "PythonCode calls host.memory_tree(path, depth)"
+  }
+]
+"#;
+
+const RECIPE_MEMORY_SEARCH_AND_READ_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-memory-search-and-read>"],
+    "label":   "Load search-and-read combined leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-search>", "<uuid:ts-memory-read>"],
+    "label":   "Pre-load both ToolSkill bindings"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-search>", "<uuid:pc-exec-memory-read>"],
+    "label":   "PythonCode: search memory, take top result path, read document"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "llm",
+    "label":   "LLM interprets query intent, selects best result path, presents content"
+  }
+]
 "#;
