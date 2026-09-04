@@ -7954,6 +7954,793 @@ async fn seed_process_group(
         .append_children(cat_process, &ext_shell_skill_children)
         .await?;
 
+    // 7. Shell Recipes (class 21) — transcribed verbatim from the doc's flat
+    //    format into the IBS authoring model (Q1 decision A). 25 Tier-0
+    //    recipes are deterministic 2-step dispatches (rust ts-shell-run +
+    //    orchestrator pc-exec-shell-*); 6 Tier-1 recipes (shell-run,
+    //    shell-script, git-add/commit/push/pull) load leaf-skill context,
+    //    pre-load ts-shell-run, and add an LLM-annotation `text` step.
+    //    step_link is synthesized as "0:1-0:E"; stepnumber is the 1-based
+    //    position (the doc's step_id labels are preserved verbatim in the
+    //    yaml_source constants appended at the end of this file).
+    //
+    // Tier-0 git inspect recipes (§shell-safe-fixed).
+    let recipe_shell_git_status = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-status",
+            "Run 'git status' and return the working tree state.",
+            true,
+            RECIPE_SHELL_GIT_STATUS_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git status') — fixed literal", "component", &[pc_exec_shell_git_status]),
+            ],
+            &[
+                json!({"input": "git status", "class": 1}),
+                json!({"input": "what is the current git status", "class": 1}),
+                json!({"input": "show me uncommitted changes", "class": 1}),
+                json!({"input": "what files have changed", "class": 1}),
+                json!({"input": "check git working tree", "class": 1}),
+                json!({"input": "are there any staged changes", "class": 2}),
+                json!({"input": "what is modified in the repo", "class": 2}),
+                json!({"input": "show me the repo status", "class": 1}),
+                json!({"input": "any untracked files", "class": 2}),
+                json!({"input": "is my working directory clean", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_log = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-log",
+            "Show the last 20 commits as one-line summaries ('git log --oneline -20').",
+            true,
+            RECIPE_SHELL_GIT_LOG_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git log --oneline -20')", "component", &[pc_exec_shell_git_log]),
+            ],
+            &[
+                json!({"input": "show me recent commits", "class": 1}),
+                json!({"input": "git log", "class": 1}),
+                json!({"input": "what were the last commits", "class": 1}),
+                json!({"input": "show commit history", "class": 1}),
+                json!({"input": "list recent git commits", "class": 1}),
+                json!({"input": "what was the last change merged", "class": 2}),
+                json!({"input": "show me the git log", "class": 1}),
+                json!({"input": "recent commit hashes and messages", "class": 2}),
+                json!({"input": "what commits have been made", "class": 2}),
+                json!({"input": "git history last 20", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_diff_stat = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-diff-stat",
+            "Show a summary of which files have changed and how many lines ('git diff --stat').",
+            true,
+            RECIPE_SHELL_GIT_DIFF_STAT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git diff --stat')", "component", &[pc_exec_shell_git_diff_stat]),
+            ],
+            &[
+                json!({"input": "what files changed", "class": 1}),
+                json!({"input": "git diff stat", "class": 1}),
+                json!({"input": "show me which files are modified", "class": 1}),
+                json!({"input": "how many lines changed", "class": 2}),
+                json!({"input": "diff summary", "class": 1}),
+                json!({"input": "what is the scope of my changes", "class": 2}),
+                json!({"input": "show file change counts", "class": 2}),
+                json!({"input": "git diff summary", "class": 1}),
+                json!({"input": "which files are dirty", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_branch = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-branch",
+            "List all local and remote git branches ('git branch -a').",
+            true,
+            RECIPE_SHELL_GIT_BRANCH_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git branch -a')", "component", &[pc_exec_shell_git_branch]),
+            ],
+            &[
+                json!({"input": "list git branches", "class": 1}),
+                json!({"input": "what branch am I on", "class": 1}),
+                json!({"input": "show all branches", "class": 1}),
+                json!({"input": "git branch", "class": 1}),
+                json!({"input": "what remote branches exist", "class": 2}),
+                json!({"input": "list all local and remote branches", "class": 1}),
+                json!({"input": "which branches are available", "class": 2}),
+                json!({"input": "show me the branch list", "class": 1}),
+                json!({"input": "what is the current branch", "class": 2}),
+                json!({"input": "git branch listing", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_stash_list = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-stash-list",
+            "List the git stash stack ('git stash list').",
+            true,
+            RECIPE_SHELL_GIT_STASH_LIST_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git stash list')", "component", &[pc_exec_shell_git_stash_list]),
+            ],
+            &[
+                json!({"input": "list git stashes", "class": 1}),
+                json!({"input": "show stash contents", "class": 1}),
+                json!({"input": "what is in the stash", "class": 1}),
+                json!({"input": "git stash list", "class": 1}),
+                json!({"input": "how many stashes do I have", "class": 2}),
+                json!({"input": "do I have any stashed changes", "class": 2}),
+                json!({"input": "show me the stash", "class": 1}),
+                json!({"input": "stash entries", "class": 2}),
+            ],
+        )
+        .await?;
+    // Tier-0 system-information recipes (§shell-safe-fixed).
+    let recipe_shell_pwd = stores
+        .seed_recipe(
+            &tenant,
+            "shell-pwd",
+            "Print the current working directory ('pwd').",
+            true,
+            RECIPE_SHELL_PWD_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='pwd')", "component", &[pc_exec_shell_pwd]),
+            ],
+            &[
+                json!({"input": "what is the current directory", "class": 1}),
+                json!({"input": "pwd", "class": 1}),
+                json!({"input": "show me the working directory", "class": 1}),
+                json!({"input": "what is my cwd", "class": 1}),
+                json!({"input": "what directory am I in", "class": 1}),
+                json!({"input": "print working directory", "class": 1}),
+                json!({"input": "where am I in the filesystem", "class": 2}),
+                json!({"input": "show current path", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_df = stores
+        .seed_recipe(
+            &tenant,
+            "shell-df",
+            "Show disk usage for all mounted filesystems in human-readable format ('df -h').",
+            true,
+            RECIPE_SHELL_DF_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='df -h')", "component", &[pc_exec_shell_df]),
+            ],
+            &[
+                json!({"input": "check disk space", "class": 1}),
+                json!({"input": "how much disk is free", "class": 1}),
+                json!({"input": "df -h", "class": 1}),
+                json!({"input": "disk usage", "class": 1}),
+                json!({"input": "is the disk full", "class": 2}),
+                json!({"input": "show filesystem space", "class": 1}),
+                json!({"input": "how much storage is available", "class": 2}),
+                json!({"input": "storage status", "class": 2}),
+                json!({"input": "show mounted disk space", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_ps = stores
+        .seed_recipe(
+            &tenant,
+            "shell-ps",
+            "List all running processes with CPU and memory usage ('ps aux').",
+            true,
+            RECIPE_SHELL_PS_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='ps aux')", "component", &[pc_exec_shell_ps]),
+            ],
+            &[
+                json!({"input": "list running processes", "class": 1}),
+                json!({"input": "what processes are running", "class": 1}),
+                json!({"input": "ps aux", "class": 1}),
+                json!({"input": "show all processes", "class": 1}),
+                json!({"input": "is this service running", "class": 2}),
+                json!({"input": "check process list", "class": 1}),
+                json!({"input": "what is consuming CPU", "class": 2}),
+                json!({"input": "show me the process table", "class": 2}),
+                json!({"input": "list system processes", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_env = stores
+        .seed_recipe(
+            &tenant,
+            "shell-env",
+            "List all current environment variables ('env').",
+            true,
+            RECIPE_SHELL_ENV_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='env')", "component", &[pc_exec_shell_env]),
+            ],
+            &[
+                json!({"input": "show environment variables", "class": 1}),
+                json!({"input": "list env vars", "class": 1}),
+                json!({"input": "what environment variables are set", "class": 1}),
+                json!({"input": "env", "class": 1}),
+                json!({"input": "show me the PATH", "class": 2}),
+                json!({"input": "what is the current environment", "class": 1}),
+                json!({"input": "check environment configuration", "class": 2}),
+                json!({"input": "dump environment", "class": 1}),
+                json!({"input": "what env vars does the session have", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_uname = stores
+        .seed_recipe(
+            &tenant,
+            "shell-uname",
+            "Show OS and kernel information ('uname -a').",
+            true,
+            RECIPE_SHELL_UNAME_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='uname -a')", "component", &[pc_exec_shell_uname]),
+            ],
+            &[
+                json!({"input": "what OS is this", "class": 1}),
+                json!({"input": "uname -a", "class": 1}),
+                json!({"input": "show kernel version", "class": 1}),
+                json!({"input": "what is the system architecture", "class": 2}),
+                json!({"input": "show system info", "class": 1}),
+                json!({"input": "is this Linux or macOS", "class": 2}),
+                json!({"input": "show OS details", "class": 1}),
+                json!({"input": "kernel info", "class": 1}),
+                json!({"input": "what platform am I running on", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_which = stores
+        .seed_recipe(
+            &tenant,
+            "shell-which",
+            "Locate a binary on PATH ('which <toolname>') — toolname must be a safe identifier.",
+            true,
+            RECIPE_SHELL_WHICH_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode validates tool name then calls host.shell(command='which <tool>')", "component", &[pc_exec_shell_which]),
+            ],
+            &[
+                json!({"input": "where is git installed", "class": 2}),
+                json!({"input": "which python", "class": 1}),
+                json!({"input": "is docker installed", "class": 2}),
+                json!({"input": "find the path to node", "class": 2}),
+                json!({"input": "which cargo", "class": 1}),
+                json!({"input": "is this tool on PATH", "class": 2}),
+                json!({"input": "locate the binary", "class": 2}),
+                json!({"input": "which command", "class": 1}),
+                json!({"input": "find the tool path", "class": 2}),
+            ],
+        )
+        .await?;
+    // Tier-0 additional fixed shell recipes (§shell-safe-fixed continued).
+    let recipe_shell_date = stores
+        .seed_recipe(
+            &tenant,
+            "shell-date",
+            "Print the current UTC date/time in ISO-8601 format ('date -u +...').",
+            true,
+            RECIPE_SHELL_DATE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='date -u +...')", "component", &[pc_exec_shell_date]),
+            ],
+            &[
+                json!({"input": "what is today's date", "class": 1}),
+                json!({"input": "print the current date", "class": 1}),
+                json!({"input": "date command", "class": 1}),
+                json!({"input": "current date in ISO format", "class": 1}),
+                json!({"input": "system date", "class": 1}),
+                json!({"input": "what date is it", "class": 1}),
+                json!({"input": "show the current date and time", "class": 1}),
+                json!({"input": "get the date from the shell", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_hostname = stores
+        .seed_recipe(
+            &tenant,
+            "shell-hostname",
+            "Print the machine hostname.",
+            true,
+            RECIPE_SHELL_HOSTNAME_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='hostname')", "component", &[pc_exec_shell_hostname]),
+            ],
+            &[
+                json!({"input": "what is this machine called", "class": 1}),
+                json!({"input": "hostname", "class": 1}),
+                json!({"input": "what is the server name", "class": 1}),
+                json!({"input": "show me the machine hostname", "class": 1}),
+                json!({"input": "what host is this", "class": 1}),
+                json!({"input": "machine name", "class": 1}),
+                json!({"input": "get the hostname", "class": 1}),
+                json!({"input": "show hostname of this server", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_whoami = stores
+        .seed_recipe(
+            &tenant,
+            "shell-whoami",
+            "Print the current OS user account name ('whoami').",
+            true,
+            RECIPE_SHELL_WHOAMI_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='whoami')", "component", &[pc_exec_shell_whoami]),
+            ],
+            &[
+                json!({"input": "who am I running as", "class": 1}),
+                json!({"input": "what user is this", "class": 1}),
+                json!({"input": "whoami", "class": 1}),
+                json!({"input": "current user", "class": 1}),
+                json!({"input": "what is my username", "class": 1}),
+                json!({"input": "which user account is active", "class": 1}),
+                json!({"input": "show the current user", "class": 1}),
+                json!({"input": "am I running as root", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_uptime = stores
+        .seed_recipe(
+            &tenant,
+            "shell-uptime",
+            "Show system uptime and current load average ('uptime').",
+            true,
+            RECIPE_SHELL_UPTIME_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='uptime')", "component", &[pc_exec_shell_uptime]),
+            ],
+            &[
+                json!({"input": "how long has this server been running", "class": 1}),
+                json!({"input": "uptime", "class": 1}),
+                json!({"input": "system uptime", "class": 1}),
+                json!({"input": "when was this server last rebooted", "class": 2}),
+                json!({"input": "what is the load average", "class": 1}),
+                json!({"input": "is the system under load", "class": 2}),
+                json!({"input": "check server uptime", "class": 1}),
+                json!({"input": "show me uptime and load", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_free = stores
+        .seed_recipe(
+            &tenant,
+            "shell-free",
+            "Show memory usage in human-readable format ('free -h').",
+            true,
+            RECIPE_SHELL_FREE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='free -h')", "component", &[pc_exec_shell_free]),
+            ],
+            &[
+                json!({"input": "check memory usage", "class": 1}),
+                json!({"input": "how much RAM is available", "class": 1}),
+                json!({"input": "free -h", "class": 1}),
+                json!({"input": "memory usage", "class": 1}),
+                json!({"input": "how much memory does this process use", "class": 2}),
+                json!({"input": "is RAM running low", "class": 2}),
+                json!({"input": "show memory stats", "class": 1}),
+                json!({"input": "available and used RAM", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_remote = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-remote",
+            "List all configured git remotes and their URLs ('git remote -v').",
+            true,
+            RECIPE_SHELL_GIT_REMOTE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git remote -v')", "component", &[pc_exec_shell_git_remote]),
+            ],
+            &[
+                json!({"input": "list git remotes", "class": 1}),
+                json!({"input": "what is the git remote URL", "class": 1}),
+                json!({"input": "git remote -v", "class": 1}),
+                json!({"input": "show remote repositories", "class": 1}),
+                json!({"input": "what origin URL is configured", "class": 2}),
+                json!({"input": "list all configured remotes", "class": 1}),
+                json!({"input": "what remotes does this repo have", "class": 2}),
+                json!({"input": "show git remote configuration", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_show_stat = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-show-stat",
+            "Show changed files and line counts for the last commit ('git show --stat HEAD').",
+            true,
+            RECIPE_SHELL_GIT_SHOW_STAT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git show --stat HEAD')", "component", &[pc_exec_shell_git_show_stat]),
+            ],
+            &[
+                json!({"input": "what did the last commit change", "class": 1}),
+                json!({"input": "git show --stat HEAD", "class": 1}),
+                json!({"input": "show files changed in last commit", "class": 1}),
+                json!({"input": "what was in the previous commit", "class": 2}),
+                json!({"input": "show stat for most recent commit", "class": 1}),
+                json!({"input": "what was the last thing committed", "class": 2}),
+                json!({"input": "show HEAD commit diff summary", "class": 1}),
+                json!({"input": "git show stat last commit", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_tag_list = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-tag-list",
+            "List all tags in the repository ('git tag --list').",
+            true,
+            RECIPE_SHELL_GIT_TAG_LIST_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git tag --list')", "component", &[pc_exec_shell_git_tag_list]),
+            ],
+            &[
+                json!({"input": "list git tags", "class": 1}),
+                json!({"input": "what tags exist in this repo", "class": 1}),
+                json!({"input": "show all release tags", "class": 1}),
+                json!({"input": "git tag --list", "class": 1}),
+                json!({"input": "what versions are tagged", "class": 2}),
+                json!({"input": "list all git version tags", "class": 1}),
+                json!({"input": "show me the tags in this repository", "class": 1}),
+                json!({"input": "what is the latest git tag", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_wc_l = stores
+        .seed_recipe(
+            &tenant,
+            "shell-wc-l",
+            "Count the number of lines in a file ('wc -l <filepath>').",
+            true,
+            RECIPE_SHELL_WC_L_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode validates path then calls host.shell(command='wc -l <file>')", "component", &[pc_exec_shell_wc_l]),
+            ],
+            &[
+                json!({"input": "how many lines in this file", "class": 1}),
+                json!({"input": "line count of this file", "class": 1}),
+                json!({"input": "wc -l on this file", "class": 1}),
+                json!({"input": "count lines in the log file", "class": 2}),
+                json!({"input": "how long is this file", "class": 2}),
+                json!({"input": "how many rows does this CSV have", "class": 2}),
+                json!({"input": "get line count without reading file", "class": 2}),
+                json!({"input": "count the lines in this source file", "class": 2}),
+            ],
+        )
+        .await?;
+    // Tier-0 extended git inspect recipes (§shell-safe-fixed continued).
+    let recipe_shell_git_diff_name_only = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-diff-name-only",
+            "List only the names of files changed since the last commit (git diff --name-only HEAD).",
+            true,
+            RECIPE_SHELL_GIT_DIFF_NAME_ONLY_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git diff --name-only HEAD')", "component", &[pc_exec_shell_git_diff_name_only]),
+            ],
+            &[
+                json!({"input": "what files have changed since last commit", "class": 1}),
+                json!({"input": "which files are modified", "class": 1}),
+                json!({"input": "list changed files", "class": 1}),
+                json!({"input": "show modified filenames only", "class": 1}),
+                json!({"input": "git diff name only", "class": 1}),
+                json!({"input": "what did I change in this working directory", "class": 2}),
+                json!({"input": "files with uncommitted changes", "class": 1}),
+                json!({"input": "what is dirty in the working tree", "class": 2}),
+                json!({"input": "list unstaged or staged changed files", "class": 2}),
+                json!({"input": "show only the names of changed files no content", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_log_stat = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-log-stat",
+            "Show the last 5 commits with file-change statistics (git log --stat --oneline -5).",
+            true,
+            RECIPE_SHELL_GIT_LOG_STAT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git log --stat --oneline -5')", "component", &[pc_exec_shell_git_log_stat]),
+            ],
+            &[
+                json!({"input": "show recent commits with file changes", "class": 1}),
+                json!({"input": "git log with stats", "class": 1}),
+                json!({"input": "what files changed in the last few commits", "class": 2}),
+                json!({"input": "show commit history with change counts", "class": 1}),
+                json!({"input": "git log stat", "class": 1}),
+                json!({"input": "which files were touched in recent commits", "class": 2}),
+                json!({"input": "last 5 commits with file statistics", "class": 1}),
+                json!({"input": "show me what changed in recent git history", "class": 2}),
+                json!({"input": "recent commit file change summary", "class": 2}),
+                json!({"input": "git history with additions deletions per file", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_stash_show = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-stash-show",
+            "Show the diff summary of the most recent git stash entry (git stash show).",
+            true,
+            RECIPE_SHELL_GIT_STASH_SHOW_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git stash show')", "component", &[pc_exec_shell_git_stash_show]),
+            ],
+            &[
+                json!({"input": "what is in my git stash", "class": 1}),
+                json!({"input": "show the latest stash entry", "class": 1}),
+                json!({"input": "git stash show", "class": 1}),
+                json!({"input": "what changes did I stash", "class": 2}),
+                json!({"input": "preview the stash without applying it", "class": 2}),
+                json!({"input": "what files are in the current stash", "class": 2}),
+                json!({"input": "inspect the stash summary", "class": 1}),
+                json!({"input": "show stash diff summary", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_config_list = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-config-list",
+            "List all active git configuration values (git config --list).",
+            true,
+            RECIPE_SHELL_GIT_CONFIG_LIST_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git config --list')", "component", &[pc_exec_shell_git_config_list]),
+            ],
+            &[
+                json!({"input": "show git configuration", "class": 1}),
+                json!({"input": "what is my git user.name", "class": 2}),
+                json!({"input": "git config list", "class": 1}),
+                json!({"input": "show all git settings", "class": 1}),
+                json!({"input": "what email is configured for git commits", "class": 2}),
+                json!({"input": "check git config", "class": 1}),
+                json!({"input": "show current git identity settings", "class": 2}),
+                json!({"input": "list active git configuration", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_fetch = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-fetch",
+            "Fetch all remote branches without merging (git fetch --all). Tier 0 — read-only.",
+            true,
+            RECIPE_SHELL_GIT_FETCH_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
+                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git fetch --all')", "component", &[pc_exec_shell_git_fetch]),
+            ],
+            &[
+                json!({"input": "git fetch", "class": 1}),
+                json!({"input": "fetch all remote branches", "class": 1}),
+                json!({"input": "git fetch all", "class": 1}),
+                json!({"input": "update my remote tracking branches", "class": 2}),
+                json!({"input": "fetch from origin", "class": 2}),
+                json!({"input": "get latest remote refs", "class": 2}),
+                json!({"input": "fetch without merging", "class": 1}),
+                json!({"input": "update remote branch info", "class": 2}),
+                json!({"input": "git fetch --all", "class": 1}),
+                json!({"input": "pull down remote branch list", "class": 2}),
+            ],
+        )
+        .await?;
+    // Tier-1 shell recipes (§shell-guard-custom / §shell-guard). LLM step is
+    // an annotation-only `text` step; llm_call_required stays at the seeded
+    // default (true) because tier0=false leaves tier=wilson defaults.
+    let recipe_shell_run = stores
+        .seed_recipe(
+            &tenant,
+            "shell-run",
+            "Run a single shell command and return its output.",
+            false,
+            RECIPE_SHELL_RUN_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load shell domain + run + safety-check leaf skills", "component", &[skill_shell, skill_shell_run, skill_shell_safe_check]),
+                step_entry(2, "orchestrator", "LLM validates safety, composes the exact command, gets user approval", "text", &[]),
+                step_entry(3, "rust", "Executor pre-loads ts-shell-run binding", "component", &[ts_shell_run]),
+            ],
+            &[
+                json!({"input": "run a command", "class": 2}),
+                json!({"input": "execute a shell command", "class": 2}),
+                json!({"input": "run ls in the project dir", "class": 3}),
+                json!({"input": "check git status", "class": 3}),
+                json!({"input": "shell", "class": 1}),
+                json!({"input": "run this command in the project root", "class": 3}),
+                json!({"input": "execute git pull", "class": 3}),
+                json!({"input": "run a quick system command", "class": 2}),
+                json!({"input": "shell execute this", "class": 1}),
+                json!({"input": "run this CLI command", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_script = stores
+        .seed_recipe(
+            &tenant,
+            "shell-script",
+            "Execute a multi-line shell script authored by the LLM.",
+            false,
+            RECIPE_SHELL_SCRIPT_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load shell domain + safety-check context", "component", &[skill_shell, skill_shell_safe_check]),
+                step_entry(2, "orchestrator", "LLM writes the full script body, validates safety, gets user approval", "text", &[]),
+                step_entry(3, "rust", "Executor pre-loads ts-shell-run binding", "component", &[ts_shell_run]),
+            ],
+            &[
+                json!({"input": "run a bash script", "class": 2}),
+                json!({"input": "execute a script", "class": 2}),
+                json!({"input": "write and run a shell script that backs up my files", "class": 3}),
+                json!({"input": "bash script", "class": 1}),
+                json!({"input": "create and run a multi-step shell script", "class": 2}),
+                json!({"input": "write a script to process these log files", "class": 3}),
+                json!({"input": "run a shell script with these steps", "class": 2}),
+                json!({"input": "execute a batch script", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_add = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-add",
+            "Stage files for commit with git add (LLM confirms paths with user).",
+            false,
+            RECIPE_SHELL_GIT_ADD_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load git-add + git-status leaf skills", "component", &[skill_shell_git_add, skill_shell_git_status]),
+                step_entry(2, "rust", "Pre-load ts-shell-run binding", "component", &[ts_shell_run]),
+                step_entry(3, "orchestrator", "LLM checks git status, confirms which files to stage, dispatches git add", "text", &[]),
+            ],
+            &[
+                json!({"input": "git add", "class": 1}),
+                json!({"input": "stage my changes", "class": 1}),
+                json!({"input": "add all files to git", "class": 1}),
+                json!({"input": "stage this file for commit", "class": 2}),
+                json!({"input": "git add .", "class": 1}),
+                json!({"input": "add these changes to git staging", "class": 2}),
+                json!({"input": "stage my modifications", "class": 2}),
+                json!({"input": "mark these files for the next commit", "class": 2}),
+                json!({"input": "git add specific file", "class": 2}),
+                json!({"input": "track and stage these changes", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_commit = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-commit",
+            "Commit staged changes with a user-confirmed message.",
+            false,
+            RECIPE_SHELL_GIT_COMMIT_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load git-commit + git-status leaf skills", "component", &[skill_shell_git_commit, skill_shell_git_status]),
+                step_entry(2, "rust", "Pre-load ts-shell-run binding", "component", &[ts_shell_run]),
+                step_entry(3, "orchestrator", "LLM checks git status, composes commit message, confirms with user, dispatches commit", "text", &[]),
+            ],
+            &[
+                json!({"input": "git commit", "class": 1}),
+                json!({"input": "commit my changes", "class": 1}),
+                json!({"input": "commit staged files", "class": 1}),
+                json!({"input": "commit with message", "class": 2}),
+                json!({"input": "save my changes with a commit", "class": 2}),
+                json!({"input": "create a git commit", "class": 2}),
+                json!({"input": "commit everything I staged", "class": 2}),
+                json!({"input": "make a commit with this message", "class": 2}),
+                json!({"input": "git commit -m", "class": 1}),
+                json!({"input": "finalize my changes with a git commit", "class": 3}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_push = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-push",
+            "Push local commits to a remote repository branch.",
+            false,
+            RECIPE_SHELL_GIT_PUSH_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load git-push + git-log leaf skills", "component", &[skill_shell_git_push, skill_shell_git_log]),
+                step_entry(2, "rust", "Pre-load ts-shell-run binding", "component", &[ts_shell_run]),
+                step_entry(3, "orchestrator", "LLM shows recent commits, confirms remote/branch, dispatches push", "text", &[]),
+            ],
+            &[
+                json!({"input": "git push", "class": 1}),
+                json!({"input": "push my commits", "class": 1}),
+                json!({"input": "push to origin", "class": 1}),
+                json!({"input": "push to main", "class": 2}),
+                json!({"input": "upload my changes to github", "class": 2}),
+                json!({"input": "push local branch to remote", "class": 2}),
+                json!({"input": "git push origin main", "class": 1}),
+                json!({"input": "send my commits to the remote", "class": 2}),
+                json!({"input": "push my work to the repository", "class": 2}),
+                json!({"input": "deploy my commits to origin", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_shell_git_pull = stores
+        .seed_recipe(
+            &tenant,
+            "shell-git-pull",
+            "Pull remote changes and merge into the current branch.",
+            false,
+            RECIPE_SHELL_GIT_PULL_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load git-pull + git-status leaf skills", "component", &[skill_shell_git_pull, skill_shell_git_status]),
+                step_entry(2, "rust", "Pre-load ts-shell-run binding", "component", &[ts_shell_run]),
+                step_entry(3, "orchestrator", "LLM checks for local changes, confirms remote/branch, handles conflicts on failure", "text", &[]),
+            ],
+            &[
+                json!({"input": "git pull", "class": 1}),
+                json!({"input": "pull latest changes", "class": 1}),
+                json!({"input": "update from remote", "class": 1}),
+                json!({"input": "pull from origin", "class": 2}),
+                json!({"input": "get latest code from github", "class": 2}),
+                json!({"input": "sync with remote branch", "class": 2}),
+                json!({"input": "git pull origin main", "class": 1}),
+                json!({"input": "pull remote commits", "class": 2}),
+                json!({"input": "update my local branch from remote", "class": 2}),
+                json!({"input": "fetch and merge remote changes", "class": 2}),
+            ],
+        )
+        .await?;
+
+    // Append the 31 shell recipe ids to ext-shell and the primary catalogue
+    // (dedup-idempotent). Completes the ext-shell child set: tool + ts + 30 pc
+    // + 31 leaf skills + 1 domain + 31 recipes.
+    let ext_shell_recipe_children: Vec<Uuid> = vec![
+        recipe_shell_git_status, recipe_shell_git_log, recipe_shell_git_diff_stat,
+        recipe_shell_git_branch, recipe_shell_git_stash_list, recipe_shell_pwd,
+        recipe_shell_df, recipe_shell_ps, recipe_shell_env, recipe_shell_uname,
+        recipe_shell_which, recipe_shell_date, recipe_shell_hostname,
+        recipe_shell_whoami, recipe_shell_uptime, recipe_shell_free,
+        recipe_shell_git_remote, recipe_shell_git_show_stat, recipe_shell_git_tag_list,
+        recipe_shell_wc_l, recipe_shell_git_diff_name_only, recipe_shell_git_log_stat,
+        recipe_shell_git_stash_show, recipe_shell_git_config_list, recipe_shell_git_fetch,
+        recipe_shell_run, recipe_shell_script, recipe_shell_git_add,
+        recipe_shell_git_commit, recipe_shell_git_push, recipe_shell_git_pull,
+    ];
+    stores
+        .append_children(cat_shell, &ext_shell_recipe_children)
+        .await?;
+    stores
+        .append_children(cat_process, &ext_shell_recipe_children)
+        .await?;
+
     // Append the spawn tool + toolskill to ext-spawn-subagent and the primary
     // (leaf skills + recipes appended in chunk 6e).
     let ext_spawn_children: Vec<Uuid> = vec![tool_spawn_subagent, ts_spawn_subagent];
@@ -7970,7 +8757,7 @@ async fn seed_process_group(
     stores.append_children(cat_process, &ext_trigger_children).await?;
 
     tracing::debug!(
-        "seeded process group chunk 6b: 30 shell PythonCode + catalogue appends (shell/spawn/trigger tool+ts+pc bound)"
+        "seeded process group chunk 6d: 31 shell recipes (25 Tier-0 + 6 Tier-1) + catalogue appends (shell subgroup COMPLETE: 1 tool + 1 ts + 30 pc + 31 leaf skills + 1 domain + 31 recipes)"
     );
 
     Ok(())
@@ -8765,4 +9552,1080 @@ Git write operations (always Tier 1 — §shell-guard-custom):
 Safety rules before running any command → skill-shell-safe-check.
 NEVER run a git commit/push/pull without explicit user confirmation.
 NEVER run a command that the user supplied without LLM validation first.
+"#;
+
+// ---------------------------------------------------------------------------
+// Process group chunk 6d — shell recipe YAML sources (verbatim doc
+// step_descriptions blocks; WebUI renderer reads these, the IBS reads the
+// resolved `steps` passed to seed_recipe). The `<uuid:*>` placeholders are
+// preserved verbatim for the renderer; the real seeded UUIDs are bound in the
+// step_entry calls above. 25 Tier-0 (2-step) + 6 Tier-1 (3-step with an
+// annotation-only `type: "llm"` step preserved verbatim from the doc).
+// ---------------------------------------------------------------------------
+
+const RECIPE_SHELL_GIT_STATUS_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-status>"],
+    "label":   "PythonCode calls host.shell(command='git status') — fixed literal"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_LOG_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-log>"],
+    "label":   "PythonCode calls host.shell(command='git log --oneline -20')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_DIFF_STAT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-diff-stat>"],
+    "label":   "PythonCode calls host.shell(command='git diff --stat')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_BRANCH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-branch>"],
+    "label":   "PythonCode calls host.shell(command='git branch -a')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_STASH_LIST_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-stash-list>"],
+    "label":   "PythonCode calls host.shell(command='git stash list')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_PWD_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-pwd>"],
+    "label":   "PythonCode calls host.shell(command='pwd')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_DF_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-df>"],
+    "label":   "PythonCode calls host.shell(command='df -h')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_PS_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-ps>"],
+    "label":   "PythonCode calls host.shell(command='ps aux')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_ENV_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-env>"],
+    "label":   "PythonCode calls host.shell(command='env')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_UNAME_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-uname>"],
+    "label":   "PythonCode calls host.shell(command='uname -a')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_WHICH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-which>"],
+    "label":   "PythonCode validates tool name then calls host.shell(command='which <tool>')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_DATE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-date>"],
+    "label":   "PythonCode calls host.shell(command='date -u +...')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_HOSTNAME_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-hostname>"],
+    "label":   "PythonCode calls host.shell(command='hostname')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_WHOAMI_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-whoami>"],
+    "label":   "PythonCode calls host.shell(command='whoami')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_UPTIME_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-uptime>"],
+    "label":   "PythonCode calls host.shell(command='uptime')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_FREE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-free>"],
+    "label":   "PythonCode calls host.shell(command='free -h')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_REMOTE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-remote>"],
+    "label":   "PythonCode calls host.shell(command='git remote -v')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_SHOW_STAT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-show-stat>"],
+    "label":   "PythonCode calls host.shell(command='git show --stat HEAD')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_TAG_LIST_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-tag-list>"],
+    "label":   "PythonCode calls host.shell(command='git tag --list')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_WC_L_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-wc-l>"],
+    "label":   "PythonCode validates path then calls host.shell(command='wc -l <file>')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_DIFF_NAME_ONLY_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-diff-name-only>"],
+    "label":   "PythonCode calls host.shell(command='git diff --name-only HEAD')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_LOG_STAT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-log-stat>"],
+    "label":   "PythonCode calls host.shell(command='git log --stat --oneline -5')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_STASH_SHOW_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-stash-show>"],
+    "label":   "PythonCode calls host.shell(command='git stash show')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_CONFIG_LIST_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-config-list>"],
+    "label":   "PythonCode calls host.shell(command='git config --list')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_FETCH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-fetch>"],
+    "label":   "PythonCode calls host.shell(command='git fetch --all')"
+  }
+]
+"#;
+
+const RECIPE_SHELL_RUN_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell>", "<uuid:skill-shell-run>", "<uuid:skill-shell-safe-check>"],
+    "label":   "Load shell domain + run + safety-check leaf skills"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM validates safety, composes the exact command, gets user approval"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Executor pre-loads ts-shell-run binding"
+  }
+]
+"#;
+
+const RECIPE_SHELL_SCRIPT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell>", "<uuid:skill-shell-safe-check>"],
+    "label":   "Load shell domain + safety-check context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM writes the full script body, validates safety, gets user approval"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Executor pre-loads ts-shell-run binding"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_ADD_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell-git-add>", "<uuid:skill-shell-git-status>"],
+    "label":   "Load git-add + git-status leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM checks git status, confirms which files to stage, dispatches git add"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_COMMIT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell-git-commit>", "<uuid:skill-shell-git-status>"],
+    "label":   "Load git-commit + git-status leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM checks git status, composes commit message, confirms with user, dispatches commit"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_PUSH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell-git-push>", "<uuid:skill-shell-git-log>"],
+    "label":   "Load git-push + git-log leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM shows recent commits, confirms remote/branch, dispatches push"
+  }
+]
+"#;
+
+const RECIPE_SHELL_GIT_PULL_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell-git-pull>", "<uuid:skill-shell-git-status>"],
+    "label":   "Load git-pull + git-status leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM checks for local changes, confirms remote/branch, handles conflicts on failure"
+  }
+]
+"#;
+
+// ---------------------------------------------------------------------------
+// Management group (Pass 5) — time, json, echo, skill_list/install/remove
+// ---------------------------------------------------------------------------
+
+/// Primary catalogue name for the management domain.
+const CAT_MANAGEMENT: &str = "builtin-management";
+
+const CAT_MANAGEMENT_OVERVIEW: &str = r#"# Management & Utility Capabilities
+
+The management domain covers: skill lifecycle management, time operations, JSON
+manipulation, and the diagnostic echo passthrough.
+
+## Tools in this domain
+- builtin.skill_list    — list installed skills
+- builtin.skill_install — install a skill from URL/path (enters Q1/Q2)
+- builtin.skill_remove  — remove an installed skill (irreversible)
+- builtin.time          — time queries: now, parse, convert
+- builtin.json          — JSON operations: query, stringify, parse, validate
+- builtin.echo          — diagnostic passthrough (no user-facing recipe)
+
+## Skill management
+- Always list before installing (avoid duplicates).
+- Always confirm with user before installing from external URLs or removing.
+- After install, the skill is 'pending' — not usable until Q2 graduates it.
+- System-scope skills cannot be modified from user-scope authority.
+
+## Time utilities
+- time/now: current UTC and local time in ISO 8601
+- time/parse: parse a datetime string into components
+- time/convert: convert between timezones or formats
+
+## JSON utilities
+- json/query: extract a value from a JSON structure via jq-style path
+- json/stringify: serialize a value to a JSON string (pretty-printed)
+- json/parse: parse a JSON string to a structured value
+- json/validate: check whether a string is valid JSON
+
+## Echo
+Echo is a diagnostic-only passthrough. It has no user-facing recipe. Use it only
+in tests and during recipe development.
+"#;
+
+// ---------------------------------------------------------------------------
+// Tool row builders — management group
+// ---------------------------------------------------------------------------
+
+fn tool_time_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "time".to_string(),
+        description: "Perform time and timezone operations: get the current time (now), parse a \
+                       timestamp string (parse), convert between timezones (convert), compute the \
+                       signed difference between two timestamps (diff), format a timestamp as a \
+                       human-readable string (format)."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "operation":     {"type": "string", "enum": ["now","parse","convert","diff","format"]},
+                "input":         {"type": "string"},
+                "timezone":      {"type": "string"},
+                "from_timezone": {"type": "string"},
+                "to_timezone":   {"type": "string"},
+                "timestamp2":    {"type": "string"},
+                "format":        {"type": "string"},
+                "format_string": {"type": "string"}
+            },
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({"operation": "now"})),
+        effect_type: "read_only".to_string(),
+        preconditions: Some("invalid timezone → tool error; invalid timestamp → tool error".into()),
+        error_handling: Some("invalid timezone → tool error; invalid timestamp → tool error".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.time".into(),
+    }
+}
+
+fn tool_json_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "json".to_string(),
+        description: "Perform JSON operations: parse a JSON string (parse), serialize a value to \
+                       a JSON string (stringify), extract a value by dot/bracket path (query), or \
+                       validate whether a string is valid JSON (validate)."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "operation": {"type": "string", "enum": ["parse","stringify","query","validate"]},
+                "data":      {},
+                "path":      {"type": "string"}
+            },
+            "required": ["operation", "data"],
+            "additionalProperties": false
+        })),
+        param_template: Some(json!({"operation": "{{operation}}", "data": "{{data}}"})),
+        effect_type: "read_only".to_string(),
+        preconditions: Some("operation required; data required".into()),
+        error_handling: Some("invalid JSON for parse/query → tool error; path not found → null".into()),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.json".into(),
+    }
+}
+
+fn tool_echo_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "echo".to_string(),
+        description: "Diagnostic passthrough: returns input unchanged. For testing and stubs."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "Any string. Returned verbatim."}
+            },
+            "required": ["message"]
+        })),
+        param_template: Some(json!({"message": "{{message}}"})),
+        effect_type: "Read".to_string(),
+        preconditions: None,
+        error_handling: None,
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.echo".into(),
+    }
+}
+
+fn tool_skill_list_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "skill_list".to_string(),
+        description: "List all skills currently installed in the active scope.".to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "description": "Scope filter: 'all' | 'user' | 'system'. Defaults to 'all'."}
+            },
+            "required": []
+        })),
+        param_template: Some(json!({})),
+        effect_type: "Read".to_string(),
+        preconditions: None,
+        error_handling: None,
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.skill_list".into(),
+    }
+}
+
+fn tool_skill_install_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "skill_install".to_string(),
+        description: "Install a new skill from a URL or local path, entering the Q1/Q2 pipeline."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "source_url": {"type": "string", "description": "URL or local file path to skill manifest."},
+                "scope": {"type": "string", "description": "Target scope: 'user' (default) or 'system'."}
+            },
+            "required": ["source_url"]
+        })),
+        param_template: Some(json!({"source_url": "{{source_url}}"})),
+        effect_type: "Write".to_string(),
+        preconditions: None,
+        error_handling: None,
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.skill_install".into(),
+    }
+}
+
+fn tool_skill_remove_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "skill_remove".to_string(),
+        description: "Remove an installed skill by name. Irreversible.".to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "skill_name": {"type": "string", "description": "Name of the skill to remove."},
+                "scope": {"type": "string", "description": "Scope: 'user' | 'system'. Defaults to 'user'."}
+            },
+            "required": ["skill_name"]
+        })),
+        param_template: Some(json!({"skill_name": "{{skill_name}}"})),
+        effect_type: "Write".to_string(),
+        preconditions: None,
+        error_handling: None,
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: "builtin.skill_remove".into(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ToolSkill content constants — management group
+// ---------------------------------------------------------------------------
+
+const TS_TIME_NOW_CONTENT: &str = r#"Tool: builtin.time (operation='now')
+Effect: read_only — returns the current UTC timestamp and optionally local time.
+
+Parameters:
+- operation (string, fixed): "now"
+- timezone (string, optional): IANA timezone name (e.g. 'America/New_York'). When provided,
+  the response includes both UTC and the local time in that zone.
+
+Output: {utc_iso, local_iso?, timezone?}
+
+Use for:
+- Any PythonCode that needs the current time — NEVER use datetime.now() directly.
+- Timestamping memory entries, log records, or display fields.
+- The starting point for time-convert and time-format operations.
+"#;
+
+const TS_TIME_PARSE_CONTENT: &str = r#"Tool: builtin.time (operation='parse')
+Effect: read_only — parses a timestamp string into a structured time value.
+
+Parameters:
+- operation (string, fixed): "parse"
+- input (string, required): the timestamp to parse. Supports ISO 8601, RFC 2822, and
+  common human-readable formats (e.g. '2024-01-15 10:30', 'Jan 15 2024', '15/01/2024').
+- timezone (string, optional): IANA timezone for interpreting naive (timezone-less) input.
+
+Output: {utc_iso, year, month, day, hour, minute, second, timezone?}
+Error: unrecognised format → tool error.
+"#;
+
+const TS_TIME_CONVERT_CONTENT: &str = r#"Tool: builtin.time (operation='convert')
+Effect: read_only — converts a timestamp between timezones.
+
+Parameters:
+- operation (string, fixed): "convert"
+- input (string, required): source timestamp (ISO 8601 or any recognised format).
+- from_timezone (string, optional): IANA timezone if input is naive (default: UTC).
+- to_timezone (string, optional): target IANA timezone (default: UTC).
+
+Output: {utc_iso, converted_iso, from_timezone, to_timezone}
+Error: invalid timezone or unrecognised timestamp → tool error.
+"#;
+
+const TS_TIME_DIFF_CONTENT: &str = r#"Tool: builtin.time (operation='diff')
+Effect: read_only — computes the signed difference between two timestamps.
+
+Parameters:
+- operation (string, fixed): "diff"
+- input (string, required): first timestamp.
+- timestamp2 (string, required): second timestamp.
+- timezone / from_timezone (string, optional): IANA timezone for both inputs if naive.
+
+Output: {seconds, minutes, hours, days} — all signed (positive when timestamp2 is after input).
+Error: unrecognised format or ambiguous local time → tool error.
+"#;
+
+const TS_TIME_FORMAT_CONTENT: &str = r#"Tool: builtin.time (operation='format')
+Effect: read_only — formats a timestamp as a human-readable string.
+
+Parameters:
+- operation (string, fixed): "format"
+- input (string, required): source timestamp.
+- format / format_string (string, optional): chrono format string.
+  Default: '%Y-%m-%d %H:%M:%S %Z'. Examples: '%d %b %Y', '%I:%M %p', '%A, %B %-d, %Y'.
+- timezone (string, optional): IANA timezone to express the output in.
+- from_timezone (string, optional): IANA timezone for interpreting a naive input.
+
+Output: {formatted, utc_iso, timezone?}
+Error: unrecognised timestamp or invalid timezone → tool error.
+"#;
+
+const TS_JSON_QUERY_CONTENT: &str = r#"Tool: builtin.json (operation='query')
+Effect: read_only — extracts a value from a JSON structure by dot/bracket path.
+
+Parameters:
+- operation (string, fixed): "query"
+- data (any, required): JSON value or JSON string to query against.
+- path (string, required): dot-separated or bracket-notation path (e.g. 'user.address.city',
+  'items[0].name', 'response.data.results').
+
+Output: the value at path, or null if not found.
+Error: invalid JSON data → tool error. Path not found → null (not a tool error).
+"#;
+
+const TS_JSON_STRINGIFY_CONTENT: &str = r#"Tool: builtin.json (operation='stringify' or 'parse')
+Effect: read_only — serializes a value to a JSON string or parses a JSON string.
+
+Parameters:
+- operation (string, required): 'stringify' (value → JSON string) or 'parse' (JSON string → value).
+- data (any, required): the value to serialize, or the JSON string to parse.
+
+Output (stringify): {result} — pretty-printed JSON string.
+Output (parse): {result} — the parsed structured value.
+Error (parse): invalid JSON string → tool error.
+"#;
+
+const TS_JSON_VALIDATE_CONTENT: &str = r#"Tool: builtin.json (operation='validate')
+Effect: read_only — checks whether a string is syntactically valid JSON.
+
+Parameters:
+- operation (string, fixed): "validate"
+- data (string, required): the string to check.
+
+Output: {valid: bool, error: string|null}
+Never a tool error — invalid JSON returns {valid: false, error: "..."}.
+Use as a guard before json-parse when the source is external or user-provided.
+"#;
+
+const TS_SKILL_LIST_CONTENT: &str = r#"Tool: builtin.skill_list
+Effect: Read — returns a JSON array of installed skills.
+
+Parameters:
+- scope (string, optional): 'all' (default) | 'user' | 'system'. Use 'user' when the user
+  wants to see what they have installed. Use 'system' to inspect system-provided builtins.
+
+Output format:
+  [{name, class_code, description, source, validation_status, installed_at}]
+
+Scope isolation: a 'user' scope call never returns system-only components. The agent
+cannot modify system-scope skills without elevated authority.
+
+When to use:
+- Before installing a skill, list first to check whether it already exists.
+- When the user asks "what skills do I have?"
+- As the first step in any skill management recipe.
+"#;
+
+const TS_SKILL_INSTALL_CONTENT: &str = r#"Tool: builtin.skill_install
+Effect: Write — installs a skill, creating a pending component that enters Q1 → Q2.
+
+Parameters:
+- source_url (string, required): URL (https://) or absolute local path to a skill manifest
+  YAML/JSON. Remote URLs are fetched; the response must be a valid component manifest.
+- scope (string, optional): 'user' (default) | 'system'.
+
+Post-install state: the skill enters validation_status='pending' and goes through Q1.
+If Q1 fails, the install is rejected and logged. Q2 graduation is required before the
+skill is usable by the agent.
+
+Safety note: always confirm with the user before installing from an unknown source URL.
+Skills can contain PythonCode bodies that will execute in the orchestrator sandbox.
+"#;
+
+const TS_SKILL_REMOVE_CONTENT: &str = r#"Tool: builtin.skill_remove
+Effect: Write — permanently removes a skill from the scope. Irreversible.
+
+Parameters:
+- skill_name (string, required): exact name of the skill to remove.
+- scope (string, optional): 'user' (default) | 'system'.
+
+Safety invariants:
+- System-scope skills cannot be removed by user-scope calls.
+- Removal of a skill that is referenced by an active recipe will fail with an error
+  listing the dependent recipes. Resolve dependencies first.
+- Always confirm with the user before removal — this cannot be undone without
+  reinstalling.
+"#;
+
+const TS_ECHO_CONTENT: &str = r#"Tool: builtin.echo
+Effect: Read — returns the input message unchanged.
+
+Parameters:
+- message (string, required): any string value.
+
+Use cases (diagnostic / development only):
+- Confirm that the orchestrator's tool dispatch pipeline is functional.
+- Stub out a tool call during recipe development before the real tool is wired.
+- Verify that slot variable interpolation is working in a PythonCode executor.
+
+No user-facing recipe is defined for echo. Do not use echo in production recipe flows.
+If you find yourself routing user requests through echo, use the correct tool instead.
+"#;
+
+// ---------------------------------------------------------------------------
+// PythonCode body constants — management group
+// ---------------------------------------------------------------------------
+
+const PC_EXEC_TIME_NOW_CONTENT: &str = r#"# Orchestrator executor body.
+_timezone = "{{vars.slot0}}"
+_params = {"operation": "now"}
+if _timezone and _timezone != "":
+    _params["timezone"] = _timezone
+result = host.time(**_params)
+"#;
+
+const PC_EXEC_TIME_PARSE_CONTENT: &str = r#"# Orchestrator executor body.
+_input = "{{vars.slot0}}"
+_timezone = "{{vars.slot1}}"
+_params = {"operation": "parse", "input": _input}
+if _timezone and _timezone != "":
+    _params["timezone"] = _timezone
+result = host.time(**_params)
+"#;
+
+const PC_EXEC_TIME_CONVERT_CONTENT: &str = r#"# Orchestrator executor body.
+_input = "{{vars.slot0}}"
+_from_tz = "{{vars.slot1}}"
+_to_tz = "{{vars.slot2}}"
+_params = {"operation": "convert", "input": _input}
+if _from_tz and _from_tz != "":
+    _params["from_timezone"] = _from_tz
+if _to_tz and _to_tz != "":
+    _params["to_timezone"] = _to_tz
+result = host.time(**_params)
+"#;
+
+const PC_EXEC_TIME_DIFF_CONTENT: &str = r#"# Orchestrator executor body. No I/O, no imports, no network.
+# IBS bakes in slot values before execution.
+_input = "{{vars.slot0}}"
+_ts2   = "{{vars.slot1}}"
+result = host.time(operation="diff", input=_input, timestamp2=_ts2)
+"#;
+
+const PC_EXEC_TIME_FORMAT_CONTENT: &str = r#"# Orchestrator executor body. No I/O, no imports, no network.
+# IBS bakes in slot values before execution.
+_input  = "{{vars.slot0}}"
+_fmt    = "{{vars.slot1}}"
+_tz     = "{{vars.slot2}}"
+_params = {"operation": "format", "input": _input}
+if _fmt:
+    _params["format_string"] = _fmt
+if _tz:
+    _params["timezone"] = _tz
+result = host.time(**_params)
+"#;
+
+const PC_EXEC_JSON_QUERY_CONTENT: &str = r#"# Orchestrator executor body.
+_data = {{vars.slot0}}
+_path = "{{vars.slot1}}"
+result = host.json(operation="query", data=_data, path=_path)
+"#;
+
+const PC_EXEC_JSON_STRINGIFY_CONTENT: &str = r#"# Orchestrator executor body.
+_operation = "{{vars.slot0}}"
+_data = {{vars.slot1}}
+result = host.json(operation=_operation, data=_data)
+"#;
+
+const PC_EXEC_JSON_VALIDATE_CONTENT: &str = r#"# Orchestrator executor body.
+_data = "{{vars.slot0}}"
+result = host.json(operation="validate", data=_data)
+"#;
+
+const PC_EXEC_SKILL_LIST_CONTENT: &str = r#"# Orchestrator executor body.
+_scope = "{{vars.slot0}}" if "{{vars.slot0}}" else "all"
+result = host.skill_list(scope=_scope)
+"#;
+
+const PC_EXEC_ECHO_CONTENT: &str = r#"# Diagnostic executor body. host.<tool> provided by runtime sandbox.
+_message = "{{vars.slot0}}"
+result = host.echo(message=_message)
 "#;
