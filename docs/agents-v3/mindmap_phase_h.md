@@ -2555,3 +2555,28 @@ C6-4=C (CI/Docker e2e only, skip local). Nested subplan:
 (6 slices: 1=engine MontySession+park primitive, 2=rework basic_mode.py, 3=
 session registry, 4=TurnRunnerWorker direct path, 5=retire canonical.rs, 6=
 clippy+tests+mark done).
+
+### C.5 SHIPPED COMPLETE + C.6 slice 1 design recorded (2026-09-04)
+C.5 DONE: new `orchestrator/basic_mode.py` (172 lines, v3 basic-mode) +
+DEFAULT_ORCHESTRATOR swap (default.py→basic_mode.py) + Model-A test retirement
+(deleted select_skills/_parse_orchestrator_channel_steps/H.2 harness/segment-
+reduction block/5 orphaned constants; −602 lines via the test mod deletions in
+C.1 + the slice-3 sed). Both configs clippy clean; 564 lib + 96 orchestrator-
+module + 5 compose_orchestrator tests green. Shipped `26b0b153` (code) +
+`8b890159` (docs COMPLETE). Graceful degradation: seeded host-save-history +
+host-non-match-llm-answer recipes carry variants:None → compose_orchestrator
+NoVariantMatch → basic_mode.py falls back to direct host.kohai_complete; the
+seed default-variant fix is DEFERRED to a C.2 refinement.
+**C.6 slice 1 realization (DESIGN only, no code yet):** split slice 1 into a
+single self-contained refactor that keeps `loop_engine.rs` UNTOUCHED. Add
+`OrchestratorYield{Complete(OrchestratorResult),AwaitNextTurn}` +
+`OrchestratorDeps<'a>` + `MontySession{progress,parked_call,total_tokens,
+final_result,stdout}` + `MontySession::new` (extract setup :541-602) +
+`MontySession::drive_to_yield` (extract loop :604-957 + a private
+`DispatchOutcome{Resume,AwaitNextTurn}` so `host.await_next_turn()` parks the
+suspended `call` into `self.parked_call` instead of dropping it = TRUE
+persistence; resume it next drive with `new_input`). Refactor
+`execute_orchestrator` to a thin delegation with its SIGNATURE UNCHANGED (maps
+`AwaitNextTurn→Err(Orchestrator(classify_orchestrator_failure(...)))` non-
+persistent). Unit test: park→resume→complete via `MontySession` directly.
+Spec recorded in the C.6 subplan; shipped `9a033734`.
