@@ -705,6 +705,291 @@ async fn seed_filesystem_group(
         )
         .await?;
 
+    // 4c. Filesystem Leaf Skills (class 1). Prose bodies reference the
+    //     ToolSkill + PythonCode above by name. consumer_tags carry
+    //     05:validator (safe: the skill store has no SEC-01 hiding filter,
+    //     unlike pg_python_code_store). No intent_examples in the doc source
+    //     -> json!([]) (leaf skills are pulled in via recipe steps, not direct
+    //     intent matching). Transcribed verbatim from builtin_stuff_v3.md
+    //     Steps 2.4/2.5, 3.4/3.5/3.x.1, 4.4/4.5/4.x.1/4.x.2, 5.4/5.5/5.6,
+    //     6.4/6.5/6.6/6.x.1/6.x.2/6.x.7.2, 7.3/7.4, plus the +5 additions
+    //     (read-file-head/tail, file-exists, read-and-grep, list-and-filter).
+    let skill_read_file = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-read-file",
+                "Leaf skill: how to read a file from the workspace.",
+                SKILL_READ_FILE_BODY,
+            ),
+            "skill-read-file",
+        )
+        .await?;
+    let skill_read_file_range = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-read-file-range",
+                "Leaf skill: how to read a specific line range from a large file.",
+                SKILL_READ_FILE_RANGE_BODY,
+            ),
+            "skill-read-file-range",
+        )
+        .await?;
+    let skill_read_file_head = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-read-file-head",
+                "Leaf skill: how to read the first N lines of a file (head pattern).",
+                SKILL_READ_FILE_HEAD_BODY,
+            ),
+            "skill-read-file-head",
+        )
+        .await?;
+    let skill_read_file_tail = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-read-file-tail",
+                "Leaf skill: how to read the last N lines of a file (tail pattern).",
+                SKILL_READ_FILE_TAIL_BODY,
+            ),
+            "skill-read-file-tail",
+        )
+        .await?;
+    let skill_file_exists = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-file-exists",
+                "Leaf skill: how to check whether a file exists before reading or writing.",
+                SKILL_FILE_EXISTS_BODY,
+            ),
+            "skill-file-exists",
+        )
+        .await?;
+    let skill_write_file_new = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-write-file-new",
+                "Leaf skill: how to create a new file in the workspace.",
+                SKILL_WRITE_FILE_NEW_BODY,
+            ),
+            "skill-write-file-new",
+        )
+        .await?;
+    let skill_write_file_replace = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-write-file-replace",
+                "Leaf skill: how to fully replace an existing file's content.",
+                SKILL_WRITE_FILE_REPLACE_BODY,
+            ),
+            "skill-write-file-replace",
+        )
+        .await?;
+    let skill_write_file_template = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-write-file-template",
+                "Leaf skill: how to write a file using a pre-baked template content from vars.",
+                SKILL_WRITE_FILE_TEMPLATE_BODY,
+            ),
+            "skill-write-file-template",
+        )
+        .await?;
+    let skill_list_dir = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-list-dir",
+                "Leaf skill: how to list the contents of a single directory.",
+                SKILL_LIST_DIR_BODY,
+            ),
+            "skill-list-dir",
+        )
+        .await?;
+    let skill_list_dir_recursive = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-list-dir-recursive",
+                "Leaf skill: how to recursively scan a directory tree.",
+                SKILL_LIST_DIR_RECURSIVE_BODY,
+            ),
+            "skill-list-dir-recursive",
+        )
+        .await?;
+    let skill_list_dir_files_only = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-list-dir-files-only",
+                "Leaf skill: how to list only regular files (no subdirectories) in a directory.",
+                SKILL_LIST_DIR_FILES_ONLY_BODY,
+            ),
+            "skill-list-dir-files-only",
+        )
+        .await?;
+    let skill_list_dir_dirs_only = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-list-dir-dirs-only",
+                "Leaf skill: how to list only subdirectories in a directory.",
+                SKILL_LIST_DIR_DIRS_ONLY_BODY,
+            ),
+            "skill-list-dir-dirs-only",
+        )
+        .await?;
+    let skill_glob_by_extension = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-glob-by-extension",
+                "Leaf skill: how to find all files of a specific file extension.",
+                SKILL_GLOB_BY_EXTENSION_BODY,
+            ),
+            "skill-glob-by-extension",
+        )
+        .await?;
+    let skill_glob_by_name = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-glob-by-name",
+                "Leaf skill: how to find files by name pattern (not extension).",
+                SKILL_GLOB_BY_NAME_BODY,
+            ),
+            "skill-glob-by-name",
+        )
+        .await?;
+    let skill_glob_in_subdir = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-glob-in-subdir",
+                "Leaf skill: how to restrict a glob search to a specific subdirectory.",
+                SKILL_GLOB_IN_SUBDIR_BODY,
+            ),
+            "skill-glob-in-subdir",
+        )
+        .await?;
+    let skill_grep_files = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-files",
+                "Leaf skill: how to find which files contain a regex pattern.",
+                SKILL_GREP_FILES_BODY,
+            ),
+            "skill-grep-files",
+        )
+        .await?;
+    let skill_grep_content = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-content",
+                "Leaf skill: how to retrieve matching lines (with context) from files.",
+                SKILL_GREP_CONTENT_BODY,
+            ),
+            "skill-grep-content",
+        )
+        .await?;
+    let skill_grep_count = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-count",
+                "Leaf skill: how to count pattern occurrences without returning the matching lines.",
+                SKILL_GREP_COUNT_BODY,
+            ),
+            "skill-grep-count",
+        )
+        .await?;
+    let skill_grep_case_insensitive = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-case-insensitive",
+                "Leaf skill: how to perform a case-insensitive regex search across files.",
+                SKILL_GREP_CASE_INSENSITIVE_BODY,
+            ),
+            "skill-grep-case-insensitive",
+        )
+        .await?;
+    let skill_grep_type_filtered = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-type-filtered",
+                "Leaf skill: how to restrict a grep search to specific file types using the glob filter.",
+                SKILL_GREP_TYPE_FILTERED_BODY,
+            ),
+            "skill-grep-type-filtered",
+        )
+        .await?;
+    let skill_grep_invert = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-grep-invert",
+                "Leaf skill: how to find files or lines that do NOT match a pattern.",
+                SKILL_GREP_INVERT_BODY,
+            ),
+            "skill-grep-invert",
+        )
+        .await?;
+    let skill_apply_patch_single = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-apply-patch-single",
+                "Leaf skill: how to replace a single unique occurrence in a file.",
+                SKILL_APPLY_PATCH_SINGLE_BODY,
+            ),
+            "skill-apply-patch-single",
+        )
+        .await?;
+    let skill_apply_patch_all = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-apply-patch-all",
+                "Leaf skill: how to replace every occurrence of a string in a file.",
+                SKILL_APPLY_PATCH_ALL_BODY,
+            ),
+            "skill-apply-patch-all",
+        )
+        .await?;
+    let skill_read_and_grep = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-read-and-grep",
+                "Leaf skill: how to read a file and filter its content by a pattern in one step.",
+                SKILL_READ_AND_GREP_BODY,
+            ),
+            "skill-read-and-grep",
+        )
+        .await?;
+    let skill_list_and_filter = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-list-and-filter",
+                "Leaf skill: how to list a directory and filter the entries by name in one step.",
+                SKILL_LIST_AND_FILTER_BODY,
+            ),
+            "skill-list-and-filter",
+        )
+        .await?;
+
     // 5. Append the minted tool + toolskill + python_code ids to each per-tool
     //    catalogue (leaf Skill / Recipe ids appended in later chunks).
     stores
@@ -718,13 +1003,26 @@ async fn seed_filesystem_group(
                 pc_read_file_tail,
                 pc_file_exists,
                 pc_read_then_grep,
+                skill_read_file,
+                skill_read_file_range,
+                skill_read_file_head,
+                skill_read_file_tail,
+                skill_file_exists,
+                skill_read_and_grep,
             ],
         )
         .await?;
     stores
         .append_children(
             cat_write_file,
-            &[tool_write_file, ts_write_file, pc_write_file],
+            &[
+                tool_write_file,
+                ts_write_file,
+                pc_write_file,
+                skill_write_file_new,
+                skill_write_file_replace,
+                skill_write_file_template,
+            ],
         )
         .await?;
     stores
@@ -736,11 +1034,26 @@ async fn seed_filesystem_group(
                 pc_list_dir,
                 pc_list_filter_by_type,
                 pc_list_then_grep,
+                skill_list_dir,
+                skill_list_dir_recursive,
+                skill_list_dir_files_only,
+                skill_list_dir_dirs_only,
+                skill_list_and_filter,
             ],
         )
         .await?;
     stores
-        .append_children(cat_glob, &[tool_glob, ts_glob, pc_glob])
+        .append_children(
+            cat_glob,
+            &[
+                tool_glob,
+                ts_glob,
+                pc_glob,
+                skill_glob_by_extension,
+                skill_glob_by_name,
+                skill_glob_in_subdir,
+            ],
+        )
         .await?;
     stores
         .append_children(
@@ -752,18 +1065,31 @@ async fn seed_filesystem_group(
                 pc_grep_case_insensitive,
                 pc_grep_type_filtered,
                 pc_grep_invert,
+                skill_grep_files,
+                skill_grep_content,
+                skill_grep_count,
+                skill_grep_case_insensitive,
+                skill_grep_type_filtered,
+                skill_grep_invert,
             ],
         )
         .await?;
     stores
         .append_children(
             cat_apply_patch,
-            &[tool_apply_patch, ts_apply_patch, pc_apply_patch],
+            &[
+                tool_apply_patch,
+                ts_apply_patch,
+                pc_apply_patch,
+                skill_apply_patch_single,
+                skill_apply_patch_all,
+            ],
         )
         .await?;
 
-    // 6. Append all filesystem tool + toolskill + python_code ids to the
-    //    primary catalogue (path helpers are cross-capability → primary only).
+    // 6. Append all filesystem tool + toolskill + python_code + leaf skill ids
+    //    to the primary catalogue (path helpers are cross-capability → primary
+    //    only; the filesystem domain skill is added in a later chunk).
     stores
         .append_children(
             cat_filesystem,
@@ -775,26 +1101,51 @@ async fn seed_filesystem_group(
                 pc_read_file_tail,
                 pc_file_exists,
                 pc_read_then_grep,
+                skill_read_file,
+                skill_read_file_range,
+                skill_read_file_head,
+                skill_read_file_tail,
+                skill_file_exists,
+                skill_read_and_grep,
                 tool_write_file,
                 ts_write_file,
                 pc_write_file,
+                skill_write_file_new,
+                skill_write_file_replace,
+                skill_write_file_template,
                 tool_list_dir,
                 ts_list_dir,
                 pc_list_dir,
                 pc_list_filter_by_type,
                 pc_list_then_grep,
+                skill_list_dir,
+                skill_list_dir_recursive,
+                skill_list_dir_files_only,
+                skill_list_dir_dirs_only,
+                skill_list_and_filter,
                 tool_glob,
                 ts_glob,
                 pc_glob,
+                skill_glob_by_extension,
+                skill_glob_by_name,
+                skill_glob_in_subdir,
                 tool_grep,
                 ts_grep,
                 pc_grep,
                 pc_grep_case_insensitive,
                 pc_grep_type_filtered,
                 pc_grep_invert,
+                skill_grep_files,
+                skill_grep_content,
+                skill_grep_count,
+                skill_grep_case_insensitive,
+                skill_grep_type_filtered,
+                skill_grep_invert,
                 tool_apply_patch,
                 ts_apply_patch,
                 pc_apply_patch,
+                skill_apply_patch_single,
+                skill_apply_patch_all,
                 pc_path_join,
                 pc_path_basename,
                 pc_path_dirname,
@@ -802,7 +1153,7 @@ async fn seed_filesystem_group(
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 2: 6 base + 12 variant/helper PythonCode executors)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 2: 6 base + 12 variant/helper PythonCode + 25 leaf skills)");
     Ok(())
 }
 
@@ -1484,6 +1835,45 @@ fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPy
     }
 }
 
+/// consumer_tags shared by every filesystem leaf skill (class 1) — transcribed
+/// verbatim from the doc. The skill store has no SEC-01 `05:validator`-hiding
+/// filter (unlike `pg_python_code_store`), so carrying `05:validator` here is
+/// safe and matches the doc source.
+const LEAF_SKILL_TAGS: &[&str] = &["02:orchestrator", "05:validator"];
+
+/// Build a `NewPgSkill` row from the variable parts. `intent_examples` is
+/// `json!([])` because the doc's leaf/domain skill definitions carry no
+/// intent examples (leaf skills are loaded via recipe steps, not direct intent
+/// matching). `source`/`validation_status` are fixed to the builtin values.
+fn skill_row(
+    tenant: &str,
+    name: &str,
+    description: &str,
+    body: &str,
+    class_code: i16,
+    consumer_tags: &[&str],
+) -> NewPgSkill {
+    NewPgSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: name.to_string(),
+        description: description.to_string(),
+        body: body.to_string(),
+        class_code,
+        consumer_tags: consumer_tags.iter().map(|s| s.to_string()).collect(),
+        intent_examples: json!([]),
+        source: "system".into(),
+        validation_status: "validated".into(),
+    }
+}
+
+/// Convenience: a class-1 leaf skill with the shared `LEAF_SKILL_TAGS`.
+fn leaf_skill(tenant: &str, name: &str, description: &str, body: &str) -> NewPgSkill {
+    skill_row(tenant, name, description, body, 1, LEAF_SKILL_TAGS)
+}
+
 const PC_EXEC_READ_FILE_CONTENT: &str = r#"# Orchestrator executor body. host.<tool> is provided by the runtime sandbox.
 # IBS bakes in path and range values as {{vars.slot0}} / {{vars.slot1}} before execution.
 # No I/O, no imports — pure orchestrator dispatch.
@@ -1669,4 +2059,166 @@ const PC_PATH_DIRNAME_CONTENT: &str = r#"# Pure dirname — split on '/' and dro
 _path = "{{vars.slot0}}"
 _parts = [p for p in _path.split("/") if p]
 result = "/" + "/".join(_parts[:-1]) if len(_parts) > 1 else "/"
+"#;
+
+// ---------------------------------------------------------------------------
+// Filesystem Leaf Skill bodies (class 1) — transcribed verbatim from
+// builtin_stuff_v3.md (the 2-space YAML `|` indent is stripped; trailing
+// newline preserved). No body contains a `"#` sequence -> r#"..."# is safe.
+// ---------------------------------------------------------------------------
+
+const SKILL_READ_FILE_BODY: &str = r#"Use `ts-read-file` (via pc-exec-read-file) when you need to inspect a file's content.
+Always read a file before editing it — never overwrite blindly.
+For large files, use the `range` parameter (e.g. '1-100') to read specific line spans
+rather than loading the entire file at once.
+If the path is unknown, call skill-list-dir or skill-glob first to discover valid paths.
+"#;
+
+const SKILL_READ_FILE_RANGE_BODY: &str = r#"When a file is too large to read in full, use the `range` parameter of `ts-read-file`
+(e.g. range='100-200') to read only the needed lines. Check `line_count` in the first
+read result to know the file length, then paginate through sections. Each range call
+returns only those lines. Use this pattern to avoid the 1 MiB output cap.
+"#;
+
+const SKILL_READ_FILE_HEAD_BODY: &str = r#"Use pc-exec-read-file-head to read the first 50 lines of a file without loading the
+whole file. Useful for inspecting file headers, licence blocks, or configuration prefixes.
+For a custom line count (other than 50), use skill-read-file-range with an explicit range.
+"#;
+
+const SKILL_READ_FILE_TAIL_BODY: &str = r#"Use pc-exec-read-file-tail to read the last 50 lines of a file without loading the whole file.
+Useful for reading logs, recent entries, or the end of an append-only file.
+The helper first probes line_count via a range='1-1' read, then fetches the tail window.
+"#;
+
+const SKILL_FILE_EXISTS_BODY: &str = r#"Use pc-exec-file-exists to probe whether a file exists before attempting a full read or
+write. Returns {exists: bool, path}. Use this before skill-read-file to avoid surfacing
+a 'file not found' error to the user when existence is uncertain. Also use before
+skill-write-file-replace to confirm whether to overwrite or create-new.
+"#;
+
+const SKILL_WRITE_FILE_NEW_BODY: &str = r#"Use `ts-write-file` (via pc-exec-write-file) when creating a file that does not yet
+exist. Provide the full intended content. The path must be within the scoped workspace
+mount. The file is created immediately — there is no confirmation step unless the
+orchestrator adds one.
+"#;
+
+const SKILL_WRITE_FILE_REPLACE_BODY: &str = r#"Use `ts-write-file` to completely replace a file's content when the entire file must
+be rewritten. IMPORTANT: read the file first with skill-read-file before overwriting —
+never discard existing content without seeing it. For small, targeted edits (a few lines),
+prefer skill-apply-patch — it is safer because it requires matching the current content.
+Use write_file only when you genuinely intend to replace the full content.
+"#;
+
+const SKILL_WRITE_FILE_TEMPLATE_BODY: &str = r#"Use `ts-write-file` (via pc-exec-write-file) when the content to write is fully
+pre-determined and baked into the recipe vars by IBS — no LLM authorship needed.
+Examples: creating an empty __init__.py, writing a fixed .gitignore stub, creating
+a minimal config file with pre-set default values. The path and content both come
+from vars, not from user input that needs interpretation.
+"#;
+
+const SKILL_LIST_DIR_BODY: &str = r#"Use `ts-list-dir` (via pc-exec-list-dir) to enumerate the files and folders in a
+directory. Provide the scoped path; omit it to default to the workspace root. The
+result includes entry names, types (file/directory), and sizes. Interpret and present
+the entries relevant to the task. If the listing is large, summarise by grouping.
+"#;
+
+const SKILL_LIST_DIR_RECURSIVE_BODY: &str = r#"Use `ts-list-dir` with `recursive=true` and a `max_depth` limit when you need to see
+the full subtree of a directory. Keep max_depth at 3 or less for large projects to
+avoid output truncation. If the root listing is too large, narrow the path first.
+For pattern-based searching, skill-glob is more precise.
+"#;
+
+const SKILL_LIST_DIR_FILES_ONLY_BODY: &str = r#"Use `ts-list-dir` and then filter the result with `pc-exec-list-filter-by-type` to
+return only entries of type 'file'. This is useful when you want to process every file
+in a directory without recursing, and you want to skip subdirectory entries. The
+filter is applied in the PythonCode step after the list call returns.
+"#;
+
+const SKILL_LIST_DIR_DIRS_ONLY_BODY: &str = r#"Use `ts-list-dir` and then filter the result with `pc-exec-list-filter-by-type` to
+return only entries of type 'directory'. This is useful when exploring the top-level
+structure of a project (e.g. list only the immediate subdirectories of the repo root).
+The filter is applied in the PythonCode step after the list call returns.
+"#;
+
+const SKILL_GLOB_BY_EXTENSION_BODY: &str = r#"Use `ts-glob` with a pattern like `**/*.rs` or `**/*.ts` to find all files of a given
+extension across the workspace. The `**` prefix searches recursively into all
+subdirectories. Use `path` to restrict the search to a specific subdirectory. Use
+`max_results` when you only need a sample.
+"#;
+
+const SKILL_GLOB_BY_NAME_BODY: &str = r#"Use `ts-glob` with a pattern like `**/config*.toml` or `**/README*` to find files
+whose names match a specific pattern. Combine `*` (any chars in one directory level)
+and `**` (any number of directory levels) to build the right pattern. The results
+are sorted by modification time — most recently changed first.
+"#;
+
+const SKILL_GLOB_IN_SUBDIR_BODY: &str = r#"Use `ts-glob` with the `path` parameter set to a specific subdirectory to restrict the
+search scope (e.g. path='src/', pattern='**/*.test.ts'). This is faster and more
+precise than a workspace-root glob when the files of interest are in a known subtree.
+"#;
+
+const SKILL_GREP_FILES_BODY: &str = r#"Use `ts-grep` with `output_mode='files_with_matches'` when you only need to know
+WHICH files contain the pattern — not the matching lines. This is the fastest mode
+and produces compact output. Use `glob` to restrict the file types searched (e.g.
+glob='*.rs' to search only Rust files). Use `case_insensitive=true` when the match
+should be case-independent.
+"#;
+
+const SKILL_GREP_CONTENT_BODY: &str = r#"Use `ts-grep` with `output_mode='content'` when you need the actual matching lines,
+not just which files match. Add `context` (symmetric) or `before_context`/`after_context`
+(asymmetric) to include surrounding lines — useful when the surrounding code helps
+understand the match. Use `head_limit` to cap the number of results when the pattern
+appears frequently. Use `offset` to paginate through large result sets.
+"#;
+
+const SKILL_GREP_COUNT_BODY: &str = r#"Use `ts-grep` with `output_mode='count'` when you only need to know how many times
+a pattern appears, not the actual lines. This is efficient for large codebases where
+you want a frequency signal (e.g. how many TODO comments exist) without reading all
+the matching content. The result contains per-file counts.
+"#;
+
+const SKILL_GREP_CASE_INSENSITIVE_BODY: &str = r#"Use `ts-grep` with `case_insensitive=true` when the match should be case-independent
+(e.g. searching for 'error' should also match 'Error', 'ERROR'). Combine with any
+output_mode (files_with_matches, content, count). This is a distinct approach from
+the default case-sensitive search — prefer this skill when the user says 'any case',
+'case insensitive', or when the pattern contains mixed-case user input.
+"#;
+
+const SKILL_GREP_TYPE_FILTERED_BODY: &str = r#"Use `ts-grep` with the `glob` parameter to restrict the search to a specific file type
+(e.g. glob='*.rs' to search only Rust files, glob='*.{ts,tsx}' for TypeScript). This
+is more precise than a workspace-root grep and avoids noise from unrelated file types.
+Combine with any output_mode. When the user specifies a file type in their search
+intent, always use the glob filter — it reduces result noise significantly.
+"#;
+
+const SKILL_GREP_INVERT_BODY: &str = r#"Use `ts-grep` with `invert_match=true` when you need to find content that EXCLUDES a
+pattern (e.g. source files without a copyright header, lines that are not comments,
+configs missing a required key). The output returns non-matching entries. Combine with
+output_mode='files_with_matches' to get the list of files without that pattern, or
+'content' to get non-matching lines. Use pc-exec-grep-invert for execution.
+"#;
+
+const SKILL_APPLY_PATCH_SINGLE_BODY: &str = r#"Use `ts-apply-patch` with a unique `old_string` to replace exactly one occurrence of
+text in a file. old_string must include enough surrounding lines (3–5) to be unambiguous.
+If the string appears more than once, the tool will error — use skill-apply-patch-all
+instead, or narrow old_string to include unique context. Always read the file first with
+skill-read-file when uncertain of the exact current text.
+"#;
+
+const SKILL_APPLY_PATCH_ALL_BODY: &str = r#"Use `ts-apply-patch` with `replace_all=true` when the same string appears multiple
+times and ALL occurrences should be changed (e.g. renaming a symbol throughout a file).
+Verify the replacement is correct for ALL occurrences before dispatching — this is
+irreversible without re-reading and re-patching.
+"#;
+
+const SKILL_READ_AND_GREP_BODY: &str = r#"Use pc-exec-read-then-grep when you need to find specific lines in a known file without
+running a separate grep tool call. This is more efficient than read_file + grep as a
+separate step for small-to-medium files. For large files or multi-file searches, prefer
+skill-grep-content instead. Returns a list of matching lines.
+"#;
+
+const SKILL_LIST_AND_FILTER_BODY: &str = r#"Use pc-exec-list-then-grep when you need to enumerate a directory and immediately
+narrow results by a name substring (e.g. "show me all Python files in src/"). This
+avoids a separate glob call for simple substring name filters. For extension-based
+filtering, prefer skill-glob-by-extension for exact extension matching.
 "#;
