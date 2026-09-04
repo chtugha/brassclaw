@@ -40,6 +40,11 @@ use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
+// J.1 — intent-seeding helper (skills-db gated; seeds intent_examples into
+// reborn_intent_inputs when a skill is inserted with validation_status='validated').
+#[cfg(feature = "skills-db")]
+use crate::pg_intent_inputs_store::seed_skill_intent_examples;
+
 /// Errors raised by `reborn_skills` store operations.
 #[derive(Debug, Error)]
 pub(crate) enum PgSkillStoreError {
@@ -107,12 +112,18 @@ impl PgSkillStore {
     /// existing id via [`Self::get_id_by_name`]. `prompt_uid` defaults to the
     /// sequence, `tier` to `'seedling'`, scoring to 0, `validation_errors` to
     /// `'{}'`.
+    ///
+    /// **J.1 (skills-db gate):** when `validation_status = "validated"` (e.g.
+    /// `source = "system"` builtins), `intent_examples` are propagated to
+    /// `reborn_intent_inputs` so `resolve_intent` can match them immediately.
+    /// Seeding is best-effort — a failure is logged at `debug!` and does not
+    /// block the insert.
     pub(crate) async fn insert(
         &self,
         row: NewPgSkill,
     ) -> Result<Option<Uuid>, PgSkillStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
-        let row = client
+        let inserted = client
             .query_opt(
                 "INSERT INTO reborn_skills
                     (tenant_id, user_id, agent_id, project_id,
@@ -140,7 +151,39 @@ impl PgSkillStore {
             )
             .await
             .map_err(map_pg)?;
-        Ok(row.map(|r| r.get(0)))
+
+        let new_id: Option<Uuid> = inserted.map(|r| r.get(0));
+
+        // J.1 — seed intent_examples when the row is immediately validated
+        // (source='system' builtins). Skills that start as 'pending' will be
+        // seeded at Phase-N Q2-graduation; this path covers the pre-Phase-N
+        // system-seed flow.
+        #[cfg(feature = "skills-db")]
+        if let Some(id) = new_id
+            && row.validation_status == "validated"
+        {
+            use brassclaw_engine::memory::intent_system::IntentScope;
+            let scope = IntentScope {
+                tenant_id: row.tenant_id.clone(),
+                user_id: row.user_id.clone(),
+                agent_id: row.agent_id.clone(),
+                project_id: row.project_id.clone(),
+            };
+            if let Err(e) = seed_skill_intent_examples(
+                &self.pool,
+                &scope,
+                id,
+                i32::from(row.class_code),
+                &row.intent_examples,
+            )
+            .await
+            {
+                tracing::debug!(skill_id = %id, err = %e,
+                    "J.1: seed_skill_intent_examples soft-fail (non-blocking)");
+            }
+        }
+
+        Ok(new_id)
     }
 
     /// Resolve a skill's id by `(scope, name)`. Used by the seed to recover the

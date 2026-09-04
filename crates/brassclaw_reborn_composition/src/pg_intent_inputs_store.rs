@@ -6,6 +6,86 @@
 //!
 //! Feature-gated: `postgres` (pool) + `skills-db` (intent_system fns).
 
+/// Seed all `intent_examples` from a skill row into `reborn_intent_inputs`.
+///
+/// Called by the composition layer after a skill row transitions to
+/// `validation_status = 'validated'` (either direct-insert with `source =
+/// 'system'` or after `DbSkillStore::mark_validated`).  Idempotent via the
+/// `INSERT … ON CONFLICT DO UPDATE` in `seed_intent_input`.
+///
+/// `intent_examples_json` is the JSONB column value from `reborn_skills`
+/// (array of `{input: string, class: 1|2|3}` objects).
+/// Entries that are not objects, or that have a missing / out-of-range `class`,
+/// are silently skipped (soft-fail — bad examples on one skill must not block
+/// seeding of the others).
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) async fn seed_skill_intent_examples(
+    pool: &brassclaw_pg::PgPool,
+    scope: &brassclaw_engine::memory::intent_system::IntentScope,
+    skill_id: uuid::Uuid,
+    // Class code of the skill row (1 = Rusty, 2 = Monty, 3 = Llm).
+    skill_class_code: i32,
+    intent_examples_json: &serde_json::Value,
+) -> Result<usize, brassclaw_engine::memory::intent_system::IntentSystemError> {
+    use brassclaw_engine::memory::intent_system::{InputClass, IntentSource, seed_intent_input};
+
+    let arr = match intent_examples_json.as_array() {
+        Some(a) => a,
+        None => return Ok(0), // not an array → no-op
+    };
+
+    let mut seeded = 0usize;
+    for entry in arr {
+        let obj = match entry.as_object() {
+            Some(o) => o,
+            None => continue, // not an object → skip
+        };
+        let input_text = match obj.get("input").and_then(|v| v.as_str()) {
+            Some(s) if !s.is_empty() => s,
+            _ => continue, // missing or empty "input" → skip
+        };
+        let class_num = match obj.get("class").and_then(|v| v.as_i64()) {
+            Some(n) => n,
+            None => continue, // missing "class" → skip
+        };
+        let input_class = match class_num {
+            1 => InputClass::Word,
+            2 => InputClass::Partial,
+            3 => InputClass::Sentence,
+            _ => continue, // out-of-range → skip
+        };
+
+        seed_intent_input(
+            pool,
+            scope,
+            input_text,
+            input_class,
+            skill_id,
+            skill_class_code,
+            IntentSource::Seeded,
+            None, // step_link: None — skills are not Recipe variants (FIND-NEW-03)
+        )
+        .await?;
+        seeded += 1;
+    }
+    Ok(seeded)
+}
+
+/// Remove all intent inputs for a skill from `reborn_intent_inputs`.
+///
+/// Called by the composition layer before or after a skill row is deleted
+/// (`DbSkillStore::delete_garbage` or equivalent terminal wipe).
+/// Wired at Phase N (Q2 graduation / `delete_garbage` caller path).
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+#[allow(dead_code)]
+pub(crate) async fn purge_skill_intents(
+    pool: &brassclaw_pg::PgPool,
+    scope: &brassclaw_engine::memory::intent_system::IntentScope,
+    skill_id: uuid::Uuid,
+) -> Result<u64, brassclaw_engine::memory::intent_system::IntentSystemError> {
+    brassclaw_engine::memory::intent_system::purge_component_inputs(pool, scope, skill_id).await
+}
+
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod inner {
     use std::sync::Arc;

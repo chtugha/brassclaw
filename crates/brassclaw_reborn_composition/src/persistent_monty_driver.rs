@@ -223,15 +223,13 @@ impl PersistentMontyDriver {
         session
             .drive_to_yield(
                 thread,
-                &self.llm,
                 &self.effects,
                 &self.leases,
                 &self.policy,
                 signal_rx,
                 self.event_tx.as_ref(),
-                // The three dead-walking deps (retrieval / platform_info /
-                // _retrieval_source) are unused by the v3 host.* dispatch arms
-                // and retire in C.7; passed as None here.
+                // retrieval / platform_info / _retrieval_source are unused by
+                // the v3 host.* dispatch arms and retire in C.7; None here.
                 None,
                 Some(&self.store),
                 None,

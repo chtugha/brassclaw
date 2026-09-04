@@ -955,6 +955,68 @@ impl PostgresSource {
         let mut orchestrator_items: Vec<ComponentItem> =
             fetch_components_by_ids(&self.pool, scope, &orch_pairs).await?;
 
+        // 8b. Dependency traversal (§0.19 / Phase J.3).
+        //     For each step in either channel that carries a non-empty
+        //     `DependencyExpr`, call `resolve_dependencies` with a shared
+        //     `visited` set so a UUID fetched in any earlier step is not
+        //     re-fetched (cycle guard + deduplication per §0.19 algorithm).
+        //     Results are partitioned by class_code: class 13 (ToolSkill) →
+        //     rust_items; all others → orchestrator_items.
+        {
+            let mut dep_visited: std::collections::HashSet<uuid::Uuid> =
+                std::collections::HashSet::new();
+            // Seed visited with all UUIDs already fetched in step 7 (include
+            // channel), so dependency traversal does not re-fetch them.
+            for item in rust_items.iter().chain(orchestrator_items.iter()) {
+                dep_visited.insert(item.id);
+            }
+
+            let all_steps = instruction
+                .rust_steps
+                .iter()
+                .chain(instruction.orchestrator_steps.iter());
+            for step in all_steps {
+                if let Some(dep_expr) = &step.dependencies {
+                    if dep_expr.is_empty() {
+                        continue;
+                    }
+                    // The root_id for dependency traversal is the first include
+                    // UUID of the step (the "owner" component whose
+                    // dependency_registry we walk).  If the step has no
+                    // include UUIDs there is nothing to root the traversal on;
+                    // soft-skip.
+                    let root_id = match step.include.first() {
+                        Some(id) => *id,
+                        None => continue,
+                    };
+                    match resolve_dependencies(
+                        &self.pool,
+                        scope,
+                        root_id,
+                        dep_expr,
+                        &mut dep_visited,
+                    )
+                    .await
+                    {
+                        Ok((dep_orch, dep_rust)) => {
+                            orchestrator_items.extend(dep_orch);
+                            rust_items.extend(dep_rust);
+                        }
+                        Err(e) => {
+                            // §0.19 soft-fail: dependency errors must not abort
+                            // the turn.  Log at debug and continue.
+                            tracing::debug!(
+                                step_id = %step.step_id,
+                                root_id = %root_id,
+                                err = %e,
+                                "J.3: resolve_dependencies soft-fail (non-blocking)"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         // 9. Substitute {{vars.name}} into every fetched body (§0.20.3).
         for item in rust_items.iter_mut() {
             item.effective_content = substitute_vars(&item.effective_content, &vars);

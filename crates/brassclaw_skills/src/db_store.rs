@@ -338,9 +338,23 @@ mod inner {
         }
 
         // 6. intent_examples structure
+        //    Each entry must be a `{input: string, class: 1|2|3}` object.
+        //    A Vec<String>-shaped entry (no "input"/"class" keys) is rejected as
+        //    shape-incompatible (§J.1 / FIND-12).  Maximum "input" length is 512
+        //    chars (spec §J.1 — guards against excessively large intent rows).
+        const MAX_INTENT_INPUT_LEN: usize = 512;
         if let Some(arr) = input.intent_examples.as_array() {
             for (i, entry) in arr.iter().enumerate() {
-                let has_input = entry.get("input").and_then(|v| v.as_str()).is_some();
+                if entry.is_string() {
+                    // Vec<String>-shaped entry — shape-incompatible (J.1 FIND-12).
+                    result.errors.push(format!(
+                        "intent_examples[{i}] must be {{\"input\": string, \"class\": 1|2|3}} \
+                         (found a bare string — Vec<String> shape is incompatible)"
+                    ));
+                    continue;
+                }
+                let input_str = entry.get("input").and_then(|v| v.as_str());
+                let has_input = input_str.is_some();
                 let class_ok = entry
                     .get("class")
                     .and_then(|v| v.as_u64())
@@ -350,6 +364,15 @@ mod inner {
                     result
                         .errors
                         .push(format!("intent_examples[{i}] missing 'input' string field"));
+                }
+                if let Some(s) = input_str
+                    && s.len() > MAX_INTENT_INPUT_LEN
+                {
+                    result.errors.push(format!(
+                        "intent_examples[{i}] 'input' exceeds {MAX_INTENT_INPUT_LEN} chars \
+                         ({} chars)",
+                        s.len()
+                    ));
                 }
                 if !class_ok {
                     result
@@ -1187,6 +1210,62 @@ mod inner {
             // This is enforced at the SQL layer (NOT '05:validator' = ANY(consumer_tags)).
             // The test documents the contract; actual enforcement is verified by
             // the integration test in brassclaw_pg.
+        }
+
+        // -----------------------------------------------------------------------
+        // Phase J.1 — intent_examples seeding contract tests
+        // -----------------------------------------------------------------------
+
+        /// J.1: An array of bare strings is shape-incompatible with the
+        /// `{input, class}` schema — the validator must reject it explicitly.
+        #[test]
+        fn intent_examples_vec_string_shape_rejected() {
+            let mut input = base_input();
+            // Vec<String> shape — not {input, class} objects.
+            input.intent_examples = json!(["list open issues", "github issues"]);
+            let vr = validate_row(&input);
+            assert!(
+                vr.errors.iter().any(|e| e.contains("bare string")),
+                "expected bare-string rejection, got: {:?}",
+                vr.errors
+            );
+        }
+
+        /// J.1: A valid `{input, class}` array round-trips successfully.
+        #[test]
+        fn intent_examples_valid_objects_pass() {
+            let mut input = base_input();
+            input.intent_examples = json!([
+                {"input": "list open issues", "class": 3},
+                {"input": "github issues", "class": 2},
+                {"input": "issues", "class": 1}
+            ]);
+            let vr = validate_row(&input);
+            assert!(vr.is_ok(), "expected ok, got: {:?}", vr.errors);
+        }
+
+        /// J.1: An entry whose `input` exceeds 512 chars must be rejected.
+        #[test]
+        fn intent_examples_input_over_512_chars_rejected() {
+            let mut input = base_input();
+            let long_input = "a".repeat(513);
+            input.intent_examples = json!([{"input": long_input, "class": 2}]);
+            let vr = validate_row(&input);
+            assert!(
+                vr.errors.iter().any(|e| e.contains("exceeds") && e.contains("512")),
+                "expected length rejection, got: {:?}",
+                vr.errors
+            );
+        }
+
+        /// J.1: Exactly 512 chars is allowed (boundary condition).
+        #[test]
+        fn intent_examples_input_exactly_512_chars_passes() {
+            let mut input = base_input();
+            let ok_input = "a".repeat(512);
+            input.intent_examples = json!([{"input": ok_input, "class": 1}]);
+            let vr = validate_row(&input);
+            assert!(vr.is_ok(), "expected ok at exactly 512 chars, got: {:?}", vr.errors);
         }
     }
 } // mod inner

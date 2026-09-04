@@ -6,8 +6,6 @@
 //! truncation — all in Python, patchable by the self-improvement validation loop.
 //!
 //! Host functions exposed to the orchestrator Python:
-//! - `__llm_complete__` — make an LLM call (retires in C.2; LLM calls become
-//!   Kohai-mediated recipes — Rust never talks to the LLM directly)
 //! - `__check_signals__` — poll for stop/inject signals
 //! - `__emit_event__` — broadcast a ThreadEvent
 //! - `__save_checkpoint__` — persist thread state
@@ -49,8 +47,8 @@ use crate::capability::policy::PolicyEngine;
 use crate::memory::{ComponentScope, RetrievalEngine, RetrievalSource};
 use crate::runtime::lease_refresh::reconcile_dynamic_tool_lease;
 use crate::runtime::messaging::{SignalReceiver, ThreadOutcome, ThreadSignal};
-use crate::traits::effect::{EffectExecutor, ThreadExecutionContext};
-use crate::traits::llm::{LlmBackend, LlmCallConfig};
+use crate::traits::effect::EffectExecutor;
+use crate::traits::llm::LlmBackend;
 use crate::traits::store::Store;
 use crate::types::error::{EngineError, OrchestratorFailure, OrchestratorFailureKind};
 use crate::types::event::{EventKind, ThreadEvent};
@@ -630,7 +628,6 @@ impl MontySession {
     pub async fn drive_to_yield(
         &mut self,
         thread: &mut Thread,
-        llm: &Arc<dyn LlmBackend>,
         effects: &Arc<dyn EffectExecutor>,
         leases: &Arc<LeaseManager>,
         policy: &Arc<PolicyEngine>,
@@ -638,7 +635,7 @@ impl MontySession {
         event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
         retrieval: Option<&RetrievalEngine>,
         store: Option<&Arc<dyn Store>>,
-        platform_info: Option<&crate::executor::prompt::PlatformInfo>,
+        _platform_info: Option<&crate::executor::prompt::PlatformInfo>,
         gate_controller: &Arc<dyn crate::gate::GateController>,
         _retrieval_source: Option<&Arc<dyn RetrievalSource>>,
         dynamic_tools: Option<&Arc<dyn DynamicToolPort>>,
@@ -725,24 +722,6 @@ impl MontySession {
                             let val = args.first().map(monty_to_json).unwrap_or_default();
                             self.final_result = Some(val);
                             ExtFunctionResult::Return(MontyObject::None)
-                        }
-
-                        // __llm_complete__(messages, actions, config)
-                        "__llm_complete__" => {
-                            handle_llm_complete(
-                                args,
-                                kwargs,
-                                thread,
-                                LlmCompleteDeps {
-                                    llm,
-                                    effects,
-                                    leases,
-                                    store,
-                                    platform_info,
-                                },
-                                &mut self.total_tokens,
-                            )
-                            .await
                         }
 
                         // __check_signals__()
@@ -869,7 +848,6 @@ impl MontySession {
                             handle_run_program(
                                 &args[1..],
                                 thread,
-                                llm,
                                 effects,
                                 leases,
                                 policy,
@@ -1078,7 +1056,6 @@ pub async fn prepare_monty_session(
 pub async fn execute_orchestrator(
     code: &str,
     thread: &mut Thread,
-    llm: &Arc<dyn LlmBackend>,
     effects: &Arc<dyn EffectExecutor>,
     leases: &Arc<LeaseManager>,
     policy: &Arc<PolicyEngine>,
@@ -1099,7 +1076,6 @@ pub async fn execute_orchestrator(
     match session
         .drive_to_yield(
             thread,
-            llm,
             effects,
             leases,
             policy,
@@ -1128,183 +1104,6 @@ pub async fn execute_orchestrator(
 }
 
 // ── Host function handlers ──────────────────────────────────
-
-struct LlmCompleteDeps<'a> {
-    llm: &'a Arc<dyn LlmBackend>,
-    effects: &'a Arc<dyn EffectExecutor>,
-    leases: &'a Arc<LeaseManager>,
-    store: Option<&'a Arc<dyn Store>>,
-    platform_info: Option<&'a crate::executor::prompt::PlatformInfo>,
-}
-
-/// Handle `__llm_complete__(messages, actions, config)`.
-///
-/// Calls the LLM and returns the response as a dict:
-/// `{type: "text"|"code"|"actions", content/code/calls: ..., usage: {...}}`
-///
-async fn handle_llm_complete(
-    args: &[MontyObject],
-    _kwargs: &[(MontyObject, MontyObject)],
-    thread: &mut Thread,
-    deps: LlmCompleteDeps<'_>,
-    total_tokens: &mut TokenUsage,
-) -> ExtFunctionResult {
-    use crate::types::step::LlmResponse;
-
-    let explicit_messages = args.first().map(monty_to_json).filter(|v| !v.is_null());
-    let explicit_config = args.get(2).map(monty_to_json).filter(|v| !v.is_null());
-    let mut messages = explicit_messages
-        .as_ref()
-        .and_then(json_to_thread_messages)
-        .unwrap_or_else(|| thread.messages.clone());
-
-    if let Err(e) = reconcile_dynamic_tool_lease(
-        thread,
-        deps.effects,
-        deps.leases,
-        deps.store,
-        &crate::LeasePlanner::new(),
-    )
-    .await
-    {
-        warn_on_lease_refresh_failure("llm_complete", &e);
-    }
-
-    let active_leases = deps.leases.active_for_thread(thread.id).await;
-    // Read-only path: `available_actions` and the message refresh below
-    // don't pause; inert controller is correct.
-    let actions_context = thread_execution_context(
-        thread,
-        StepId::new(),
-        None,
-        crate::gate::CancellingGateController::arc(),
-    );
-    let actions = deps
-        .effects
-        .available_actions(&active_leases, &actions_context)
-        .await
-        .unwrap_or_default();
-    refresh_llm_messages_for_current_surface(
-        &mut messages,
-        thread,
-        deps.effects,
-        deps.store,
-        deps.platform_info,
-        &active_leases,
-        &actions_context,
-        &actions,
-    )
-    .await;
-
-    let config = LlmCallConfig {
-        max_tokens: explicit_config
-            .as_ref()
-            .and_then(|cfg| cfg.get("max_tokens"))
-            .and_then(|v| v.as_u64())
-            .and_then(|v| u32::try_from(v).ok()),
-        temperature: explicit_config
-            .as_ref()
-            .and_then(|cfg| cfg.get("temperature"))
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32),
-        force_text: explicit_config
-            .as_ref()
-            .and_then(|cfg| cfg.get("force_text"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
-        depth: thread.config.depth,
-        model: explicit_config
-            .as_ref()
-            .and_then(|cfg| cfg.get("model"))
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        metadata: HashMap::new(),
-    };
-
-    match deps.llm.complete(&messages, &actions, &config).await {
-        Ok(output) => {
-            total_tokens.input_tokens += output.usage.input_tokens;
-            total_tokens.output_tokens += output.usage.output_tokens;
-            total_tokens.cost_usd += output.usage.cost_usd;
-
-            let usage = serde_json::json!({
-                "input_tokens": output.usage.input_tokens,
-                "output_tokens": output.usage.output_tokens,
-                "cost_usd": output.usage.cost_usd,
-            });
-
-            let result = match output.response {
-                LlmResponse::Text(text) => {
-                    serde_json::json!({"type": "text", "content": text, "usage": usage})
-                }
-                LlmResponse::Code { code, .. } => {
-                    serde_json::json!({"type": "code", "code": code, "usage": usage})
-                }
-                LlmResponse::ActionCalls { calls, content } => {
-                    // Single source of truth for the Python interchange
-                    // shape — must round-trip via `python_json_to_action_calls`.
-                    let calls_json = action_calls_to_python_json(&calls);
-                    serde_json::json!({
-                        "type": "actions",
-                        "content": content,
-                        "calls": calls_json,
-                        "usage": usage
-                    })
-                }
-            };
-
-            ExtFunctionResult::Return(json_to_monty(&result))
-        }
-        Err(e) => ExtFunctionResult::Error(monty::MontyException::new(
-            monty::ExcType::RuntimeError,
-            Some(format!("LLM call failed: {e}")),
-        )),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn refresh_llm_messages_for_current_surface(
-    messages: &mut Vec<ThreadMessage>,
-    thread: &Thread,
-    effects: &Arc<dyn EffectExecutor>,
-    store: Option<&Arc<dyn Store>>,
-    platform_info: Option<&crate::executor::prompt::PlatformInfo>,
-    active_leases: &[crate::types::capability::CapabilityLease],
-    actions_context: &ThreadExecutionContext,
-    actions: &[crate::types::capability::ActionDef],
-) {
-    if !messages.iter().any(|message| {
-        message.role == crate::types::message::MessageRole::System
-            && crate::executor::prompt::is_codeact_system_prompt(&message.content)
-    }) {
-        return;
-    }
-
-    let capabilities = match effects
-        .available_capabilities(active_leases, actions_context)
-        .await
-    {
-        Ok(capabilities) => capabilities,
-        Err(error) => {
-            debug!(
-                thread_id = %thread.id,
-                "failed to load capabilities for llm_complete prompt refresh: {error}"
-            );
-            Vec::new()
-        }
-    };
-
-    let system_prompt = crate::executor::prompt::build_codeact_system_prompt(
-        &capabilities,
-        actions,
-        store,
-        thread.project_id,
-        platform_info,
-    )
-    .await;
-
-    crate::executor::prompt::upsert_codeact_system_prompt(messages, system_prompt);
-}
 
 /// Handle `__check_signals__()`.
 fn handle_check_signals(signal_rx: &mut SignalReceiver, thread: &mut Thread) -> ExtFunctionResult {
@@ -1697,7 +1496,6 @@ async fn handle_fetch_component(
 async fn handle_run_program(
     args: &[MontyObject],
     thread: &Thread,
-    llm: &Arc<dyn LlmBackend>,
     effects: &Arc<dyn EffectExecutor>,
     leases: &Arc<LeaseManager>,
     policy: &Arc<PolicyEngine>,
@@ -1711,7 +1509,7 @@ async fn handle_run_program(
     match Box::pin(execute_code(
         &code,
         thread,
-        llm,
+        None,
         effects,
         leases,
         policy,
@@ -2536,7 +2334,7 @@ pub async fn execute_tier_zero_channel(
         match Box::pin(execute_code(
             &step.body,
             thread,
-            llm,
+            Some(llm),
             effects,
             leases,
             policy,
@@ -3243,11 +3041,11 @@ fn build_orchestrator_inputs(
             // Using bare `m.action_calls` here produces the canonical Rust
             // serde format (`{action_name, id, parameters}`), which the
             // Python orchestrator passes back verbatim on the next
-            // `__llm_complete__` call — and `python_json_to_action_calls`
+            // turn — and `python_json_to_action_calls`
             // then fails with "missing field `name`", orphaning every
-            // subsequent tool result. This is the SECOND code path (after
-            // `handle_llm_complete`) that feeds action_calls into the
-            // Python working transcript; both must use the same shape.
+            // subsequent tool result. This code path feeds action_calls
+            // into the Python working transcript and must use the same
+            // `{name, call_id, params}` shape the orchestrator expects.
             let calls_json = m
                 .action_calls
                 .as_ref()
@@ -3696,6 +3494,7 @@ fn dispatch_dynamic_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::traits::effect::ThreadExecutionContext;
     use crate::memory::intent_system::{IntentCandidate, IntentResolution};
     use crate::memory::{
         ComponentItem, ComponentScope, FetchForTurnResult, RetrievalEngine, RetrievalSource,
@@ -4360,16 +4159,12 @@ mod tests {
 
     #[allow(clippy::type_complexity)]
     fn session_host_deps() -> (
-        Arc<dyn LlmBackend>,
         Arc<dyn EffectExecutor>,
         Arc<LeaseManager>,
         Arc<PolicyEngine>,
         Arc<dyn crate::gate::GateController>,
     ) {
         (
-            Arc::new(ModelCapturingLlm {
-                captured: tokio::sync::Mutex::new(Vec::new()),
-            }),
             Arc::new(NoopEffects),
             Arc::new(LeaseManager::new()),
             Arc::new(PolicyEngine::new()),
@@ -4391,7 +4186,7 @@ mod tests {
 
     #[tokio::test]
     async fn monty_session_drives_final_only_to_complete() {
-        let (llm, effects, leases, policy, gate) = session_host_deps();
+        let (effects, leases, policy, gate) = session_host_deps();
         let mut thread = session_fresh_thread();
         let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
         let state = serde_json::json!({});
@@ -4400,7 +4195,6 @@ mod tests {
         let yielded = session
             .drive_to_yield(
                 &mut thread,
-                &llm,
                 &effects,
                 &leases,
                 &policy,
@@ -4426,7 +4220,7 @@ mod tests {
 
     #[tokio::test]
     async fn monty_session_parks_on_await_next_turn_then_resumes() {
-        let (llm, effects, leases, policy, gate) = session_host_deps();
+        let (effects, leases, policy, gate) = session_host_deps();
         let mut thread = session_fresh_thread();
         let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
         let state = serde_json::json!({});
@@ -4438,7 +4232,6 @@ mod tests {
         let first = session
             .drive_to_yield(
                 &mut thread,
-                &llm,
                 &effects,
                 &leases,
                 &policy,
@@ -4466,7 +4259,6 @@ mod tests {
         let second = session
             .drive_to_yield(
                 &mut thread,
-                &llm,
                 &effects,
                 &leases,
                 &policy,
@@ -4517,7 +4309,7 @@ mod tests {
         // at host.await_next_turn() — the same gate as
         // default_orchestrator_parses_and_parks_at_first_await_next_turn, but
         // driven through the prepare helper the composition driver will use.
-        let (llm, effects, leases, policy, gate) = session_host_deps();
+        let (effects, leases, policy, gate) = session_host_deps();
         let mut thread = session_fresh_thread();
         let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
         let mut session = prepare_monty_session(&thread, None, None)
@@ -4526,7 +4318,6 @@ mod tests {
         let yielded = session
             .drive_to_yield(
                 &mut thread,
-                &llm,
                 &effects,
                 &leases,
                 &policy,
@@ -4559,7 +4350,7 @@ mod tests {
         // host.await_next_turn) parses in Monty 0.0.16 and the first drive
         // parks at the await_next_turn (after the leading check_signals
         // returns None on an empty signal_rx).
-        let (llm, effects, leases, policy, gate) = session_host_deps();
+        let (effects, leases, policy, gate) = session_host_deps();
         let mut thread = session_fresh_thread();
         let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
         let state = serde_json::json!({});
@@ -4568,7 +4359,6 @@ mod tests {
         let yielded = session
             .drive_to_yield(
                 &mut thread,
-                &llm,
                 &effects,
                 &leases,
                 &policy,
@@ -5101,36 +4891,7 @@ mod tests {
         assert_eq!(json["status"], serde_json::json!("no_match"));
     }
 
-    // ── handle_llm_complete model forwarding ────────────────────
-
-    /// LLM backend that records the model from each `complete()` call.
-    /// Used to verify the orchestrator's __llm_complete__ host fn forwards
-    /// `explicit_config["model"]` onto `LlmCallConfig.model`.
-    struct ModelCapturingLlm {
-        captured: tokio::sync::Mutex<Vec<Option<String>>>,
-    }
-
-    #[async_trait::async_trait]
-    impl LlmBackend for ModelCapturingLlm {
-        fn model_name(&self) -> &str {
-            "capturing"
-        }
-
-        async fn complete(
-            &self,
-            _messages: &[ThreadMessage],
-            _actions: &[crate::types::capability::ActionDef],
-            config: &LlmCallConfig,
-        ) -> Result<crate::traits::llm::LlmOutput, EngineError> {
-            self.captured.lock().await.push(config.model.clone());
-            Ok(crate::traits::llm::LlmOutput {
-                response: crate::types::step::LlmResponse::Text("ok".into()),
-                usage: crate::types::step::TokenUsage::default(),
-            })
-        }
-    }
-
-    /// No-op effect executor — handle_llm_complete only consults it for
+    /// No-op effect executor — only consulted for
     /// `available_actions(...)`, which we satisfy with an empty list.
     struct NoopEffects;
 
@@ -5167,230 +4928,6 @@ mod tests {
         ) -> Result<Vec<crate::types::capability::CapabilitySummary>, EngineError> {
             Ok(vec![])
         }
-    }
-
-    struct PromptCapturingLlm {
-        captured_messages: tokio::sync::Mutex<Vec<Vec<ThreadMessage>>>,
-    }
-
-    #[async_trait::async_trait]
-    impl LlmBackend for PromptCapturingLlm {
-        fn model_name(&self) -> &str {
-            "prompt-capturing"
-        }
-
-        async fn complete(
-            &self,
-            messages: &[ThreadMessage],
-            _actions: &[crate::types::capability::ActionDef],
-            _config: &LlmCallConfig,
-        ) -> Result<crate::traits::llm::LlmOutput, EngineError> {
-            self.captured_messages.lock().await.push(messages.to_vec());
-            Ok(crate::traits::llm::LlmOutput {
-                response: crate::types::step::LlmResponse::Text("ok".into()),
-                usage: crate::types::step::TokenUsage::default(),
-            })
-        }
-    }
-
-    struct CompactActionEffects;
-
-    #[async_trait::async_trait]
-    impl EffectExecutor for CompactActionEffects {
-        async fn execute_action(
-            &self,
-            _: &str,
-            _: serde_json::Value,
-            _: &crate::types::capability::CapabilityLease,
-            _: &ThreadExecutionContext,
-        ) -> Result<crate::types::step::ActionResult, EngineError> {
-            Ok(crate::types::step::ActionResult {
-                call_id: String::new(),
-                action_name: String::new(),
-                output: serde_json::json!({}),
-                is_error: false,
-                duration: std::time::Duration::from_millis(1),
-            })
-        }
-
-        async fn available_actions(
-            &self,
-            _: &[crate::types::capability::CapabilityLease],
-            _: &ThreadExecutionContext,
-        ) -> Result<Vec<crate::types::capability::ActionDef>, EngineError> {
-            Ok(vec![crate::types::capability::ActionDef {
-                name: "gmail_send".into(),
-                description: "Send Gmail".into(),
-                parameters_schema: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "to": {"type": "string"},
-                        "body": {"type": "string"}
-                    }
-                }),
-                effects: vec![crate::types::capability::EffectType::WriteExternal],
-                requires_approval: false,
-                model_tool_surface: crate::types::capability::ModelToolSurface::CompactToolInfo,
-                discovery: None,
-            }])
-        }
-
-        async fn available_capabilities(
-            &self,
-            _: &[crate::types::capability::CapabilityLease],
-            _: &ThreadExecutionContext,
-        ) -> Result<Vec<crate::types::capability::CapabilitySummary>, EngineError> {
-            Ok(vec![])
-        }
-    }
-
-    #[tokio::test]
-    async fn llm_complete_forwards_model_from_explicit_config() {
-        let concrete = Arc::new(ModelCapturingLlm {
-            captured: tokio::sync::Mutex::new(Vec::new()),
-        });
-        let llm: Arc<dyn LlmBackend> = Arc::clone(&concrete) as Arc<dyn LlmBackend>;
-        let effects: Arc<dyn EffectExecutor> = Arc::new(NoopEffects);
-        let leases = Arc::new(LeaseManager::new());
-        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
-
-        let mut thread = Thread::new(
-            "goal",
-            crate::types::thread::ThreadType::Foreground,
-            ProjectId::new(),
-            "test-user",
-            crate::types::thread::ThreadConfig::default(),
-        );
-        thread.transition_to(ThreadState::Running, None).unwrap();
-
-        // Build the args __llm_complete__ receives from Python:
-        // (messages, actions, config). config = {"model": "gpt-4o"}.
-        let mut total_tokens = TokenUsage::default();
-        let result = handle_llm_complete(
-            &[
-                json_to_monty(&serde_json::json!([{"role":"user","content":"hi"}])),
-                json_to_monty(&serde_json::json!([])),
-                json_to_monty(&serde_json::json!({"model": "gpt-4o"})),
-            ],
-            &[],
-            &mut thread,
-            LlmCompleteDeps {
-                llm: &llm,
-                effects: &effects,
-                leases: &leases,
-                store: Some(&store),
-                platform_info: None,
-            },
-            &mut total_tokens,
-        )
-        .await;
-
-        assert!(matches!(result, ExtFunctionResult::Return(_)));
-        let captured = concrete.captured.lock().await;
-        assert_eq!(captured.len(), 1);
-        assert_eq!(captured[0].as_deref(), Some("gpt-4o"));
-    }
-
-    #[tokio::test]
-    async fn llm_complete_without_model_passes_none() {
-        let concrete = Arc::new(ModelCapturingLlm {
-            captured: tokio::sync::Mutex::new(Vec::new()),
-        });
-        let llm: Arc<dyn LlmBackend> = Arc::clone(&concrete) as Arc<dyn LlmBackend>;
-        let effects: Arc<dyn EffectExecutor> = Arc::new(NoopEffects);
-        let leases = Arc::new(LeaseManager::new());
-        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
-
-        let mut thread = Thread::new(
-            "goal",
-            crate::types::thread::ThreadType::Foreground,
-            ProjectId::new(),
-            "test-user",
-            crate::types::thread::ThreadConfig::default(),
-        );
-        thread.transition_to(ThreadState::Running, None).unwrap();
-
-        let mut total_tokens = TokenUsage::default();
-        let _ = handle_llm_complete(
-            &[
-                json_to_monty(&serde_json::json!([{"role":"user","content":"hi"}])),
-                json_to_monty(&serde_json::json!([])),
-                json_to_monty(&serde_json::json!({"max_tokens": 100})),
-            ],
-            &[],
-            &mut thread,
-            LlmCompleteDeps {
-                llm: &llm,
-                effects: &effects,
-                leases: &leases,
-                store: Some(&store),
-                platform_info: None,
-            },
-            &mut total_tokens,
-        )
-        .await;
-
-        let captured = concrete.captured.lock().await;
-        assert_eq!(captured.len(), 1);
-        assert_eq!(captured[0], None);
-    }
-
-    #[tokio::test]
-    async fn llm_complete_refreshes_codeact_prompt_with_current_compact_actions() {
-        let concrete = Arc::new(PromptCapturingLlm {
-            captured_messages: tokio::sync::Mutex::new(Vec::new()),
-        });
-        let llm: Arc<dyn LlmBackend> = Arc::clone(&concrete) as Arc<dyn LlmBackend>;
-        let effects: Arc<dyn EffectExecutor> = Arc::new(CompactActionEffects);
-        let leases = Arc::new(LeaseManager::new());
-        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
-
-        let mut thread = Thread::new(
-            "goal",
-            crate::types::thread::ThreadType::Foreground,
-            ProjectId::new(),
-            "test-user",
-            crate::types::thread::ThreadConfig::default(),
-        );
-        thread.transition_to(ThreadState::Running, None).unwrap();
-        thread.messages = vec![
-            ThreadMessage::system(
-                crate::executor::prompt::build_codeact_system_prompt_with_docs(&[], &[], &[], None),
-            ),
-            ThreadMessage::user("use gmail"),
-        ];
-        leases
-            .grant(
-                thread.id,
-                "tools",
-                crate::types::capability::GrantedActions::All,
-                None,
-                None,
-            )
-            .await
-            .expect("grant tool lease");
-
-        let mut total_tokens = TokenUsage::default();
-        let result = handle_llm_complete(
-            &[],
-            &[],
-            &mut thread,
-            LlmCompleteDeps {
-                llm: &llm,
-                effects: &effects,
-                leases: &leases,
-                store: Some(&store),
-                platform_info: None,
-            },
-            &mut total_tokens,
-        )
-        .await;
-
-        assert!(matches!(result, ExtFunctionResult::Return(_)));
-        let captured = concrete.captured_messages.lock().await;
-        let system_prompt = &captured[0][0].content;
-        assert!(system_prompt.contains("## Enabled Tools"));
-        assert!(system_prompt.contains("`gmail_send`"));
     }
 
     // ── Python ↔ Rust ActionCall round-trip ───────────────────────────────
