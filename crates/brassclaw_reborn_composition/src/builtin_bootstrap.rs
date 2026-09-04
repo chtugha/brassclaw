@@ -1291,6 +1291,163 @@ async fn seed_filesystem_group(
         )
         .await?;
 
+    // 4f. Filesystem Glob Recipes (class 21) — 5 recipes, all Tier-0. Each is
+    //     a 2-step rust(preload ts-glob) + orchestrator(pc-exec-glob dispatch)
+    //     program. Transcribed from the doc's flat format (Q1 decision A).
+    let recipe_file_glob = stores
+        .seed_recipe(
+            &tenant,
+            "file-glob",
+            "Find files matching a glob pattern.",
+            true,
+            RECIPE_FILE_GLOB_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.glob(pattern, path, max_results)",
+                    "component",
+                    &[pc_glob],
+                ),
+            ],
+            &[
+                json!({"input": "find all TypeScript files", "class": 1}),
+                json!({"input": "find files matching *.rs", "class": 1}),
+                json!({"input": "search for test files in src", "class": 2}),
+                json!({"input": "glob pattern **/*.json", "class": 1}),
+                json!({"input": "find all config files in this repo", "class": 2}),
+                json!({"input": "find all files with this extension", "class": 1}),
+                json!({"input": "list all .py files in the project", "class": 1}),
+                json!({"input": "find files by name pattern", "class": 2}),
+                json!({"input": "glob search", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_glob_by_extension = stores
+        .seed_recipe(
+            &tenant,
+            "file-glob-by-extension",
+            "Find all files of a specific file extension (e.g. all .rs or .ts files).",
+            true,
+            RECIPE_FILE_GLOB_BY_EXTENSION_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.glob(pattern='**/*.ext')",
+                    "component",
+                    &[pc_glob],
+                ),
+            ],
+            &[
+                json!({"input": "find all Rust files", "class": 1}),
+                json!({"input": "list all .ts files", "class": 1}),
+                json!({"input": "show me all Python files", "class": 1}),
+                json!({"input": "find every .json config", "class": 1}),
+                json!({"input": "find all TypeScript files in the project", "class": 1}),
+                json!({"input": "list .rs files", "class": 1}),
+                json!({"input": "which .md files exist", "class": 1}),
+                json!({"input": "find all test files by extension", "class": 2}),
+                json!({"input": "list every .toml file in the project", "class": 1}),
+                json!({"input": "show me all YAML files", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_glob_by_name = stores
+        .seed_recipe(
+            &tenant,
+            "file-glob-by-name",
+            "Find files whose names match a glob pattern (e.g. config*.toml, README*).",
+            true,
+            RECIPE_FILE_GLOB_BY_NAME_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.glob(pattern='**/name-pattern')",
+                    "component",
+                    &[pc_glob],
+                ),
+            ],
+            &[
+                json!({"input": "find the Makefile", "class": 1}),
+                json!({"input": "find all README files", "class": 1}),
+                json!({"input": "locate the config files", "class": 1}),
+                json!({"input": "find files named settings*", "class": 1}),
+                json!({"input": "where is the docker-compose file", "class": 2}),
+                json!({"input": "find all files starting with test_", "class": 1}),
+                json!({"input": "locate any .env files", "class": 2}),
+                json!({"input": "find files by name pattern", "class": 1}),
+                json!({"input": "where is the package.json", "class": 2}),
+                json!({"input": "find all files that start with index", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_file_glob_in_subdir = stores
+        .seed_recipe(
+            &tenant,
+            "file-glob-in-subdir",
+            "Find files matching a pattern within a specific subdirectory.",
+            true,
+            RECIPE_FILE_GLOB_IN_SUBDIR_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.glob(pattern, path=subdir)",
+                    "component",
+                    &[pc_glob],
+                ),
+            ],
+            &[
+                json!({"input": "find all test files in the src folder", "class": 1}),
+                json!({"input": "list .ts files in the components directory", "class": 1}),
+                json!({"input": "search for config files in crates/", "class": 2}),
+                json!({"input": "find .rs files only in the migrations dir", "class": 2}),
+                json!({"input": "glob in a subdirectory", "class": 1}),
+                json!({"input": "show all Python files under the lib folder", "class": 2}),
+                json!({"input": "find all markdown docs inside the docs directory", "class": 2}),
+                json!({"input": "list all .json files under the config subfolder", "class": 1}),
+                json!({"input": "restrict file search to the tests subdirectory", "class": 2}),
+                json!({"input": "find every YAML file in the deployment directory", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_file_glob_recent = stores
+        .seed_recipe(
+            &tenant,
+            "file-glob-recent",
+            "Find the 10 most recently modified files matching a glob pattern.",
+            true,
+            RECIPE_FILE_GLOB_RECENT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.glob(pattern, max_results=10) — sorted by mtime",
+                    "component",
+                    &[pc_glob],
+                ),
+            ],
+            &[
+                json!({"input": "what files were recently modified", "class": 1}),
+                json!({"input": "show the most recently changed files", "class": 1}),
+                json!({"input": "what changed recently in this project", "class": 2}),
+                json!({"input": "recently modified TypeScript files", "class": 2}),
+                json!({"input": "last 10 modified files", "class": 1}),
+                json!({"input": "what did I change recently", "class": 2}),
+                json!({"input": "most recently touched files", "class": 2}),
+                json!({"input": "find recently edited source files", "class": 2}),
+                json!({"input": "show recently modified files in src", "class": 2}),
+            ],
+        )
+        .await?;
+
     // 5. Append the minted tool + toolskill + python_code ids to each per-tool
     //    catalogue (leaf Skill / Recipe ids appended in later chunks).
     stores
@@ -1359,6 +1516,11 @@ async fn seed_filesystem_group(
                 skill_glob_by_extension,
                 skill_glob_by_name,
                 skill_glob_in_subdir,
+                recipe_file_glob,
+                recipe_file_glob_by_extension,
+                recipe_file_glob_by_name,
+                recipe_file_glob_in_subdir,
+                recipe_file_glob_recent,
             ],
         )
         .await?;
@@ -1396,8 +1558,8 @@ async fn seed_filesystem_group(
 
     // 6. Append all filesystem tool + toolskill + python_code + leaf skill ids
     //    to the primary catalogue (path helpers are cross-capability → primary
-    //    only), plus the filesystem domain skill + the 6 read/write/list
-    //    recipes. Glob/grep/patch recipes land in later chunks.
+    //    only), plus the filesystem domain skill + the 11 read/write/list/glob
+    //    recipes. Grep/patch recipes land in later chunks.
     stores
         .append_children(
             cat_filesystem,
@@ -1437,6 +1599,11 @@ async fn seed_filesystem_group(
                 skill_glob_by_extension,
                 skill_glob_by_name,
                 skill_glob_in_subdir,
+                recipe_file_glob,
+                recipe_file_glob_by_extension,
+                recipe_file_glob_by_name,
+                recipe_file_glob_in_subdir,
+                recipe_file_glob_recent,
                 tool_grep,
                 ts_grep,
                 pc_grep,
@@ -1468,7 +1635,7 @@ async fn seed_filesystem_group(
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3a: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 6 read/write/list recipes)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 3b: 6 base + 12 variant/helper PythonCode + 25 leaf skills + 1 domain skill + 11 read/write/list/glob recipes)");
     Ok(())
 }
 
@@ -2793,6 +2960,96 @@ const RECIPE_FILE_LIST_RECURSIVE_YAML: &str = r#"step_descriptions: [
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-list-dir>"],
     "label":   "PythonCode calls host.list_dir(path, recursive=true, max_depth=3)"
+  }
+]
+"#;
+
+const RECIPE_FILE_GLOB_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls host.glob(pattern, path, max_results)"
+  }
+]
+"#;
+
+const RECIPE_FILE_GLOB_BY_EXTENSION_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls host.glob(pattern='**/*.ext')"
+  }
+]
+"#;
+
+const RECIPE_FILE_GLOB_BY_NAME_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls host.glob(pattern='**/name-pattern')"
+  }
+]
+"#;
+
+const RECIPE_FILE_GLOB_IN_SUBDIR_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls host.glob(pattern, path=subdir)"
+  }
+]
+"#;
+
+const RECIPE_FILE_GLOB_RECENT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls host.glob(pattern, max_results=10) — sorted by mtime"
   }
 ]
 "#;
