@@ -6,27 +6,43 @@
 # the reply. Rust is the host (muscle) — it serves `host.*` calls and runs
 # `host.run_program` code; it does NOT sequence the turn.
 #
-# Flow:
-#   1. Extract the last User message from `context` as `user_input`.
-#   2. `host.resolve_intent(user_input=)` → dispatch on `status`.
+# Flow (resumable long-running loop — one iteration per turn; the VM persists
+# across turns, parking at host.await_next_turn() instead of returning):
+#   - Seed the in-VM `history` from the bootstrap `context` once (turn 1),
+#     dropping the last User message (that message is the current turn's input,
+#     delivered via host.await_next_turn() so the per-turn append stays uniform).
+#   loop:
+#   1. `host.check_signals()` → "stop" short-circuits to
+#      `FINAL({outcome: "stopped", state})`.
+#   2. `user_input = host.await_next_turn()` — the park point. The driver
+#      resumes the parked VM with the next turn's input (turn 1's input arrives
+#      via the prime-then-resume: a first `drive_to_yield(None)` parks here,
+#      then `drive_to_yield(Some(turn1_input))` resumes). Empty →
+#      `FINAL({outcome: "completed", response: ""})`.
+#   3. Append the User message to `history`.
+#   4. `host.resolve_intent(user_input=)` → dispatch on `status`.
 #      - "match"        → `host.compose_orchestrator(component_id, step_link,
 #                         user_input)` → iterate `program.steplist` running each
 #                         step's `executable_code` via `host.run_program`. The
 #                         skills array (`program.skills`) is carried for
-#                         consultation; per-step code is concrete (variable
-#                         substitution is server-side in compose_orchestrator).
+#                         consultation (exact tool-usage narrative); per-step
+#                         code is concrete (variable substitution is server-side
+#                         in compose_orchestrator).
 #      - "disambiguation" / "no_match" / "error"
 #                       → resolve the `host-non-match-llm-answer` recipe
 #                         (compose + run); ultimate fallback → direct
-#                         `host.kohai_complete` (Monty assembles the prompt and
-#                         hands it to Kohai, which swaps the prefix placeholder
-#                         for the provider prefix and calls the provider LLM).
-#   3. `host.post_reply(text=answer)`.
-#   4. Resolve the `host-save-history` recipe (compose + run) — best-effort.
-#   5. `FINAL({outcome, response, state})`.
+#                         `host.kohai_complete` (Monty assembles the prompt from
+#                         `history` and hands it to Kohai, which swaps the prefix
+#                         placeholder for the provider prefix and calls the
+#                         provider LLM).
+#   5. `host.post_reply(text=answer)`; resolve + run the `host-save-history`
+#      recipe (best-effort); append the Assistant answer to `history`.
+#   6. Loop back to step 1 (park at the next `host.await_next_turn()`).
 #
-# `host.check_signals()` is consulted between phases; "stop" short-circuits to
-# `{outcome: "stopped"}`.
+# `FINAL(...)` is only reached on stop/empty-input termination; the happy path
+# loops forever, parked between turns. The non-persistent `execute_orchestrator`
+# caller maps an `AwaitNextTurn` park to an error (the persistent C.6 driver
+# parks the session in a conversation-keyed registry instead).
 #
 # Monty 0.0.16 subset: dicts/lists/strs, `for`/`if`/`try`, `.get()`/`.append()`,
 # `isinstance`, `len`, `str`, `range`, `is None`, host.* calls, FINAL. NO
@@ -142,52 +158,80 @@ def _save_history(user_input, answer):
     _run_steplist(program)
 
 
+def _seed_history(context):
+    """Build the in-VM chat history from the bootstrap context, dropping the
+    last User message. That message is the current turn's input, delivered via
+    host.await_next_turn() — excluding it here lets every turn append the User
+    message uniformly (turn 1 re-appends the dropped message; turn 2+ appends
+    the new one)."""
+    history = []
+    last_user_idx = -1
+    idx = 0
+    for msg in context:
+        if msg.get("role") == "User":
+            last_user_idx = idx
+        idx = idx + 1
+    idx = 0
+    for msg in context:
+        if idx == last_user_idx:
+            idx = idx + 1
+            continue
+        history.append({"role": msg.get("role", ""), "content": msg.get("content", "")})
+        idx = idx + 1
+    return history
+
+
 def main(context, goal, actions, state, config):
-    """Basic-mode turn entry point. Returns the orchestrator outcome dict."""
+    """Basic-mode orchestrator entry point. Runs as a resumable long-running
+    loop: each iteration processes one turn, then parks on
+    host.await_next_turn() until the driver feeds the next turn's input. The
+    bootstrap context seeds the in-VM history once (turn 1); subsequent turns
+    arrive via host.await_next_turn(). goal/actions/config are accepted to match
+    the bootstrap contract but are not used by the v0 loop."""
     if not isinstance(state, dict):
         state = {}
-    state.setdefault("history", [])
+    history = _seed_history(context)
 
-    # 1. Turn-start signal check.
-    signal = host.check_signals()
-    if signal == "stop":
-        return {"outcome": "stopped", "state": state}
+    while True:
+        # 1. Turn-start signal check.
+        signal = host.check_signals()
+        if signal == "stop":
+            FINAL({"outcome": "stopped", "state": state})
 
-    # 2. Extract the user's request (last User message).
-    user_input = _last_user_input(context)
-    if user_input == "":
-        return {"outcome": "completed", "response": "", "state": state}
+        # 2. Park until the driver feeds this turn's user input.
+        user_input = host.await_next_turn()
+        if user_input == "":
+            FINAL({"outcome": "completed", "response": "", "state": state})
+        history.append({"role": "User", "content": user_input})
 
-    # 3. Resolve intent + dispatch.
-    intent = host.resolve_intent(user_input=user_input)
-    status = intent.get("status", "no_match")
+        # 3. Resolve intent + dispatch.
+        intent = host.resolve_intent(user_input=user_input)
+        status = intent.get("status", "no_match")
 
-    answer = ""
-    if status == "match":
-        component_id = intent.get("component_id", "")
-        step_link = intent.get("step_link", "")
-        match_answer = _compose_and_run(component_id, step_link, user_input)
-        if match_answer is not None:
-            answer = match_answer
+        answer = ""
+        if status == "match":
+            component_id = intent.get("component_id", "")
+            step_link = intent.get("step_link", "")
+            match_answer = _compose_and_run(component_id, step_link, user_input)
+            if match_answer is not None:
+                answer = match_answer
+            else:
+                answer = _non_match_answer(history, user_input)
         else:
-            answer = _non_match_answer(context, user_input)
-    else:
-        # disambiguation / no_match / error → Non-Matching-Mode.
-        answer = _non_match_answer(context, user_input)
+            # disambiguation / no_match / error → Non-Matching-Mode.
+            answer = _non_match_answer(history, user_input)
 
-    # 4. Pre-reply signal check.
-    signal2 = host.check_signals()
-    if signal2 == "stop":
-        return {"outcome": "stopped", "state": state}
+        # 4. Post the reply + save history (best-effort).
+        if answer != "":
+            host.post_reply(text=answer)
+        _save_history(user_input, answer)
+        history.append({"role": "Assistant", "content": answer})
 
-    # 5. Post the reply + save history.
-    if answer != "":
-        host.post_reply(text=answer)
-    _save_history(user_input, answer)
-
-    return {"outcome": "completed", "response": answer, "state": state}
+        # 5. Loop back to the turn-start signal check; the next
+        # host.await_next_turn() parks the VM until the following turn.
 
 
-# Entry point: call main with the injected bootstrap variables.
-result = main(context, goal, actions, state, config)
-FINAL(result)
+# Entry point: run the resumable loop with the injected bootstrap variables.
+# main() never returns on the happy path — it parks at host.await_next_turn()
+# each turn and only reaches FINAL(...) on stop/empty-input termination.
+main(context, goal, actions, state, config)

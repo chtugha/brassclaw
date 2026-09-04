@@ -864,98 +864,19 @@ mod tests {
         assert_ne!(c1, c3); // different channel → different conversation
     }
 
-    #[tokio::test]
-    async fn handle_message_spawns_thread() {
-        let (tm, cm) = make_conv_manager();
-        let conv_id = cm.get_or_create_conversation("web", "user1").await.unwrap();
-        let project = ProjectId::new();
-
-        let tid = cm
-            .handle_user_message(
-                conv_id,
-                "Hello",
-                project,
-                "user1",
-                ThreadConfig::default(),
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-
-        // Thread was spawned
-        let conv = cm.get_conversation(conv_id).await.unwrap();
-        assert!(conv.active_threads.contains(&tid));
-        assert_eq!(conv.entries.len(), 2); // user message + "Thread started"
-
-        // Wait for thread to complete
-        let outcome = tm.join_thread(tid).await.unwrap();
-        assert!(matches!(outcome, ThreadOutcome::Completed { .. }));
-    }
-
-    #[tokio::test]
-    async fn handle_message_resumes_suspended_thread() {
-        let store = Arc::new(MockStore::new());
-        let tm = Arc::new(ThreadManager::new(
-            Arc::new(MockLlm(Mutex::new(vec![LlmOutput {
-                response: LlmResponse::Text("Recovered".into()),
-                usage: TokenUsage::default(),
-            }]))),
-            Arc::new(MockEffects),
-            store.clone(),
-            Arc::new(CapabilityRegistry::new()),
-            Arc::new(LeaseManager::new()),
-            Arc::new(PolicyEngine::new()),
-        ));
-        let cm = ConversationManager::new(Arc::clone(&tm), store.clone());
-
-        let conv_id = cm.get_or_create_conversation("web", "user1").await.unwrap();
-        let project = ProjectId::new();
-        let mut thread = crate::types::thread::Thread::new(
-            "resume",
-            ThreadType::Foreground,
-            project,
-            "user1",
-            ThreadConfig::default(),
-        );
-        thread.transition_to(ThreadState::Running, None).unwrap();
-        thread.add_message(ThreadMessage::user("earlier"));
-        thread.step_count = 1;
-        thread.metadata = serde_json::json!({
-            "runtime_checkpoint": {
-                "persisted_state": {"last_return": 7},
-                "nudge_count": 0,
-                "consecutive_errors": 0,
-                "compaction_count": 0
-            }
-        });
-        thread
-            .transition_to(
-                ThreadState::Suspended,
-                Some("engine restart; resumable from checkpoint".into()),
-            )
-            .unwrap();
-        store.save_thread(&thread).await.unwrap();
-
-        cm.track_thread_in_conversation(conv_id, thread.id).await;
-
-        let resumed = cm
-            .handle_user_message(
-                conv_id,
-                "continue from there",
-                project,
-                "user1",
-                ThreadConfig::default(),
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(resumed, thread.id);
-        let outcome = tm.join_thread(thread.id).await.unwrap();
-        assert!(matches!(outcome, ThreadOutcome::Completed { .. }));
-    }
+    // `handle_message_spawns_thread` and `handle_message_resumes_suspended_thread`
+    // were deleted in C.6 slice 2: they drove a turn through the legacy
+    // `ThreadManager` → `ExecutionLoop::run` → `execute_orchestrator` →
+    // `DEFAULT_ORCHESTRATOR` (basic_mode.py) path and asserted
+    // `ThreadOutcome::Completed`. basic_mode.py is now a resumable long-running
+    // loop that parks at `host.await_next_turn()` instead of completing in one
+    // drive, so `execute_orchestrator` (the non-persistent thin delegation)
+    // returns an `AwaitNextTurn→Err` and the turn no longer reaches `Completed`.
+    // This `brassclaw_engine::runtime` module (ConversationManager + ThreadManager)
+    // is Model-A and slated for C.7 deletion; the spawn/resume plumbing is
+    // re-covered at the C.6 slice 4 tier (TurnRunnerWorker direct path + the
+    // conversation-keyed MontySession registry). The remaining conversation
+    // tests below do not drive a turn to completion and are unaffected.
 
     #[tokio::test]
     async fn record_outcome_adds_entry() {

@@ -4505,6 +4505,50 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn default_orchestrator_parses_and_parks_at_first_await_next_turn() {
+        // C.6 slice 2: the reworked basic_mode.py is a `while True` loop that
+        // parks at host.await_next_turn(). No other test drives the real
+        // DEFAULT_ORCHESTRATOR end-to-end, so this is the gate that verifies
+        // the whole script (helpers + `while True` + host.check_signals +
+        // host.await_next_turn) parses in Monty 0.0.16 and the first drive
+        // parks at the await_next_turn (after the leading check_signals
+        // returns None on an empty signal_rx).
+        let (llm, effects, leases, policy, gate) = session_host_deps();
+        let mut thread = session_fresh_thread();
+        let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
+        let state = serde_json::json!({});
+        let mut session = MontySession::new(DEFAULT_ORCHESTRATOR, &thread, &state, None)
+            .expect("basic_mode.py must parse + start in Monty 0.0.16");
+        let yielded = session
+            .drive_to_yield(
+                &mut thread,
+                &llm,
+                &effects,
+                &leases,
+                &policy,
+                &mut signal_rx,
+                None,
+                None,
+                None,
+                None,
+                &gate,
+                #[cfg(feature = "skills-db")]
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(yielded, OrchestratorYield::AwaitNextTurn),
+            "basic_mode.py must park at the first host.await_next_turn()"
+        );
+    }
+
     // ── Python helper unit tests via Monty ──────────────────────
     //
     // Extracts the helper functions from the default orchestrator and
