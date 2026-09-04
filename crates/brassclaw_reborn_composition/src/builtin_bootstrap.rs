@@ -4399,23 +4399,332 @@ async fn seed_network_group(
         )
         .await?;
 
-    // Recipes + catalogue appends arrive in chunk 4d. Suppress unused-variable
-    // warnings for the ids minted here until chunk 4d consumes them.
-    let _ = (
-        cat_network, cat_http, cat_http_save, cat_web_search, tool_http, tool_http_save,
-        ts_http_fetch, ts_http_save, ts_web_search, pc_exec_http_get, pc_exec_http_post,
-        pc_exec_http_save, pc_exec_http_patch, pc_exec_http_head,
-        pc_exec_http_get_authenticated, pc_exec_http_put, pc_exec_http_delete,
-        pc_http_status_check, pc_json_extract_field, pc_web_search_extract,
-        pc_web_search_query_build, pc_url_encode, skill_http_get, skill_http_post,
-        skill_http_authenticated, skill_http_save_download, skill_http_save_api,
-        skill_http_patch, skill_http_head, skill_http_put, skill_http_delete,
-        skill_web_search, skill_http,
-    );
+    // 6. Network Recipes (class 21) — transcribed from the doc's flat format
+    //    into the IBS authoring model (Q1 decision A). Tier-0 recipes are
+    //    deterministic 2-step dispatches (rust toolskill + orchestrator
+    //    PythonCode); Tier-1 recipes add an LLM-annotation `text` step and load
+    //    leaf-skill context first. step_link is synthesized as "0:1-0:E".
+    let recipe_http_get = stores
+        .seed_recipe(
+            &tenant,
+            "http-get",
+            "Fetch a URL via HTTP GET and return the response.",
+            true,
+            RECIPE_HTTP_GET_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-fetch ToolSkill binding", "component", &[ts_http_fetch]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http(url, method=get)", "component", &[pc_exec_http_get]),
+            ],
+            &[
+                json!({"input": "fetch this URL", "class": 1}),
+                json!({"input": "GET https://api.example.com/data", "class": 1}),
+                json!({"input": "download the JSON from this endpoint", "class": 1}),
+                json!({"input": "make an HTTP GET request", "class": 1}),
+                json!({"input": "check if this URL is reachable", "class": 1}),
+                json!({"input": "fetch the contents of this page", "class": 1}),
+                json!({"input": "HTTP GET this endpoint", "class": 1}),
+                json!({"input": "call this REST API endpoint", "class": 2}),
+                json!({"input": "retrieve data from this URL", "class": 1}),
+                json!({"input": "ping this endpoint", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_http_get_json = stores
+        .seed_recipe(
+            &tenant,
+            "http-get-json",
+            "Fetch a JSON API endpoint via HTTP GET with Accept: application/json header.",
+            true,
+            RECIPE_HTTP_GET_JSON_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-fetch ToolSkill binding", "component", &[ts_http_fetch]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http(url, method=get, headers={Accept:application/json})", "component", &[pc_exec_http_get]),
+            ],
+            &[
+                json!({"input": "call this JSON API", "class": 1}),
+                json!({"input": "fetch JSON from this endpoint", "class": 1}),
+                json!({"input": "GET this REST API and parse JSON", "class": 1}),
+                json!({"input": "retrieve JSON data from this URL", "class": 1}),
+                json!({"input": "call the GitHub API", "class": 2}),
+                json!({"input": "fetch the OpenAPI spec", "class": 2}),
+                json!({"input": "GET this webhook URL and parse result", "class": 2}),
+                json!({"input": "HTTP GET with JSON accept header", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_http_post = stores
+        .seed_recipe(
+            &tenant,
+            "http-post",
+            "Send an HTTP POST request with a JSON body.",
+            false,
+            RECIPE_HTTP_POST_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load http-post + auth leaf skill context", "component", &[skill_http_post, skill_http_authenticated]),
+                step_entry(2, "orchestrator", "LLM constructs the POST URL, headers, and body from user instructions", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[ts_http_fetch]),
+            ],
+            &[
+                json!({"input": "POST this data to the API", "class": 1}),
+                json!({"input": "send a webhook notification", "class": 1}),
+                json!({"input": "submit a form to this endpoint", "class": 2}),
+                json!({"input": "call this API with a JSON body", "class": 2}),
+                json!({"input": "create a GitHub issue via API", "class": 2}),
+                json!({"input": "HTTP POST to this endpoint", "class": 1}),
+                json!({"input": "send JSON payload to webhook", "class": 1}),
+                json!({"input": "POST request with body", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_http_save = stores
+        .seed_recipe(
+            &tenant,
+            "http-save",
+            "Fetch a URL and save the response body to a file.",
+            true,
+            RECIPE_HTTP_SAVE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-save ToolSkill binding", "component", &[ts_http_save]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http.save(url, save_to)", "component", &[pc_exec_http_save]),
+            ],
+            &[
+                json!({"input": "download this file and save it", "class": 1}),
+                json!({"input": "fetch the API response and write to disk", "class": 1}),
+                json!({"input": "save the download to workspace", "class": 1}),
+                json!({"input": "GET this URL and save the result", "class": 1}),
+                json!({"input": "download a large JSON response", "class": 1}),
+                json!({"input": "save this URL response to a file", "class": 1}),
+                json!({"input": "download the binary and store it", "class": 2}),
+                json!({"input": "fetch and persist this large response", "class": 1}),
+                json!({"input": "save API result to workspace file", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_http_patch = stores
+        .seed_recipe(
+            &tenant,
+            "http-patch",
+            "Send an HTTP PATCH request to partially update a resource.",
+            false,
+            RECIPE_HTTP_PATCH_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load http-patch + auth leaf skill context", "component", &[skill_http_patch, skill_http_authenticated]),
+                step_entry(2, "orchestrator", "LLM constructs the PATCH URL, headers, and partial update body from user instructions", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[ts_http_fetch]),
+            ],
+            &[
+                json!({"input": "partially update this resource via PATCH", "class": 1}),
+                json!({"input": "PATCH request to update one field", "class": 1}),
+                json!({"input": "send a PATCH to change the status field", "class": 2}),
+                json!({"input": "HTTP PATCH this endpoint", "class": 1}),
+                json!({"input": "update this resource partially via REST", "class": 2}),
+                json!({"input": "patch this record with new values", "class": 2}),
+                json!({"input": "PATCH the user email in the API", "class": 2}),
+                json!({"input": "partial update via HTTP PATCH", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_http_save_large = stores
+        .seed_recipe(
+            &tenant,
+            "http-save-large",
+            "Fetch a URL and save up to 5 MiB of the response body to a file.",
+            true,
+            RECIPE_HTTP_SAVE_LARGE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-save ToolSkill binding", "component", &[ts_http_save]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http.save(url, save_to, response_body_limit=5242880)", "component", &[pc_exec_http_save]),
+            ],
+            &[
+                json!({"input": "download a large file and save it", "class": 1}),
+                json!({"input": "fetch a large API response and store it", "class": 1}),
+                json!({"input": "download this dataset to workspace", "class": 2}),
+                json!({"input": "save a large response up to 5MB", "class": 2}),
+                json!({"input": "fetch and save this big response body", "class": 1}),
+                json!({"input": "download and persist this large JSON dataset", "class": 2}),
+                json!({"input": "http save large response", "class": 1}),
+                json!({"input": "save 5mb response body to file", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_http_head = stores
+        .seed_recipe(
+            &tenant,
+            "http-head",
+            "Send an HTTP HEAD request to check resource metadata (status + headers only).",
+            true,
+            RECIPE_HTTP_HEAD_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-fetch ToolSkill binding", "component", &[ts_http_fetch]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http(url, method='head')", "component", &[pc_exec_http_head]),
+            ],
+            &[
+                json!({"input": "check if this URL exists", "class": 1}),
+                json!({"input": "HEAD request to this endpoint", "class": 1}),
+                json!({"input": "check if this resource is reachable", "class": 1}),
+                json!({"input": "what content type does this URL return", "class": 2}),
+                json!({"input": "check the headers of this URL without downloading", "class": 2}),
+                json!({"input": "HTTP HEAD this URL", "class": 1}),
+                json!({"input": "test if this API endpoint is up", "class": 2}),
+                json!({"input": "check resource metadata without fetching body", "class": 1}),
+                json!({"input": "is this URL reachable", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_http_authenticated_get = stores
+        .seed_recipe(
+            &tenant,
+            "http-authenticated-get",
+            "Fetch a URL via HTTP GET with a Bearer token Authorization header.",
+            true,
+            RECIPE_HTTP_AUTHENTICATED_GET_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-fetch ToolSkill binding", "component", &[ts_http_fetch]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http(url, method=get, headers={Authorization:...})", "component", &[pc_exec_http_get_authenticated]),
+            ],
+            &[
+                json!({"input": "call this API with my bearer token", "class": 1}),
+                json!({"input": "authenticated GET request to this endpoint", "class": 1}),
+                json!({"input": "fetch this URL with Authorization header", "class": 1}),
+                json!({"input": "GET this private API endpoint", "class": 2}),
+                json!({"input": "call this REST API using bearer auth", "class": 2}),
+                json!({"input": "fetch the protected resource with my token", "class": 2}),
+                json!({"input": "HTTP GET with bearer token", "class": 1}),
+                json!({"input": "authenticated http get", "class": 1}),
+                json!({"input": "call this endpoint with my API key as bearer", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_http_put = stores
+        .seed_recipe(
+            &tenant,
+            "http-put",
+            "Send an HTTP PUT request to replace a resource at a URL.",
+            false,
+            RECIPE_HTTP_PUT_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load http-put + auth leaf skill context", "component", &[skill_http_put, skill_http_authenticated]),
+                step_entry(2, "orchestrator", "LLM constructs the PUT URL, headers, and replacement body from user instructions", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[ts_http_fetch]),
+            ],
+            &[
+                json!({"input": "update this resource via PUT", "class": 1}),
+                json!({"input": "PUT request to replace this record", "class": 1}),
+                json!({"input": "replace this API resource via PUT", "class": 1}),
+                json!({"input": "HTTP PUT to this endpoint", "class": 1}),
+                json!({"input": "send a PUT request with this body", "class": 2}),
+                json!({"input": "update this REST resource", "class": 2}),
+                json!({"input": "PUT to update this configuration", "class": 2}),
+                json!({"input": "replace the document via REST PUT", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_http_delete = stores
+        .seed_recipe(
+            &tenant,
+            "http-delete",
+            "Send an HTTP DELETE request to remove a resource, with user confirmation.",
+            false,
+            RECIPE_HTTP_DELETE_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load http-delete + auth leaf skill context", "component", &[skill_http_delete, skill_http_authenticated]),
+                step_entry(2, "orchestrator", "LLM confirms target URL with user (ExternalWrite - irreversible), then calls ts-http-fetch", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[ts_http_fetch]),
+            ],
+            &[
+                json!({"input": "delete this resource via REST API", "class": 1}),
+                json!({"input": "send a DELETE request to this endpoint", "class": 1}),
+                json!({"input": "HTTP DELETE this record", "class": 1}),
+                json!({"input": "remove this resource via REST", "class": 2}),
+                json!({"input": "delete this API entry", "class": 2}),
+                json!({"input": "call DELETE on this endpoint", "class": 1}),
+                json!({"input": "destroy this resource via HTTP", "class": 2}),
+                json!({"input": "DELETE request to remove this item", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_http_post_json_webhook = stores
+        .seed_recipe(
+            &tenant,
+            "http-post-json-webhook",
+            "Send a JSON webhook POST notification to a pre-configured URL.",
+            true,
+            RECIPE_HTTP_POST_JSON_WEBHOOK_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-fetch ToolSkill binding", "component", &[ts_http_fetch]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http(url, method=post, body={event, payload}, headers={Content-Type:application/json})", "component", &[pc_exec_http_post]),
+            ],
+            &[
+                json!({"input": "send a webhook notification", "class": 1}),
+                json!({"input": "post a JSON event to this webhook URL", "class": 1}),
+                json!({"input": "fire a webhook with this payload", "class": 1}),
+                json!({"input": "send a webhook alert", "class": 2}),
+                json!({"input": "notify the webhook endpoint", "class": 1}),
+                json!({"input": "trigger the webhook with a JSON body", "class": 1}),
+                json!({"input": "post event to webhook", "class": 1}),
+                json!({"input": "send a hook notification to this URL", "class": 2}),
+                json!({"input": "call the webhook endpoint with JSON", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_web_search = stores
+        .seed_recipe(
+            &tenant,
+            "web-search",
+            "Search the web via a configured HTTP search API.",
+            false,
+            RECIPE_WEB_SEARCH_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load skill-web-search leaf skill body (composition pattern)", "component", &[skill_web_search]),
+                step_entry(2, "orchestrator", "Load PythonCode helpers for query encoding and result extraction", "component", &[pc_web_search_query_build, pc_web_search_extract]),
+                step_entry(3, "orchestrator", "LLM formulates query, calls ts-http-get, extracts results, presents to user", "text", &[]),
+                step_entry(4, "rust", "Pre-load ts-http-fetch ToolSkill binding (used for both search and follow-up fetches)", "component", &[ts_http_fetch]),
+            ],
+            &[
+                json!({"input": "search the web for X", "class": 1}),
+                json!({"input": "look up X online", "class": 1}),
+                json!({"input": "find information about X", "class": 1}),
+                json!({"input": "what is the latest news on X", "class": 1}),
+                json!({"input": "google X for me", "class": 2}),
+                json!({"input": "web search", "class": 1}),
+                json!({"input": "search online for this topic", "class": 1}),
+                json!({"input": "find recent articles about X", "class": 2}),
+                json!({"input": "internet search for X", "class": 1}),
+                json!({"input": "find the official docs for X", "class": 2}),
+            ],
+        )
+        .await?;
+
+    // 7. Append children to the per-tool catalogues (dedup-idempotent).
+    let ext_http_children: Vec<Uuid> = vec![
+        tool_http, ts_http_fetch, pc_exec_http_get, pc_exec_http_get_authenticated,
+        pc_exec_http_post, pc_exec_http_head, pc_exec_http_put, pc_exec_http_patch,
+        pc_exec_http_delete, pc_http_status_check, pc_json_extract_field,
+        skill_http_get, skill_http_post, skill_http_authenticated, skill_http_head,
+        skill_http_put, skill_http_patch, skill_http_delete, recipe_http_get,
+        recipe_http_get_json, recipe_http_authenticated_get, recipe_http_head,
+        recipe_http_post, recipe_http_post_json_webhook, recipe_http_put,
+        recipe_http_patch, recipe_http_delete, skill_http,
+    ];
+    let ext_http_save_children: Vec<Uuid> = vec![
+        tool_http_save, ts_http_save, pc_exec_http_save, skill_http_save_download,
+        skill_http_save_api, recipe_http_save, recipe_http_save_large,
+    ];
+    let ext_web_search_children: Vec<Uuid> = vec![
+        ts_web_search, pc_web_search_extract, pc_web_search_query_build, pc_url_encode,
+        skill_web_search, recipe_web_search,
+    ];
+    stores.append_children(cat_http, &ext_http_children).await?;
+    stores.append_children(cat_http_save, &ext_http_save_children).await?;
+    stores.append_children(cat_web_search, &ext_web_search_children).await?;
+    // Primary catalogue owns the union of all three per-tool child sets.
+    stores.append_children(cat_network, &ext_http_children).await?;
+    stores.append_children(cat_network, &ext_http_save_children).await?;
+    stores.append_children(cat_network, &ext_web_search_children).await?;
 
     tracing::debug!(
         catalogue_id = %cat_network,
-        "seeded network group chunk 4c: 10 leaf skills + 1 domain skill (skill-http) on top of 4a/4b"
+        "seeded network group chunk 4d: 12 recipes (7 Tier-0 + 5 Tier-1) + catalogue appends - network group COMPLETE (2 tools + 3 toolskills + 13 PythonCode + 11 skills + 12 recipes + 4 catalogues)"
     );
 
     Ok(())
@@ -4902,4 +5211,258 @@ Decision guide:
 
 Non-2xx HTTP responses are NOT tool errors. Always inspect the status field.
 Use pc-http-status-check to test success programmatically.
+"#;
+
+// ---------------------------------------------------------------------------
+// Network group recipe step_descriptions (class 21) — verbatim doc
+// step_descriptions blocks (Q1=A). `<uuid:...>` placeholders are resolved to
+// live seeded UUIDs at seed_recipe time via step_entry's include lists.
+// ---------------------------------------------------------------------------
+
+const RECIPE_HTTP_GET_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-get>"],
+    "label":   "PythonCode calls host.http(url, method=get)"
+  }
+]
+"#;
+
+const RECIPE_HTTP_GET_JSON_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-get>"],
+    "label":   "PythonCode calls host.http(url, method=get, headers={Accept:application/json})"
+  }
+]
+"#;
+
+const RECIPE_HTTP_POST_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-http-post>", "<uuid:skill-http-authenticated>"],
+    "label":   "Load http-post + auth leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM constructs the POST URL, headers, and body from user instructions"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+"#;
+
+const RECIPE_HTTP_SAVE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-save>"],
+    "label":   "Pre-load ts-http-save ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-save>"],
+    "label":   "PythonCode calls host.http.save(url, save_to)"
+  }
+]
+"#;
+
+const RECIPE_HTTP_PATCH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-http-patch>", "<uuid:skill-http-authenticated>"],
+    "label":   "Load http-patch + auth leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM constructs the PATCH URL, headers, and partial update body from user instructions"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+"#;
+
+const RECIPE_HTTP_SAVE_LARGE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-save>"],
+    "label":   "Pre-load ts-http-save ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-save>"],
+    "label":   "PythonCode calls host.http.save(url, save_to, response_body_limit=5242880)"
+  }
+]
+"#;
+
+const RECIPE_HTTP_HEAD_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-head>"],
+    "label":   "PythonCode calls host.http(url, method='head')"
+  }
+]
+"#;
+
+const RECIPE_HTTP_AUTHENTICATED_GET_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-get-authenticated>"],
+    "label":   "PythonCode calls host.http(url, method=get, headers={Authorization:...})"
+  }
+]
+"#;
+
+const RECIPE_HTTP_PUT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-http-put>", "<uuid:skill-http-authenticated>"],
+    "label":   "Load http-put + auth leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM constructs the PUT URL, headers, and replacement body from user instructions"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+"#;
+
+const RECIPE_HTTP_DELETE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-http-delete>", "<uuid:skill-http-authenticated>"],
+    "label":   "Load http-delete + auth leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM confirms target URL with user (ExternalWrite - irreversible), then calls ts-http-fetch"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+"#;
+
+const RECIPE_HTTP_POST_JSON_WEBHOOK_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-post>"],
+    "label":   "PythonCode calls host.http(url, method=post, body={event, payload}, headers={Content-Type:application/json})"
+  }
+]
+"#;
+
+const RECIPE_WEB_SEARCH_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-web-search>"],
+    "label":   "Load skill-web-search leaf skill body (composition pattern)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-web-search-query-build>", "<uuid:pc-web-search-extract>"],
+    "label":   "Load PythonCode helpers for query encoding and result extraction"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM formulates query, calls ts-http-get, extracts results, presents to user"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding (used for both search and follow-up fetches)"
+  }
+]
 "#;
