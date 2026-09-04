@@ -208,9 +208,31 @@ Commit + push.
   :2298/:3154.
 - The future MCP bridge — future work.
 
+## Slice 1 result (SHIPPED `d26d08b7`, 2026-09-04)
+
+Realized with one deviation from the realization detail above: **no
+`OrchestratorDeps<'a>` struct was needed.** Instead `MontySession::drive_to_yield`
+takes the SAME parameter list as `execute_orchestrator` (minus
+`code`/`persisted_state`/`max_duration_override`, plus `new_input:
+Option<MontyObject>`). The arm bodies are therefore **byte-identical** to the old
+`execute_orchestrator` loop except two `self.` substitutions
+(`final_result = Some(val)` → `self.final_result = Some(val)`; `&mut total_tokens`
+→ `&mut self.total_tokens`). This avoided the risky ~20-arm `deps.*` rewiring.
+
+- `pub enum OrchestratorYield { Complete(Box<OrchestratorResult>), AwaitNextTurn }`
+  (boxed `Complete` to satisfy `large_enum_variant`).
+- `pub struct MontySession { progress, parked_call: Option<FunctionCall<LimitedTracker>>, total_tokens, final_result, stdout }` + `MontySession::new` (extracts setup) + `drive_to_yield` (the dispatch loop; on entry resumes a parked `await_next_turn` call with `new_input`; the `host.await_next_turn()` arm stores `self.parked_call = Some(call)` and returns `Ok(AwaitNextTurn)` — the suspended call is retained, true cross-turn persistence).
+- `execute_orchestrator` is now a thin delegation: `MontySession::new` → `drive_to_yield(..., None)` → `Complete(r) => Ok(*r)`, `AwaitNextTurn => Err(Orchestrator(...))`. **Signature unchanged** → `loop_engine.rs` untouched.
+- 2 unit tests (`monty_session_drives_final_only_to_complete` +
+  `monty_session_parks_on_await_next_turn_then_resumes`) + 2 test helpers
+  (`session_host_deps`, `session_fresh_thread`). Gates: engine clippy clean
+  (default + skills-db), 566 default / 577 skills-db lib tests pass, 95
+  orchestrator-module tests pass both configs. Diff scoped to
+  `crates/brassclaw_engine/src/executor/orchestrator.rs`.
+
 ## Status
 
-[ ] slice 1 — engine `MontySession` + park/resume primitive.
+[x] slice 1 — engine `MontySession` + park/resume primitive (SHIPPED `d26d08b7`).
 [ ] slice 2 — rework `basic_mode.py` into a resumable long-running loop.
 [ ] slice 3 — conversation-keyed Monty session registry.
 [ ] slice 4 — `TurnRunnerWorker` direct path (bypass driver_registry).

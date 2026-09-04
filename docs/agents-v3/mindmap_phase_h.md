@@ -2580,3 +2580,39 @@ persistence; resume it next drive with `new_input`). Refactor
 `AwaitNextTurn→Err(Orchestrator(classify_orchestrator_failure(...)))` non-
 persistent). Unit test: park→resume→complete via `MontySession` directly.
 Spec recorded in the C.6 subplan; shipped `9a033734`.
+
+### C.6 slice 1 SHIPPED + slice 2 grounded (2026-09-04)
+**Slice 1 SHIPPED `d26d08b7`:** the engine-side `MontySession` park/resume
+primitive. Deviation from the design: **dropped `OrchestratorDeps<'a>`** —
+instead gave `drive_to_yield` the SAME param list as `execute_orchestrator`
+(minus `code`/`persisted_state`/`max_duration_override`, plus `new_input:
+Option<MontyObject>`), so the ~25 host-call arm bodies stayed **byte-identical**
+except 2 `self.` subs (`final_result`/`total_tokens`).
+`OrchestratorYield{Complete(Box<OrchestratorResult>),AwaitNextTurn}` (boxed for
+`large_enum_variant`). `MontySession{progress,parked_call:Option<FunctionCall<
+LimitedTracker>>,total_tokens,final_result,stdout}`; `new` extracts setup;
+`drive_to_yield` on entry resumes a parked `await_next_turn` with `new_input`,
+then loops the dispatch; the `host.await_next_turn()` arm stores
+`self.parked_call=Some(call)` + returns `Ok(AwaitNextTurn)` (call RETAINED =
+true cross-turn persistence). `execute_orchestrator` = thin delegation,
+SIGNATURE UNCHANGED → `loop_engine.rs` untouched; maps `AwaitNextTurn→Err`
+non-persistent. 2 unit tests + 2 helpers reuse existing mocks. Gates green:
+engine clippy clean (default+skills-db), 566/577 lib tests, 95 orchestrator-
+module tests both configs. Diff scoped to orchestrator.rs (485+/182−).
+**Slice 2 grounded:** rework `basic_mode.py` into a resumable long-running
+loop — seed in-VM `history` from bootstrap `context` once (drop last User msg =
+current turn's input, delivered via `host.await_next_turn()`); `while True:`
+check_signals→stop→FINAL(stopped); `user_input=host.await_next_turn()` (park
+point; turn-1 input arrives via the prime-then-resume: worker drives
+`drive_to_yield(None)`→parks at first await_next_turn, then
+`drive_to_yield(Some(turn1_input))`); resolve_intent→compose_orchestrator+
+run_steplist (or non_match_answer); post_reply+save_history; append
+User/Assistant to in-VM history; loop. Helpers (`def _...` above `def main`)
+UNCHANGED → `eval_python_bool/int` prefix-extraction still works. No test
+drives basic_mode.py e2e today → add a `MontySession::new(DEFAULT_ORCHESTRATOR)
++drive_to_yield(None)` park test (verifies `while True`+`host.*` parses in
+Monty 0.0.16 + parks at first await_next_turn). Bootstrap contract
+(context/goal/actions/state/config) unchanged → `build_orchestrator_inputs`
+untouched. Skills: `program.skills` carried as an array while iterating the
+steplist (consultation narrative for the Orchestrator; per-step
+`executable_code` already concrete).
