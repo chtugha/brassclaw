@@ -12116,3 +12116,178 @@ const RECIPE_TRIGGER_REMOVE_BY_NAME_YAML: &str = r#"step_descriptions: [
   }
 ]
 "#;
+
+// ---------------------------------------------------------------------------
+// Leaf Skill + Domain Skill body constants — management group (chunk 7b)
+// Transcribed verbatim from builtin_stuff_v3.md Steps 14/15/16/14.x/15.x.
+// ---------------------------------------------------------------------------
+
+const SKILL_TIME_NOW_BODY: &str = r#"Use `ts-time-now` (via pc-exec-time-now) to get the current UTC timestamp. Provide a
+timezone parameter if the user specified a locale (e.g. 'America/New_York'). The returned
+timestamp can be used as input to other time operations or to stamp memory entries.
+PythonCode that needs the current time must always call this first — never use datetime.
+"#;
+
+const SKILL_TIME_PARSE_BODY: &str = r#"Use `ts-time-parse` (via pc-exec-time-parse) to interpret a date or time in text form.
+Supports ISO 8601, RFC 2822, and common human-readable formats. Provide timezone when
+the input is ambiguous about its timezone context.
+"#;
+
+const SKILL_TIME_CONVERT_BODY: &str = r#"Use `ts-time-convert` (via pc-exec-time-convert) to express a timestamp in a different
+timezone. Provide the input timestamp and the target `to_timezone` (IANA name, e.g.
+'America/New_York', 'Europe/Berlin', 'Asia/Tokyo'). Optionally specify `from_timezone`
+if the input's timezone is ambiguous.
+"#;
+
+const SKILL_TIME_DIFF_BODY: &str = r#"Use `ts-time-diff` (via pc-exec-time-diff) to compute the signed duration between
+two timestamps. Provide both `input` (first timestamp) and `timestamp2` (second
+timestamp) as ISO 8601 strings or any recognised format. The result contains
+`seconds`, `minutes`, `hours`, and `days` — all signed (positive when timestamp2
+is after input). If the inputs are in local time without timezone info, supply
+`from_timezone` (IANA name). Use this when the user asks 'how long ago', 'how
+many days between', or 'what is the duration between these dates'.
+"#;
+
+const SKILL_TIME_FORMAT_BODY: &str = r#"Use `ts-time-format` (via pc-exec-time-format) to render a timestamp in a custom
+or human-readable format. Provide `input` as the source timestamp and optionally
+`format_string` using chrono format codes (e.g. `'%d %b %Y'`, `'%I:%M %p'`,
+`'%A, %B %-d, %Y'`). Optionally supply `timezone` (IANA) to localise the output.
+Default format is `'%Y-%m-%d %H:%M:%S %Z'`. Use when the user asks to display a
+date in a particular style, or when building a human-readable timestamp label for
+memory entries, reports, or logs.
+"#;
+
+const SKILL_JSON_QUERY_BODY: &str = r#"Use `ts-json-query` (via pc-exec-json-query) to extract a specific field from a JSON
+structure. Provide the data and a dot-separated path (e.g. 'user.address.city' or
+'items.0.name'). Returns null if the path does not exist. For multi-field extraction,
+use pc-json-extract-field PythonCode instead.
+"#;
+
+const SKILL_JSON_STRINGIFY_BODY: &str = r#"Use `ts-json-stringify` with operation='stringify' (via pc-exec-json-stringify) to
+format a structured value as a human-readable JSON string for display or for writing
+to a file. The result is pretty-printed.
+"#;
+
+const SKILL_JSON_PARSE_BODY: &str = r#"Use `ts-json-stringify` with operation='parse' (via pc-exec-json-stringify) when you
+have a raw JSON string (e.g. from a tool response body) and need to work with it as
+a structured value. The result can then be queried with ts-json-query or
+pc-json-extract-field.
+"#;
+
+const SKILL_JSON_VALIDATE_BODY: &str = r#"Use `ts-json-validate` (via pc-exec-json-validate) to check whether a string is
+syntactically valid JSON before attempting to parse or process it. Returns {valid: bool,
+error: string|null}. Useful as a guard before running json-query or json-parse.
+"#;
+
+const SKILL_JSON_PARSE_AND_QUERY_BODY: &str = r#"Use the two-step parse + query pattern when you receive a raw JSON string (e.g. from
+an HTTP response body) and immediately need a specific field. The pattern:
+1. Call ts-json (operation='parse') to get the structured object (via pc-exec-json-stringify).
+2. Call ts-json (operation='query') with a dot-path to extract the field.
+
+Alternatively, use pc-json-extract-field (pure Python) if the json tool is not bound.
+Always validate with json-validate before parse if the source is external or user-supplied.
+"#;
+
+const SKILL_SKILL_LIST_BODY: &str = r#"Use `ts-skill-list` (via pc-exec-skill-list) to retrieve a JSON array of all installed
+skills. Pass scope='user' to see only user-installed skills. Pass scope='system' to
+inspect system builtins. Omit scope (or pass 'all') to see everything.
+Check the returned array before deciding to install a skill — avoid duplicates.
+"#;
+
+const SKILL_SKILL_INSTALL_BODY: &str = r#"Use `ts-skill-install` to fetch and register a skill manifest. Always:
+1. Run `ts-skill-list` first to confirm the skill does not already exist.
+2. Confirm the source URL with the user before proceeding.
+3. After install, inform the user the skill enters validation_status='pending' and
+   cannot be used until Q1 and Q2 pass. Do not promise immediate availability.
+"#;
+
+const SKILL_SKILL_REMOVE_BODY: &str = r#"Use `ts-skill-remove` to permanently remove a skill by name. Always:
+1. Run `ts-skill-list` first to confirm the skill exists and note its scope.
+2. Confirm with the user that removal is intended and irreversible.
+3. If the tool returns a dependency error (recipes reference this skill), resolve those
+   first or inform the user of the blocker.
+"#;
+
+// Domain skills (class 2). skill-time / skill-json carry the long domain text as
+// their body (the doc places it in the `description` field); a short one-line
+// description is supplied at the seed call site. skill-skills follows the doc's
+// short-description + long-body split verbatim.
+
+const SKILL_TIME_BODY: &str = r#"The time domain provides one tool for all time operations:
+
+GETTING CURRENT TIME:
+— skill-time-now: Get the current UTC timestamp (and optionally in a timezone).
+
+PARSING:
+— skill-time-parse: Parse a timestamp string into a structured time value.
+
+CONVERTING:
+— skill-time-convert: Convert a timestamp to a different timezone.
+
+DIFFING:
+— skill-time-diff: Compute the signed duration between two timestamps.
+  Returns {seconds, minutes, hours, days}. Positive = timestamp2 is after input.
+
+FORMATTING:
+— skill-time-format: Render a timestamp as a human-readable string.
+  Uses chrono format codes. Default: '%Y-%m-%d %H:%M:%S %Z'.
+
+Decision guide:
+• What time is it now → skill-time-now
+• Time in a specific timezone → skill-time-now (with timezone parameter)
+• Parse a date/time string → skill-time-parse
+• Convert between timezones → skill-time-convert
+• How long between two timestamps → skill-time-diff
+• Display a date in a human-readable style → skill-time-format
+
+PythonCode in the orchestrator must NEVER use datetime.now() or any date
+library directly — always call skill-time-now first to get the current time
+from the runtime clock.
+"#;
+
+const SKILL_JSON_BODY: &str = r#"The JSON domain provides one tool for four JSON operations:
+
+EXTRACTING:
+— skill-json-query: Extract a value by dot/bracket path from a JSON structure.
+— skill-json-parse-and-query: Parse a JSON string AND immediately extract a field
+  (combined two-step pattern — Tier-0, both pre-baked in vars).
+
+SERIALIZING:
+— skill-json-stringify: Convert a structured value to a pretty-printed JSON string.
+
+PARSING:
+— skill-json-parse: Parse a JSON string into a structured value.
+
+VALIDATING:
+— skill-json-validate: Check whether a string is valid JSON (returns {valid, error}).
+
+Decision guide:
+• Have a structured value, need a field → skill-json-query
+• Have a JSON string, need a specific field → skill-json-parse-and-query (Tier-0)
+• Need to write JSON to a file or display it → skill-json-stringify
+• Have a raw JSON string, need a dict/list → skill-json-parse
+• Unsure if a string is valid JSON before parsing → skill-json-validate first
+
+Always validate before parsing when the source is external or user-provided.
+pc-json-extract-field is an alternative pure-Python extractor for multi-hop
+path resolution when the json tool is not available in the current context.
+"#;
+
+const SKILL_SKILLS_BODY: &str = r#"Skill management gives the agent and user visibility and control over the installed
+skill library. Use the right grain for each task:
+
+Listing skills:
+- skill-skill-list: enumerate the installed skill library (always start here)
+
+Installing a skill:
+- skill-skill-install: fetch a manifest from URL/path, confirm with user, enter Q1/Q2
+
+Removing a skill:
+- skill-skill-remove: confirm with user, check for dependent recipes, then remove
+
+Safety rules:
+- Never install from an untrusted URL without explicit user confirmation.
+- Never remove without explicit user confirmation — removal is irreversible.
+- System-scope skills cannot be modified from user-scope authority.
+- After install, the skill is 'pending' — not usable until Q2 graduates it.
+"#;
