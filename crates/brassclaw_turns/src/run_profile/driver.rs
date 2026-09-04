@@ -97,3 +97,30 @@ pub trait AgentLoopDriver: Send + Sync {
         host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError>;
 }
+
+/// Cross-turn-persistent Monty (Python Orchestrator) turn driver port (C.6
+/// slice 4b).
+///
+/// The Reborn turn runner holds an `Arc<dyn MontyTurnDriverPort>` and calls
+/// [`MontyTurnDriverPort::drive_turn`] directly for every Monty turn, bypassing
+/// the `driver_registry` / canonical stage pipeline (C.6 slice 5 retires that
+/// pipeline). The composition-side implementation owns the conversation-keyed
+/// Monty session registry plus the engine dependencies needed to load the
+/// Thread, build or resume a parked Monty session, and drive it to a yield.
+///
+/// Unlike [`AgentLoopDriver`], there is no `resume` split: cross-turn
+/// persistence is handled by parking the live Monty VM in the registry between
+/// turns, so every turn is a uniform `drive_turn`. The returned [`LoopExit`] is
+/// applied through the same trusted applier as an `AgentLoopDriver` exit.
+#[async_trait]
+pub trait MontyTurnDriverPort: Send + Sync {
+    /// Drive one turn of the persistent Monty orchestrator for the conversation
+    /// identified by the run context's scope. On a fresh conversation a session
+    /// is built; on a subsequent turn the parked session is resumed with the
+    /// new turn's input.
+    async fn drive_turn(
+        &self,
+        request: AgentLoopDriverRunRequest,
+        host: &(dyn AgentLoopDriverHost + Send + Sync),
+    ) -> Result<LoopExit, AgentLoopDriverError>;
+}

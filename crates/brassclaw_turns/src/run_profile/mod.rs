@@ -40,7 +40,7 @@ pub use compaction::{
 };
 pub use driver::{
     AgentLoopDriver, AgentLoopDriverDescriptor, AgentLoopDriverError, AgentLoopDriverResumeRequest,
-    AgentLoopDriverRunRequest,
+    AgentLoopDriverRunRequest, MontyTurnDriverPort,
 };
 pub use host::{
     AgentLoopDriverHost, AgentLoopHost, AgentLoopHostError, AgentLoopHostErrorKind,
