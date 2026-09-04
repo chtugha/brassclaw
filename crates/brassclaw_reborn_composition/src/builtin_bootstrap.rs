@@ -541,10 +541,185 @@ async fn seed_filesystem_group(
         )
         .await?;
 
+    // 4b. Filesystem Tier-0 infrastructure + variant PythonCode (class 22).
+    //     Grep variants (Step 6.x.3/4/7.1), list filter (Step 4.x.3),
+    //     read variants head/tail/exists (Step 2.x.2), combined workflows
+    //     read-then-grep / list-then-grep (Step 2.x.2), and pure-logic path
+    //     helpers join/basename/dirname (Step 20.x.2). Transcribed verbatim.
+    let pc_grep_case_insensitive = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-grep-case-insensitive",
+                "Orchestrator executor: calls host.<tool> for a case-insensitive \
+                 grep via builtin.grep. Input: pattern (string), path (optional), \
+                 output_mode (optional, default 'files_with_matches'). Sets \
+                 case_insensitive=true.",
+                PC_EXEC_GREP_CASE_INSENSITIVE_CONTENT,
+            ),
+            "pc-exec-grep-case-insensitive",
+        )
+        .await?;
+    let pc_grep_type_filtered = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-grep-type-filtered",
+                "Orchestrator executor: calls host.<tool> for a type-filtered grep \
+                 via builtin.grep. Input: pattern (string), glob_filter (string \
+                 e.g. '*.rs'), path (optional), output_mode (optional, default \
+                 'files_with_matches').",
+                PC_EXEC_GREP_TYPE_FILTERED_CONTENT,
+            ),
+            "pc-exec-grep-type-filtered",
+        )
+        .await?;
+    let pc_grep_invert = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-grep-invert",
+                "Orchestrator executor: calls host.<tool> for an inverted grep via \
+                 builtin.grep. Input: pattern (string), path (optional), \
+                 output_mode (optional, default 'files_with_matches'). Sets \
+                 invert_match=true.",
+                PC_EXEC_GREP_INVERT_CONTENT,
+            ),
+            "pc-exec-grep-invert",
+        )
+        .await?;
+    let pc_list_filter_by_type = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-list-filter-by-type",
+                "Pure-logic helper: filters a list_dir result to only entries of a \
+                 given type. Input: entries (list from list_dir result), entry_type \
+                 ('file' | 'directory'). Output: {entries, entry_type, count} — only \
+                 matching entries.",
+                PC_EXEC_LIST_FILTER_BY_TYPE_CONTENT,
+            ),
+            "pc-exec-list-filter-by-type",
+        )
+        .await?;
+    let pc_read_file_head = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-read-file-head",
+                "Orchestrator executor: reads the first 50 lines of a file via \
+                 builtin.read_file. Input: vars.slot0 = file path. Output: {content, \
+                 line_count, path}.",
+                PC_EXEC_READ_FILE_HEAD_CONTENT,
+            ),
+            "pc-exec-read-file-head",
+        )
+        .await?;
+    let pc_read_file_tail = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-read-file-tail",
+                "Orchestrator executor: reads the last 50 lines of a file (lines -50 \
+                 onward). Input: vars.slot0 = file path. Output: {content, \
+                 line_count, path}.",
+                PC_EXEC_READ_FILE_TAIL_CONTENT,
+            ),
+            "pc-exec-read-file-tail",
+        )
+        .await?;
+    let pc_file_exists = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-file-exists",
+                "Orchestrator executor: checks whether a file exists by attempting to \
+                 read line 1. Input: vars.slot0 = file path. Output: {exists: bool, \
+                 path: string}.",
+                PC_EXEC_FILE_EXISTS_CONTENT,
+            ),
+            "pc-exec-file-exists",
+        )
+        .await?;
+    let pc_read_then_grep = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-read-then-grep",
+                "Orchestrator executor: reads a file then greps the content for a \
+                 pattern. Input: vars.slot0 = path, vars.slot1 = grep pattern. \
+                 Output: matching lines list.",
+                PC_EXEC_READ_THEN_GREP_CONTENT,
+            ),
+            "pc-exec-read-then-grep",
+        )
+        .await?;
+    let pc_list_then_grep = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-list-then-grep",
+                "Orchestrator executor: lists directory entries then filters by name \
+                 substring. Input: vars.slot0 = directory path, vars.slot1 = name \
+                 filter substring. Output: filtered entry names list.",
+                PC_EXEC_LIST_THEN_GREP_CONTENT,
+            ),
+            "pc-exec-list-then-grep",
+        )
+        .await?;
+    let pc_path_join = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-path-join",
+                "PythonCode helper: join two path segments with a '/' separator. \
+                 Input: vars.slot0 = base path, vars.slot1 = sub-path. Output: \
+                 joined path string.",
+                PC_PATH_JOIN_CONTENT,
+            ),
+            "pc-path-join",
+        )
+        .await?;
+    let pc_path_basename = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-path-basename",
+                "PythonCode helper: extract the filename (last path component) from a \
+                 path. Input: vars.slot0 = path string. Output: basename string.",
+                PC_PATH_BASENAME_CONTENT,
+            ),
+            "pc-path-basename",
+        )
+        .await?;
+    let pc_path_dirname = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-path-dirname",
+                "PythonCode helper: extract the directory part of a path. Input: \
+                 vars.slot0 = path string. Output: directory path string.",
+                PC_PATH_DIRNAME_CONTENT,
+            ),
+            "pc-path-dirname",
+        )
+        .await?;
+
     // 5. Append the minted tool + toolskill + python_code ids to each per-tool
     //    catalogue (leaf Skill / Recipe ids appended in later chunks).
     stores
-        .append_children(cat_read_file, &[tool_read_file, ts_read_file, pc_read_file])
+        .append_children(
+            cat_read_file,
+            &[
+                tool_read_file,
+                ts_read_file,
+                pc_read_file,
+                pc_read_file_head,
+                pc_read_file_tail,
+                pc_file_exists,
+                pc_read_then_grep,
+            ],
+        )
         .await?;
     stores
         .append_children(
@@ -553,13 +728,32 @@ async fn seed_filesystem_group(
         )
         .await?;
     stores
-        .append_children(cat_list_dir, &[tool_list_dir, ts_list_dir, pc_list_dir])
+        .append_children(
+            cat_list_dir,
+            &[
+                tool_list_dir,
+                ts_list_dir,
+                pc_list_dir,
+                pc_list_filter_by_type,
+                pc_list_then_grep,
+            ],
+        )
         .await?;
     stores
         .append_children(cat_glob, &[tool_glob, ts_glob, pc_glob])
         .await?;
     stores
-        .append_children(cat_grep, &[tool_grep, ts_grep, pc_grep])
+        .append_children(
+            cat_grep,
+            &[
+                tool_grep,
+                ts_grep,
+                pc_grep,
+                pc_grep_case_insensitive,
+                pc_grep_type_filtered,
+                pc_grep_invert,
+            ],
+        )
         .await?;
     stores
         .append_children(
@@ -569,7 +763,7 @@ async fn seed_filesystem_group(
         .await?;
 
     // 6. Append all filesystem tool + toolskill + python_code ids to the
-    //    primary catalogue.
+    //    primary catalogue (path helpers are cross-capability → primary only).
     stores
         .append_children(
             cat_filesystem,
@@ -577,26 +771,38 @@ async fn seed_filesystem_group(
                 tool_read_file,
                 ts_read_file,
                 pc_read_file,
+                pc_read_file_head,
+                pc_read_file_tail,
+                pc_file_exists,
+                pc_read_then_grep,
                 tool_write_file,
                 ts_write_file,
                 pc_write_file,
                 tool_list_dir,
                 ts_list_dir,
                 pc_list_dir,
+                pc_list_filter_by_type,
+                pc_list_then_grep,
                 tool_glob,
                 ts_glob,
                 pc_glob,
                 tool_grep,
                 ts_grep,
                 pc_grep,
+                pc_grep_case_insensitive,
+                pc_grep_type_filtered,
+                pc_grep_invert,
                 tool_apply_patch,
                 ts_apply_patch,
                 pc_apply_patch,
+                pc_path_join,
+                pc_path_basename,
+                pc_path_dirname,
             ],
         )
         .await?;
 
-    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 2a: + 6 base PythonCode executors)");
+    tracing::debug!(catalogue_id = %cat_filesystem, "seeded filesystem group (chunk 2: 6 base + 12 variant/helper PythonCode executors)");
     Ok(())
 }
 
@@ -1351,4 +1557,116 @@ _params = {"path": _path, "old_string": _old, "new_string": _new}
 if _replace_all:
     _params["replace_all"] = True
 result = host.apply_patch(**_params)
+"#;
+
+const PC_EXEC_GREP_CASE_INSENSITIVE_CONTENT: &str = r#"# Orchestrator executor body.
+_pattern = "{{vars.slot0}}"
+_path = "{{vars.slot1}}"
+_output_mode = "{{vars.slot2}}"
+_params = {"pattern": _pattern, "case_insensitive": True}
+if _path and _path != "":
+    _params["path"] = _path
+if _output_mode and _output_mode != "":
+    _params["output_mode"] = _output_mode
+else:
+    _params["output_mode"] = "files_with_matches"
+result = host.grep(**_params)
+"#;
+
+const PC_EXEC_GREP_TYPE_FILTERED_CONTENT: &str = r#"# Orchestrator executor body.
+_pattern = "{{vars.slot0}}"
+_glob_filter = "{{vars.slot1}}"
+_path = "{{vars.slot2}}"
+_output_mode = "{{vars.slot3}}"
+_params = {"pattern": _pattern, "glob": _glob_filter}
+if _path and _path != "":
+    _params["path"] = _path
+if _output_mode and _output_mode != "":
+    _params["output_mode"] = _output_mode
+else:
+    _params["output_mode"] = "files_with_matches"
+result = host.grep(**_params)
+"#;
+
+const PC_EXEC_GREP_INVERT_CONTENT: &str = r#"# Orchestrator executor body.
+_pattern = "{{vars.slot0}}"
+_path = "{{vars.slot1}}"
+_output_mode = "{{vars.slot2}}"
+_params = {"pattern": _pattern, "invert_match": True}
+if _path and _path != "":
+    _params["path"] = _path
+if _output_mode and _output_mode != "":
+    _params["output_mode"] = _output_mode
+else:
+    _params["output_mode"] = "files_with_matches"
+result = host.grep(**_params)
+"#;
+
+const PC_EXEC_LIST_FILTER_BY_TYPE_CONTENT: &str = r#"# No I/O, no imports. IBS bakes in entries and entry_type before execution.
+# host.<tool> is NOT called here — this is a post-processing step.
+_entries = {{vars.slot0}}
+_entry_type = "{{vars.slot1}}"
+if not isinstance(_entries, list):
+    _entries = []
+filtered = [e for e in _entries if isinstance(e, dict) and e.get("type") == _entry_type]
+result = {"entries": filtered, "entry_type": _entry_type, "count": len(filtered)}
+"#;
+
+const PC_EXEC_READ_FILE_HEAD_CONTENT: &str = r#"# Pre-baked head variant: reads lines 1-50. No user input in range -> Tier 0 safe.
+_path = "{{vars.slot0}}"
+result = host.read_file(path=_path, range="1-50")
+"#;
+
+const PC_EXEC_READ_FILE_TAIL_CONTENT: &str = r#"# Tail variant: reads from line (total - 50) onward. First get line_count, then slice.
+_path = "{{vars.slot0}}"
+_info = host.read_file(path=_path, range="1-1")
+_total = _info.get("line_count", 1) if isinstance(_info, dict) else 1
+_start = max(1, _total - 49)
+result = host.read_file(path=_path, range=str(_start) + "-" + str(_total))
+"#;
+
+const PC_EXEC_FILE_EXISTS_CONTENT: &str = r#"# Check existence by reading line 1. If tool returns an error, file doesn't exist.
+_path = "{{vars.slot0}}"
+try:
+    _r = host.read_file(path=_path, range="1-1")
+    result = {"exists": True, "path": _path, "line_count": _r.get("line_count", 0) if isinstance(_r, dict) else 0}
+except Exception:
+    result = {"exists": False, "path": _path}
+"#;
+
+const PC_EXEC_READ_THEN_GREP_CONTENT: &str = r#"# Read file content, then filter lines matching the pattern.
+_path    = "{{vars.slot0}}"
+_pattern = "{{vars.slot1}}"
+_file_result = host.read_file(path=_path)
+_content = _file_result.get("content", "") if isinstance(_file_result, dict) else str(_file_result)
+_lines = _content.split("\n")
+result = [_l for _l in _lines if _pattern in _l]
+"#;
+
+const PC_EXEC_LIST_THEN_GREP_CONTENT: &str = r#"# List directory, then filter entries by name substring.
+_dir    = "{{vars.slot0}}"
+_filter = "{{vars.slot1}}"
+_list_result = host.list_dir(path=_dir)
+_entries = _list_result if isinstance(_list_result, list) else (
+    _list_result.get("entries", []) if isinstance(_list_result, dict) else []
+)
+result = [_e for _e in _entries if _filter in str(_e)]
+"#;
+
+const PC_PATH_JOIN_CONTENT: &str = r#"# Pure path join — no os.path import needed. Uses string concat with normalization.
+_base = "{{vars.slot0}}".rstrip("/")
+_sub  = "{{vars.slot1}}".lstrip("/")
+result = (_base + "/" + _sub) if _sub else _base
+"#;
+
+const PC_PATH_BASENAME_CONTENT: &str = r#"# Pure basename — split on '/' and take the last non-empty component.
+_path = "{{vars.slot0}}"
+_parts = [p for p in _path.split("/") if p]
+result = _parts[-1] if _parts else ""
+"#;
+
+const PC_PATH_DIRNAME_CONTENT: &str = r#"# Pure dirname — split on '/' and drop the last component.
+_path = "{{vars.slot0}}"
+_parts = [p for p in _path.split("/") if p]
+result = "/" + "/".join(_parts[:-1]) if len(_parts) > 1 else "/"
 "#;
