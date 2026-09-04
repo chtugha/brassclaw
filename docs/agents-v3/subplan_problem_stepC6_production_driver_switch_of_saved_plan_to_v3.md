@@ -124,7 +124,14 @@ this step; its stage logic already lives in the `host.*` arms
   into 4a/4b/4c-prep/4c (SHIPPED) + 4d (the production wire-up). See
   `./subplan_problem_stepC6_4d_production_driver_wiring_of_saved_plan_to_v3.md`
   for slice 4d's grounding + the blocking architectural fork (LLM source for
-  production Monty).**
+  production Monty). **A preceding re-architecture sub-step (K1–K8) was added
+  once the Kohai LLM-path was understood — see
+  `./subplan_problem_stepC6_kohai_rearchitecture_of_saved_plan_to_v3.md`; it
+  retires `__llm_complete__`/`Arc<dyn LlmBackend>` from the host path, routes the
+  orchestrator LLM via `host.kohai_complete` (KohaiPort→HostManagedModelGateway),
+  drops `retrieve_docs`/`get_reduction_rules`, converts `assemble_prior_knowledge`
+  + `memory_write` to seeded Recipes, rewrites `compose_orchestrator` (Rust part
+  reduced) + updates the Recipe/Component structure. It MUST land before 4d-3.****
 - **Slice 5 — retire `canonical.rs` stage pipeline (C6-3=B).** Delete
   `DefaultExecutorPipeline::execute` + the stages as the turn driver; confirm
   stage logic is in the `host.*` arms; remove `driver_registry` → canonical.rs
