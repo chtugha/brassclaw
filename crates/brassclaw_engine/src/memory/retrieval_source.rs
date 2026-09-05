@@ -1405,6 +1405,7 @@ pub async fn lookup_component_class(
 
 /// Map a `DocType` to its class code.
 #[cfg(any(feature = "skills-db", test))]
+#[allow(dead_code)] // only test callers remain after C.7 Model-A retirement; kept for future skills-db use
 fn doc_type_to_class_code(doc_type: crate::types::memory::DocType) -> (i32, &'static str) {
     use crate::types::memory::DocType;
     match doc_type {

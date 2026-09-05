@@ -8504,7 +8504,7 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 
 ### Phase L — Builtin Tool Bootstrap Seeder
 
-**Status:** [ ] Pending
+**Status:** [x] Complete — `builtin_bootstrap.rs` seeds all 5 domain groups (filesystem → network → memory → process → management): 378 components total (23 Tools, 30 ToolSkills, 83 PythonCode, 108 Skills [99 leaf + 9 domain], 110 Recipes, 24 ExtensionCatalogues) — the plan's 319 target plus variants/helpers/gap-fillers identified during transcription; L.1 via V066 + V071; wired into boot via `webui.rs`; integration test `tests/builtin_bootstrap_seed.rs` (row counts + idempotency + safety-content guards: `ts-spawn-subagent` "scope isolation" + `skill-shell-safe-check` "approval"). Seeder commits through `fe2c7a48`. The §0.23.3 trusted-root validation-system fold-in is deliberately deferred to land right before Phase N's orchestrated Q1 (§0.23.9) and is not part of L.0–L.3.
 
 > **§0.23.3 + §0.23.9 fold-in:** Phase L also seeds the **trusted-root validation
 > system** alongside the builtin-tool stack: one pre-trusted Extension per class +
