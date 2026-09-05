@@ -360,8 +360,7 @@ impl BootstrapStores {
 ///
 /// Idempotent: safe to call on every composition boot. Each domain group is
 /// seeded independently (filesystem → network → memory → process →
-/// management). Only the filesystem group is implemented in this chunk;
-/// subsequent chunks add the remaining groups.
+/// management). All five groups are implemented.
 pub async fn seed_builtin_components(
     pool: Arc<PgPool>,
     tenant_id: &str,
@@ -369,8 +368,7 @@ pub async fn seed_builtin_components(
     let stores = BootstrapStores::new(pool, tenant_id);
 
     // Pass 1 — filesystem group (read_file, write_file, list_dir, glob, grep,
-    // apply_patch). Subsequent chunks add memory / process / management groups
-    // here.
+    // apply_patch).
     seed_filesystem_group(&stores).await?;
 
     // Pass 2 — network group (http, http.save, web-search composition).
@@ -382,6 +380,9 @@ pub async fn seed_builtin_components(
 
     // Pass 4 — process group (shell, spawn_subagent, trigger_create/list/remove).
     seed_process_group(&stores).await?;
+
+    // Pass 5 — management group (time, json, echo, skill-management).
+    seed_management_group(&stores).await?;
 
     Ok(())
 }
@@ -2902,6 +2903,12 @@ const SPAWN_SKILL_TAGS: &[&str] = &["02:orchestrator"];
 /// `LEAF_SKILL_TAGS` (`["02:orchestrator","05:validator"]`), so they use
 /// `leaf_skill(...)` rather than this const.
 const TRIGGER_SKILL_TAGS: &[&str] = &["02:orchestrator"];
+
+/// consumer_tags for the skill-management skills (skill-skill-list/install/remove
+/// leaf skills + the skill-skills domain) — transcribed verbatim from the doc.
+/// Orchestrator-only (the validator never mutates the installed skill library).
+/// The time/json leaf + domain skills use the full `LEAF_SKILL_TAGS` instead.
+const SKILL_MGMT_TAGS: &[&str] = &["02:orchestrator"];
 
 /// Build a `NewPgSkill` row from the variable parts. `intent_examples` is
 /// `json!([])` because the doc's leaf/domain skill definitions carry no
@@ -9323,6 +9330,888 @@ async fn seed_process_group(
 
     tracing::debug!(
         "seeded process group chunk 6f: trigger subgroup (4 pc + 5 leaf skills + 1 domain + 6 recipes) + catalogue appends (trigger subgroup COMPLETE: 3 tools + 3 ts + 4 pc + 5 leaf skills + 1 domain + 6 recipes; process group COMPLETE: shell + spawn + triggers)"
+    );
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Management group (Pass 5)
+// ---------------------------------------------------------------------------
+
+/// Seed the management & utility domain group: the primary `builtin-management`
+/// catalogue, 3 per-tool catalogues (ext-time, ext-json, ext-skill-management),
+/// 6 Tool rows, 12 ToolSkill rows, 10 PythonCode rows, 13 Leaf Skills,
+/// 3 Domain Skills, and 17 Recipes (65 components; 61 non-catalogue children).
+///
+/// Echo has no per-tool ext catalogue, so its tool, toolskill, pythoncode, and
+/// recipe are appended to the primary catalogue only.
+async fn seed_management_group(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
+    //    appended to as children are minted below).
+    let cat_management = stores
+        .upsert_catalogue(management_primary_catalogue_row(&tenant), CAT_MANAGEMENT)
+        .await?;
+    let cat_time = stores
+        .upsert_catalogue(ext_time_catalogue_row(&tenant), "ext-time")
+        .await?;
+    let cat_json = stores
+        .upsert_catalogue(ext_json_catalogue_row(&tenant), "ext-json")
+        .await?;
+    let cat_skill_management = stores
+        .upsert_catalogue(
+            ext_skill_management_catalogue_row(&tenant),
+            "ext-skill-management",
+        )
+        .await?;
+
+    // 2. Tool rows (class 0).
+    let tool_time = stores.upsert_tool(tool_time_row(&tenant), "time").await?;
+    let tool_json = stores.upsert_tool(tool_json_row(&tenant), "json").await?;
+    let tool_echo = stores.upsert_tool(tool_echo_row(&tenant), "echo").await?;
+    let tool_skill_list = stores
+        .upsert_tool(tool_skill_list_row(&tenant), "skill_list")
+        .await?;
+    let tool_skill_install = stores
+        .upsert_tool(tool_skill_install_row(&tenant), "skill_install")
+        .await?;
+    let tool_skill_remove = stores
+        .upsert_tool(tool_skill_remove_row(&tenant), "skill_remove")
+        .await?;
+
+    // 3. ToolSkill rows (class 13).
+    let ts_time_now = stores
+        .upsert_tool_skill(ts_time_now_row(&tenant), "ts-time-now")
+        .await?;
+    let ts_time_parse = stores
+        .upsert_tool_skill(ts_time_parse_row(&tenant), "ts-time-parse")
+        .await?;
+    let ts_time_convert = stores
+        .upsert_tool_skill(ts_time_convert_row(&tenant), "ts-time-convert")
+        .await?;
+    let ts_time_diff = stores
+        .upsert_tool_skill(ts_time_diff_row(&tenant), "ts-time-diff")
+        .await?;
+    let ts_time_format = stores
+        .upsert_tool_skill(ts_time_format_row(&tenant), "ts-time-format")
+        .await?;
+    let ts_json_query = stores
+        .upsert_tool_skill(ts_json_query_row(&tenant), "ts-json-query")
+        .await?;
+    let ts_json_stringify = stores
+        .upsert_tool_skill(ts_json_stringify_row(&tenant), "ts-json-stringify")
+        .await?;
+    let ts_json_validate = stores
+        .upsert_tool_skill(ts_json_validate_row(&tenant), "ts-json-validate")
+        .await?;
+    let ts_skill_list = stores
+        .upsert_tool_skill(ts_skill_list_row(&tenant), "ts-skill-list")
+        .await?;
+    let ts_skill_install = stores
+        .upsert_tool_skill(ts_skill_install_row(&tenant), "ts-skill-install")
+        .await?;
+    let ts_skill_remove = stores
+        .upsert_tool_skill(ts_skill_remove_row(&tenant), "ts-skill-remove")
+        .await?;
+    let ts_echo = stores
+        .upsert_tool_skill(ts_echo_row(&tenant), "ts-echo")
+        .await?;
+
+    // 4. PythonCode rows (class 22) — orchestrator executors. pc_row overrides
+    //    the doc's `05:validator` tag with the SEC-01-safe
+    //    `["01:monty","02:orchestrator"]` (pg_python_code_store hides
+    //    `05:validator` rows even when validated).
+    let pc_exec_time_now = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-time-now",
+                "Orchestrator executor: calls host.<tool> to get the current timestamp \
+                 via builtin.time operation='now'. Input: timezone (optional IANA string).",
+                PC_EXEC_TIME_NOW_CONTENT,
+            ),
+            "pc-exec-time-now",
+        )
+        .await?;
+    let pc_exec_time_parse = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-time-parse",
+                "Orchestrator executor: calls host.<tool> to parse a timestamp string \
+                 via builtin.time operation='parse'. Input: input (string), timezone \
+                 (optional).",
+                PC_EXEC_TIME_PARSE_CONTENT,
+            ),
+            "pc-exec-time-parse",
+        )
+        .await?;
+    let pc_exec_time_convert = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-time-convert",
+                "Orchestrator executor: calls host.<tool> to convert a timestamp between \
+                 timezones via builtin.time operation='convert'. Input: input (string), \
+                 from_timezone (optional), to_timezone (optional IANA string).",
+                PC_EXEC_TIME_CONVERT_CONTENT,
+            ),
+            "pc-exec-time-convert",
+        )
+        .await?;
+    let pc_exec_time_diff = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-time-diff",
+                "Orchestrator executor: calls host.<tool> to compute the signed difference \
+                 between two timestamps via builtin.time operation='diff'. Input: input \
+                 (string), timestamp2 (string). Output: {seconds, minutes, hours, days} \
+                 — all signed.",
+                PC_EXEC_TIME_DIFF_CONTENT,
+            ),
+            "pc-exec-time-diff",
+        )
+        .await?;
+    let pc_exec_time_format = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-time-format",
+                "Orchestrator executor: calls host.<tool> to format a timestamp as a \
+                 human-readable string via builtin.time operation='format'. Input: input \
+                 (string), optional format_string (string), optional timezone (string). \
+                 Output: {formatted, utc_iso, timezone?}.",
+                PC_EXEC_TIME_FORMAT_CONTENT,
+            ),
+            "pc-exec-time-format",
+        )
+        .await?;
+    let pc_exec_json_query = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-json-query",
+                "Orchestrator executor: calls host.<tool> for json query operation. \
+                 Input: data (JSON value or string), path (dot-separated path string).",
+                PC_EXEC_JSON_QUERY_CONTENT,
+            ),
+            "pc-exec-json-query",
+        )
+        .await?;
+    let pc_exec_json_stringify = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-json-stringify",
+                "Orchestrator executor: calls host.<tool> for json stringify or parse. \
+                 Input: operation ('stringify' or 'parse'), data.",
+                PC_EXEC_JSON_STRINGIFY_CONTENT,
+            ),
+            "pc-exec-json-stringify",
+        )
+        .await?;
+    let pc_exec_json_validate = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-json-validate",
+                "Orchestrator executor: calls host.<tool> to validate a JSON string. \
+                 Input: data (string). Output: {valid, error}.",
+                PC_EXEC_JSON_VALIDATE_CONTENT,
+            ),
+            "pc-exec-json-validate",
+        )
+        .await?;
+    let pc_exec_skill_list = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-skill-list",
+                "Orchestrator executor: calls host.<tool> to list installed skills. \
+                 Input: scope (string). Output: [{name, class_code, …}].",
+                PC_EXEC_SKILL_LIST_CONTENT,
+            ),
+            "pc-exec-skill-list",
+        )
+        .await?;
+    let pc_exec_echo = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-exec-echo",
+                "Orchestrator executor: calls host.<tool> for builtin.echo (diagnostic \
+                 passthrough). Input: message (string). Output: {message} — returned \
+                 verbatim.",
+                PC_EXEC_ECHO_CONTENT,
+            ),
+            "pc-exec-echo",
+        )
+        .await?;
+
+    // 5. Leaf Skills (class 1). time/json leaf skills carry the full
+    //    LEAF_SKILL_TAGS [02:orchestrator, 05:validator]; skill-management
+    //    leaf skills are orchestrator-only (SKILL_MGMT_TAGS).
+    let skill_time_now = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-time-now",
+                "Leaf skill: how to get the current date and time.",
+                SKILL_TIME_NOW_BODY,
+            ),
+            "skill-time-now",
+        )
+        .await?;
+    let skill_time_parse = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-time-parse",
+                "Leaf skill: how to parse a timestamp string into a structured time value.",
+                SKILL_TIME_PARSE_BODY,
+            ),
+            "skill-time-parse",
+        )
+        .await?;
+    let skill_time_convert = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-time-convert",
+                "Leaf skill: how to convert a timestamp to a different timezone.",
+                SKILL_TIME_CONVERT_BODY,
+            ),
+            "skill-time-convert",
+        )
+        .await?;
+    let skill_time_diff = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-time-diff",
+                "Leaf skill: how to compute the difference between two timestamps.",
+                SKILL_TIME_DIFF_BODY,
+            ),
+            "skill-time-diff",
+        )
+        .await?;
+    let skill_time_format = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-time-format",
+                "Leaf skill: how to format a timestamp as a human-readable string.",
+                SKILL_TIME_FORMAT_BODY,
+            ),
+            "skill-time-format",
+        )
+        .await?;
+    let skill_json_query = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-json-query",
+                "Leaf skill: how to extract a value from a JSON structure by path.",
+                SKILL_JSON_QUERY_BODY,
+            ),
+            "skill-json-query",
+        )
+        .await?;
+    let skill_json_stringify = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-json-stringify",
+                "Leaf skill: how to convert a value to a formatted JSON string.",
+                SKILL_JSON_STRINGIFY_BODY,
+            ),
+            "skill-json-stringify",
+        )
+        .await?;
+    let skill_json_parse = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-json-parse",
+                "Leaf skill: how to parse a JSON string into a structured value.",
+                SKILL_JSON_PARSE_BODY,
+            ),
+            "skill-json-parse",
+        )
+        .await?;
+    let skill_json_validate = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-json-validate",
+                "Leaf skill: how to check whether a string is valid JSON.",
+                SKILL_JSON_VALIDATE_BODY,
+            ),
+            "skill-json-validate",
+        )
+        .await?;
+    let skill_json_parse_and_query = stores
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-json-parse-and-query",
+                "Leaf skill: how to parse a JSON string and immediately extract a field value.",
+                SKILL_JSON_PARSE_AND_QUERY_BODY,
+            ),
+            "skill-json-parse-and-query",
+        )
+        .await?;
+    let skill_skill_list = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-skill-list",
+                "Leaf skill: how to list installed skills in the active scope.",
+                SKILL_SKILL_LIST_BODY,
+                1,
+                SKILL_MGMT_TAGS,
+            ),
+            "skill-skill-list",
+        )
+        .await?;
+    let skill_skill_install = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-skill-install",
+                "Leaf skill: how to install a new skill from a URL or local path.",
+                SKILL_SKILL_INSTALL_BODY,
+                1,
+                SKILL_MGMT_TAGS,
+            ),
+            "skill-skill-install",
+        )
+        .await?;
+    let skill_skill_remove = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-skill-remove",
+                "Leaf skill: how to safely remove an installed skill.",
+                SKILL_SKILL_REMOVE_BODY,
+                1,
+                SKILL_MGMT_TAGS,
+            ),
+            "skill-skill-remove",
+        )
+        .await?;
+
+    // 6. Domain Skills (class 2). skill-time / skill-json carry the long domain
+    //    text as body with a short one-line description (LEAF_SKILL_TAGS);
+    //    skill-skills is orchestrator-only (SKILL_MGMT_TAGS).
+    let skill_time = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-time",
+                "Domain skill: the time domain — now, parse, convert, diff, format.",
+                SKILL_TIME_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-time",
+        )
+        .await?;
+    let skill_json = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-json",
+                "Domain skill: the JSON domain — query, stringify, parse, validate.",
+                SKILL_JSON_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-json",
+        )
+        .await?;
+    let skill_skills = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-skills",
+                "Domain skill: skill management — list, install, remove.",
+                SKILL_SKILLS_BODY,
+                2,
+                SKILL_MGMT_TAGS,
+            ),
+            "skill-skills",
+        )
+        .await?;
+
+    // 7. Recipes (class 21). 15 Tier-0 (llm_call_required=false) + 2 Tier-1
+    //    (skill-install, skill-remove — 3-step LLM-confirm pattern).
+    let recipe_time_now = stores
+        .seed_recipe(
+            &tenant,
+            "time-now",
+            "Get the current date and time.",
+            true,
+            RECIPE_TIME_NOW_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-time-now ToolSkill binding", "component", &[ts_time_now]),
+                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=now)", "component", &[pc_exec_time_now]),
+            ],
+            &[
+                json!({"input": "what time is it", "class": 1}),
+                json!({"input": "what is today's date", "class": 1}),
+                json!({"input": "current time in Tokyo", "class": 2}),
+                json!({"input": "get the current UTC timestamp", "class": 1}),
+                json!({"input": "what day is it", "class": 1}),
+                json!({"input": "what time is it now", "class": 1}),
+                json!({"input": "what is the current time", "class": 1}),
+                json!({"input": "time now", "class": 1}),
+                json!({"input": "give me a timestamp", "class": 1}),
+                json!({"input": "what time is it in Berlin", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_time_now_tz = stores
+        .seed_recipe(
+            &tenant,
+            "time-now-tz",
+            "Get the current date and time in a specific IANA timezone.",
+            true,
+            RECIPE_TIME_NOW_TZ_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-time-now ToolSkill binding", "component", &[ts_time_now]),
+                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=now, timezone=<tz>)", "component", &[pc_exec_time_now]),
+            ],
+            &[
+                json!({"input": "what time is it in Tokyo", "class": 1}),
+                json!({"input": "current time in America/New_York", "class": 1}),
+                json!({"input": "what time is it in Europe/Berlin", "class": 1}),
+                json!({"input": "time now in Australia/Sydney", "class": 1}),
+                json!({"input": "current time in Pacific timezone", "class": 2}),
+                json!({"input": "what is the time in EST", "class": 2}),
+                json!({"input": "get me the current time in London", "class": 1}),
+                json!({"input": "what time is it in India right now", "class": 2}),
+                json!({"input": "tell me the time in Singapore", "class": 2}),
+                json!({"input": "current UTC offset for Europe/Paris", "class": 2}),
+                json!({"input": "time in China right now", "class": 2}),
+                json!({"input": "what is the local time in New York", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_time_parse = stores
+        .seed_recipe(
+            &tenant,
+            "time-parse",
+            "Parse a timestamp string into a structured time value.",
+            true,
+            RECIPE_TIME_PARSE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-time-parse ToolSkill binding", "component", &[ts_time_parse]),
+                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=parse, input)", "component", &[pc_exec_time_parse]),
+            ],
+            &[
+                json!({"input": "parse this date string", "class": 1}),
+                json!({"input": "what timestamp is 2024-01-15T10:30", "class": 1}),
+                json!({"input": "interpret this date format", "class": 2}),
+                json!({"input": "parse the timestamp from this log", "class": 2}),
+                json!({"input": "what does this date mean", "class": 2}),
+                json!({"input": "parse this ISO timestamp", "class": 1}),
+                json!({"input": "read this date string", "class": 2}),
+                json!({"input": "time parse", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_time_convert = stores
+        .seed_recipe(
+            &tenant,
+            "time-convert",
+            "Convert a timestamp to a different timezone.",
+            true,
+            RECIPE_TIME_CONVERT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-time-convert ToolSkill binding", "component", &[ts_time_convert]),
+                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=convert, input, to_timezone)", "component", &[pc_exec_time_convert]),
+            ],
+            &[
+                json!({"input": "convert this time to New York timezone", "class": 2}),
+                json!({"input": "what is 3pm UTC in Tokyo", "class": 2}),
+                json!({"input": "timezone conversion for this timestamp", "class": 2}),
+                json!({"input": "what time is this in EST", "class": 2}),
+                json!({"input": "convert this UTC time to local time", "class": 2}),
+                json!({"input": "what is this time in Europe/Berlin", "class": 2}),
+                json!({"input": "time convert to Asia/Tokyo", "class": 1}),
+                json!({"input": "express this timestamp in Pacific time", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_time_diff = stores
+        .seed_recipe(
+            &tenant,
+            "time-diff",
+            "Compute the signed difference between two timestamps (seconds, minutes, hours, days).",
+            true,
+            RECIPE_TIME_DIFF_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-time-diff ToolSkill binding", "component", &[ts_time_diff]),
+                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=diff, input, timestamp2)", "component", &[pc_exec_time_diff]),
+            ],
+            &[
+                json!({"input": "how many days between these two dates", "class": 2}),
+                json!({"input": "how long ago was this timestamp", "class": 2}),
+                json!({"input": "compute the duration between two timestamps", "class": 1}),
+                json!({"input": "what is the difference in hours between X and Y", "class": 2}),
+                json!({"input": "time diff", "class": 1}),
+                json!({"input": "how many seconds between these two times", "class": 2}),
+                json!({"input": "elapsed time between these events", "class": 2}),
+                json!({"input": "time difference in days", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_time_format = stores
+        .seed_recipe(
+            &tenant,
+            "time-format",
+            "Format a timestamp as a human-readable string using a chrono format string.",
+            true,
+            RECIPE_TIME_FORMAT_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-time-format ToolSkill binding", "component", &[ts_time_format]),
+                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=format, input, format_string?)", "component", &[pc_exec_time_format]),
+            ],
+            &[
+                json!({"input": "format this date as day month year", "class": 2}),
+                json!({"input": "display this timestamp in a readable format", "class": 1}),
+                json!({"input": "format this timestamp", "class": 1}),
+                json!({"input": "render this date as DD MMM YYYY", "class": 2}),
+                json!({"input": "time format", "class": 1}),
+                json!({"input": "show this date in 12-hour time", "class": 2}),
+                json!({"input": "format the current date for a log entry", "class": 2}),
+                json!({"input": "pretty-print this timestamp", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_json_query = stores
+        .seed_recipe(
+            &tenant,
+            "json-query",
+            "Extract a value from a JSON structure by path.",
+            true,
+            RECIPE_JSON_QUERY_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-json-query ToolSkill binding", "component", &[ts_json_query]),
+                step_entry(2, "orchestrator", "PythonCode calls host.json(operation=query, data, path)", "component", &[pc_exec_json_query]),
+            ],
+            &[
+                json!({"input": "extract the user name from this JSON", "class": 2}),
+                json!({"input": "get the value at this JSON path", "class": 1}),
+                json!({"input": "query this JSON for the id field", "class": 2}),
+                json!({"input": "json query items.0.name", "class": 1}),
+                json!({"input": "extract nested field from API response", "class": 2}),
+                json!({"input": "get value at json path user.email", "class": 1}),
+                json!({"input": "extract the status field from this response", "class": 2}),
+                json!({"input": "json path extraction", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_json_stringify = stores
+        .seed_recipe(
+            &tenant,
+            "json-stringify",
+            "Stringify or parse a JSON value.",
+            true,
+            RECIPE_JSON_STRINGIFY_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-json-stringify ToolSkill binding", "component", &[ts_json_stringify]),
+                step_entry(2, "orchestrator", "PythonCode calls host.json(operation, data)", "component", &[pc_exec_json_stringify]),
+            ],
+            &[
+                json!({"input": "format this as JSON", "class": 1}),
+                json!({"input": "stringify this object", "class": 1}),
+                json!({"input": "parse this JSON string", "class": 1}),
+                json!({"input": "pretty print this JSON", "class": 1}),
+                json!({"input": "convert this to a JSON string", "class": 2}),
+                json!({"input": "json stringify", "class": 1}),
+                json!({"input": "serialize this to JSON", "class": 1}),
+                json!({"input": "format this JSON structure", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_json_parse = stores
+        .seed_recipe(
+            &tenant,
+            "json-parse",
+            "Parse a JSON string into a structured value.",
+            true,
+            RECIPE_JSON_PARSE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-json-stringify ToolSkill binding (handles parse operation)", "component", &[ts_json_stringify]),
+                step_entry(2, "orchestrator", "PythonCode calls host.json(operation='parse', data)", "component", &[pc_exec_json_stringify]),
+            ],
+            &[
+                json!({"input": "parse this JSON", "class": 1}),
+                json!({"input": "decode this JSON", "class": 1}),
+                json!({"input": "convert this JSON string to a value", "class": 1}),
+                json!({"input": "json parse", "class": 1}),
+                json!({"input": "deserialize this JSON response", "class": 2}),
+                json!({"input": "interpret this JSON payload", "class": 2}),
+                json!({"input": "turn this JSON text into an object", "class": 2}),
+                json!({"input": "parse the API response body as JSON", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_json_validate = stores
+        .seed_recipe(
+            &tenant,
+            "json-validate",
+            "Validate whether a string is valid JSON.",
+            true,
+            RECIPE_JSON_VALIDATE_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-json-validate ToolSkill binding", "component", &[ts_json_validate]),
+                step_entry(2, "orchestrator", "PythonCode calls host.json(operation='validate', data)", "component", &[pc_exec_json_validate]),
+            ],
+            &[
+                json!({"input": "is this valid JSON", "class": 1}),
+                json!({"input": "validate this JSON string", "class": 1}),
+                json!({"input": "check if this is valid JSON", "class": 1}),
+                json!({"input": "json validate", "class": 1}),
+                json!({"input": "is this JSON correct", "class": 1}),
+                json!({"input": "verify this JSON syntax", "class": 1}),
+                json!({"input": "check this JSON before using it", "class": 2}),
+                json!({"input": "is this a valid JSON payload", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_json_parse_and_query = stores
+        .seed_recipe(
+            &tenant,
+            "json-parse-and-query",
+            "Parse a JSON string and immediately extract a field by dot-path — both pre-baked in vars.",
+            true,
+            RECIPE_JSON_PARSE_AND_QUERY_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-json-validate ToolSkill binding (validate first)", "component", &[ts_json_validate]),
+                step_entry(2, "orchestrator", "PythonCode validates the JSON string before proceeding", "component", &[pc_exec_json_validate]),
+                step_entry(3, "rust", "Pre-load ts-json-query ToolSkill binding", "component", &[ts_json_query]),
+                step_entry(4, "orchestrator", "PythonCode calls host.json(operation='query', path=slot1) on parsed data", "component", &[pc_exec_json_query]),
+            ],
+            &[
+                json!({"input": "get the field X from this JSON response", "class": 1}),
+                json!({"input": "extract the value from this JSON payload", "class": 2}),
+                json!({"input": "parse this API response and get the status field", "class": 2}),
+                json!({"input": "json parse and extract", "class": 1}),
+                json!({"input": "parse JSON and read field X", "class": 1}),
+                json!({"input": "extract data.items from this JSON", "class": 2}),
+                json!({"input": "get the nested field from this JSON string", "class": 2}),
+                json!({"input": "json parse then query path", "class": 1}),
+                json!({"input": "decode and extract this value", "class": 2}),
+                json!({"input": "parse this payload and read the error field", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_skill_list = stores
+        .seed_recipe(
+            &tenant,
+            "skill-list",
+            "List all installed skills, optionally filtered by scope.",
+            true,
+            RECIPE_SKILL_LIST_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-skill-list ToolSkill binding", "component", &[ts_skill_list]),
+                step_entry(2, "orchestrator", "PythonCode calls host.skill_list(scope)", "component", &[pc_exec_skill_list]),
+            ],
+            &[
+                json!({"input": "list my skills", "class": 1}),
+                json!({"input": "what skills are installed", "class": 1}),
+                json!({"input": "show me available skills", "class": 1}),
+                json!({"input": "which skills do I have", "class": 1}),
+                json!({"input": "list system skills", "class": 2}),
+                json!({"input": "skill list", "class": 1}),
+                json!({"input": "show all installed skills", "class": 1}),
+                json!({"input": "what capabilities are loaded", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_skill_list_user_only = stores
+        .seed_recipe(
+            &tenant,
+            "skill-list-user-only",
+            "List only user-installed skills (scope='user').",
+            true,
+            RECIPE_SKILL_LIST_USER_ONLY_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-skill-list ToolSkill binding", "component", &[ts_skill_list]),
+                step_entry(2, "orchestrator", "PythonCode calls host.skill_list(scope='user')", "component", &[pc_exec_skill_list]),
+            ],
+            &[
+                json!({"input": "what skills have I installed", "class": 1}),
+                json!({"input": "list my user-installed skills", "class": 1}),
+                json!({"input": "show only the skills I added", "class": 1}),
+                json!({"input": "which user skills do I have", "class": 1}),
+                json!({"input": "my custom skills list", "class": 2}),
+                json!({"input": "show skills installed by user", "class": 1}),
+                json!({"input": "list user-scope skills", "class": 1}),
+                json!({"input": "what have I installed as skills", "class": 2}),
+                json!({"input": "my skill library", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_skill_list_system_only = stores
+        .seed_recipe(
+            &tenant,
+            "skill-list-system-only",
+            "List only system-provided built-in skills (scope='system').",
+            true,
+            RECIPE_SKILL_LIST_SYSTEM_ONLY_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-skill-list ToolSkill binding", "component", &[ts_skill_list]),
+                step_entry(2, "orchestrator", "PythonCode calls host.skill_list(scope='system')", "component", &[pc_exec_skill_list]),
+            ],
+            &[
+                json!({"input": "what built-in skills are available", "class": 1}),
+                json!({"input": "list system skills", "class": 1}),
+                json!({"input": "show me the built-in capabilities", "class": 1}),
+                json!({"input": "what system-level skills exist", "class": 1}),
+                json!({"input": "list the system builtins", "class": 1}),
+                json!({"input": "show only system-provided skills", "class": 1}),
+                json!({"input": "what skills come with the system", "class": 2}),
+                json!({"input": "list builtin skills scope system", "class": 1}),
+                json!({"input": "show factory-installed skills", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_skill_install = stores
+        .seed_recipe(
+            &tenant,
+            "skill-install",
+            "Install a new skill from a URL, with user confirmation.",
+            false,
+            RECIPE_SKILL_INSTALL_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load skill-skill-install leaf skill body (install procedure)", "component", &[skill_skill_install]),
+                step_entry(2, "orchestrator", "LLM confirms URL with user, explains pending state, calls ts-skill-install", "text", &[]),
+                step_entry(3, "rust", "Pre-load ToolSkill bindings for list (pre-check) and install", "component", &[ts_skill_list, ts_skill_install]),
+            ],
+            &[
+                json!({"input": "install a skill from this URL", "class": 1}),
+                json!({"input": "add a new skill", "class": 1}),
+                json!({"input": "install skill from https://...", "class": 1}),
+                json!({"input": "load skill from local path", "class": 2}),
+                json!({"input": "install this skill", "class": 1}),
+                json!({"input": "add skill from this path", "class": 2}),
+                json!({"input": "skill install", "class": 1}),
+                json!({"input": "set up this new skill", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_skill_remove = stores
+        .seed_recipe(
+            &tenant,
+            "skill-remove",
+            "Remove an installed skill by name, with user confirmation.",
+            false,
+            RECIPE_SKILL_REMOVE_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load skill-skill-remove leaf skill body (removal procedure)", "component", &[skill_skill_remove]),
+                step_entry(2, "orchestrator", "LLM confirms skill name, warns about irreversibility, calls ts-skill-remove", "text", &[]),
+                step_entry(3, "rust", "Pre-load ToolSkill bindings for list (pre-check) and remove", "component", &[ts_skill_list, ts_skill_remove]),
+            ],
+            &[
+                json!({"input": "remove skill X", "class": 1}),
+                json!({"input": "uninstall skill", "class": 1}),
+                json!({"input": "delete this skill", "class": 1}),
+                json!({"input": "remove my custom skill", "class": 2}),
+                json!({"input": "skill remove", "class": 1}),
+                json!({"input": "uninstall this skill from my agent", "class": 2}),
+                json!({"input": "delete skill by name", "class": 1}),
+                json!({"input": "remove the skill named X", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_echo_ping = stores
+        .seed_recipe(
+            &tenant,
+            "echo-ping",
+            "Diagnostic: echo a message through the tool dispatch pipeline (builtin.echo).",
+            true,
+            RECIPE_ECHO_PING_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-echo ToolSkill binding", "component", &[ts_echo]),
+                step_entry(2, "orchestrator", "PythonCode calls host.echo(message) — returned verbatim", "component", &[pc_exec_echo]),
+            ],
+            &[
+                json!({"input": "echo test", "class": 1}),
+                json!({"input": "echo ping", "class": 1}),
+                json!({"input": "test the tool pipeline", "class": 2}),
+                json!({"input": "diagnostic echo", "class": 1}),
+                json!({"input": "verify the orchestrator can call tools", "class": 2}),
+                json!({"input": "echo this message back", "class": 1}),
+                json!({"input": "test tool dispatch is working", "class": 2}),
+                json!({"input": "echo-ping", "class": 1}),
+                json!({"input": "check the orchestrator is alive", "class": 2}),
+                json!({"input": "pipeline health check", "class": 2}),
+            ],
+        )
+        .await?;
+
+    // 8. Catalogue appends. Each per-tool ext catalogue owns its subgroup's
+    //    children; the primary `builtin-management` catalogue owns the union of
+    //    all four child sets (the three per-tool sets + echo's primary-only set,
+    //    since echo has no per-tool ext catalogue). append_children deduplicates
+    //    on re-run, so this is idempotent.
+    let ext_time_children: Vec<Uuid> = vec![
+        tool_time, ts_time_now, ts_time_parse, ts_time_convert, ts_time_diff, ts_time_format,
+        pc_exec_time_now, pc_exec_time_parse, pc_exec_time_convert, pc_exec_time_diff,
+        pc_exec_time_format, skill_time_now, skill_time_parse, skill_time_convert,
+        skill_time_diff, skill_time_format, skill_time, recipe_time_now, recipe_time_now_tz,
+        recipe_time_parse, recipe_time_convert, recipe_time_diff, recipe_time_format,
+    ];
+    let ext_json_children: Vec<Uuid> = vec![
+        tool_json, ts_json_query, ts_json_stringify, ts_json_validate,
+        pc_exec_json_query, pc_exec_json_stringify, pc_exec_json_validate,
+        skill_json_query, skill_json_stringify, skill_json_parse, skill_json_validate,
+        skill_json_parse_and_query, skill_json, recipe_json_query, recipe_json_stringify,
+        recipe_json_parse, recipe_json_validate, recipe_json_parse_and_query,
+    ];
+    let ext_skill_management_children: Vec<Uuid> = vec![
+        tool_skill_list, tool_skill_install, tool_skill_remove,
+        ts_skill_list, ts_skill_install, ts_skill_remove,
+        pc_exec_skill_list, skill_skill_list, skill_skill_install, skill_skill_remove,
+        skill_skills, recipe_skill_list, recipe_skill_list_user_only,
+        recipe_skill_list_system_only, recipe_skill_install, recipe_skill_remove,
+    ];
+    let echo_children: Vec<Uuid> = vec![tool_echo, ts_echo, pc_exec_echo, recipe_echo_ping];
+
+    stores
+        .append_children(cat_time, &ext_time_children)
+        .await?;
+    stores
+        .append_children(cat_json, &ext_json_children)
+        .await?;
+    stores
+        .append_children(cat_skill_management, &ext_skill_management_children)
+        .await?;
+    // Primary catalogue owns the union of all four child sets.
+    stores
+        .append_children(cat_management, &ext_time_children)
+        .await?;
+    stores
+        .append_children(cat_management, &ext_json_children)
+        .await?;
+    stores
+        .append_children(cat_management, &ext_skill_management_children)
+        .await?;
+    stores
+        .append_children(cat_management, &echo_children)
+        .await?;
+
+    tracing::debug!(
+        "seeded management group: 6 tools + 12 toolskills + 10 PythonCode + 13 leaf skills + 3 domain skills + 17 recipes (15 Tier-0 + 2 Tier-1) + 4 catalogues - management group COMPLETE (65 components; 61 non-catalogue children)"
     );
 
     Ok(())
