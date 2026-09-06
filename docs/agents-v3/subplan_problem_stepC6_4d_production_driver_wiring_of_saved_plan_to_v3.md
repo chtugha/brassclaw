@@ -22,7 +22,8 @@ Sub-slices:
 - **4d-2** — thread `monty_driver` through `DefaultPlannedRuntimeParts`
   (`crates/brassclaw_reborn/src/runtime.rs:113`, ~35 fields, no slot today).
 - **4d-3** — composition constructs `PersistentMontyDriver` + injects into the
-  parts (composition `runtime.rs:2679` call site). **BLOCKED on the fork below.**
+  parts (composition `runtime.rs:2621` call site). **DONE `ef99cf18`** — both
+  ports wired (see Fork 2 resolution below).
 - **4d-4** — `SignalForwardingCoordinator` wrapper so `cancel_run` (which carries
   `request.scope`) forwards `ThreadSignal::Stop` into the `SignalBroker`.
 - **4d-5** — both configs clippy-clean + unit tests + commit + push.
@@ -150,14 +151,20 @@ combined with α (pass the adapter as the facade's llm, replacing the guard) or
 are LLM-source decisions. γ+α = facade-driven with adapter; γ+β = facade-driven
 with gateway.
 
-### Decision needed
-- **LLM source:** α (adapter, minimal engine change, preserves C6-2=B) vs β
-  (re-plumb arms to gateway, one-LLM-path consistency, bigger engine change).
-- **Drive-loop location:** composition-side `PersistentMontyDriver` (slice 4c
-  as built) vs engine-side `TierZeroOrchestrator::drive_turn_persistent` (γ).
+### Resolution (2026-09-06, shipped)
+**Resolved by the Kohai K2 re-architecture (`bd5d92e9`), which chose β + the
+composition-side location.** The orchestrator's LLM arms were re-plumbed off
+`Arc<dyn LlmBackend>` onto `host.kohai_complete` → `KohaiPort` →
+`HostManagedModelGateway`. `drive_to_yield` (`orchestrator.rs:724-738`) no
+longer takes an `llm` param; `PersistentMontyDriver::new` has no `llm` field.
+One LLM path (the gateway) — no adapter (α dropped). The drive loop stays in
+composition's `PersistentMontyDriver` (γ dropped).
 
-The user has consistently owned architecture decisions of this magnitude. **No
-4d code written until this fork is resolved.**
+**4d-3 DONE (`ef99cf18`):** the two remaining `None` port slots are wired —
+`PgCompositionPort` (host.compose_orchestrator) from `services.pg_pool` + the
+driver thread store, and `PgKohaiPort` (host.kohai_complete) from a fresh
+`PgInterceptorStore` + `PgBasicPromptStore` + the shared `model_gateway`. Both
+gated on `(postgres, root-llm-provider)`; degrade to `None` otherwise.
 
 ## Out of scope (explicit)
 - C.7 deletions (`execute_orchestrator` / `default.py` / `ExecutionLoop` /

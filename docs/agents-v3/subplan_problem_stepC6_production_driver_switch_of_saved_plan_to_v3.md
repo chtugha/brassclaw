@@ -121,10 +121,11 @@ this step; its stage logic already lives in the `host.*` arms
   apply the resulting `LoopExit` (Complete→turn done; AwaitNextTurn→park +
   turn done, VM stays alive for the next turn). Wire host deps + ports into the
   session (the `PgCompositionPort`/`PgKohaiPort` from C.4.5.17/C.5). **Split
-  into 4a/4b/4c-prep/4c (SHIPPED) + 4d (the production wire-up). See
+  into 4a/4b/4c-prep/4c (SHIPPED) + 4d (the production wire-up; 4d-3 port
+  wiring SHIPPED `ef99cf18`). See
   `./subplan_problem_stepC6_4d_production_driver_wiring_of_saved_plan_to_v3.md`
-  for slice 4d's grounding + the blocking architectural fork (LLM source for
-  production Monty). **A preceding re-architecture sub-step (K1–K8) was added
+  for slice 4d's grounding (the LLM-source fork is resolved there — β via the
+  Kohai K2 re-arch). **A preceding re-architecture sub-step (K1–K8) was added
   once the Kohai LLM-path was understood — see
   `./subplan_problem_stepC6_kohai_rearchitecture_of_saved_plan_to_v3.md`; it
   retires `__llm_complete__`/`Arc<dyn LlmBackend>` from the host path, routes the

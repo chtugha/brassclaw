@@ -5980,7 +5980,11 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 >   logic as host fns. All 6 slices shipped: engine `MontySession`+park/resume
 >   primitive, resumable `basic_mode.py` loop, conversation-keyed session registry,
 >   `TurnRunnerWorker` direct path (bypass `driver_registry`), retire `canonical.rs`
->   stages, both configs clippy-clean + engine tests green.
+>   stages, both configs clippy-clean + engine tests green. **Follow-up 4d-3
+>   (2026-09-06, `ef99cf18`):** the two production ports left as `None` ("wired in a
+>   follow-up slice") are now wired — `PgCompositionPort` (host.compose_orchestrator)
+>   + `PgKohaiPort` (host.kohai_complete, the LLM path per the Kohai K2 re-arch).
+>   The stale 4d LLM-source fork (α/β/γ) is resolved — β, via KohaiPort→gateway.
 > - **C.7 — Retire dead Model-A code + verify both configs green. COMPLETE
 >   (2026-09-05).** Deleted `execute_orchestrator`/`ExecutionLoop`/`ThreadManager`/
 >   `brassclaw_engine::runtime::{manager,conversation,tree,lease_refresh}` +
