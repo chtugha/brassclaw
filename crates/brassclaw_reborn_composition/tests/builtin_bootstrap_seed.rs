@@ -4,11 +4,12 @@
 //!
 //! Starts an isolated Postgres-16 testcontainer, runs the full migration set,
 //! calls the idempotent boot seed, and asserts the five domain groups
-//! (filesystem → network → memory → process → management) landed as
+//! (filesystem → network → memory → process → management → host) landed as
 //! `source = "system"` + `validation_status = "validated"` rows:
-//! 23 Tools, 30 ToolSkills, 83 PythonCodes, 108 Skills (99 leaf + 9 domain),
-//! 110 Recipes, and 24 ExtensionCatalogues (378 components total — the plan's
-//! 319 target plus variants/helpers/gap-fillers identified during transcription).
+//! 23 Tools, 30 ToolSkills, 84 PythonCodes, 108 Skills (99 leaf + 9 domain),
+//! 111 Recipes, and 24 ExtensionCatalogues (380 components total — the plan's
+//! 319 target plus variants/helpers/gap-fillers identified during transcription,
+//! plus the K4 host-assemble-prior-knowledge fallback recipe + its formatter).
 //! Re-runs the seed to prove idempotency (counts unchanged). Also guards the
 //! safety-critical content: `ts-spawn-subagent` carries "scope isolation" and
 //! the `skill-shell-safe-check` skill body carries the "approval" rule.
@@ -176,11 +177,12 @@ async fn builtin_bootstrap_seed_lands_all_v3_components() {
         30,
         "exactly 30 builtin tool skills"
     );
-    // 83 PythonCodes (class 22) — tool executors + variants/helpers/gap-fillers.
+    // 84 PythonCodes (class 22) — tool executors + variants/helpers/gap-fillers
+    // + the K4 host-fallback-prior-knowledge formatter.
     assert_eq!(
         count_validated_system(&rig.pool, "reborn_python_code", &tenant).await,
-        83,
-        "exactly 83 builtin python codes"
+        84,
+        "exactly 84 builtin python codes"
     );
     // 108 Skills (99 leaf class 1 + 9 domain class 2).
     assert_eq!(
@@ -188,11 +190,12 @@ async fn builtin_bootstrap_seed_lands_all_v3_components() {
         108,
         "exactly 108 builtin skills (99 leaf + 9 domain)"
     );
-    // 110 Recipes (class 21) — 15 Tier-0 + 2 Tier-1 in management + the rest.
+    // 111 Recipes (class 21) — 15 Tier-0 + 2 Tier-1 in management + the rest
+    // + the K4 host-assemble-prior-knowledge no-prefix fallback recipe.
     assert_eq!(
         count_validated_system(&rig.pool, "reborn_recipes", &tenant).await,
-        110,
-        "exactly 110 builtin recipes"
+        111,
+        "exactly 111 builtin recipes"
     );
     // 24 ExtensionCatalogues (class 23) — primary + per-tool ext catalogues.
     assert_eq!(

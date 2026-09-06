@@ -114,13 +114,31 @@ call is performed by Kohai (wrapping the provider gateway).
   the assembly). `ComposedProgram`/`ComposedStep`/`RustDirective`/`SkillRef`
   (`memory/composition.rs`) + `Recipe`/`RecipeStep`/`RecipeVariant`
   (`types/recipe.rs`) carry the new architecture shape.
-- **K4 — PARTIAL.** The `__assemble_prior_knowledge__` orchestrator arm is retired
+- **K4 — DONE.** The `__assemble_prior_knowledge__` orchestrator arm is retired
   (Phase H8.4) and replaced by the `pub` `assemble_prior_knowledge_with_hint`
-  library call (§3.13/§3.14). **Not yet converted to a seeded Recipe component** —
-  no `assemble_prior_knowledge` / prior-knowledge-fallback recipe is present in
-  `builtin_bootstrap.rs` (only `prior_knowledge_content: None` fields on recipe
-  rows). The "no-Prefix fallback Recipe" seeding + `basic_mode.py`
-  compose+run wiring remains open.
+  library call (§3.13/§3.14). The no-Prefix fallback is now a **seeded Recipe
+  component**: `seed_host_group` (Pass 6 in `builtin_bootstrap.rs`) seeds
+  `pc-host-fallback-prior-knowledge` (class 22, pure-logic formatter — minimal
+  system-context preamble + the Orchestrator MCP Server catalogue, Phase V) +
+  `host-assemble-prior-knowledge` (class 21, single-orchestrator-step,
+  Tier-0-eligible via `mark_recipe_tier0`) and explicitly graduates the recipe to
+  `validation_status='validated'` via `RecipeValidationStatusUpdate` (the first
+  recipe-graduation call in the bootstrap — `seed_recipe`/`mark_recipe_tier0` do
+  NOT graduate, and `resolve_component_by_name`'s SEC-01 filter requires
+  `validated`). `basic_mode.py` `_non_match_answer` composes+runs it
+  (step_link `"0:1-0:E"` — the seeded variant key, NOT `"default"` which
+  `match_variant` exact-matches and would never hit) and injects the bundle as
+  `prior_knowledge` into the Kohai-mediated prompt. The integration-test counts
+  in `tests/builtin_bootstrap_seed.rs` updated (83→84 PythonCode, 110→111
+  Recipes, 378→380 total). Both configs clippy-clean; 706 lib tests pass.
+  **DEFERRED to a follow-up slice:** `host-non-match-llm-answer` +
+  `host-save-history` — both are 2-orchestrator-step recipes (assemble+call /
+  format+write) that the isolated-`run_program` model breaks
+  (`handle_run_program` uses a fresh `ThreadExecutionContext` + `persisted_state
+  = {}` per call, so step 1 cannot see step 0's data); they need the
+  single-step-collapse design resolved first. The full `builtin-host` catalogue
+  (host.* Tool/ToolSkill/PythonCode/leaf-skill wrappers) is also deferred —
+  host.* verbs are hardcoded Monty intrinsics today, not seeded Tool rows.
 - **K5 — DONE.** `memory_write` orchestrator arm retired (no `handle_memory_write`/
   `__memory_write__` in `orchestrator.rs`); seeded as Recipes in
   `builtin_bootstrap.rs` Pass 3 — `recipe_memory_write` (+ `_log`/`_main`/`_patch`

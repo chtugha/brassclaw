@@ -384,6 +384,9 @@ pub async fn seed_builtin_components(
     // Pass 5 — management group (time, json, echo, skill-management).
     seed_management_group(&stores).await?;
 
+    // Pass 6 — host group (K4: the no-prefix fallback prior-knowledge recipe).
+    seed_host_group(&stores).await?;
+
     Ok(())
 }
 
@@ -10217,6 +10220,111 @@ async fn seed_management_group(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Host group (Pass 6) — K4: the no-prefix fallback prior-knowledge recipe
+// ---------------------------------------------------------------------------
+//
+// K4 seeds the `host-assemble-prior-knowledge` internal Recipe (class 21) —
+// the Tier-1 FALLBACK prior-knowledge bundle used ONLY when no prefix is
+// present (builtin_stuff_v3.md §27.10.1). It is a single-orchestrator-step
+// pure-logic formatter (no tool binding, no retrieval verbs) that emits a
+// minimal system-context preamble + a catalogue of the deeper context the LLM
+// can gather over the Orchestrator MCP Server (Phase V). basic-mode's
+// `_non_match_answer` ultimate fallback composes + runs this recipe and injects
+// the bundle into the Kohai-mediated prompt as `prior_knowledge`.
+//
+// The recipe is internal (not user-routed) — `intent_examples` is a placeholder
+// string and no leaf skill is seeded. It is graduated to `validation_status =
+// 'validated'` (builtins bypass Q1) so `host.resolve_component_by_name(
+// "host-assemble-prior-knowledge", 21)` — the SEC-01 validated-name filter —
+// can find it. `mark_recipe_tier0` sets DB `tier='mature'` + `wilson_lower=1.0`
+// so `compose_with_pool`'s Tier-0 gate computes `llm_call_required = false`
+// (the bundle builds with no LLM call; the caller does the Kohai-mediated call).
+//
+// The rest of the `builtin-host` catalogue (§27.11 — host-resolve-intent,
+// host-compose-and-run-orchestrator, host-post-reply, host-save-history,
+// host-non-match-llm-answer recipes + the host.* Tool/ToolSkill/PythonCode/
+// leaf-skill wrappers) is a separate slice: the host.* verbs are hardcoded
+// Monty intrinsics today (not seeded Tool rows), and the multi-step recipes
+// (host-non-match-llm-answer, host-save-history) need the isolated-`run_program`
+// single-step-collapse design resolved first — `handle_run_program` uses a
+// fresh `ThreadExecutionContext` + `persisted_state = {}` per call, so globals
+// do NOT persist across steplist steps and a 2-step assemble-then-call recipe
+// cannot pass the assembled prompt to the call step.
+async fn seed_host_group(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    // 1. PythonCode formatter (class 22) — pure-logic, no host call, no I/O.
+    let pc_host_fallback_prior_knowledge = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-host-fallback-prior-knowledge",
+                "Pure-logic formatter: builds the no-prefix fallback prior-knowledge \
+                 bundle (minimal system-context preamble + the Orchestrator MCP Server \
+                 catalogue, Phase V). Returns the bundle text for the caller to inject \
+                 into the Kohai-mediated prompt. No retrieval verbs, no host calls.",
+                PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT,
+            ),
+            "pc-host-fallback-prior-knowledge",
+        )
+        .await?;
+
+    // 2. Recipe (class 21, Tier-0-eligible — the bundle builds with no LLM call).
+    //    `seed_recipe` inserts at `validation_status='pending'` (the DDL default)
+    //    + `mark_recipe_tier0` sets tier/wilson — neither graduates the row, so
+    //    do it explicitly here (mirrors `upsert_python_code`/`upsert_catalogue`).
+    let recipe_host_assemble_prior_knowledge = stores
+        .seed_recipe(
+            &tenant,
+            "host-assemble-prior-knowledge",
+            "FALLBACK prior-knowledge bundle, used ONLY when no prefix is present. \
+             Adds basic 'what is going on' context so the LLM understands the run \
+             (no retrieval verbs). Single pure-logic formatter step; the caller does \
+             the Kohai-mediated LLM call.",
+            true,
+            RECIPE_HOST_ASSEMBLE_PRIOR_KNOWLEDGE_YAML,
+            &[step_entry(
+                1,
+                "orchestrator",
+                "Add basic 'what is going on' context so the LLM understands (no retrieval).",
+                "component",
+                &[pc_host_fallback_prior_knowledge],
+            )],
+            &[json!({"input": "(internal Tier-1 prior-knowledge fallback — not user-routed)", "class": 2})],
+        )
+        .await?;
+    stores
+        .recipe
+        .update_validation_status(
+            &tenant,
+            SEED_USER,
+            SEED_AGENT,
+            SEED_PROJECT,
+            recipe_host_assemble_prior_knowledge,
+            crate::pg_recipe_store::RecipeValidationStatusUpdate {
+                validation_status: "validated",
+                validation_errors: vec![],
+                review_feedback: None,
+                queue_code: None,
+            },
+        )
+        .await
+        .map_err(|e| SeedBuiltinBootstrapError::Db {
+            reason: e.to_string(),
+        })?;
+
+    tracing::debug!(
+        "seeded host group: 1 PythonCode + 1 recipe (host-assemble-prior-knowledge, K4 \
+         no-prefix fallback) - host group PARTIAL (K4 fallback only; full builtin-host \
+         catalogue is a future slice)"
+    );
+
+    Ok(())
+}
+
 fn process_primary_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
     NewPgExtensionCatalogue {
         tenant_id: tenant.to_string(),
@@ -13513,6 +13621,41 @@ const RECIPE_ECHO_PING_YAML: &str = r#"step_descriptions: [
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-echo>"],
     "label":   "PythonCode calls host.echo(message) — returned verbatim"
+  }
+]
+"#;
+
+// ---------------------------------------------------------------------------
+// Host group (K4) — the no-prefix fallback prior-knowledge recipe components
+// ---------------------------------------------------------------------------
+
+const PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT: &str = r#"# Pure-logic formatter (class 22). No I/O, no imports, no host calls.
+# Builds the no-prefix fallback prior-knowledge bundle (§27.10.1): a minimal
+# system-context preamble + the catalogue of deeper context the LLM can gather
+# over the Orchestrator MCP Server (Phase V). The caller (basic-mode
+# _non_match_answer) injects this text into the Kohai-mediated prompt as the
+# `prior_knowledge` field. No retrieval verbs (retrieve_docs /
+# get_reduction_rules are dropped). The bundle is static — user_query is already
+# a separate prompt field, so it is not duplicated here.
+_lines = []
+_lines.append("You are running inside BrassClaw's orchestrator. Answer the user's request directly.")
+_lines.append("")
+_lines.append("Deeper context is available over the orchestrator MCP server (ask the orchestrator):")
+_lines.append("- component store: fetch a component by name or UUID")
+_lines.append("- intent history: prior disambiguation choices for this thread")
+_lines.append("- memory: persisted notes and decisions")
+_lines.append("- skills: exact tool-usage narratives for bound host.* callables")
+_lines.append("- tools: the bound host.* callables and their param schemas")
+result = "\n".join(_lines)
+"#;
+
+const RECIPE_HOST_ASSEMBLE_PRIOR_KNOWLEDGE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-host-fallback-prior-knowledge>"],
+    "label":   "Add basic 'what is going on' context so the LLM understands (no retrieval)."
   }
 ]
 "#;

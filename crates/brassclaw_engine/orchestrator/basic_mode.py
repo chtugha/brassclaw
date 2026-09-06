@@ -120,7 +120,9 @@ def _non_match_answer(context, user_input):
     """Non-Matching-Mode (Tier 2). Try the host-non-match-llm-answer recipe
     first; on any failure, fall back to a direct host.kohai_complete call
     (Monty assembles the prompt; Kohai swaps the prefix placeholder + calls the
-    provider LLM)."""
+    provider LLM). The ultimate fallback injects the host-assemble-prior-knowledge
+    no-prefix fallback bundle (K4) as `prior_knowledge` so the LLM has minimal
+    system context + the Orchestrator MCP Server catalogue (Phase V)."""
     recipe = host.resolve_component_by_name("host-non-match-llm-answer", 21)
     if recipe is not None:
         recipe_id = recipe.get("id", "")
@@ -128,10 +130,23 @@ def _non_match_answer(context, user_input):
             answer = _compose_and_run(recipe_id, "default", user_input)
             if answer is not None and answer != "":
                 return answer
-    # Ultimate fallback: direct Kohai-mediated LLM call.
+    # Ultimate fallback: direct Kohai-mediated LLM call. Inject the K4
+    # no-prefix fallback prior-knowledge bundle (host-assemble-prior-knowledge)
+    # so the LLM gets minimal system context + the MCP catalogue. The recipe's
+    # seeded variant step_link is "0:1-0:E" (run every step); "default" is not
+    # a variant key, so the canonical run-every-step link is used explicitly.
+    prior_knowledge = ""
+    apk = host.resolve_component_by_name("host-assemble-prior-knowledge", 21)
+    if apk is not None:
+        apk_id = apk.get("id", "")
+        if apk_id != "":
+            bundle = _compose_and_run(apk_id, "0:1-0:E", user_input)
+            if bundle is not None and bundle != "":
+                prior_knowledge = bundle
     prompt = {
         "chat_history": _chat_history(context),
         "user_query": user_input,
+        "prior_knowledge": prior_knowledge,
         "prefix_placeholder": "{{prefix}}",
     }
     kohai = host.kohai_complete(prompt=prompt)

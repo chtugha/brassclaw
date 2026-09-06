@@ -9705,6 +9705,35 @@ the WebUI Docs save never writes `validated` directly (store-level guard).
 
 ---
 
+### Phase V — Orchestrator MCP Server
+
+**Status:** [ ] Pending (design-only subplan; forks unresolved)
+
+**Goal:** Make the Orchestrator (Monty) act as an MCP **server** so the provider
+LLM can pull deeper information / invoke capabilities **through the orchestrator**
+instead of carrying the full skill+tool docs in every prompt — the "future
+MCP-server-functionality" referenced in the Phase K.2 marker. The MCP surface is
+a **projection** of the seeded Skill→ToolSkill→Tool graph (Phase L): each
+exposed tool wraps an existing Skill, so the LLM sees only intent + argument
+shape (execution stays inside the skill→toolskill→tool pipeline). This minimizes
+prompt tokens (the local LLM is ~150 tokens/s). Tied to the Kohai K4 no-Prefix
+fallback: the `assemble-prior-knowledge` fallback recipe's catalogue references
+this server (today it references the *forthcoming* one; Phase V.4 makes it real).
+
+**Subplan:** `./docs/agents-v3/subplan_problem_phaseV_orchestrator_mcp_server_of_saved_plan_to_v3.md`
+
+**Migration:** none (reuses the live component tables + `PgCompositionPort` /
+`host.run_program`). No new Rust tool, no new execution primitive.
+
+**Forks (user owns):** transport (real MCP JSON-RPC vs in-VM tool-call
+protocol); catalogue derivation (every Skill vs Domain Skills vs curated
+allowlist); per-tool schema placement (prompt-injected vs `tools/list`-style
+discovery — the latter is the intent); server code location (new crate
+`brassclaw_orchestrator_mcp` vs in-engine module); confirm approval/lease/policy
+gates cover MCP-driven calls (verify-only).
+
+---
+
 ## 2. Migration Sequence
 
 | Migration | Contents | Status |
