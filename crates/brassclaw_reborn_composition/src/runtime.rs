@@ -2628,6 +2628,58 @@ pub async fn build_reborn_runtime(
                 Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
                 validated_identity.tenant_id.as_str(),
             ));
+        // C.6 slice 4d-3 — wire the composition port (host.compose_orchestrator)
+        // and the Kohai port (host.kohai_complete = the production LLM path per
+        // the Kohai K2 re-arch). Both need a Postgres pool; Kohai additionally
+        // needs the root-llm-provider gateway. When either backing is absent the
+        // port stays `None` and the host arm returns *_unavailable (the driver
+        // still constructs and degrades gracefully).
+        type MontyPortPair = (
+            Option<Arc<dyn brassclaw_engine::executor::ComponentPort>>,
+            Option<Arc<dyn brassclaw_engine::executor::KohaiPort>>,
+        );
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        let (component_port, kohai_port): MontyPortPair = {
+            let component_port = services.pg_pool.as_ref().map(|pool| {
+                Arc::new(crate::pg_composition_port::PgCompositionPort::new(
+                    Arc::clone(pool),
+                    Some(Arc::clone(&thread_store_for_driver)),
+                )) as Arc<dyn brassclaw_engine::executor::ComponentPort>
+            });
+            let kohai_port = services.pg_pool.as_ref().and_then(|pool| {
+                let interceptor = Arc::new(brassclaw_interceptor::PgInterceptorStore::new(
+                    Arc::clone(pool),
+                    validated_identity.tenant_id.as_str(),
+                ))
+                    as Arc<dyn brassclaw_interceptor::InterceptorStore>;
+                let basic_prompt = Arc::new(
+                    crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+                        Arc::clone(pool),
+                        validated_identity.tenant_id.as_str(),
+                        validated_identity.agent_id.as_str(),
+                    ),
+                );
+                match crate::pg_kohai_port::PgKohaiPort::new(
+                    interceptor,
+                    basic_prompt,
+                    Arc::clone(&model_gateway),
+                ) {
+                    Ok(port) => {
+                        Some(Arc::new(port) as Arc<dyn brassclaw_engine::executor::KohaiPort>)
+                    }
+                    Err(reason) => {
+                        tracing::debug!(
+                            "PgKohaiPort construction failed; kohai_port stays None: {reason}"
+                        );
+                        None
+                    }
+                }
+            });
+            (component_port, kohai_port)
+        };
+        #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
+        let (component_port, kohai_port): MontyPortPair = (None, None);
+
         let driver = crate::persistent_monty_driver::PersistentMontyDriver::new(
             Arc::new(crate::session_registry::MontySessionRegistry::new()),
             Arc::new(crate::persistent_monty_driver::SignalBroker::new()),
@@ -2638,8 +2690,8 @@ pub async fn build_reborn_runtime(
             None, // event_tx — v3 host.* arms don't emit ThreadEvents (retired in C.7)
             CancellingGateController::arc(),
             None, // dynamic_tools — no cdylib tools wired yet (C.3 deferred)
-            None, // component_port (PgCompositionPort) — wired in a follow-up slice
-            None, // kohai_port (PgKohaiPort) — wired in a follow-up slice
+            component_port,
+            kohai_port,
             resolved_max_turn_duration.map(|d| d.as_secs()),
         );
         Some(Arc::new(driver) as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>)
