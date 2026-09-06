@@ -6027,10 +6027,9 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `./docs/agents-v3/subplan_problem_stepH12_5_of_saved_plan_to_v3.md`. Execute
 > H.12.5.1→H.12.5.3 one-by-one before resuming H.12.5 main.
 
-**Status:** [ ] Pending
+**Status:** [x] Done-then-superseded — H.0–H.12.5 were implemented (RecipeStage `last_user_text` + Tier 0/1 dispatch, fetch_for_turn split, prior-knowledge assembly, Python step-0 / `call_action` migration). The phase was then **superseded by the Orchestrator/Executioner re-architecture** locked in during the B→C→A reorder (see Step C block + `docs/agents-v3/mindmap_phase_h.md` + the rewritten `CLAUDE.md`): the Python Orchestrator (Monty) is now the sole execution authority, the Rust side is the Executioner (precompiled Tools + ToolSkills, no sequencing), and `__execute_action__` is retired in favour of first-class `host.<tool>(kwargs)` dispatch. Subsequent phases (C.1–C.7, I, J, K, L, O) implement that architecture; this header is retained for history.
 
-**Goal:** Activate the RecipeStage stub so it dispatches correctly for Tier 0, Tier 1,
-and falls through to Tier 2 on no match.
+**Goal:** Activate the RecipeStage stub so it dispatches correctly for Tier 0, Tier 1, and falls through to Tier 2 on no match.
 
 #### H.0 Host-port prerequisites (resolves H3 + H4)
 
@@ -7551,7 +7550,7 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 
 ### Phase K — BasicPromptStore + Prefix Tab + MCP Translation + Cleanup
 
-**Status:** [x] K.1 COMPLETE (incl. K.1.7 SKILL.md export — implemented after the notes below were written; see K.1.7 note). [ ] K.2 Pending (MCP translation — `mcp_translation.rs` absent). [~] K.3 PARTIAL — `__retrieve_docs__`/`__get_reduction_rules__` handler+registration removal DONE (Kohai K3, commit `a3ecad97`); `handle_assemble_prior_knowledge` legacy `retrieve_context` fallback block already gone (retired H8.4 — handler replaced by `assemble_prior_knowledge_with_hint`); `RamSource` + `retrieval_dbless.rs` + `RetrievalEngine::retrieve_context` + `build_step_context` deletion DEFERRED to C.7 (coupled to the legacy `brassclaw_engine::runtime::manager`/`ThreadManager` retirement — see K.3 note).
+**Status:** [x] K.1 COMPLETE (incl. K.1.7 SKILL.md export — implemented after the notes below were written; see K.1.7 note). [ ] K.2 Pending (MCP translation — `mcp_translation.rs` absent). [x] K.3 COMPLETE — `__retrieve_docs__`/`__get_reduction_rules__` handler+registration removal DONE (Kohai K3, commit `a3ecad97`); `handle_assemble_prior_knowledge` legacy `retrieve_context` fallback block retired (H8.4 — handler replaced by `assemble_prior_knowledge_with_hint`); the DEFERRED deletions (`RamSource` + `retrieval_dbless.rs` + `RetrievalEngine::retrieve_context` + `build_step_context` + legacy `brassclaw_engine::runtime::manager`/`ThreadManager`) all landed with C.7 Model-A retirement (commit `d686424c` — `retrieval_dbless.rs` deleted, `RamSource` absent, `manager.rs`/`ThreadManager` gone).
 
 > ---
 > ### ⚠️ K.1 IMPLEMENTATION STATUS (do NOT overwrite these decisions)
@@ -9382,7 +9381,7 @@ required for manual imports, restored backups, or any path that bypasses the Web
 
 ### Phase O — Global Token-Budget Kill Switch (§0.21)
 
-**Status:** [ ] Pending
+**Status:** [x] Complete — commit `fae443fc` "Phase O: add token_budgets_enabled global kill switch"; V060 migration. Operator-facing WebUI toggle implemented; when disabled every token budget in the codebase plays no role in any decision/function, when re-enabled all budgets are enforced exactly as before.
 
 **Goal:** Add the operator-facing WebUI toggle that, when disabled, makes
 every token budget in the codebase play no role in any decision or function

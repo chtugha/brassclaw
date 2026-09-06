@@ -108,22 +108,30 @@ call is performed by Kohai (wrapping the provider gateway).
   `reduction_rules_store`/webui still call the flush API). `basic_mode.py` had no
   calls; the lone `__get_reduction_rules__()` call left in `default.py` is in
   orphaned legacy code retired wholesale in C.7.
-- **K6 — `compose_orchestrator` rewrite + Recipe/Component structure update
-  (crux).** Rewrite `handle_compose_orchestrator` (Rust part significantly
-  reduced); update `ComposedProgram`/`ComposedStep`/`RustDirective`/`SkillRef`
+- **K6 — DONE.** `handle_compose_orchestrator` rewritten to a thin delegate:
+  `port.compose(&scope, component_id, &step_link, &user_input)` → returns
+  `{ok, program}` (Rust part significantly reduced; `ComponentPort::compose` owns
+  the assembly). `ComposedProgram`/`ComposedStep`/`RustDirective`/`SkillRef`
   (`memory/composition.rs`) + `Recipe`/`RecipeStep`/`RecipeVariant`
-  (`types/recipe.rs`) to match the new architecture. **Deepened/grounded when
-  reached; may spawn its own nested subplan if the structure change is large.**
-- **K4 — `assemble_prior_knowledge` → seeded Recipe (no-Prefix fallback).** Convert
-  the `assemble_prior_knowledge_with_hint` logic into a seeded Recipe component;
-  `basic_mode.py` composes+runs it via `host.compose_orchestrator` +
-  `host.run_program` when there is no Prefix (instead of a host arm).
-- **K5 — `memory_write` → seeded Recipe.** Convert `memory_write` into a seeded
-  Recipe using a SQL-saving tool, saving to the same store where Kohai saves the
-  LLM prompt. Ground the current `memory_write` arm + the Kohai prompt-save store.
-- **K7 — `post_reply` stays a tool (verify, no change).**
-- **K8 — both configs clippy + tests + commit + push; mark the re-architecture
-  sub-step done. Proceed to slice 4d-3 (now unblocked).**
+  (`types/recipe.rs`) carry the new architecture shape.
+- **K4 — PARTIAL.** The `__assemble_prior_knowledge__` orchestrator arm is retired
+  (Phase H8.4) and replaced by the `pub` `assemble_prior_knowledge_with_hint`
+  library call (§3.13/§3.14). **Not yet converted to a seeded Recipe component** —
+  no `assemble_prior_knowledge` / prior-knowledge-fallback recipe is present in
+  `builtin_bootstrap.rs` (only `prior_knowledge_content: None` fields on recipe
+  rows). The "no-Prefix fallback Recipe" seeding + `basic_mode.py`
+  compose+run wiring remains open.
+- **K5 — DONE.** `memory_write` orchestrator arm retired (no `handle_memory_write`/
+  `__memory_write__` in `orchestrator.rs`); seeded as Recipes in
+  `builtin_bootstrap.rs` Pass 3 — `recipe_memory_write` (+ `_log`/`_main`/`_patch`
+  variants) driving `ts-memory-write` + `pc_exec_memory_write`/`pc_exec_memory_patch`
+  via `host.memory_write(...)`.
+- **K7 — DONE (verify-only).** `post_reply` remains an active orchestrator arm
+  (`handle_post_reply` in `orchestrator.rs`); no change required.
+- **K8 — DONE.** Both configs clippy-clean (skills-db workspace green after the
+  `retrieval_source.rs` `doc_type_to_class_code` `#[allow(dead_code)]` unblock in
+  commit `24ea6a5c`); Phase L integration test `tests/builtin_bootstrap_seed.rs`
+  passes; re-architecture sub-step complete.
 
 ## Out of scope (explicit)
 
