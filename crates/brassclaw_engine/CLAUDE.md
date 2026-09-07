@@ -51,14 +51,19 @@ src/
 ├── runtime/              # Internal store writes + thread messaging
 │   ├── internal_write.rs # Internal store writes (the ThreadManager / ConversationManager / ThreadTree / lease_refresh modules were retired in v3 Phase C.7 — the agent-loop PersistentMontyDriver now owns turn lifecycle)
 │   └── messaging.rs      # ThreadSignal, ThreadOutcome, signal channels
-├── executor/             # Step execution
-│   ├── loop_engine.rs    # ExecutionLoop — core loop replacing run_agentic_loop()
-│   ├── structured.rs     # Tier 0: structured tool call execution
-│   ├── scripting.rs      # Tier 1: embedded Python via Monty (CodeAct/RLM)
-│   ├── context.rs        # Context builder (messages + actions from leases + memory docs)
-│   ├── compaction.rs     # Context compaction when approaching model context limit
-│   ├── prompt.rs         # System prompt construction (CodeAct preamble/postamble)
-│   └── trace.rs          # Execution trace recording and retrospective analysis
+├── executor/             # Step execution (the retired `ExecutionLoop`/`context`/`compaction` modules were removed in v3 Phase C.7 — turn lifecycle is now owned by the composition `PersistentMontyDriver`)
+│   ├── code_audit.rs             # LLM code-audit gate for Orchestrator (class 10) + Scaffold (class 50) Q1→Q2
+│   ├── composition_port.rs       # ComponentPort — composition-facing component fetch facade
+│   ├── db_skill_loader.rs        # (skills-db) DB-backed skill loader
+│   ├── dynamic_tool_port.rs      # DynamicToolPort — dynamic tool registration facade
+│   ├── kohai_port.rs             # KohaiPort — host.kohai_complete LLM gateway facade
+│   ├── orchestrator.rs           # Tier-1 Monty orchestrator: prepare_monty_session, assemble_prior_knowledge_with_hint, execute_tier_zero_channel
+│   ├── prompt.rs                 # System prompt construction (CodeAct preamble/postamble)
+│   ├── scripting.rs              # Tier 1: embedded Python via Monty (CodeAct/RLM)
+│   ├── structured.rs             # Tier 0: structured tool call execution
+│   ├── thread_context.rs         # Build ThreadExecutionContext from current thread state (pub(crate))
+│   ├── tier_zero_orchestrator.rs # TierZeroOrchestrator — facade over the Tier-0 deterministic channel
+│   └── trace.rs                  # Execution trace recording and retrospective analysis
 ├── memory/               # Memory document system
 │   ├── store.rs          # MemoryStore — project-scoped doc CRUD
 │   ├── retrieval.rs      # RetrievalEngine — keyword-based context retrieval from project docs
