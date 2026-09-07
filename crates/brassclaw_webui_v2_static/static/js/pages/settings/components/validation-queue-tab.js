@@ -11,6 +11,7 @@ import {
 } from "../lib/settings-api.js";
 import { matchesSearch } from "../lib/settings-search.js";
 import { SettingsSearchEmpty } from "./settings-search-empty.js";
+import { IntentTemplatePreviewPanel } from "./intent-template-preview-panel.js";
 
 export function ValidationQueueTab({ searchQuery = "" }) {
   const t = useT();
@@ -47,14 +48,17 @@ export function ValidationQueueTab({ searchQuery = "" }) {
 
   if (items.length === 0) {
     return html`
-      <${Card} padding="lg">
-        <h3 className="text-lg font-semibold text-[var(--v2-text-strong)]">
-          ${t("validationQueue.empty")}
-        </h3>
-        <p className="mt-2 max-w-md text-sm leading-6 text-[var(--v2-text-muted)]">
-          ${t("validationQueue.emptyDesc")}
-        </p>
-      <//>
+      <div className="space-y-4">
+        <${IntentTemplatePreviewPanel} />
+        <${Card} padding="lg">
+          <h3 className="text-lg font-semibold text-[var(--v2-text-strong)]">
+            ${t("validationQueue.empty")}
+          </h3>
+          <p className="mt-2 max-w-md text-sm leading-6 text-[var(--v2-text-muted)]">
+            ${t("validationQueue.emptyDesc")}
+          </p>
+        <//>
+      </div>
     `;
   }
 
@@ -64,6 +68,7 @@ export function ValidationQueueTab({ searchQuery = "" }) {
 
   return html`
     <div className="space-y-4">
+      <${IntentTemplatePreviewPanel} />
       <${Card} padding="md">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">

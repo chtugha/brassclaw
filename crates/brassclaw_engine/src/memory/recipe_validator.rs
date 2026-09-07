@@ -464,9 +464,15 @@ pub fn check_intent_expression_template(expr: &str, result: &mut ValidationResul
         ));
     }
 
-    // Adjacent `%` slots: consecutive empty separators.
-    for window in parts.windows(2) {
-        if window[0].is_empty() && window[1].is_empty() {
+    // Adjacent `%` slots: an empty separator between two slots (two `%` with no
+    // literal between them) makes the slots unextractable. The inter-slot
+    // separators are `parts[1..n_slots]` (parts[0] is the prefix, parts[n_slots]
+    // the suffix). This catches middle-adjacent cases like `"a %% b"` that a
+    // consecutive-empty windows check would miss — there the empty separator
+    // has non-empty neighbours on both sides, so no two consecutive parts are
+    // both empty, yet the slots are still unextractable.
+    for sep in &parts[1..n_slots] {
+        if sep.is_empty() {
             result.errors.push(format!(
                 "Intent expression `{expr}` has two adjacent `%` slot markers with no literal between them — slots would be unextractable."
             ));
@@ -1440,9 +1446,8 @@ mod tests {
 
     #[test]
     fn intent_example_adjacent_slots_fails_q1() {
-        // §template-rules: `"% %"` has two adjacent `%` with a space but the
-        // windows check needs consecutive empty segments — test the exact failing
-        // case of `"%%"` (no separator between two `%`s).
+        // §template-rules: `"search %%"` — two adjacent `%` at the tail with no
+        // separator between them → hard error.
         let mut result = crate::memory::recipe_validator::ValidationResult::ok();
         check_intent_expression_template("search %%", &mut result);
         assert!(
@@ -1451,6 +1456,35 @@ mod tests {
                 .iter()
                 .any(|e| e.contains("adjacent") || e.contains("no anchor")),
             "expected adjacent-slots error for `search %%`, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn intent_example_middle_adjacent_slots_fails_q1() {
+        // §template-rules: `"a %% b"` — two adjacent `%` in the MIDDLE with no
+        // separator between them. The empty separator has non-empty neighbours
+        // on both sides, so the old consecutive-empty windows check missed it;
+        // the inter-slot separator scan (parts[1..n_slots]) catches it.
+        let mut result = crate::memory::recipe_validator::ValidationResult::ok();
+        check_intent_expression_template("a %% b", &mut result);
+        assert!(
+            result.errors.iter().any(|e| e.contains("adjacent")),
+            "expected adjacent-slots error for `a %% b`, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn intent_example_space_separated_slots_not_adjacent() {
+        // §template-rules: `"search % %"` — two `%` separated by a space. The
+        // space is a literal separator (slots ARE extractable), so this is NOT
+        // an adjacent-slots error. It IS a no-anchor template (prefix="search "
+        // non-empty, suffix="" empty) → not no-anchor either. Valid (suffix is
+        // empty but prefix anchors it).
+        let mut result = crate::memory::recipe_validator::ValidationResult::ok();
+        check_intent_expression_template("search % %", &mut result);
+        assert!(
+            !result.errors.iter().any(|e| e.contains("adjacent")),
+            "`search % %` has a space separator — must not be flagged adjacent, got {result:?}"
         );
     }
 

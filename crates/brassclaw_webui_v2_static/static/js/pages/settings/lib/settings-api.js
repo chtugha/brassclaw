@@ -267,3 +267,32 @@ export function rejectComponent(classCode, componentId, feedback) {
     { method: "PUT", body: JSON.stringify({ feedback: feedback ?? null }) }
   );
 }
+
+// Phase M.6 — intent inputs CRUD (per-component intent expression surface).
+// Backed by the v2 settings intent-inputs routes (handlers.rs). The upsert
+// re-seeds via `seed_intent_input` server-side, which populates the V076
+// `is_template` / `template_prefix` / `template_suffix` columns via
+// `parse_template`; the list response carries `input_text` so the client
+// recomputes live template feedback (template-feedback.js).
+export function listIntentInputs({ projectId, componentId } = {}) {
+  const params = new URLSearchParams();
+  if (projectId) params.set("project_id", projectId);
+  if (componentId) params.set("component_id", componentId);
+  const qs = params.toString();
+  return apiFetch(`/api/settings/intent-inputs${qs ? `?${qs}` : ""}`);
+}
+export function upsertIntentInput(payload) {
+  return apiFetch("/api/settings/intent-inputs", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+export function deleteIntentInputs({ projectId, classCode, componentId }) {
+  const params = new URLSearchParams();
+  if (projectId) params.set("project_id", projectId);
+  const qs = params.toString();
+  return apiFetch(
+    `/api/settings/intent-inputs/${encodeURIComponent(classCode)}/${encodeURIComponent(componentId)}${qs ? `?${qs}` : ""}`,
+    { method: "DELETE" }
+  );
+}
