@@ -450,6 +450,20 @@ pub fn check_intent_expression_template(expr: &str, result: &mut ValidationResul
         return;
     }
 
+    // §0.17.4 leading-`%` warning: empty prefix, non-empty suffix. Valid +
+    // indexed via the reverse-suffix Path 2, but imprecise — nudge the author
+    // to add a literal word before the slot. Uses exact emptiness (no trim) to
+    // match `parse_template` / resolve_intent Path 2 (`template_prefix = '' AND
+    // template_suffix != ''`), so a whitespace prefix (`" % …"`) is treated as
+    // prefix-anchored (Path 1), consistent with production.
+    if prefix.is_empty() && !suffix.is_empty() {
+        result.warnings.push(format!(
+            "Intent expression `{expr}` is a leading-`%` template (no prefix anchor). \
+             It is valid and indexed via the suffix anchor, but imprecise — consider \
+             adding a literal word before `%` (e.g. `read % directory` instead of `% directory`)."
+        ));
+    }
+
     // Adjacent `%` slots: consecutive empty separators.
     for window in parts.windows(2) {
         if window[0].is_empty() && window[1].is_empty() {
@@ -1453,12 +1467,32 @@ mod tests {
 
     #[test]
     fn intent_example_leading_percent_valid_with_suffix() {
-        // §template-rules: `"% directory"` leading-`%` with suffix → valid (warning only, no hard error).
+        // §0.17.4: `"% directory"` leading-`%` with suffix → valid (warning only, no hard error).
         let mut result = crate::memory::recipe_validator::ValidationResult::ok();
         check_intent_expression_template("% directory", &mut result);
         assert!(
             result.errors.is_empty(),
             "expected no hard error for leading-percent with suffix, got {result:?}"
+        );
+        assert!(
+            result.warnings.iter().any(|w| w.contains("leading-`%`")),
+            "expected a leading-`%` warning for `% directory`, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn intent_example_dual_anchored_no_leading_percent_warning() {
+        // §0.17.4: a dual-anchored template has a non-empty prefix → no
+        // leading-`%` warning (guards against false positives).
+        let mut result = crate::memory::recipe_validator::ValidationResult::ok();
+        check_intent_expression_template("read % file", &mut result);
+        assert!(
+            result.errors.is_empty(),
+            "dual-anchored template is valid, got {result:?}"
+        );
+        assert!(
+            !result.warnings.iter().any(|w| w.contains("leading-`%`")),
+            "dual-anchored template must not raise a leading-`%` warning, got {result:?}"
         );
     }
 }

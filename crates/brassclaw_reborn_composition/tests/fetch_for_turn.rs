@@ -696,6 +696,89 @@ async fn template_intent_match_substitutes_captured_slot_into_body() {
 }
 
 // ---------------------------------------------------------------------------
+// #5d — Phase M.4/M.5 baseline: a `%`-template intent match with NO
+// variable_patterns auto-extracts the positional `slot0` and substitutes it
+// into `{{vars.slot0}}` (the §0.17.3 auto-extraction path — semantic naming
+// via variable_patterns is covered by #5c, the exact-match no-op by #5b).
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn template_intent_match_auto_extracts_positional_slot0() {
+    let rig = match pg_rig_or_skip().await {
+        Some(r) => r,
+        None => return,
+    };
+    let scope = unique_scope();
+
+    let skill_id = Uuid::new_v4();
+    // The skill body references the POSITIONAL slot (no variable_patterns →
+    // auto-extraction names it slot0).
+    insert_skill(
+        &rig.pool,
+        &scope,
+        skill_id,
+        "Run ls inside {{vars.slot0}} now",
+    )
+    .await;
+
+    let recipe_id = Uuid::new_v4();
+    let step_descs = step_descs_text(vec![step(1, "orchestrator", &[skill_id])]);
+    // No variable_patterns: the variant relies on auto-extraction alone.
+    let variants = variants_text(vec![]);
+    insert_recipe(
+        &rig.pool,
+        &scope,
+        recipe_id,
+        Some(step_descs),
+        Some(variants),
+        "seedling",
+        0.0,
+        "pending",
+    )
+    .await;
+
+    let template = "list files in the % dir";
+    insert_intent_input(
+        &rig.pool,
+        &scope,
+        template,
+        3, // Sentence — the concrete query is ≥5 tokens
+        recipe_id,
+        21,
+        10,
+        Some(STEP_LINK.into()),
+    )
+    .await;
+
+    let result = source(&rig)
+        .fetch_for_turn(&scope, "list files in the /tmp dir", TOKEN_BUDGET, SENDER)
+        .await
+        .expect("fetch_for_turn succeeds");
+
+    match result {
+        FetchForTurnResult::SplitResult {
+            orchestrator_items, ..
+        } => {
+            let skill = orchestrator_items
+                .iter()
+                .find(|i| i.id == skill_id)
+                .expect("skill fetched into orchestrator channel");
+            assert!(
+                skill.effective_content.contains("/tmp"),
+                "Phase M.4: {{vars.slot0}} substituted with the auto-extracted slot, got {}",
+                skill.effective_content
+            );
+            assert!(
+                !skill.effective_content.contains("{{vars.slot0}}"),
+                "placeholder must be replaced, got {}",
+                skill.effective_content
+            );
+        }
+        other => panic!("expected SplitResult, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // #6 — routing.wilson_lower populated from the recipe row; tier0_eligible when
 // tier ∈ {mature, candidate} + validated + wilson_lower ≥ 0.70.
 // ---------------------------------------------------------------------------
