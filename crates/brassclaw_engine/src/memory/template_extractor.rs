@@ -4,7 +4,11 @@
 //! `"show me all files in the % directory"`; `resolve_intent` (Phase M.3) matches
 //! user text against the template via PostgreSQL `LIKE`, and
 //! [`parse_template`] splits the expression into the literal anchor segments
-//! that drive the three-path index dispatch (§0.17.1):
+//! that drive the three-path index dispatch (§0.17.1). After a template match,
+//! `capture_variables` (in [`crate::memory::instruction_builder`]) walks the
+//! literal segments left-to-right against the concrete user text and returns
+//! the `%`-captured values as positional `slot0` / `slot1` / … pairs (§0.17.3),
+//! feeding the `{{vars.slotN}}` substitution step (M.4).
 //!
 //! - **prefix** = text before the FIRST `%`
 //! - **suffix** = text after the LAST `%`

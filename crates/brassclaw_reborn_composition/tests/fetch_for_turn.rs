@@ -34,6 +34,7 @@ use std::sync::Arc;
 use brassclaw_engine::memory::{
     ComponentScope, FetchForTurnResult, PostgresSource, RetrievalSource,
 };
+use brassclaw_engine::memory::template_extractor::parse_template;
 use tokio_postgres::types::ToSql;
 use uuid::Uuid;
 
@@ -339,13 +340,21 @@ async fn insert_intent_input(
     score: i32,
     step_link: Option<String>,
 ) {
+    // Phase M (V076): populate is_template + template anchors the same way the
+    // production `seed_intent_input` does (via parse_template) so template
+    // intents are reachable by resolve_intent's Path 1/2 index dispatch.
+    let (is_template, template_prefix, template_suffix) = match parse_template(input_text) {
+        Some((p, s)) => (true, Some(p), Some(s)),
+        None => (false, None, None),
+    };
     let client = pool.get().await.expect("pool client");
     client
         .execute(
             "INSERT INTO reborn_intent_inputs
                  (tenant_id, user_id, agent_id, project_id, input_text, input_class,
-                  component_id, component_class_code, score, step_link)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+                  component_id, component_class_code, score, step_link,
+                  is_template, template_prefix, template_suffix)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
             &[
                 &scope.tenant_id as &(dyn ToSql + Sync),
                 &scope.user_id,
@@ -357,6 +366,9 @@ async fn insert_intent_input(
                 &component_class_code,
                 &score,
                 &step_link,
+                &is_template,
+                &template_prefix,
+                &template_suffix,
             ],
         )
         .await
@@ -591,6 +603,91 @@ async fn substitution_noop_at_phase_e_preserves_placeholder() {
             assert!(
                 skill.effective_content.contains("{{vars.dir}}"),
                 "Phase E no-op: placeholder preserved unchanged, got {}",
+                skill.effective_content
+            );
+        }
+        other => panic!("expected SplitResult, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// #5c — Phase M.4: a `%`-template intent match drives extract_template_slots →
+// variable_patterns rename → {{vars.dir}} substitution (the active counterpart
+// to #5b's exact-match no-op). Proves the fetch_for_turn hook threads the
+// matched template (not the query) into capture_variables.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn template_intent_match_substitutes_captured_slot_into_body() {
+    let rig = match pg_rig_or_skip().await {
+        Some(r) => r,
+        None => return,
+    };
+    let scope = unique_scope();
+
+    let skill_id = Uuid::new_v4();
+    // The skill body carries the placeholder the variant renames slot0 into.
+    insert_skill(
+        &rig.pool,
+        &scope,
+        skill_id,
+        "Run ls inside {{vars.dir}} now",
+    )
+    .await;
+
+    let recipe_id = Uuid::new_v4();
+    let step_descs = step_descs_text(vec![step(1, "orchestrator", &[skill_id])]);
+    // The matched variant renames slot0 → "dir" (no regex → rename only).
+    let variants = variants_text(vec![serde_json::json!({ "name": "dir" })]);
+    insert_recipe(
+        &rig.pool,
+        &scope,
+        recipe_id,
+        Some(step_descs),
+        Some(variants),
+        "seedling",
+        0.0,
+        "pending",
+    )
+    .await;
+
+    // Template intent: the `%` captures the directory token. The V076-aware
+    // insert_intent_input populates is_template + anchors via parse_template.
+    let template = "list files in the % dir";
+    insert_intent_input(
+        &rig.pool,
+        &scope,
+        template,
+        3, // Sentence — the concrete query is ≥5 tokens
+        recipe_id,
+        21,
+        10,
+        Some(STEP_LINK.into()),
+    )
+    .await;
+
+    // Concrete user text that fits the template (`%` captures "/tmp").
+    let result = source(&rig)
+        .fetch_for_turn(&scope, "list files in the /tmp dir", TOKEN_BUDGET, SENDER)
+        .await
+        .expect("fetch_for_turn succeeds");
+
+    match result {
+        FetchForTurnResult::SplitResult {
+            orchestrator_items, ..
+        } => {
+            let skill = orchestrator_items
+                .iter()
+                .find(|i| i.id == skill_id)
+                .expect("skill fetched into orchestrator channel");
+            assert!(
+                skill.effective_content.contains("/tmp"),
+                "Phase M.4: {{vars.dir}} substituted with the captured slot, got {}",
+                skill.effective_content
+            );
+            assert!(
+                !skill.effective_content.contains("{{vars.dir}}"),
+                "placeholder must be replaced, got {}",
                 skill.effective_content
             );
         }

@@ -620,10 +620,17 @@ impl RetrievalSource for PostgresSource {
                 component_class_code,
                 step_link,
                 component_name,
-                input_text: _input_text,
+                input_text,
                 is_template: _is_template,
             }) => {
                 // Score already incremented inside resolve_intent (PERF-03).
+                // `input_text` is the matched intent row's expression — the
+                // literal for a Path 0 exact match (input_text == query) or the
+                // `%`-template for a Path 1/2/3 template match. Phase M.4 passes
+                // it to `fetch_recipe_split_result` so `capture_variables` runs
+                // `extract_template_slots(template, user_text)` against the real
+                // template instead of the inert `(query, query)` exact-match
+                // pair (§0.17.3).
                 if component_class_code == 16 {
                     // Action intent — execute directly, no LLM, no fetch.
                     return Ok(FetchForTurnResult::ActionShortCircuit {
@@ -639,6 +646,7 @@ impl RetrievalSource for PostgresSource {
                             scope,
                             component_id,
                             step_link,
+                            &input_text,
                             query,
                             token_budget,
                             sender_class_code,
@@ -706,11 +714,17 @@ impl PostgresSource {
     ///     (§0.4.1) on BOTH channels (no-op on empty orchestrator bindings),
     ///     mutating the `BuildInstruction` in place.
     /// 11. Assemble `TurnRoutingSignals` + `SplitResult { instruction: Some }`.
+    // 8 args: `matched_template` was added in Phase M.4 to thread the intent
+    // row's `input_text` (the `%`-template) into `capture_variables`; the
+    // alternative (folding scope+query+template into a struct) would deviate
+    // from the established fetch-for-turn call shape.
+    #[allow(clippy::too_many_arguments)]
     async fn fetch_recipe_split_result(
         &self,
         scope: &ComponentScope,
         recipe_id: uuid::Uuid,
         step_link: String,
+        matched_template: &str,
         query: &str,
         token_budget: usize,
         sender_class_code: &str,
@@ -814,8 +828,12 @@ impl PostgresSource {
             });
         };
 
-        // 6. Capture {{vars.name}} (§7.1: template = user_text = query).
-        let vars = capture_variables(query, query, &variable_patterns);
+        // 6. Capture {{vars.name}} (Phase M.4: `matched_template` is the intent
+        //    row's `input_text` — the literal for a Path 0 exact match (where
+        //    matched_template == query, so capture_variables is inert) or the
+        //    `%`-template for a Path 1/2/3 match (so extract_template_slots
+        //    extracts the slot values, refined by variable_patterns — §0.17.3).
+        let vars = capture_variables(matched_template, query, &variable_patterns);
 
         // 7. Per-channel include UUIDs (deduped within a channel) → registry
         //    class resolution (PERF-02: one indexed SELECT per UUID).
