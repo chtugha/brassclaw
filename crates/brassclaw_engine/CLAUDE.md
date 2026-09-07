@@ -48,10 +48,8 @@ src/
 │   ├── registry.rs       # CapabilityRegistry — register/get/list capabilities
 │   ├── lease.rs          # LeaseManager — grant/check/consume/revoke/expire leases
 │   └── policy.rs         # PolicyEngine — deterministic effect-level allow/deny/approve + provenance taint
-├── runtime/              # Thread lifecycle management
-│   ├── manager.rs        # ThreadManager — spawn, stop, inject messages, join threads
-│   ├── conversation.rs   # ConversationManager — routes UI messages to threads
-│   ├── tree.rs           # ThreadTree — parent-child relationships
+├── runtime/              # Internal store writes + thread messaging
+│   ├── internal_write.rs # Internal store writes (the ThreadManager / ConversationManager / ThreadTree / lease_refresh modules were retired in v3 Phase C.7 — the agent-loop PersistentMontyDriver now owns turn lifecycle)
 │   └── messaging.rs      # ThreadSignal, ThreadOutcome, signal channels
 ├── executor/             # Step execution
 │   ├── loop_engine.rs    # ExecutionLoop — core loop replacing run_agentic_loop()

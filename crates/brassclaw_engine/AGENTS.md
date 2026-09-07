@@ -15,7 +15,7 @@
 - Capability management (`capability`): `CapabilityRegistry`, `LeaseManager`, `LeasePlanner`/`CapabilityGrantPlan`, and the deterministic `PolicyEngine`/`PolicyDecision` (`Deny > RequireApproval > Allow`, with provenance taint).
 - Gate pipeline (`gate`): `GatePipeline`, `LeaseGate`, `ExecutionGate`/`GateController`/`GateDecision`/`GateResolution`/`ResumeKind`, and tool-tier classification (`ToolTier`, `classify_tool_tier`).
 - Step execution (`executor`): `ExecutionLoop` (replaces the legacy agentic loop), Tier-0 structured tool calls (`structured`) and Tier-1 CodeAct via Monty (`scripting`, `orchestrator`), context/prompt building (`context`, `thread_context`, `prompt`), and execution trace recording (`trace`).
-- Thread lifecycle runtime (`runtime`): `ThreadManager`, `ConversationManager`, `ThreadTree`, signal/`ThreadOutcome` messaging, lease refresh, and internal writes.
+- Internal runtime (`runtime`): signal/`ThreadOutcome` messaging (`messaging`) and internal store writes (`internal_write`). The `ThreadManager` / `ConversationManager` / `ThreadTree` / lease-refresh modules were retired in v3 Phase C.7 — the agent-loop `PersistentMontyDriver` (in `brassclaw_reborn_composition`) now owns turn lifecycle.
 - Memory document system (`memory`): `MemoryStore`, `RetrievalEngine`, `SkillTracker`.
 - Workspace mounts (`workspace`): `MountBackend`, `ProjectMounts`/`WorkspaceMounts`, `ProjectMountFactory`.
 - `ReliabilityTracker` (per-action EMA success/latency) and the prompt templates in `prompts/*.md` (loaded via `include_str!`).

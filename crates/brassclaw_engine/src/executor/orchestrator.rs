@@ -195,7 +195,7 @@ const ORCHESTRATOR_MAX_MAX_DURATION_SECS: u64 = 3600;
 /// **DB-less fallback only.** In a full DB-backed deployment the duration is
 /// read from `reborn_monty_vm_settings.max_duration_secs` (Phase 6 wiring via
 /// `MontyVmSettings`). `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` is retained
-/// solely as a last-resort override for the `RamSource` / DB-less code path.
+/// solely as a last-resort override for the DB-less code path (no `pg_pool`).
 /// Do not rely on this env var in production deployments.
 fn orchestrator_max_duration() -> std::time::Duration {
     static CACHED: OnceLock<std::time::Duration> = OnceLock::new();
