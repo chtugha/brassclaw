@@ -8740,12 +8740,31 @@ grouped by domain group matching the seeder insertion order):
 
 ### Phase M — Variable Intent Templates
 
-**Status:** [ ] Pending
+**Status:** [x] Complete — M.1+M.2 `2a67caed`, M.3 `6f630593`, M.4 `d12ca4cd`, M.5 `87b8d4db`, M.6 `9fa24bb7` (see M-verify note below).
 
 **Goal:** Add `%` slot marker support to intent expressions. Authors can write
 `"show me all files in the % directory"` as an intent expression and `resolve_intent`
 will match user text that fits the template. Value extraction is automatic from
 template segments; `variable_patterns` remains optional refinement.
+
+> **M-verify completion note:** M.1+M.2 shipped `2a67caed` (V076 migration +
+> `seed_intent_input` populates `is_template`/`template_prefix`/`template_suffix`
+> via `parse_template`); M.3 shipped `6f630593` (three-path `resolve_intent` SQL +
+> `IntentResolution::Match` template-field extension + destructure sites +
+> integration tests); M.4 shipped `d12ca4cd` (`fetch_for_turn` threads the matched
+> template into `capture_variables` so `extract_template_slots` extracts real slot
+> values for Path 1/2/3 matches; `#5c` integration test); M.5 shipped `87b8d4db`
+> (`variable_patterns` refinement verified spec-correct + the missing leading-`%`
+> Q1 warning added to `check_intent_expression_template` + `#5d` positional
+> baseline); M.6 shipped `9fa24bb7` (WebUI live template authoring feedback —
+> `template-feedback.js` JS port of `parse_template` + Q1 rules, the
+> `<IntentTemplateFeedback>` chip/anchor/inline-Q1 component + 5 VM render tests,
+> the `IntentTemplatePreviewPanel` mounted in the validation-queue tab, intent-input
+> CRUD wrappers in `settings-api.js`, AND a Rust adjacent-slots Q1 fix: the old
+> `parts.windows(2)` consecutive-empty check missed middle-adjacent `"a %% b"` —
+> replaced with an inter-slot separator scan `parts[1..n_slots]` + 2 new tests).
+> 576 engine lib tests pass; clippy clean on engine (default + skills-db) +
+> webui_v2_static; 24 JS tests pass (19 lib + 5 render).
 
 #### M.1 New migration: V058 (**was V057 before Decision 2**)
 
