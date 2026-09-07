@@ -110,16 +110,20 @@ The engine defines three traits that the host crate implements:
 
 ## Execution Loop
 
-`ExecutionLoop::run()` handles three `LlmResponse` variants:
+The turn is sequenced by the Python orchestrator (`orchestrator/basic_mode.py`, `DEFAULT_ORCHESTRATOR`), driven by Monty via `MontySession::drive_to_yield`. Rust is the host (muscle): it serves `host.*` calls and runs `host.run_program` code; it does NOT sequence the turn. The retired Rust `ExecutionLoop::run` was removed in v3 Phase C.7 — the composition `PersistentMontyDriver` now owns the turn lifecycle and parks the session in a conversation-keyed registry between turns.
 
-1. Check signals (Stop, InjectMessage) via `mpsc::Receiver`
-2. Build context (messages + callable actions from active leases, plus capability background / `Activatable Integrations` prompt metadata)
-3. Call LLM via `LlmBackend::complete()`
-4. **If `Text`**: check tool intent nudge, return if final response
-5. **If `ActionCalls`** (Tier 0): for each call, find lease → check policy → consume use → execute via `EffectExecutor` → record result
-6. **If `Code`** (Tier 1): execute Python via Monty with context-as-variables and `llm_query()` support → compact metadata in context
-7. Record Step, emit ThreadEvents
-8. Repeat until: text response, stop signal, max iterations, or approval needed
+The orchestrator runs a resumable long-running loop (one iteration per turn; the VM parks at `host.await_next_turn()` instead of returning):
+
+1. `host.check_signals()` — "stop" short-circuits to `FINAL(...)`.
+2. `user_input = host.await_next_turn()` — the park point; the driver resumes the parked VM with the next turn's input. Empty input → `FINAL(...)`.
+3. Append the User message to the in-VM `history`.
+4. `host.resolve_intent(user_input=)` → dispatch on `status`:
+   - **match** → `host.compose_orchestrator(component_id, step_link, user_input)` → iterate `program.steplist` running each step's `executable_code` via `host.run_program`. The `program.skills` array is carried for consultation (exact tool-usage narrative); per-step code is concrete (variable substitution is server-side in `compose_orchestrator`).
+   - **disambiguation / no_match / error** → resolve + run the `host-non-match-llm-answer` recipe; ultimate fallback → direct `host.kohai_complete` (Monty assembles the prompt from `history`; Kohai swaps the prefix placeholder for the provider prefix and calls the provider LLM via `KohaiPort` → `HostManagedModelGateway`).
+5. `host.post_reply(text=answer)`; resolve + run the `host-save-history` recipe (best-effort); append the Assistant answer to `history`.
+6. Loop back to step 1 (park at the next `host.await_next_turn()`).
+
+`drive_to_yield` returns `OrchestratorYield::Complete(Box<OrchestratorResult>)` when the script reaches `FINAL(...)`, or `OrchestratorYield::AwaitNextTurn` when it parks. `FINAL(...)` is only reached on stop/empty-input termination; the happy path loops forever, parked between turns. The non-persistent `execute_orchestrator` caller maps an `AwaitNextTurn` park to an error (the persistent C.6 driver parks the session instead).
 
 ## CodeAct / Monty Integration (Tier 1)
 
