@@ -19,6 +19,7 @@ pub mod retrieval_source;
 pub mod similarity_checker;
 pub mod skill_tracker;
 pub mod store;
+pub mod template_extractor;
 
 pub use component_validator::{
     ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig,

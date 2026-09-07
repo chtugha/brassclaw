@@ -523,6 +523,16 @@ pub async fn seed_intent_input(
     // conflict key; updated via `SET` on re-seed.
     step_link: Option<&str>,
 ) -> Result<(), IntentSystemError> {
+    // Phase M (§0.17): detect `%` slot markers and populate the template anchor
+    // columns (V076) so resolve_intent's three-path dispatch can index-match
+    // template intents. Plain exact-match intents keep is_template = false +
+    // NULL anchors and ride the existing Path 0.
+    let (is_template, template_prefix, template_suffix) =
+        match crate::memory::template_extractor::parse_template(input_text) {
+            Some((prefix, suffix)) => (true, Some(prefix), Some(suffix)),
+            None => (false, None, None),
+        };
+
     let client = pool
         .get()
         .await
@@ -532,15 +542,19 @@ pub async fn seed_intent_input(
             "INSERT INTO reborn_intent_inputs
                  (tenant_id, user_id, agent_id, project_id,
                   input_text, input_class, component_id, component_class_code,
-                  score, source, needs_review, step_link)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11)
+                  score, source, needs_review, step_link,
+                  is_template, template_prefix, template_suffix)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12,$13,$14)
              ON CONFLICT (tenant_id, user_id, agent_id, project_id,
                           input_text, input_class, component_id)
              DO UPDATE SET
-                 source       = EXCLUDED.source,
-                 needs_review = EXCLUDED.needs_review,
-                 step_link    = EXCLUDED.step_link,
-                 updated_at   = now()",
+                 source          = EXCLUDED.source,
+                 needs_review    = EXCLUDED.needs_review,
+                 step_link       = EXCLUDED.step_link,
+                 is_template     = EXCLUDED.is_template,
+                 template_prefix = EXCLUDED.template_prefix,
+                 template_suffix = EXCLUDED.template_suffix,
+                 updated_at      = now()",
             &[
                 &scope.tenant_id,
                 &scope.user_id,
@@ -553,6 +567,9 @@ pub async fn seed_intent_input(
                 &source.as_str(),
                 &source.needs_review(),
                 &step_link,
+                &is_template,
+                &template_prefix,
+                &template_suffix,
             ],
         )
         .await
