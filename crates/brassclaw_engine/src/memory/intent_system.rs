@@ -179,6 +179,16 @@ pub enum IntentResolution {
         /// (Phase E) can carry it without a second DB fetch. Empty string for
         /// non-Action matches (FIND-P5-06).
         component_name: String,
+        /// The matched intent row's `input_text` — the literal expression for a
+        /// Path 0 exact match, or the template expression (containing `%`) for a
+        /// Path 1/2/3 template match (§0.17.1). Phase M.3 adds the field so the
+        /// caller (`fetch_for_turn`) can run `extract_template_slots(template,
+        /// user_text)` when `is_template` is true.
+        input_text: String,
+        /// Whether the matched row is a template (`input_text` contains `%`).
+        /// When true, `input_text` is the template and the caller extracts slot
+        /// values; when false, the match is an exact literal (Path 0).
+        is_template: bool,
     },
     /// Multiple candidates within a 2-point score spread.  The WebUI must show
     /// a disambiguation message with clickable buttons (Q11).
@@ -361,7 +371,9 @@ pub async fn resolve_intent(
             "SELECT ii.id, ii.component_id, ii.component_class_code,
                     ii.input_class, ii.score,
                     ii.step_link,
-                    COALESCE(a.name, '') AS component_name
+                    COALESCE(a.name, '') AS component_name,
+                    ii.input_text,
+                    ii.is_template
              FROM reborn_intent_inputs ii
              LEFT JOIN reborn_actions a
                    ON a.id = ii.component_id
@@ -374,9 +386,25 @@ pub async fn resolve_intent(
                AND ii.user_id     = $2
                AND ii.agent_id    = $3
                AND ii.project_id  = $4
-               AND ii.input_text  = $5
                AND ii.input_class = ANY($6)
+               AND (
+                 ii.input_text = $5
+                 OR (
+                     ii.is_template = true
+                     AND ii.template_prefix != ''
+                     AND $5 LIKE (ii.template_prefix || '%')
+                     AND $5 LIKE ii.input_text
+                 )
+                 OR (
+                     ii.is_template = true
+                     AND ii.template_prefix = ''
+                     AND ii.template_suffix != ''
+                     AND reverse($5) LIKE (reverse(ii.template_suffix) || '%')
+                     AND $5 LIKE ii.input_text
+                 )
+               )
              ORDER BY
+               CASE WHEN ii.input_text = $5 THEN 0 ELSE 1 END,
                CASE ii.input_class
                  WHEN $7 THEN 0
                  WHEN $8 THEN 1
@@ -442,11 +470,15 @@ pub async fn resolve_intent(
         // appended after id/component_id/class/input_class/score (FIND-P10-01).
         // `c` is candidates[0] which corresponds to rows[0] (highest score, first
         // dedup-inserted), so rows[0] carries this match's step_link + name.
+        // input_text (col 7) + is_template (col 8) added by Phase M.3 so the
+        // caller can run `extract_template_slots` on template matches (§0.17.1).
         return Ok(IntentResolution::Match {
             component_id: c.component_id,
             component_class_code: c.component_class_code,
             step_link: rows[0].get::<_, Option<String>>(5),
             component_name: rows[0].get::<_, String>(6),
+            input_text: rows[0].get::<_, String>(7),
+            is_template: rows[0].get::<_, bool>(8),
         });
     }
 
@@ -490,12 +522,17 @@ pub async fn record_disambiguation_choice(
     // the legacy fetch_component_by_id path (acceptable post-disambiguation; the
     // full IBS path runs on the next turn when the user's text matches the
     // intent directly). component_name: "" is fine — disambiguation results are
-    // Recipe/Skill, never an Action (Actions match unambiguously).
+    // Recipe/Skill, never an Action (Actions match unambiguously). input_text:
+    // "" + is_template: false — the caller re-fetches the actual intent row on
+    // the next turn, so no template extraction runs on a disambiguation choice
+    // (Phase M.3).
     Ok(IntentResolution::Match {
         component_id,
         component_class_code,
         step_link: None,
         component_name: String::new(),
+        input_text: String::new(),
+        is_template: false,
     })
 }
 

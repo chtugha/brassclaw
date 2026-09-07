@@ -620,6 +620,8 @@ impl RetrievalSource for PostgresSource {
                 component_class_code,
                 step_link,
                 component_name,
+                input_text: _input_text,
+                is_template: _is_template,
             }) => {
                 // Score already incremented inside resolve_intent (PERF-03).
                 if component_class_code == 16 {

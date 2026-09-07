@@ -207,6 +207,7 @@ async fn t1_recipe_intent_with_step_link_returns_some_and_empty_name() {
             component_class_code,
             step_link,
             component_name,
+            ..
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 21);
@@ -252,6 +253,7 @@ async fn t2_intent_without_step_link_returns_none_and_empty_name() {
             component_class_code,
             step_link,
             component_name,
+            ..
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 13);
@@ -298,6 +300,7 @@ async fn t3_class16_action_intent_populates_component_name_via_join() {
             component_class_code,
             step_link,
             component_name,
+            ..
         }) => {
             assert_eq!(cid, action_id);
             assert_eq!(component_class_code, 16);
@@ -343,6 +346,7 @@ async fn t4_class21_recipe_intent_without_action_row_has_empty_name() {
             component_class_code,
             step_link,
             component_name,
+            ..
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 21);
@@ -393,6 +397,7 @@ async fn t5_record_disambiguation_choice_returns_none_step_link_and_empty_name()
             component_class_code,
             step_link,
             component_name,
+            ..
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 21);

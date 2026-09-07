@@ -1788,12 +1788,16 @@ async fn handle_resolve_intent(
             component_class_code,
             step_link,
             component_name,
+            input_text,
+            is_template,
         }) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
             "status": "match",
             "component_id": component_id.to_string(),
             "component_class_code": component_class_code,
             "step_link": step_link,
             "component_name": component_name,
+            "input_text": input_text,
+            "is_template": is_template,
         }))),
         Ok(IntentResolution::Disambiguation { candidates }) => {
             let cands: Vec<serde_json::Value> = candidates
