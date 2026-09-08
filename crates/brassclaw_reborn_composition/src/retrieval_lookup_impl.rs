@@ -79,9 +79,6 @@ impl RetrievalLookup for PgRetrievalLookup {
             FetchForTurnResult::Disambiguation(candidates) => {
                 Some(retrieval_turn_result_for_disambiguation(candidates)?)
             }
-            FetchForTurnResult::ActionShortCircuit { component_id, name } => Some(
-                retrieval_turn_result_for_action_short_circuit(component_id, name),
-            ),
             FetchForTurnResult::SplitResult {
                 rust_items,
                 orchestrator_items,
@@ -178,36 +175,6 @@ fn retrieval_turn_result_for_disambiguation(
         routing_meta: serde_json::json!({ "variant": "disambiguation", "count": count }),
         instruction: serde_json::json!(null),
     })
-}
-
-/// Serialize an `ActionShortCircuit` (class-16 intent match) into a
-/// `RetrievalTurnResult` with REAL Tier-0 routing booleans (Q5→A): the action
-/// executes directly with no LLM, so `tier0_eligible = true` and
-/// `llm_call_required = false`. The action identity is carried in
-/// `orchestrator_items` (a single `action_short_circuit` descriptor) and
-/// `routing_meta.variant == "action_short_circuit"` so the Phase-H consumer can
-/// discriminate it (consistent with how `Disambiguation` is encoded). Always
-/// `Some` — an Action match is a real short-circuit, never an empty fall-through.
-#[cfg(feature = "skills-db")]
-fn retrieval_turn_result_for_action_short_circuit(
-    component_id: uuid::Uuid,
-    name: String,
-) -> RetrievalTurnResult {
-    let id_str = component_id.to_string();
-    RetrievalTurnResult {
-        tier0_eligible: true,
-        llm_call_required: false,
-        rust_items: serde_json::json!([]),
-        orchestrator_items: serde_json::json!([
-            { "type": "action_short_circuit", "component_id": id_str, "name": name.clone() }
-        ]),
-        routing_meta: serde_json::json!({
-            "variant": "action_short_circuit",
-            "component_id": id_str,
-            "name": name,
-        }),
-        instruction: serde_json::json!(null),
-    }
 }
 
 /// Serialize a `SplitResult` (class-21 recipe intent match with a `step_link`)

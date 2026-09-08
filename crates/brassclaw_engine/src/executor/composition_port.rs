@@ -68,6 +68,23 @@ pub enum ComponentPortError {
     /// A DB / IBS-compile / intent-resolution failure.
     #[error("component failure: {reason}")]
     Failure { reason: String },
+    /// An `includes` UUID declared by the component failed to resolve — the
+    /// included component is absent or unvalidated. Composition cannot proceed.
+    /// The caller (`handle_compose_orchestrator`) must call
+    /// `invalidate_component` on `component_id` and surface the error to the
+    /// orchestrator.
+    #[error(
+        "include {include_id} declared by component {component_id} (class {class_code}) \
+         did not resolve (absent or unvalidated)"
+    )]
+    IncludeNotResolved {
+        /// The declaring component (the one that listed the broken include).
+        component_id: String,
+        /// Class code of the declaring component (needed for invalidation routing).
+        class_code: i32,
+        /// The include UUID that failed to resolve.
+        include_id: String,
+    },
 }
 
 /// Engine-side port over the component store + composition system (the IBS).
@@ -153,6 +170,26 @@ pub trait ComponentPort: Send + Sync {
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = Result<ComposedProgram, ComponentPortError>>
+                + Send
+                + '_,
+        >,
+    >;
+
+    /// Composition-time referential integrity failure (HI.1 / Gap 2): set the
+    /// component's `validation_status = 'pending'` and re-insert it into the
+    /// validation queue. Called by `handle_compose_orchestrator` when `compose`
+    /// returns [`ComponentPortError::IncludeNotResolved`]. The `class_code` is
+    /// needed to route to the correct component table. Implementations that have
+    /// no queue (e.g. test doubles) may return `Ok(())` as a no-op.
+    fn invalidate_component(
+        &self,
+        scope: &ComponentScope,
+        component_id: uuid::Uuid,
+        class_code: i32,
+        reason: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), ComponentPortError>>
                 + Send
                 + '_,
         >,

@@ -47,20 +47,6 @@ pub struct ComponentItem {
     /// When true, this component's content replaces the normal assembly and
     /// should be returned verbatim to `default.py` (§3.13 Solution Override).
     pub override_prompt_creation: bool,
-    /// Executable step list for class-16 Actions (the `reborn_actions.steps`
-    /// JSONB, parsed). `None` for every other class — only
-    /// [`fetch_component_by_id`] / [`fetch_component_by_name`] populate this
-    /// (for class 16) so `execute_action_procedure` can run the real procedure
-    /// (v3 Phase G / Q-G-STUB1 — `subplan_stub_stepG_action_steps`). The
-    /// broad-scan assembly path does not fetch steps (it builds
-    /// `orchestrator_content`, not an executable doc).
-    pub steps: Option<serde_json::Value>,
-    /// Allowed-tools list for class-16 Actions (the `reborn_actions.
-    /// allowed_tools` TEXT[], as a JSON array of strings). `None` for every
-    /// other class. See [`steps`].
-    ///
-    /// [`steps`]: ComponentItem::steps
-    pub allowed_tools: Option<serde_json::Value>,
 }
 
 /// Scope for component retrieval — must match the 4-part scope tuple on all
@@ -154,10 +140,11 @@ pub struct TurnRoutingSignals {
 ///
 /// The common cases are a list of assembled components or a disambiguation
 /// request (when multiple near-equal candidates exist in `reborn_intent_inputs`).
-/// Phase E (§0.8) adds two Tier-0 routing variants: `ActionShortCircuit` (an
-/// Action intent match executes directly, no LLM) and `SplitResult` (a Recipe
+/// Phase E (§0.8) adds one Tier-0 routing variant: `SplitResult` (a Recipe
 /// intent match with a `step_link` whose IBS-compiled steps are pre-fetched
-/// into Rust / orchestrator channels with routing signals).
+/// into Rust / orchestrator channels with routing signals). Actions (class 16)
+/// no longer short-circuit here — they route through `host.compose_orchestrator`
+/// → `PgCompositionPort::compose_action_program` (HI.1).
 #[derive(Debug)]
 pub enum FetchForTurnResult {
     /// No-match UNION ALL path or non-recipe intent match (existing behaviour
@@ -166,14 +153,6 @@ pub enum FetchForTurnResult {
     /// Multiple near-equal intent candidates — the orchestrator should surface
     /// a disambiguation message to the user (spec §3.12 Q11).
     Disambiguation(Vec<crate::memory::intent_system::IntentCandidate>),
-    /// Intent matched an Action (class 16) — execute directly, no LLM. The
-    /// `name` comes from `IntentResolution::Match.component_name` (populated by
-    /// `resolve_intent`'s `reborn_actions` LEFT JOIN, FIND-P5-06) so no second
-    /// DB fetch is needed. Returned BEFORE any `fetch_component_by_id` call.
-    ActionShortCircuit {
-        component_id: uuid::Uuid,
-        name: String,
-    },
     /// Intent matched a Recipe (class 21) with a `step_link`. The IBS compiled
     /// the recipe's `step_descriptions` + the matched variant's
     /// `variable_patterns` into Rust-only (`rust_steps`) and orchestrator
@@ -585,15 +564,14 @@ impl RetrievalSource for PostgresSource {
     ///
     /// Runs `resolve_intent` first. On a single `Match` it dispatches by
     /// class code BEFORE any component fetch (FIND-P5-06):
-    ///   - class 16 (Action) → `ActionShortCircuit { component_id, name }`
-    ///     (execute directly, no LLM). `name` comes from the intent match's
-    ///     `component_name` (populated by `resolve_intent`'s `reborn_actions`
-    ///     LEFT JOIN) — no second DB fetch.
     ///   - class 21 (Recipe) with a `step_link` → `SplitResult` via
     ///     [`PostgresSource::fetch_recipe_split_result`] (IBS compile +
     ///     batched channel fetch + `{{vars.name}}` substitution).
     ///   - anything else (legacy / non-variant recipe / other class) → the
     ///     existing per-UUID `fetch_component_by_id` → `Components` path.
+    ///   - class 16 (Action) → falls through to `Components` here; the
+    ///     actual execution is via `host.compose_orchestrator` →
+    ///     `PgCompositionPort::compose_action_program` (HI.1).
     /// `Disambiguation` is surfaced as-is; `NoMatch` / DB error fall back to
     /// the full UNION ALL scan (`fetch_for_consumer`). `resolve_intent`
     /// already atomically increments the matched row's score (PERF-03,
@@ -619,7 +597,6 @@ impl RetrievalSource for PostgresSource {
                 component_id,
                 component_class_code,
                 step_link,
-                component_name,
                 input_text,
                 is_template: _is_template,
             }) => {
@@ -631,13 +608,6 @@ impl RetrievalSource for PostgresSource {
                 // `extract_template_slots(template, user_text)` against the real
                 // template instead of the inert `(query, query)` exact-match
                 // pair (§0.17.3).
-                if component_class_code == 16 {
-                    // Action intent — execute directly, no LLM, no fetch.
-                    return Ok(FetchForTurnResult::ActionShortCircuit {
-                        component_id,
-                        name: component_name,
-                    });
-                }
                 if component_class_code == 21
                     && let Some(step_link) = step_link
                 {
@@ -1090,24 +1060,17 @@ fn class_code_to_table(code: i32) -> Option<(&'static str, &'static str)> {
     }
 }
 
-/// Build a [`ComponentItem`] from a 9-column fetch row produced by
-/// [`fetch_component_by_id`] / [`fetch_component_by_name`] (Q-G-STUB1 —
-/// `subplan_stub_stepG_action_steps`).
+/// Build a [`ComponentItem`] from a 7-column fetch row produced by
+/// [`fetch_component_by_id`] / [`fetch_component_by_name`].
 ///
-/// Row shape (columns 0–8): `id::text, class_code::int, prompt_uid::bigint,
-/// name, description, effective_content, override_prompt_creation,
-/// steps_json, allowed_tools_arr`. Columns 7–8 are the executable `steps`
-/// (JSONB) + `allowed_tools` (TEXT[]) for **class-16 Actions** and SQL NULL
-/// for every other class, so they are read as `Option` to stay NULL-safe;
-/// `steps` is surfaced only when the JSONB value is an array (class 16).
+/// Row shape (columns 0–6): `id::text, class_code::int, prompt_uid::bigint,
+/// name, description, effective_content, override_prompt_creation`.
 #[cfg(feature = "skills-db")]
 fn component_item_from_row(row: &tokio_postgres::Row) -> ComponentItem {
     let id_str: &str = row.get(0);
     let id = id_str
         .parse::<uuid::Uuid>()
         .unwrap_or_else(|_| uuid::Uuid::nil());
-    let steps_val: Option<serde_json::Value> = row.get(7);
-    let allowed_tools_val: Option<Vec<String>> = row.get(8);
     ComponentItem {
         id,
         class_code: row.get(1),
@@ -1116,10 +1079,6 @@ fn component_item_from_row(row: &tokio_postgres::Row) -> ComponentItem {
         description: row.get::<_, &str>(4).to_string(),
         effective_content: row.get::<_, &str>(5).to_string(),
         override_prompt_creation: row.get(6),
-        steps: steps_val.filter(|v| v.is_array()),
-        allowed_tools: allowed_tools_val.map(|v| {
-            serde_json::Value::Array(v.into_iter().map(serde_json::Value::String).collect())
-        }),
     }
 }
 
@@ -1152,25 +1111,11 @@ pub async fn fetch_component_by_id(
         .await
         .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
 
-    // Class-16 Actions carry the executable `steps` (JSONB) + `allowed_tools`
-    // (TEXT[]) so `execute_action_procedure` can run the real procedure
-    // (Q-G-STUB1 — `subplan_stub_stepG_action_steps`). These columns exist only
-    // on `reborn_actions`, so they are SELECTed via a class-16-specific
-    // projection; for every other class the two extra columns are NULL, giving
-    // a uniform 9-column row shape.
-    let (steps_expr, allowed_tools_expr) = if component_class_code == 16 {
-        ("steps", "allowed_tools")
-    } else {
-        ("NULL::jsonb", "NULL::text[]")
-    };
-
     let query_sql = format!(
         "SELECT id::text, class_code::int, prompt_uid::bigint,
                 name, COALESCE(description,'') AS description,
                 {content_expr} AS effective_content,
-                override_prompt_creation,
-                {steps_expr} AS steps_json,
-                {allowed_tools_expr} AS allowed_tools_arr
+                override_prompt_creation
          FROM {table}
          WHERE id = $1
            AND tenant_id  = $2
@@ -1231,23 +1176,11 @@ pub async fn fetch_component_by_name(
         .await
         .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
 
-    // Class-16 Actions carry the executable `steps` (JSONB) + `allowed_tools`
-    // (TEXT[]), mirroring `fetch_component_by_id` (Q-G-STUB1). Same
-    // class-16-specific projection; for every other class the two extra
-    // columns are NULL.
-    let (steps_expr, allowed_tools_expr) = if component_class_code == 16 {
-        ("steps", "allowed_tools")
-    } else {
-        ("NULL::jsonb", "NULL::text[]")
-    };
-
     let query_sql = format!(
         "SELECT id::text, class_code::int, prompt_uid::bigint,
                 name, COALESCE(description,'') AS description,
                 {content_expr} AS effective_content,
-                override_prompt_creation,
-                {steps_expr} AS steps_json,
-                {allowed_tools_expr} AS allowed_tools_arr
+                override_prompt_creation
          FROM {table}
          WHERE name = $1
            AND tenant_id  = $2

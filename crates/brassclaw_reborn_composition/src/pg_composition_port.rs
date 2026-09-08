@@ -5,7 +5,8 @@
 //! pool and performs the full composition pipeline for
 //! `host.compose_orchestrator(component_id, step_link, user_input)`:
 //!
-//! 1. SELECT the recipe (class 21) row by `component_id` + scope.
+//! **Recipe (class 21) path:**
+//! 1. SELECT the recipe row by `component_id` + scope.
 //! 2. Derive `llm_call_required` from tier / validation / Wilson (§0.23).
 //! 3. Match the variant by `step_link` (surfaced to Monty by
 //!    `host.resolve_intent`, which already returns `step_link`).
@@ -16,6 +17,15 @@
 //!    class-specific table fetch) into a sync [`MapComponentResolver`].
 //! 7. `compose_program(&instruction, &resolver, &vars)` → the predefined
 //!    [`ComposedProgram`] handed to Monty.
+//!
+//! **Action (class 16) path** (`compose_action_program`):
+//! Actions ARE recipes — they go through the identical IBS pipeline. The
+//! difference is the source table (`reborn_actions`) and the absence of
+//! `variants`/`step_link`/`tier`/`wilson_lower`. The `steps` JSONB column IS
+//! the `step_descriptions` JSONB — same schema, same IBS input. Actions are
+//! always Tier-0 when `validation_status = 'validated'`. A synthetic all-steps
+//! `step_link` (`"0:1-0:E"`) is used when the steps array is non-empty; an
+//! empty steps array produces an empty `ComposedProgram` (no-op action).
 //!
 //! The cdylib *application* of `rust_directives` (dlopen via
 //! `DynamicToolLoader`, which lives in `brassclaw_host_runtime` — downstream of
@@ -83,6 +93,8 @@ use brassclaw_engine::types::recipe::RecipeVariant;
 use brassclaw_engine::types::thread::Thread;
 #[cfg(feature = "skills-db")]
 use brassclaw_pg::PgPool;
+#[cfg(feature = "skills-db")]
+use crate::validation_queue::ValidationQueueStore;
 
 /// Match a variant by `step_link` (§7.3). Returns the first variant whose
 /// `step_link` equals the supplied formula, or `None` when no variant matches
@@ -143,10 +155,150 @@ impl PgCompositionPort {
         Self { pool, store }
     }
 
-    /// The composition pipeline (steps 1-8 above). Takes the pool by reference
-    /// so the trait impl can clone the call args into owned data and drive a
-    /// `'static` boxed future (the trait's `+ '_` return captures only
-    /// `&self`).
+    /// Action (class-16) composition pipeline. Actions ARE recipes — they go
+    /// through the same `build_instruction` + `compose_program` IBS pipeline.
+    /// Fetches `steps` (the `step_descriptions` JSONB) from `reborn_actions`
+    /// and runs the identical pipeline as `compose_with_pool`, without
+    /// `variants` / `step_link` / `tier` / `wilson_lower`. Always Tier-0 when
+    /// `validation_status = 'validated'`.
+    async fn compose_action_program(
+        pool: &PgPool,
+        scope: &ComponentScope,
+        component_id: Uuid,
+        user_input: &str,
+    ) -> Result<ComposedProgram, ComponentPortError> {
+        // 1. Action row — scope filter.
+        let client = pool
+            .get()
+            .await
+            .map_err(|e| ComponentPortError::Failure {
+                reason: e.to_string(),
+            })?;
+        let row = client
+            .query_opt(
+                "SELECT name, validation_status,
+                        COALESCE(steps::text, '[]') AS steps_text
+                 FROM reborn_actions
+                 WHERE id = $1
+                   AND tenant_id  = $2
+                   AND user_id    = $3
+                   AND agent_id   = $4
+                   AND project_id = $5",
+                &[
+                    &component_id,
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                ],
+            )
+            .await
+            .map_err(|e| ComponentPortError::Failure {
+                reason: e.to_string(),
+            })?;
+        let Some(row) = row else {
+            return Err(ComponentPortError::RecipeNotFound {
+                component_id: component_id.to_string(),
+            });
+        };
+
+        let _action_name: String = row.get(0);
+        let validation_status: String = row.get(1);
+        let steps_text: String = row.get(2);
+
+        // 2. Actions are always Tier-0 when validated (no tier/wilson columns).
+        let llm_call_required = validation_status != "validated";
+
+        // 3. StepDescriptions — the `steps` JSONB IS the step_descriptions.
+        let step_descs: Vec<StepDescriptionEntry> =
+            serde_json::from_str(&steps_text).unwrap_or_default();
+
+        // 4. Synthetic all-steps step_link. An empty steps array → empty
+        //    ComposedProgram (no-op action — caller receives ok:true, no steps).
+        if step_descs.is_empty()
+            || step_descs.iter().all(|sd| sd.steps.is_empty())
+        {
+            return Ok(ComposedProgram {
+                skills: Vec::new(),
+                steplist: Vec::new(),
+                rust_directives: Vec::new(),
+                variables: Vec::new(),
+                assembled_program: String::new(),
+                tier: "tier0".to_string(),
+            });
+        }
+        // Use a synthetic step_link that selects all steps from SD0.
+        let action_step_link = "0:1-0:E";
+
+        // 5. IBS compile — same as the recipe path.
+        let instruction =
+            build_instruction(action_step_link, &step_descs, &[], llm_call_required)
+                .map_err(|e| ComponentPortError::Failure {
+                    reason: e.to_string(),
+                })?;
+
+        // 6. No variable_patterns on actions (no template slots).
+        let vars: Vec<(String, String)> = Vec::new();
+
+        // 7. Batch-resolve include UUIDs + tool_binding tool_ids — identical to
+        //    the recipe path.
+        let mut uuids: HashSet<Uuid> = HashSet::new();
+        for step in instruction
+            .orchestrator_steps
+            .iter()
+            .chain(instruction.rust_steps.iter())
+        {
+            for id in &step.include {
+                uuids.insert(*id);
+            }
+            for b in &step.tool_bindings {
+                uuids.insert(b.tool_id);
+            }
+        }
+        let mut pairs: Vec<(Uuid, i32)> = Vec::with_capacity(uuids.len());
+        for id in &uuids {
+            if let Some(class_code) = lookup_component_class(pool, scope, *id)
+                .await
+                .map_err(|e| ComponentPortError::Failure {
+                    reason: e.to_string(),
+                })?
+            {
+                pairs.push((*id, class_code));
+            }
+        }
+        let items = fetch_components_by_ids(pool, scope, &pairs)
+            .await
+            .map_err(|e| ComponentPortError::Failure {
+                reason: e.to_string(),
+            })?;
+
+        // 8. Resolver map — same include-resolution check as the recipe path
+        //    (HI.1 / Gap 2): surface IncludeNotResolved if any include UUID
+        //    failed to fetch so the caller can invalidate + re-queue.
+        let mut map: HashMap<Uuid, ResolvedComponentUngated> = HashMap::new();
+        for item in &items {
+            map.insert(item.id, component_item_to_resolved(item));
+        }
+        for step in &instruction.orchestrator_steps {
+            for id in &step.include {
+                if !map.contains_key(id) {
+                    return Err(ComponentPortError::IncludeNotResolved {
+                        component_id: component_id.to_string(),
+                        class_code: 16,
+                        include_id: id.to_string(),
+                    });
+                }
+            }
+        }
+        let resolver = MapComponentResolver { map: &map };
+
+        Ok(compose_program(&instruction, &resolver, &vars))
+    }
+
+    /// The recipe (class-21) composition pipeline (steps 1-8 above). Takes the
+    /// pool by reference so the trait impl can clone the call args into owned
+    /// data and drive a `'static` boxed future (the trait's `+ '_` return
+    /// captures only `&self`).
     async fn compose_with_pool(
         pool: &PgPool,
         scope: &ComponentScope,
@@ -268,10 +420,24 @@ impl PgCompositionPort {
                 reason: e.to_string(),
             })?;
 
-        // 8. Resolver map + compose.
+        // 8. Resolver map — check that every orchestrator-step include UUID
+        //    resolved. A missing include means the included component is absent
+        //    or unvalidated; surface IncludeNotResolved so the caller can
+        //    invalidate + re-queue the declaring component (HI.1 / Gap 2).
         let mut map: HashMap<Uuid, ResolvedComponent> = HashMap::new();
         for item in &items {
             map.insert(item.id, component_item_to_resolved(item));
+        }
+        for step in &instruction.orchestrator_steps {
+            for id in &step.include {
+                if !map.contains_key(id) {
+                    return Err(ComponentPortError::IncludeNotResolved {
+                        component_id: component_id.to_string(),
+                        class_code: 21,
+                        include_id: id.to_string(),
+                    });
+                }
+            }
         }
         let resolver = MapComponentResolver { map: &map };
 
@@ -392,7 +558,47 @@ impl ComponentPort for PgCompositionPort {
         let step_link = step_link.to_string();
         let user_input = user_input.to_string();
         Box::pin(async move {
+            if step_link.is_empty() {
+                // Empty step_link → action (class 16) path. Look up the
+                // component's class_code to confirm before dispatching.
+                let class_code = lookup_component_class(&pool, &scope, component_id)
+                    .await
+                    .map_err(|e| ComponentPortError::Failure {
+                        reason: e.to_string(),
+                    })?;
+                if class_code == Some(16) {
+                    return Self::compose_action_program(
+                        &pool, &scope, component_id, &user_input,
+                    )
+                    .await;
+                }
+                // Non-action component with no step_link — let compose_with_pool
+                // surface the NoVariantMatch error (step_link is required for
+                // recipes and all other class types).
+            }
             Self::compose_with_pool(&pool, &scope, component_id, &step_link, &user_input).await
+        })
+    }
+
+    fn invalidate_component(
+        &self,
+        scope: &ComponentScope,
+        component_id: uuid::Uuid,
+        class_code: i32,
+        reason: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), ComponentPortError>> + Send + '_>>
+    {
+        let pool = self.pool.clone();
+        let scope = scope.clone();
+        let reason = reason.to_string();
+        Box::pin(async move {
+            let queue = ValidationQueueStore::new(std::sync::Arc::new(pool));
+            queue
+                .invalidate(&scope, component_id, class_code, &reason)
+                .await
+                .map_err(|e| ComponentPortError::Failure {
+                    reason: e.to_string(),
+                })
         })
     }
 }
@@ -441,8 +647,6 @@ mod tests {
             description: "greet".into(),
             effective_content: "print('hi {{vars.name}}')".into(),
             override_prompt_creation: false,
-            steps: None,
-            allowed_tools: None,
         };
         let resolved = super::component_item_to_resolved(&item);
         assert_eq!(resolved.class_code, 22);
@@ -460,8 +664,6 @@ mod tests {
             description: "greet".into(),
             effective_content: "print('hi')".into(),
             override_prompt_creation: false,
-            steps: None,
-            allowed_tools: None,
         };
         let resolved = super::component_item_to_resolved(&item);
         assert_eq!(resolved.class_code, 22);

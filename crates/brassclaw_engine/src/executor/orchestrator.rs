@@ -1424,7 +1424,7 @@ async fn handle_fetch_component(
 
     match port.fetch_component(&scope, component_id, class_code).await {
         Ok(Some(item)) => {
-            let mut value = serde_json::json!({
+            let value = serde_json::json!({
                 "id": item.id.to_string(),
                 "class_code": item.class_code,
                 "name": item.name,
@@ -1432,17 +1432,6 @@ async fn handle_fetch_component(
                 "content": item.effective_content,
                 "override_prompt_creation": item.override_prompt_creation,
             });
-            // Q-G-STUB1: surface the executable `steps` + `allowed_tools`
-            // for class-16 Actions so `execute_action_procedure` can run
-            // the real procedure (absent for every other class).
-            if let Some(obj) = value.as_object_mut() {
-                if let Some(steps) = item.steps {
-                    obj.insert("steps".to_string(), steps);
-                }
-                if let Some(allowed_tools) = item.allowed_tools {
-                    obj.insert("allowed_tools".to_string(), allowed_tools);
-                }
-            }
             ExtFunctionResult::Return(json_to_monty(&value))
         }
         Ok(None) => {
@@ -1583,7 +1572,7 @@ async fn handle_resolve_component_by_name(
         .await
     {
         Ok(Some(item)) => {
-            let mut value = serde_json::json!({
+            let value = serde_json::json!({
                 "id": item.id.to_string(),
                 "class_code": item.class_code,
                 "name": item.name,
@@ -1591,17 +1580,6 @@ async fn handle_resolve_component_by_name(
                 "content": item.effective_content,
                 "override_prompt_creation": item.override_prompt_creation,
             });
-            // Q-G-STUB1: surface the executable `steps` + `allowed_tools`
-            // for class-16 Actions (the §0.9 Option B fallback path),
-            // mirroring `handle_fetch_component`.
-            if let Some(obj) = value.as_object_mut() {
-                if let Some(steps) = item.steps {
-                    obj.insert("steps".to_string(), steps);
-                }
-                if let Some(allowed_tools) = item.allowed_tools {
-                    obj.insert("allowed_tools".to_string(), allowed_tools);
-                }
-            }
             ExtFunctionResult::Return(json_to_monty(&value))
         }
         Ok(None) => {
@@ -1642,13 +1620,11 @@ async fn handle_compose_orchestrator(
             "error": "missing or invalid component_id",
         })));
     };
+    // `step_link` is empty for class-16 Actions — the composition port
+    // dispatches to `compose_action_program` when step_link is empty and the
+    // component is class-16. All other classes require a non-empty step_link
+    // (the port surfaces ComponentPortError::NoVariantMatch in that case).
     let step_link = args.get(1).map(monty_to_string).unwrap_or_default();
-    if step_link.is_empty() {
-        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-            "ok": false,
-            "error": "missing step_link",
-        })));
-    }
     let user_input = args.get(2).map(monty_to_string).unwrap_or_default();
     let Some(port) = component_port else {
         return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
@@ -1671,6 +1647,27 @@ async fn handle_compose_orchestrator(
             ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
                 "ok": true,
                 "program": program_value,
+            })))
+        }
+        Err(crate::executor::ComponentPortError::IncludeNotResolved {
+            component_id: ref decl_id,
+            class_code,
+            ref include_id,
+        }) => {
+            // An include UUID no longer resolves — the declaring component must
+            // be invalidated + re-queued (HI.1 / Gap 2). Best-effort: log on
+            // failure but still return the error to the orchestrator so it can
+            // fall back gracefully.
+            if let Ok(decl_uuid) = uuid::Uuid::parse_str(decl_id) {
+                let _ = port
+                    .invalidate_component(&scope, decl_uuid, class_code, &format!(
+                        "include {include_id} did not resolve at composition time"
+                    ))
+                    .await;
+            }
+            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                "ok": false,
+                "error": format!("include_not_resolved: {include_id}"),
             })))
         }
         Err(e) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
@@ -1787,7 +1784,6 @@ async fn handle_resolve_intent(
             component_id,
             component_class_code,
             step_link,
-            component_name,
             input_text,
             is_template,
         }) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
@@ -1795,7 +1791,6 @@ async fn handle_resolve_intent(
             "component_id": component_id.to_string(),
             "component_class_code": component_class_code,
             "step_link": step_link,
-            "component_name": component_name,
             "input_text": input_text,
             "is_template": is_template,
         }))),
@@ -2102,17 +2097,6 @@ fn assemble_pkr_from_fetch(
                 tier_zero: false,
             }
         }
-        FetchForTurnResult::ActionShortCircuit { component_id, name } => PkrAssemblyResult {
-            orchestrator_content: String::new(),
-            matched_component_ids: vec![component_id.to_string()],
-            override_prompt_creation: false,
-            action_short_circuit: true,
-            action_component_id: Some(component_id.to_string()),
-            action_name: Some(name),
-            disambiguation: false,
-            candidates: Vec::new(),
-            tier_zero: false,
-        },
         FetchForTurnResult::SplitResult {
             orchestrator_items,
             routing,
@@ -3610,6 +3594,18 @@ mod tests {
             let result = self.result.lock().unwrap().clone();
             Box::pin(async move { result.expect("mock result must be injected") })
         }
+
+        fn invalidate_component(
+            &self,
+            _scope: &ComponentScope,
+            _component_id: uuid::Uuid,
+            _class_code: i32,
+            _reason: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<(), ComponentPortError>> + Send + '_>>
+        {
+            // Test double — no queue; no-op.
+            Box::pin(async { Ok(()) })
+        }
     }
 
     #[tokio::test]
@@ -3649,10 +3645,19 @@ mod tests {
         );
     }
 
+    // Post-HI.1: empty step_link is no longer rejected in the orchestrator layer —
+    // the composition port decides what to do (class-16 actions route to
+    // compose_action_program; other classes surface NoVariantMatch). This test
+    // verifies that a NoVariantMatch from the port is surfaced as an error.
     #[tokio::test]
-    async fn compose_orchestrator_missing_step_link_returns_error() {
+    async fn compose_orchestrator_empty_step_link_surfaces_port_error() {
         let thread = make_validate_thread();
-        let port: Arc<dyn ComponentPort> = Arc::new(MockComponentPort::ok());
+        let port: Arc<dyn ComponentPort> = Arc::new(MockComponentPort::failing(
+            ComponentPortError::NoVariantMatch {
+                step_link: String::new(),
+            },
+        ));
+        // No step_link arg → defaults to "" inside handle_compose_orchestrator.
         let args = vec![MontyObject::String(uuid::Uuid::nil().to_string())];
         let result = handle_compose_orchestrator(&args, &thread, Some(&port)).await;
         let json = match result {
@@ -3660,7 +3665,11 @@ mod tests {
             other => panic!("expected Return, got: {other:?}"),
         };
         assert_eq!(json["ok"], serde_json::json!(false));
-        assert_eq!(json["error"], serde_json::json!("missing step_link"));
+        assert!(
+            json["error"].as_str().unwrap().contains("no variant"),
+            "expected 'no variant' in error, got: {}",
+            json["error"]
+        );
     }
 
     #[tokio::test]
@@ -6116,9 +6125,6 @@ FINAL(batch_error_count)
             description: String::new(),
             effective_content: content.to_string(),
             override_prompt_creation: false,
-            // Test fixture: no executable Action steps (Q-G-STUB1).
-            steps: None,
-            allowed_tools: None,
         }
     }
 
@@ -6255,37 +6261,29 @@ FINAL(batch_error_count)
         );
     }
 
-    /// Phase F.7 #3 — `ActionShortCircuit` sets `action_short_circuit: true`
-    /// and emits an empty `orchestrator_content` (an Action executes directly,
-    /// no LLM prior knowledge).
+    /// Phase F.7 #3 — Action (class-16) components route through the normal
+    /// `Components` arm (HI.1: actions now execute via `host.compose_orchestrator`
+    /// → `compose_action_program`, not via `ActionShortCircuit`). Assembling a
+    /// class-16 item via `Components` emits its prior-knowledge content as a
+    /// labelled `Action` block in `orchestrator_content`.
     #[tokio::test]
-    async fn phase_f7_action_short_circuit_emits_empty_orchestrator_content() {
-        let component_id = uuid::Uuid::from_u128(42);
-        let fetch = FetchForTurnResult::ActionShortCircuit {
-            component_id,
-            name: "deploy".to_string(),
-        };
+    async fn phase_f7_action_routes_through_components_arm() {
+        let action = phase_f7_item(42, 16, "deploy", "run the deploy procedure");
+        let fetch = FetchForTurnResult::Components(vec![action]);
         let src: Arc<dyn RetrievalSource> =
             Arc::new(MockRetrievalSource::new(fetch, Arc::new(Mutex::new(None))));
         let thread = phase_f7_thread("deploy now");
         let result = phase_f7_assemble(src, &thread).await;
 
         assert!(
-            result.action_short_circuit,
-            "ActionShortCircuit must set action_short_circuit"
+            !result.action_short_circuit,
+            "HI.1: actions no longer short-circuit; action_short_circuit must be false"
         );
-        assert_eq!(
-            result.orchestrator_content, "",
-            "ActionShortCircuit has no prior knowledge -> empty orchestrator_content"
+        assert!(
+            result.orchestrator_content.contains("deploy"),
+            "action prior-knowledge must appear in orchestrator_content, got: {}",
+            result.orchestrator_content
         );
-        let cid = component_id.to_string();
-        assert_eq!(
-            result.action_component_id.as_deref(),
-            Some(cid.as_str()),
-            "ActionShortCircuit carries the action component id"
-        );
-        assert_eq!(result.action_name.as_deref(), Some("deploy"));
-        assert_eq!(result.matched_component_ids, vec![cid]);
     }
 
     /// Phase F.7 #4 — `Components` (no-match broad scan) `orchestrator_content`
@@ -6523,8 +6521,6 @@ FINAL(batch_error_count)
             description: String::new(),
             effective_content: "VERBATIM SOLUTION BODY — do exactly this.".to_string(),
             override_prompt_creation: true,
-            steps: None,
-            allowed_tools: None,
         };
         let hint = serde_json::to_value(vec![override_item.clone()])
             .expect("serialize override ComponentItem vec");

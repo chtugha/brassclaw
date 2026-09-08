@@ -190,18 +190,38 @@ impl ComponentValidator {
                 validate_placeholder_grammar(content, "Orchestrator/Scaffold content", &mut result);
                 result
             }
-            // Actions (16): no token budget
+            // Actions (16): no token budget; `type: evaluate` steps are rejected
+            // (disabled in the composition model — HI.1 Fork-E).
             16 => {
-                let (name, desc, content) = match &component {
-                    ComponentPayload::Generic(g) => (g.name, g.description, g.content),
+                let (name, desc, content, extra) = match &component {
+                    ComponentPayload::Generic(g) => {
+                        (g.name, g.description, g.content, g.extra.as_ref())
+                    }
                     ComponentPayload::ToolSkill(s) => (
                         s.name.as_str(),
                         s.description.as_str(),
                         s.code_snippet.as_deref().unwrap_or(""),
+                        None,
                     ),
-                    ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
+                    ComponentPayload::Recipe(r) => {
+                        (r.name.as_str(), r.description.as_str(), "", None)
+                    }
                 };
-                validate_no_budget(name, desc, content)
+                let mut result = validate_no_budget(name, desc, content);
+                // Reject `type: evaluate` steps — unsupported in composition.
+                let steps_text = extra
+                    .and_then(|e| e.get("steps"))
+                    .and_then(Value::as_array)
+                    .map(|arr| serde_json::to_string(arr).unwrap_or_default())
+                    .unwrap_or_else(|| content.to_string());
+                if steps_text.contains("\"evaluate\"") {
+                    result.errors.push(
+                        "Action step type `evaluate` is not supported in the composition \
+                         model and is rejected at Q1 (HI.1 Fork-E)"
+                            .to_string(),
+                    );
+                }
+                result
             }
             // Recipes (21)
             21 => match &component {
@@ -482,10 +502,13 @@ fn validate_placeholder_grammar(content: &str, label: &str, result: &mut Validat
 /// C.4.5.2 — validate the `{{ ... }}` placeholder structure in a PythonCode
 /// body (F-HI-2=A) and the non-nil-ness of its declared `includes` UUID list
 /// (Fork 2-B=B). Structural-only: the composer (C.4.5.17) is the sole baker;
-/// Q1 never bakes. Referential placeholder<->include matching (each
-/// `{{component_name}}` resolves to a real fetched component, and every
-/// include is consumed by a placeholder) is deferred to Phase I/N (requires a
-/// pool); Q1 here checks well-formedness + non-nil UUIDs only.
+/// Q1 never bakes. Referential placeholder<->include matching (verifying that
+/// every `{{component_name}}` include UUID actually resolves to a validated
+/// component) is enforced at **composition time** by `PgCompositionPort::compose`
+/// (which returns `ComponentPortError::IncludeNotResolved` and triggers
+/// `ValidationQueueStore::invalidate` on the declaring component). It is NOT a
+/// Q1 concern — `component_validator.rs` is retired at Phase N. Q1 here checks
+/// well-formedness + non-nil UUIDs only.
 fn validate_python_code_placeholders(
     content: &str,
     extra: Option<&Value>,
@@ -564,8 +587,9 @@ fn validate_includes_non_nil_uuids(
 /// ToolBinding substitution. Scans every text field + serialized
 /// `param_template` + each `param_schema` entry description for balanced
 /// `{{ }}` + recognised kinds, then checks the struct-field `includes` list
-/// for non-nil UUIDs. Referential placeholder<->include matching is deferred to
-/// Phase I/N (requires a pool); Q1 is structural-only.
+/// for non-nil UUIDs. Referential placeholder<->include matching is enforced at
+/// composition time (see `PgCompositionPort::compose` / HI.1); Q1 is
+/// structural-only.
 fn validate_tool_skill_placeholders(skill: &ToolSkill, result: &mut ValidationResult) {
     validate_placeholder_grammar(&skill.description, "ToolSkill description", result);
     validate_placeholder_grammar(&skill.preconditions, "ToolSkill preconditions", result);
@@ -1082,7 +1106,7 @@ mod tests {
     #[test]
     fn class22_python_code_placeholders_valid_passes() {
         // C.4.5.2 — every recognised placeholder kind + a non-nil includes list
-        // passes Q1 (referential placeholder<->include match is deferred).
+        // passes Q1. Referential matching is a composition-time concern (HI.1).
         let inc = uuid::Uuid::new_v4().to_string();
         let g = GenericComponent {
             name: "placeholder-leaf",
@@ -1211,8 +1235,8 @@ mod tests {
     #[test]
     fn class22_python_code_component_placeholder_without_includes_passes() {
         // C.4.5.2 boundary: a well-formed {{component_name}} with no includes
-        // list passes Q1 — the referential placeholder<->include match is
-        // deferred to Phase I/N (Fork 2-B=B); Q1 is structural-only.
+        // list passes Q1 — referential matching is a composition-time concern
+        // (HI.1 / `PgCompositionPort::compose`); Q1 is structural-only.
         let g = GenericComponent {
             name: "deferred-include-leaf",
             description: "Component placeholder, includes declared later",

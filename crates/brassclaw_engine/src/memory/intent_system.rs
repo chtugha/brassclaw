@@ -174,11 +174,6 @@ pub enum IntentResolution {
         /// intents so Phase E can run IBS `build_instruction(step_link, …)`
         /// synchronously inside `fetch_for_turn`. Phase D (V054) adds the column.
         step_link: Option<String>,
-        /// Component name, populated for class-16 Actions via the
-        /// `resolve_intent` LEFT JOIN on `reborn_actions` so `ActionShortCircuit`
-        /// (Phase E) can carry it without a second DB fetch. Empty string for
-        /// non-Action matches (FIND-P5-06).
-        component_name: String,
         /// The matched intent row's `input_text` — the literal expression for a
         /// Path 0 exact match, or the template expression (containing `%`) for a
         /// Path 1/2/3 template match (§0.17.1). Phase M.3 adds the field so the
@@ -362,26 +357,15 @@ pub async fn resolve_intent(
         .query(
             // Phase D (FIND-P10-01/P10-05): append `step_link` (index 5) and
             // `component_name` (index 6) AFTER the original 5 columns so every
-            // existing row.get(0..4) site is unaffected. The LEFT JOIN on
-            // reborn_actions populates component_name for class-16 matches only.
-            // FIND-P6-05 (security): the JOIN MUST carry all 4 scope filters or
-            // a component_id collision across tenants leaks another tenant's
-            // Action name. $1..$4 are reused for the JOIN scope; no new
-            // placeholders (bind slice unchanged).
+            // existing row.get(0..4) site is unaffected. The reborn_actions
+            // LEFT JOIN (for component_name / ActionShortCircuit) was removed in
+            // HI.1 — actions now route through compose_action_program.
             "SELECT ii.id, ii.component_id, ii.component_class_code,
                     ii.input_class, ii.score,
                     ii.step_link,
-                    COALESCE(a.name, '') AS component_name,
                     ii.input_text,
                     ii.is_template
              FROM reborn_intent_inputs ii
-             LEFT JOIN reborn_actions a
-                   ON a.id = ii.component_id
-                  AND ii.component_class_code = 16
-                  AND a.tenant_id  = $1
-                  AND a.user_id    = $2
-                  AND a.agent_id   = $3
-                  AND a.project_id = $4
              WHERE ii.tenant_id   = $1
                AND ii.user_id     = $2
                AND ii.agent_id    = $3
@@ -466,19 +450,16 @@ pub async fn resolve_intent(
             score = c.score,
             "intent: unambiguous match"
         );
-        // step_link (col 5) + component_name (col 6) come from the top row,
-        // appended after id/component_id/class/input_class/score (FIND-P10-01).
-        // `c` is candidates[0] which corresponds to rows[0] (highest score, first
-        // dedup-inserted), so rows[0] carries this match's step_link + name.
-        // input_text (col 7) + is_template (col 8) added by Phase M.3 so the
+        // step_link (col 5) + input_text (col 6) + is_template (col 7) from the
+        // top row (FIND-P10-01). `c` corresponds to rows[0] (highest score,
+        // first dedup-inserted). Phase M.3 adds input_text/is_template so the
         // caller can run `extract_template_slots` on template matches (§0.17.1).
         return Ok(IntentResolution::Match {
             component_id: c.component_id,
             component_class_code: c.component_class_code,
             step_link: rows[0].get::<_, Option<String>>(5),
-            component_name: rows[0].get::<_, String>(6),
-            input_text: rows[0].get::<_, String>(7),
-            is_template: rows[0].get::<_, bool>(8),
+            input_text: rows[0].get::<_, String>(6),
+            is_template: rows[0].get::<_, bool>(7),
         });
     }
 

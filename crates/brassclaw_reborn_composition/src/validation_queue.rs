@@ -667,6 +667,86 @@ impl ValidationQueueStore {
         }
         Ok(purged)
     }
+
+    /// Composition-time referential integrity failure (HI.1 / Gap 2): set the
+    /// component's `validation_status = 'pending'` and re-insert it into the
+    /// validation queue in one transaction. This is called by
+    /// `handle_compose_orchestrator` when `PgCompositionPort::compose` returns
+    /// `ComponentPortError::IncludeNotResolved` — an include UUID the component
+    /// declared no longer resolves to a validated component.
+    ///
+    /// The component is re-queued at state 1 (`Q1_pending`) with a new
+    /// `validation_errors` entry describing the broken include. The queue
+    /// `submit` path uses `ON CONFLICT DO NOTHING` so calling `invalidate` when
+    /// a queue row already exists (e.g. concurrent invalidation) is idempotent.
+    #[cfg(feature = "postgres")]
+    pub async fn invalidate(
+        &self,
+        scope: &ComponentScope,
+        component_id: Uuid,
+        class_code: i32,
+        reason: &str,
+    ) -> Result<(), ValidationQueueError> {
+        let class_i16: i16 =
+            class_code
+                .try_into()
+                .map_err(|_| ValidationQueueError::UnknownClass { class_code })?;
+        let table = resolve_component_table(class_code).ok_or(
+            ValidationQueueError::UnknownClass { class_code },
+        )?;
+
+        let set_pending_sql = format!(
+            "UPDATE {table}
+             SET validation_status = 'pending', updated_at = now()
+             WHERE id = $1
+               AND tenant_id = $2 AND user_id = $3
+               AND agent_id = $4 AND project_id = $5"
+        );
+
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let tx = client.transaction().await.map_err(map_pg)?;
+
+        // 1. Flip the component row back to 'pending'.
+        tx.execute(
+            set_pending_sql.as_str(),
+            &[
+                &component_id,
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+            ],
+        )
+        .await
+        .map_err(map_pg)?;
+
+        // 2. Re-insert into the validation queue (state 1, no proposed_payload).
+        //    ON CONFLICT DO NOTHING: idempotent if a queue row already exists.
+        tx.execute(
+            "INSERT INTO reborn_validation_queue
+                 (tenant_id, user_id, agent_id, project_id,
+                  component_id, component_class, state, proposed_payload,
+                  validation_errors)
+             VALUES ($1, $2, $3, $4, $5, $6, 1, NULL, ARRAY[$7::text])
+             ON CONFLICT
+                 (tenant_id, user_id, agent_id, project_id, component_id)
+             DO NOTHING",
+            &[
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                &component_id,
+                &class_i16,
+                &reason,
+            ],
+        )
+        .await
+        .map_err(map_pg)?;
+
+        tx.commit().await.map_err(map_pg)?;
+        Ok(())
+    }
 }
 
 fn decode_queue_row(row: tokio_postgres::Row) -> Result<QueueRow, ValidationQueueError> {
