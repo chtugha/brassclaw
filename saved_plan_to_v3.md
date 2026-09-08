@@ -5655,6 +5655,34 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > C.4.5** (F5=B) — forks F1–F5 locked; renamed subplan at
 > `./docs/agents-v3/subplan_problem_stepC4_5_common_component_syntax_of_saved_plan_to_v3.md`.]
 >
+> **HI.1 audit performed (2026-09-07):** the per-class audit substance is REAL
+> (per-class Q1 gates, migrations V069–V075, composition system `ComposedProgram`/
+> `compose_program`/`CompositionPort`/`host.run_program`/`host.compose_orchestrator`
+> all live in code). The audit surfaced two "written half-way then silenced" gaps
+> and spawned `./docs/agents-v3/subplan_stub_HI.1_action_step_machine_of_saved_plan_to_v3.md`.
+> **All design forks resolved (2026-09-07):**
+> (1) **Gap 1 — action(16) step-machine orphaned post-C.7** — resolved by folding
+> actions through the **same IBS pipeline as recipes** (`build_instruction` +
+> `compose_program`): `PgCompositionPort` gains `compose_action_program` that fetches
+> `step_descriptions`/`steps` JSONB from `reborn_actions` and runs the identical
+> pipeline; `handle_compose_orchestrator` dispatches to it when `step_link` is empty
+> + class_code=16; all 13 step types are expressed as normal IBS `StepEntry`
+> constructs (PythonCode includes, Both-channel tool steps, skill includes, nested
+> action includes); `FetchForTurnResult::ActionShortCircuit`, `component_name` on
+> `IntentResolution::Match`, the LEFT JOIN on `reborn_actions`, and Q-G-STUB1
+> `steps`/`allowed_tools` emission are all removed; `type:evaluate` steps rejected
+> at Q1 for class-16; `emit_event`/`wait`/`spawn_subprocess` registered as proper
+> first-party tools. **Overrides §0.12 "Actions bypass IBS"** — the Composition
+> System IS the IBS.
+> (2) **Gap 2 — "deferred referential placeholder↔include match"** — the "Phase I/N
+> pool" framing was wrong: `component_validator.rs` is retired at Phase N; Q1 is
+> the wrong place for referential checks. Correct fix: composition-time enforcement
+> via a new `ComponentPortError::IncludeNotResolved`; `PgCompositionPort::compose`
+> returns it when any include UUID fails to resolve; `ValidationQueueStore::invalidate`
+> sets `validation_status='pending'` + re-queues the declaring component; stale
+> "deferred to Phase I/N" comments in `component_validator.rs` updated accordingly.
+> Zenflow step `5daa7f2c` (HI.1) flips `Skipped`→`Completed` on subplan completion.
+>
 > **Step C — REFRAMED (Orchestrator + Executioner, LOCKED 2026-09-02):**
 > Supersedes both "Model A retirement" and the prior "Option 2 / HostSkill"
 > framing. BrassClaw has an **Orchestrator** (Monty/Python — brain; one
