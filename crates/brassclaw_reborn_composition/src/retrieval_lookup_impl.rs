@@ -312,9 +312,8 @@ mod tests {
     // skills-db-only imports: PgRetrievalLookup + engine intent + mapping helpers.
     #[cfg(feature = "skills-db")]
     use super::{
-        PgRetrievalLookup, retrieval_turn_result_for_action_short_circuit,
-        retrieval_turn_result_for_components, retrieval_turn_result_for_disambiguation,
-        retrieval_turn_result_for_split,
+        PgRetrievalLookup, retrieval_turn_result_for_components,
+        retrieval_turn_result_for_disambiguation, retrieval_turn_result_for_split,
     };
     #[cfg(feature = "skills-db")]
     use brassclaw_engine::memory::intent_system::{
@@ -482,10 +481,6 @@ mod tests {
             description: "sync description".to_string(),
             effective_content: "sync prior knowledge".to_string(),
             override_prompt_creation: true,
-            // Prompt-assembly mapping fixture; executable steps not exercised
-            // here (Q-G-STUB1).
-            steps: None,
-            allowed_tools: None,
         }];
         let result = retrieval_turn_result_for_components(items).expect("map components");
         // E.0 conservative routing booleans (Phase E's SplitResult replaces them).
@@ -542,61 +537,6 @@ mod tests {
 
     #[cfg(feature = "skills-db")]
     #[test]
-    fn action_short_circuit_mapping_emits_real_tier0_booleans() {
-        // Q5→A: an Action (class-16) short-circuit runs Tier-0 with no LLM.
-        let id = Uuid::new_v4();
-        let result = retrieval_turn_result_for_action_short_circuit(id, "daily-sync".to_string());
-        assert!(result.tier0_eligible, "action short-circuit is Tier-0");
-        assert!(
-            !result.llm_call_required,
-            "action short-circuit needs no LLM"
-        );
-        assert!(
-            result
-                .rust_items
-                .as_array()
-                .map(Vec::is_empty)
-                .unwrap_or(false),
-            "rust channel is empty for an action short-circuit"
-        );
-        // The action descriptor rides in orchestrator_items.
-        let orch = result
-            .orchestrator_items
-            .as_array()
-            .expect("orchestrator_items is an array");
-        assert_eq!(orch.len(), 1);
-        assert_eq!(
-            orch[0].get("type").and_then(|v| v.as_str()),
-            Some("action_short_circuit")
-        );
-        assert_eq!(
-            orch[0].get("component_id").and_then(|v| v.as_str()),
-            Some(id.to_string()).as_deref()
-        );
-        assert_eq!(
-            orch[0].get("name").and_then(|v| v.as_str()),
-            Some("daily-sync")
-        );
-        // routing_meta discriminates the variant + carries the identity.
-        assert_eq!(
-            result.routing_meta.get("variant").and_then(|v| v.as_str()),
-            Some("action_short_circuit")
-        );
-        assert_eq!(
-            result
-                .routing_meta
-                .get("component_id")
-                .and_then(|v| v.as_str()),
-            Some(id.to_string()).as_deref()
-        );
-        assert_eq!(
-            result.routing_meta.get("name").and_then(|v| v.as_str()),
-            Some("daily-sync")
-        );
-    }
-
-    #[cfg(feature = "skills-db")]
-    #[test]
     fn split_mapping_propagates_routing_booleans_and_split_channels() {
         // SplitResult surfaces REAL routing booleans (replacing E.0's conservative
         // false/true) + the IBS-split channels + a `split` routing_meta.
@@ -608,10 +548,6 @@ mod tests {
             description: String::new(),
             effective_content: "rust body".to_string(),
             override_prompt_creation: false,
-            // IBS-split mapping fixture; executable steps not exercised here
-            // (Q-G-STUB1).
-            steps: None,
-            allowed_tools: None,
         }];
         let orch_items = vec![
             ComponentItem {
@@ -622,8 +558,6 @@ mod tests {
                 description: String::new(),
                 effective_content: "orch body a".to_string(),
                 override_prompt_creation: false,
-                steps: None,
-                allowed_tools: None,
             },
             ComponentItem {
                 id: Uuid::new_v4(),
@@ -633,8 +567,6 @@ mod tests {
                 description: String::new(),
                 effective_content: "orch body b".to_string(),
                 override_prompt_creation: false,
-                steps: None,
-                allowed_tools: None,
             },
         ];
         let matched_ids: Vec<String> = orch_items.iter().map(|i| i.id.to_string()).collect();

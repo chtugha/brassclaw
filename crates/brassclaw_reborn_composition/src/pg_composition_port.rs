@@ -165,7 +165,7 @@ impl PgCompositionPort {
         pool: &PgPool,
         scope: &ComponentScope,
         component_id: Uuid,
-        user_input: &str,
+        _user_input: &str,
     ) -> Result<ComposedProgram, ComponentPortError> {
         // 1. Action row — scope filter.
         let client = pool
@@ -592,7 +592,7 @@ impl ComponentPort for PgCompositionPort {
         let scope = scope.clone();
         let reason = reason.to_string();
         Box::pin(async move {
-            let queue = ValidationQueueStore::new(std::sync::Arc::new(pool));
+            let queue = ValidationQueueStore::new(pool);
             queue
                 .invalidate(&scope, component_id, class_code, &reason)
                 .await

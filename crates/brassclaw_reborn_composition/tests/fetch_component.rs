@@ -19,8 +19,7 @@
 //! - #9 two-tenant isolation (A's intents do NOT match for B's thread)
 //!   → `cross_tenant_intent_isolation`
 //! - Phase G.2 `__resolve_component_by_name__(name, 16)` → correct Action item and tenant scoping → `fetch_component_by_name_resolves_action_item`, `fetch_component_by_name_is_tenant_scoped`
-//! - Phase G / Q-G-STUB1 class-16 fetch surfaces executable `steps` and `allowed_tools` by id → `fetch_component_by_id_returns_action_steps`
-//! - Phase G / Q-G-STUB1 class-16 fetch surfaces executable `steps` and `allowed_tools` by name → `fetch_component_by_name_returns_action_steps`
+//! - Phase G / Q-G-STUB1 class-16 fetch surfaces `steps` by id → `fetch_component_by_id_returns_action_item_with_description` (HI.1: `steps`/`allowed_tools` removed from ComponentItem; IBS pipeline handles them at compose time)
 //! - Phase G.8 `call_action` nested resolution by UUID (`__fetch_component__(action_id, 16)`) → `call_action_resolves_nested_action_by_uuid`
 //!
 #![cfg(feature = "skills-db")]
@@ -297,17 +296,16 @@ async fn fetch_component_by_name_is_tenant_scoped() {
 }
 
 // ---------------------------------------------------------------------------
-// Phase G / Q-G-STUB1 — the class-16 fetch surfaces the executable `steps`
-// (JSONB) + `allowed_tools` (TEXT[]) so `execute_action_procedure` can run the
-// real procedure. Before the fix `__fetch_component__`/`__resolve_component_
-// by_name__` returned a component *view* (description only) with no `steps`
-// key, so `_execute_action_steps` saw `steps = []` and silently ran zero steps.
-// These drive the live engine APIs the G.6 step-0 + `call_action` paths call.
+// Phase G / HI.1 — class-16 fetch surfaces description + class_code correctly.
+// Post-HI.1: `steps` and `allowed_tools` are no longer fields on `ComponentItem`
+// (they are consumed at composition time by `compose_action_program` in the
+// IBS pipeline). These tests verify the basic ComponentItem shape returned by
+// the fetch path.
 // ---------------------------------------------------------------------------
 
 /// Seed a validated Action carrying an explicit executable procedure (the
-/// `steps` JSONB + `allowed_tools` TEXT[]). Mirrors `insert_action` but
-/// populates the two columns the Q-G-STUB1 fetch branch projects.
+/// `steps` JSONB + `allowed_tools` TEXT[]). The DB columns still exist;
+/// ComponentItem simply no longer surfaces them (consumed at compose time).
 async fn insert_action_with_procedure(
     pool: &deadpool_postgres::Pool,
     scope: &ComponentScope,
@@ -340,8 +338,8 @@ async fn insert_action_with_procedure(
         .expect("insert reborn_actions with procedure");
 }
 
-/// The known procedure the tests seed + assert against (kept shared so the
-/// by-id and by-name variants assert the identical round-tripped shape).
+/// The known procedure the tests seed (DB columns still written; not surfaced
+/// on ComponentItem post-HI.1 — consumed at compose time by IBS pipeline).
 fn known_procedure() -> (serde_json::Value, Vec<String>) {
     let steps = serde_json::json!([
         { "type": "tool_call", "tool": "shell", "args": { "cmd": "echo hi" } },
@@ -352,7 +350,9 @@ fn known_procedure() -> (serde_json::Value, Vec<String>) {
 }
 
 #[tokio::test]
-async fn fetch_component_by_id_returns_action_steps() {
+async fn fetch_component_by_id_with_procedure_returns_action_item() {
+    // Post-HI.1: `steps`/`allowed_tools` are not in ComponentItem even when
+    // the DB row was seeded with them. The fetch returns id + class_code only.
     let rig = match pg_rig_or_skip().await {
         Some(r) => r,
         None => return,
@@ -372,8 +372,6 @@ async fn fetch_component_by_id_returns_action_steps() {
     )
     .await;
 
-    // `__fetch_component__(uuid, 16)` delegates to fetch_component_by_id — the
-    // Q-G-STUB1 class-16 branch must surface the executable steps + tools.
     let items = fetch_component_by_id(&rig.pool, &scope, action_id, 16)
         .await
         .expect("fetch_component_by_id succeeds");
@@ -382,45 +380,14 @@ async fn fetch_component_by_id_returns_action_steps() {
     let item = &items[0];
     assert_eq!(item.id, action_id, "correct id");
     assert_eq!(item.class_code, 16, "correct class_code");
-
-    // The executable `steps` JSONB is surfaced for class 16 (Q-G-STUB1).
-    let steps_val = item
-        .steps
-        .as_ref()
-        .expect("class-16 fetch must surface executable steps");
-    let steps_arr = steps_val.as_array().expect("steps must be a JSON array");
-    assert_eq!(
-        steps_arr.len(),
-        2,
-        "both authored steps survived the round-trip"
-    );
-    assert_eq!(
-        steps_arr[0].get("type").and_then(|v| v.as_str()),
-        Some("tool_call")
-    );
-    assert_eq!(
-        steps_arr[1].get("type").and_then(|v| v.as_str()),
-        Some("return")
-    );
-
-    // `allowed_tools` TEXT[] → JSON array of strings.
-    let allowed_val = item
-        .allowed_tools
-        .as_ref()
-        .expect("class-16 fetch must surface allowed_tools");
-    let allowed_arr = allowed_val
-        .as_array()
-        .expect("allowed_tools must be a JSON array");
-    assert_eq!(allowed_arr.len(), 2);
-    assert!(allowed_arr.iter().any(|v| v.as_str() == Some("shell")));
-    assert!(allowed_arr.iter().any(|v| v.as_str() == Some("memory")));
+    // steps/allowed_tools are consumed by compose_action_program at IBS time;
+    // they are not fields on ComponentItem post-HI.1.
 }
 
 #[tokio::test]
-async fn fetch_component_by_name_returns_action_steps() {
-    // Symmetric to the by-id case: `__resolve_component_by_name__(name, 16)`
-    // (the §0.9 Option B fallback) must ALSO surface the executable steps, so
-    // a `call_action` that holds a step name (not a UUID) runs real steps too.
+async fn fetch_component_by_name_returns_action_item() {
+    // Symmetric by-name variant: ComponentItem has id + class_code but no
+    // steps/allowed_tools post-HI.1.
     let rig = match pg_rig_or_skip().await {
         Some(r) => r,
         None => return,
@@ -447,17 +414,7 @@ async fn fetch_component_by_name_returns_action_steps() {
     assert_eq!(items.len(), 1, "exactly one validated action for the name");
     let item = &items[0];
     assert_eq!(item.id, action_id, "correct id");
-
-    let steps_val = item
-        .steps
-        .as_ref()
-        .expect("by-name class-16 fetch must surface executable steps");
-    assert_eq!(
-        steps_val.as_array().map(Vec::len),
-        Some(2),
-        "both authored steps survived the round-trip"
-    );
-    assert!(item.allowed_tools.is_some(), "allowed_tools surfaced");
+    assert_eq!(item.class_code, 16, "correct class_code");
 }
 
 // ---------------------------------------------------------------------------
@@ -482,17 +439,21 @@ async fn cross_tenant_intent_isolation() {
     insert_action(&rig.pool, &scope_a, action_id, &action_name).await;
     insert_intent_input(&rig.pool, &scope_a, "run job", 2, action_id, 16, 10, None).await;
 
-    // Positive control: tenant A's query resolves to A's action.
+    // Positive control: tenant A's query resolves to A's action (Components arm,
+    // HI.1 — ActionShortCircuit was removed; class-16 routes through
+    // fetch_component_by_id → Components).
     let result_a = source(&rig)
         .fetch_for_turn(&scope_a, "run job", TOKEN_BUDGET, SENDER)
         .await
         .expect("fetch_for_turn succeeds");
     match result_a {
-        FetchForTurnResult::ActionShortCircuit { component_id, name } => {
-            assert_eq!(component_id, action_id, "tenant A matches its own action");
-            assert_eq!(name, action_name);
+        FetchForTurnResult::Components(items) => {
+            assert!(
+                items.iter().any(|i| i.id == action_id),
+                "tenant A must resolve its own action; got: {items:?}"
+            );
         }
-        other => panic!("tenant A expected ActionShortCircuit, got {other:?}"),
+        other => panic!("tenant A expected Components, got {other:?}"),
     }
 
     // Negative: tenant B issues the SAME query — must NOT resolve to A's action.
@@ -501,15 +462,12 @@ async fn cross_tenant_intent_isolation() {
         .await
         .expect("fetch_for_turn succeeds");
     match result_b {
-        FetchForTurnResult::ActionShortCircuit { component_id, .. } => {
-            panic!("CROSS-TENANT LEAK: tenant B resolved tenant A's action {component_id}");
-        }
         FetchForTurnResult::Components(items) => {
             // Tenant B has no components — the broad scan returns nothing,
             // and crucially nothing matching A's action id.
             assert!(
                 !items.iter().any(|i| i.id == action_id),
-                "tenant B must not receive tenant A's action component"
+                "CROSS-TENANT LEAK: tenant B received tenant A's action component"
             );
         }
         other => panic!("tenant B expected Components (no match), got {other:?}"),
@@ -518,17 +476,11 @@ async fn cross_tenant_intent_isolation() {
 
 // ---------------------------------------------------------------------------
 // Phase G.8 — `call_action` nested resolution by UUID. A parent Action's
-// `call_action` step holds a child `action_id` (UUID); default.py:850 resolves
-// it via `__fetch_component__(nested_action_id, 16)` → `fetch_component_by_id`.
-// This drives that exact live API for BOTH the child (the nested resolution
-// target) and the parent (whose own `steps` carry the `call_action` step), so
-// the nested target AND the parent procedure are retrievable with executable
-// steps against real Postgres — i.e. a `call_action` can fetch its child's
-// real procedure and the parent that contains the `call_action` is itself
-// runnable. Mirrors `fetch_component_by_id_returns_action_steps` (the
-// Rust-API-direct approach the G-STUB established); the Python `call_action`
-// execution logic itself is covered by the engine-lib `step0_` unit tests with
-// mocked fetch.
+// `call_action` step holds a child `action_id` (UUID);
+// `__fetch_component__(nested_action_id, 16)` → `fetch_component_by_id`.
+// Post-HI.1: `steps`/`allowed_tools` are not on ComponentItem; both child and
+// parent resolve by UUID and the ComponentItem's id + class_code are correct.
+// The actual execution is handled by compose_action_program at IBS time.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -555,8 +507,7 @@ async fn call_action_resolves_nested_action_by_uuid() {
     .await;
 
     // Parent Action: its procedure is a `call_action` step that references the
-    // child by UUID (`action_id`) — the §0.9 v3 preferred resolution path
-    // (default.py:847-851).
+    // child by UUID (`action_id`).
     let parent_id = Uuid::new_v4();
     let parent_name = unique_name("parent");
     let parent_steps =
@@ -573,6 +524,7 @@ async fn call_action_resolves_nested_action_by_uuid() {
     .await;
 
     // The exact resolution `call_action` performs: fetch the child by UUID.
+    // Post-HI.1: steps/allowed_tools not on ComponentItem — only id/class_code checked.
     let child_items = fetch_component_by_id(&rig.pool, &scope, child_id, 16)
         .await
         .expect("fetch_component_by_id (child) succeeds");
@@ -580,49 +532,13 @@ async fn call_action_resolves_nested_action_by_uuid() {
     let child = &child_items[0];
     assert_eq!(child.id, child_id, "correct child id");
     assert_eq!(child.class_code, 16);
-    let child_steps_val = child
-        .steps
-        .as_ref()
-        .expect("nested child fetch must surface executable steps");
-    assert_eq!(
-        child_steps_val.as_array().map(Vec::len),
-        Some(1),
-        "child procedure round-tripped"
-    );
-    assert_eq!(
-        child_steps_val.pointer("/0/type").and_then(|v| v.as_str()),
-        Some("return")
-    );
-    assert!(
-        child.allowed_tools.is_some(),
-        "child allowed_tools surfaced"
-    );
 
-    // The parent procedure (carrying the `call_action` step) is itself
-    // retrievable with executable steps, so execute_action_procedure can run
-    // the parent and reach the `call_action` step that resolves the child.
+    // Parent resolves by UUID too.
     let parent_items = fetch_component_by_id(&rig.pool, &scope, parent_id, 16)
         .await
         .expect("fetch_component_by_id (parent) succeeds");
     assert_eq!(parent_items.len(), 1, "parent action resolves by uuid");
     let parent = &parent_items[0];
     assert_eq!(parent.id, parent_id, "correct parent id");
-    let parent_steps_val = parent
-        .steps
-        .as_ref()
-        .expect("parent fetch must surface executable steps");
-    assert_eq!(
-        parent_steps_val.pointer("/0/type").and_then(|v| v.as_str()),
-        Some("call_action"),
-        "parent's call_action step round-tripped"
-    );
-    let action_id_str = parent_steps_val
-        .pointer("/0/action_id")
-        .and_then(|v| v.as_str())
-        .expect("call_action step carries action_id");
-    assert_eq!(
-        action_id_str,
-        child_id.to_string(),
-        "call_action step carries the child UUID"
-    );
+    assert_eq!(parent.class_code, 16);
 }

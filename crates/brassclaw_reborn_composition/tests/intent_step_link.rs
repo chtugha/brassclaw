@@ -8,18 +8,17 @@
 //!
 //! Verifies the five Phase D behaviours (plan §'Phase D — Tests'):
 //! - T1: class-21 Recipe intent seeded WITH `step_link` →
-//!   `Match { step_link: Some("1:1-1:3"), component_name: "" }`
+//!   `Match { step_link: Some("1:1-1:3") }`
 //! - T2: non-Recipe intent seeded WITHOUT `step_link` →
-//!   `Match { step_link: None, component_name: "" }` (legacy path unchanged)
+//!   `Match { step_link: None }` (legacy path unchanged)
 //! - T3: class-16 Action intent →
-//!   `Match { component_class_code: 16, component_name: "daily-sync" }`
-//!   — name populated via the scope-filtered LEFT JOIN on `reborn_actions`
-//!   (FIND-P6-05 security requirement)
+//!   `Match { component_class_code: 16, step_link: None }`
+//!   (HI.1: component_name removed from IntentResolution::Match — class-16
+//!   routes through fetch_component_by_id at fetch_for_turn time, no JOIN needed)
 //! - T4: class-21 Recipe intent (no Action row) →
-//!   `Match { component_class_code: 21, component_name: "" }` — empty name
-//!   for non-Action matches (COALESCE over a NULL JOIN row)
+//!   `Match { component_class_code: 21, step_link: None }`
 //! - T5: `record_disambiguation_choice` →
-//!   `Match { step_link: None, component_name: "" }` (FINDING A)
+//!   `Match { step_link: None }` (FINDING A)
 //!
 //! Each test starts an isolated Postgres-16 testcontainer, runs the full
 //! migration set (V000–V054, so `step_link` exists), and returns early (pass)
@@ -206,13 +205,11 @@ async fn t1_recipe_intent_with_step_link_returns_some_and_empty_name() {
             component_id: cid,
             component_class_code,
             step_link,
-            component_name,
             ..
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 21);
             assert_eq!(step_link.as_deref(), Some("1:1-1:3"));
-            assert_eq!(component_name, "");
         }
         other => panic!("expected Match, got {other:?}"),
     }
@@ -252,24 +249,22 @@ async fn t2_intent_without_step_link_returns_none_and_empty_name() {
             component_id: cid,
             component_class_code,
             step_link,
-            component_name,
             ..
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 13);
             assert_eq!(step_link, None);
-            assert_eq!(component_name, "");
         }
         other => panic!("expected Match, got {other:?}"),
     }
 }
 
 // ---------------------------------------------------------------------------
-// T3 — class-16 Action intent → name populated from the scope-filtered JOIN
+// T3 — class-16 Action intent → class_code=16, step_link=None (HI.1: no JOIN)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn t3_class16_action_intent_populates_component_name_via_join() {
+async fn t3_class16_action_intent_resolves_component_id() {
     let rig = match pg_rig_or_skip().await {
         Some(r) => r,
         None => return,
@@ -277,8 +272,8 @@ async fn t3_class16_action_intent_populates_component_name_via_join() {
     let scope = unique_scope();
     let query = unique_sentence_query();
 
-    // Insert the Action row in the SAME scope so the LEFT JOIN (FIND-P6-05:
-    // all 4 scope filters) resolves component_name to the Action's name.
+    // Insert the Action row (HI.1: no LEFT JOIN on reborn_actions in
+    // resolve_intent — component_name removed from IntentResolution::Match).
     let action_id = insert_action_row(&rig.pool, &scope, "daily-sync").await;
 
     seed_intent_input(
@@ -299,20 +294,19 @@ async fn t3_class16_action_intent_populates_component_name_via_join() {
             component_id: cid,
             component_class_code,
             step_link,
-            component_name,
             ..
         }) => {
             assert_eq!(cid, action_id);
             assert_eq!(component_class_code, 16);
             assert_eq!(step_link, None);
-            assert_eq!(component_name, "daily-sync");
+            // component_name removed from IntentResolution::Match (HI.1).
         }
         other => panic!("expected Match, got {other:?}"),
     }
 }
 
 // ---------------------------------------------------------------------------
-// T4 — class-21 Recipe intent (no Action row) → empty component_name
+// T4 — class-21 Recipe intent (no Action row)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -345,20 +339,18 @@ async fn t4_class21_recipe_intent_without_action_row_has_empty_name() {
             component_id: cid,
             component_class_code,
             step_link,
-            component_name,
             ..
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 21);
             assert_eq!(step_link, None);
-            assert_eq!(component_name, "");
         }
         other => panic!("expected Match, got {other:?}"),
     }
 }
 
 // ---------------------------------------------------------------------------
-// T5 — record_disambiguation_choice → step_link: None, component_name: ""
+// T5 — record_disambiguation_choice → step_link: None (HI.1: no component_name)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -374,8 +366,7 @@ async fn t5_record_disambiguation_choice_returns_none_step_link_and_empty_name()
     // Seed a Recipe intent (carrying a step_link) so the row exists; the
     // disambiguation click confirms component_id only and must NOT echo the
     // stored step_link — FINDING A mandates step_link: None (caller re-fetches
-    // the recipe row) and component_name: "" (disambiguation is Recipe/Skill,
-    // never an Action).
+    // the recipe row).
     seed_intent_input(
         &rig.pool,
         &scope,
@@ -396,13 +387,11 @@ async fn t5_record_disambiguation_choice_returns_none_step_link_and_empty_name()
             component_id: cid,
             component_class_code,
             step_link,
-            component_name,
             ..
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 21);
             assert_eq!(step_link, None);
-            assert_eq!(component_name, "");
         }
         other => panic!("expected Match, got {other:?}"),
     }

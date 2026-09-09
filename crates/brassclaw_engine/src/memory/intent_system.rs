@@ -502,16 +502,13 @@ pub async fn record_disambiguation_choice(
     // re-fetches the recipe row for its step_link, so step_link: None instructs
     // the legacy fetch_component_by_id path (acceptable post-disambiguation; the
     // full IBS path runs on the next turn when the user's text matches the
-    // intent directly). component_name: "" is fine — disambiguation results are
-    // Recipe/Skill, never an Action (Actions match unambiguously). input_text:
-    // "" + is_template: false — the caller re-fetches the actual intent row on
-    // the next turn, so no template extraction runs on a disambiguation choice
-    // (Phase M.3).
+    // input_text: "" + is_template: false — the caller re-fetches the actual
+    // intent row on the next turn, so no template extraction runs on a
+    // disambiguation choice (Phase M.3).
     Ok(IntentResolution::Match {
         component_id,
         component_class_code,
         step_link: None,
-        component_name: String::new(),
         input_text: String::new(),
         is_template: false,
     })

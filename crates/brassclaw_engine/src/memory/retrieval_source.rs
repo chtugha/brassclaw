@@ -549,11 +549,6 @@ impl RetrievalSource for PostgresSource {
                 description: description.to_string(),
                 effective_content: effective_content.to_string(),
                 override_prompt_creation,
-                // Broad-scan Components path builds orchestrator_content, not
-                // an executable doc; Action steps are not surfaced here
-                // (Q-G-STUB1).
-                steps: None,
-                allowed_tools: None,
             });
         }
 
@@ -1301,12 +1296,6 @@ pub async fn fetch_components_by_ids(
                 description: row.get::<_, &str>(4).to_string(),
                 effective_content: row.get::<_, &str>(5).to_string(),
                 override_prompt_creation: row.get(6),
-                // Batched IBS-include fetch is a prompt-assembly path; the
-                // executable `steps` of an included Action are fetched
-                // separately by `__fetch_component__` / `__resolve_component_
-                // by_name__` at execution time (Q-G-STUB1).
-                steps: None,
-                allowed_tools: None,
             });
         }
     }

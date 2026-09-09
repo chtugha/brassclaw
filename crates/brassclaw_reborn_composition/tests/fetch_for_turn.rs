@@ -19,7 +19,7 @@
 //!
 //! Plan E.6 test list → test fn map:
 //! - #1 SplitResult channel split by class     → `split_result_channels_split_by_class`
-//! - #3 ActionShortCircuit                      → `action_match_returns_action_short_circuit`
+//! - #3 class-16 intent → Components (HI.1)    → `action_match_returns_components`
 //! - #4 step_link: None → Components unchanged  → `recipe_match_step_link_none_returns_components`
 //! - #5b {{vars.dir}} no-op at Phase E          → `substitution_noop_at_phase_e_preserves_placeholder`
 //! - #6 routing.wilson_lower populated          → `routing_wilson_lower_populated_from_recipe_row`
@@ -458,12 +458,13 @@ async fn split_result_channels_split_by_class() {
 }
 
 // ---------------------------------------------------------------------------
-// #3 — Action (class 16) intent match → ActionShortCircuit (name from the
-// resolve_intent LEFT JOIN, no second fetch)
+// #3 — Action (class 16) intent match → Components (HI.1: class-16 routes
+// through fetch_component_by_id → Components arm; the IBS pipeline is
+// invoked at composition time via compose_action_program, not here).
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn action_match_returns_action_short_circuit() {
+async fn action_match_returns_components() {
     let rig = match pg_rig_or_skip().await {
         Some(r) => r,
         None => return,
@@ -482,11 +483,15 @@ async fn action_match_returns_action_short_circuit() {
         .expect("fetch_for_turn succeeds");
 
     match result {
-        FetchForTurnResult::ActionShortCircuit { component_id, name } => {
-            assert_eq!(component_id, action_id);
-            assert_eq!(name, action_name);
+        FetchForTurnResult::Components(items) => {
+            // The class-16 fetch surfaces a ComponentItem whose id matches the
+            // action — no ActionShortCircuit path exists post-HI.1.
+            assert!(
+                items.iter().any(|i| i.id == action_id),
+                "action component must appear in Components result; got: {items:?}"
+            );
         }
-        other => panic!("expected ActionShortCircuit, got {other:?}"),
+        other => panic!("expected Components, got {other:?}"),
     }
 }
 
