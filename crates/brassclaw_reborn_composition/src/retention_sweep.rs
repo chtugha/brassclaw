@@ -150,66 +150,11 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Q1 auto-validation sweep (Step 3.2)
-// ---------------------------------------------------------------------------
-
-/// Spawn the Q1 auto-validation background task.
-///
-/// Runs every 30 seconds.  For each iteration, fetches all `pending` rows in
-/// `reborn_recipes` with `queue_code = 'q1_auto'`, runs
-/// [`ComponentValidator::validate_by_class`] against each (fetching available
-/// Rusty tool names from `reborn_tools` via [`DbToolSource`]), and writes
-/// `auto_passed` or `auto_failed` back.
-///
-/// Only compiled when both `postgres` and `skills-db` features are active.
-/// The returned handle is intentionally leaked in the serve path — the sweep is
-/// best-effort and can be silently aborted at shutdown.
-///
-/// The `tenant_id` and `agent_id` must match the scope used by the recipe
-/// store facade so that scope isolation is enforced.
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
-pub fn spawn_q1_validation_sweep(
-    pool: Arc<PgPool>,
-    tenant_id: String,
-    agent_id: String,
-    user_id: String,
-    project_id: String,
-) -> tokio::task::JoinHandle<()> {
-    const Q1_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
-
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(Q1_SWEEP_INTERVAL);
-        let facade = crate::pg_recipe_store::PgRecipeStoreFacade::new(
-            Arc::clone(&pool),
-            &tenant_id,
-            &agent_id,
-        );
-        loop {
-            ticker.tick().await;
-            match brassclaw_product_workflow::RecipeStore::auto_validate_pending(
-                &facade,
-                &user_id,
-                &project_id,
-            )
-            .await
-            {
-                Ok(n) if n > 0 => {
-                    tracing::debug!(
-                        processed = n,
-                        "q1_validation_sweep: processed pending components"
-                    );
-                }
-                Ok(_) => {
-                    // Nothing to do this cycle.
-                }
-                Err(e) => {
-                    tracing::debug!(error = %e, "q1_validation_sweep: error");
-                }
-            }
-        }
-    })
-}
+// Phase N: spawn_q1_validation_sweep removed — the legacy Q1 sweep used the
+// now-dropped `queue_code` column and `ComponentValidator::validate_by_class`.
+// Q1 is now orchestrated via `ValidationQueueStore` + `run_q1_validation`
+// in `q1_orchestrator.rs`. No background sweep replacement is needed here;
+// the orchestrated Q1 path is driven per-component at submission time.
 
 // ---------------------------------------------------------------------------
 // Idle self-improvement sweep (§0.23.8)

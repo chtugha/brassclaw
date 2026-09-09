@@ -147,12 +147,26 @@ pub(crate) struct PgCompositionPort {
     /// MemoryDoc `Store` fallback for `list_skills` when the skills-db fast
     /// path is absent / fails. `None` → empty list on fallback.
     store: Option<Arc<dyn Store>>,
+    /// Basic prompt store for `mark_stale` after Q2 graduation (§K.1.4 / Phase N).
+    /// `None` → stale mark skipped (non-fatal per spec).
+    #[cfg(feature = "postgres")]
+    basic_prompt_store: Option<Arc<crate::pg_basic_prompt_store::PgBasicPromptStore>>,
 }
 
 #[cfg(feature = "skills-db")]
 impl PgCompositionPort {
-    pub(crate) fn new(pool: Arc<PgPool>, store: Option<Arc<dyn Store>>) -> Self {
-        Self { pool, store }
+    pub(crate) fn new(
+        pool: Arc<PgPool>,
+        store: Option<Arc<dyn Store>>,
+        #[cfg(feature = "postgres")]
+        basic_prompt_store: Option<Arc<crate::pg_basic_prompt_store::PgBasicPromptStore>>,
+    ) -> Self {
+        Self {
+            pool,
+            store,
+            #[cfg(feature = "postgres")]
+            basic_prompt_store,
+        }
     }
 
     /// Action (class-16) composition pipeline. Actions ARE recipes — they go
@@ -591,8 +605,19 @@ impl ComponentPort for PgCompositionPort {
         let pool = self.pool.clone();
         let scope = scope.clone();
         let reason = reason.to_string();
+        #[cfg(feature = "postgres")]
+        let basic_prompt_store = self.basic_prompt_store.clone();
         Box::pin(async move {
-            let queue = ValidationQueueStore::new(pool);
+            #[cfg(feature = "postgres")]
+            let queue = {
+                let mut q = ValidationQueueStore::new(Arc::clone(&pool));
+                if let Some(bps) = basic_prompt_store {
+                    q = q.with_basic_prompt_store(bps);
+                }
+                q
+            };
+            #[cfg(not(feature = "postgres"))]
+            let queue = ValidationQueueStore::new(Arc::clone(&pool));
             queue
                 .invalidate(&scope, component_id, class_code, &reason)
                 .await

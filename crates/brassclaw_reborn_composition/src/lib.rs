@@ -137,8 +137,6 @@ mod readiness;
 mod recipe_library;
 pub mod recipe_outcome_listener;
 #[cfg(feature = "postgres")]
-pub(crate) mod recipe_store;
-#[cfg(feature = "postgres")]
 pub(crate) mod reduction_rules_store;
 #[cfg(feature = "postgres")]
 pub mod retention_sweep;
@@ -168,6 +166,8 @@ mod webui_route_match;
 mod webui_serve;
 mod webui_ws_origin;
 
+#[cfg(feature = "postgres")]
+pub(crate) mod boot_integrity;
 #[cfg(feature = "postgres")]
 pub mod q1_orchestrator;
 #[cfg(feature = "postgres")]

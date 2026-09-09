@@ -15,6 +15,8 @@
 
 #[cfg(feature = "skills-db")]
 use std::sync::Arc;
+#[cfg(feature = "skills-db")]
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -237,16 +239,48 @@ pub trait RetrievalSource: Send + Sync {
 ///
 /// Issues a single UNION ALL query across all validated component tables
 /// (PERF-05) and returns results ordered by `(class_code ASC, prompt_uid ASC)`.
+/// One cached `SplitResult` entry.
+///
+/// Stores the decomposed components of `FetchForTurnResult::SplitResult`
+/// (all individually `Clone`) plus the wall-clock timestamp at which this
+/// entry was stored, used for `last_graduation_at` eviction (§0.7 / Phase N.3).
+#[cfg(feature = "skills-db")]
+#[derive(Clone)]
+struct CachedSplitResult {
+    rust_items: Vec<ComponentItem>,
+    orchestrator_items: Vec<ComponentItem>,
+    routing: TurnRoutingSignals,
+    instruction: Option<crate::memory::instruction_builder::BuildInstruction>,
+    /// Wall-clock instant this entry was inserted.
+    cached_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// Enforces `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`.
 #[cfg(feature = "skills-db")]
 pub struct PostgresSource {
     pool: Arc<brassclaw_pg::PgPool>,
+    /// Per-process SplitResult memo-cache (§0.7 / Phase N.3).
+    ///
+    /// Key: `(scope_key, cache_key)` where
+    /// - `scope_key`  = `"{tenant_id}|{user_id}|{agent_id}|{project_id}"`
+    /// - `cache_key`  = `sha256(step_link + "|" + sha256(step_descriptions_json)
+    ///                         + "|" + sha256(variable_patterns_sorted_json))`
+    ///
+    /// Eviction is event-driven: on every cache hit the store reads
+    /// `last_graduation_at` from `reborn_monty_vm_settings` (one PK read,
+    /// sub-millisecond). If `last_graduation_at > cached_at` the entry is
+    /// removed and the full `fetch_recipe_split_result` pipeline re-runs.
+    /// No TTL required as primary mechanism (§0.7).
+    split_cache: Arc<Mutex<std::collections::HashMap<(String, String), CachedSplitResult>>>,
 }
 
 #[cfg(feature = "skills-db")]
 impl PostgresSource {
     pub fn new(pool: Arc<brassclaw_pg::PgPool>) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            split_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        }
     }
 }
 
@@ -642,6 +676,55 @@ impl RetrievalSource for PostgresSource {
 }
 
 // ---------------------------------------------------------------------------
+// N.3 SplitResult memo-cache helpers (§0.7 / Phase N.3)
+// ---------------------------------------------------------------------------
+
+/// Compute the scope key used as the first element of the cache map key.
+///
+/// Format: `"{tenant_id}|{user_id}|{agent_id}|{project_id}"` — the `|`
+/// separator is safe because scope components are validated at input to
+/// contain only alphanumeric / `_` / `-` characters.
+#[cfg(feature = "skills-db")]
+fn split_cache_scope_key(scope: &ComponentScope) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id
+    )
+}
+
+/// Compute the content-addressed cache key for a `SplitResult`.
+///
+/// Key formula (DESIGN-02 / §0.7, corrected by FIND-P10-02):
+/// `sha256(step_link + "|" + sha256(step_descriptions_json) + "|" +
+///         sha256(variable_patterns_sorted_json))`
+///
+/// Using `sha256(step_descriptions_json)` (computable from the raw DB text
+/// BEFORE IBS compilation) avoids the circular dependency of the old formula
+/// that keyed on `sorted_include_uuids` (those only exist after compilation).
+#[cfg(feature = "skills-db")]
+fn sha256_hex(input: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let bytes = Sha256::digest(input);
+    bytes.iter().fold(String::with_capacity(64), |mut s, b| {
+        use std::fmt::Write;
+        write!(s, "{b:02x}").expect("write to String is infallible");
+        s
+    })
+}
+
+#[cfg(feature = "skills-db")]
+fn split_cache_content_key(
+    step_link: &str,
+    step_descriptions_text: &str,
+    variable_patterns_json: &str,
+) -> String {
+    let desc_hash = sha256_hex(step_descriptions_text.as_bytes());
+    let vpat_hash = sha256_hex(variable_patterns_json.as_bytes());
+    let combined = format!("{step_link}|{desc_hash}|{vpat_hash}");
+    sha256_hex(combined.as_bytes())
+}
+
+// ---------------------------------------------------------------------------
 // PostgresSource inherent helpers — Phase E SplitResult assembly
 // ---------------------------------------------------------------------------
 
@@ -767,6 +850,102 @@ impl PostgresSource {
         // 4. StepDescriptions.
         let step_descs: Vec<StepDescriptionEntry> =
             serde_json::from_str(&step_descriptions_text).unwrap_or_default();
+
+        // N.3 — SplitResult memo-cache check (§0.7 / Phase N.3).
+        // Key is computed from stable DB text BEFORE the expensive IBS compile
+        // (FIND-P10-02: avoids circular dependency on include UUIDs).
+        let vpat_json = serde_json::to_string(&variable_patterns).unwrap_or_default();
+        let scope_key = split_cache_scope_key(scope);
+        let content_key = split_cache_content_key(&step_link, &step_descriptions_text, &vpat_json);
+        let cache_map_key = (scope_key.clone(), content_key.clone());
+
+        // Check cache — lock is held only for the lookup, released immediately.
+        let cached = self
+            .split_cache
+            .lock()
+            .expect("split_cache mutex not poisoned")
+            .get(&cache_map_key)
+            .cloned();
+
+        if let Some(entry) = cached {
+            // One PK read to check last_graduation_at (sub-millisecond).
+            let graduation_cursor: Option<chrono::DateTime<chrono::Utc>> = client
+                .query_opt(
+                    "SELECT last_graduation_at FROM reborn_monty_vm_settings
+                     WHERE tenant_id = $1 AND user_id = $2
+                       AND agent_id  = $3 AND project_id = $4",
+                    &[
+                        &scope.tenant_id as &(dyn ToSql + Sync),
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                    ],
+                )
+                .await
+                .map_err(|e| RetrievalSourceError::Db(e.to_string()))?
+                .and_then(|r| r.get::<_, Option<chrono::DateTime<chrono::Utc>>>(0));
+
+            // Cache hit valid when no graduation has occurred since the entry
+            // was stored (FIND-NEW-16: cursor is Option<DateTime>, not double-Option).
+            let still_valid = match graduation_cursor {
+                Some(grad_at) => grad_at <= entry.cached_at,
+                None => true, // no graduations ever → always valid
+            };
+
+            if still_valid {
+                // Reconstruct FetchForTurnResult from the cached components.
+                // vars substitution still runs so per-turn slot values are applied.
+                let vars = capture_variables(matched_template, query, &variable_patterns);
+                let mut rust_items = entry.rust_items.clone();
+                let mut orchestrator_items = entry.orchestrator_items.clone();
+                for item in rust_items.iter_mut() {
+                    item.effective_content = substitute_vars(&item.effective_content, &vars);
+                }
+                for item in orchestrator_items.iter_mut() {
+                    item.effective_content = substitute_vars(&item.effective_content, &vars);
+                }
+                let mut routing = entry.routing.clone();
+                routing.matched_component_ids = orchestrator_items
+                    .iter()
+                    .map(|i| i.id.to_string())
+                    .collect();
+                let instruction = entry.instruction.as_ref().map(|i| {
+                    let mut inst = i.clone();
+                    // Re-apply vars into tool_bindings params (per-turn slot values).
+                    for step in inst.rust_steps.iter_mut() {
+                        for tb in step.tool_bindings.iter_mut() {
+                            tb.params = substitute_vars_in_value(&tb.params, &vars);
+                        }
+                    }
+                    for step in inst.orchestrator_steps.iter_mut() {
+                        for tb in step.tool_bindings.iter_mut() {
+                            tb.params = substitute_vars_in_value(&tb.params, &vars);
+                        }
+                    }
+                    Box::new(inst)
+                });
+                tracing::debug!(
+                    recipe_id = %recipe_id,
+                    "N.3: SplitResult cache hit (scope={scope_key})"
+                );
+                return Ok(FetchForTurnResult::SplitResult {
+                    rust_items,
+                    orchestrator_items,
+                    routing,
+                    instruction,
+                });
+            } else {
+                // Stale — evict the scope's entries and fall through to recompute.
+                self.split_cache
+                    .lock()
+                    .expect("split_cache mutex not poisoned")
+                    .retain(|(sk, _), _| sk != &scope_key);
+                tracing::debug!(
+                    recipe_id = %recipe_id,
+                    "N.3: SplitResult cache evicted (graduation since cached_at)"
+                );
+            }
+        }
 
         // 5. IBS compile (soft-fail §7.4).
         let Ok(mut instruction) = build_instruction(
@@ -900,6 +1079,12 @@ impl PostgresSource {
             }
         }
 
+        // N.3 cache snapshot — clone pre-substitution so per-turn slot values
+        // can be freshly applied on each cache hit without re-running DB fetches.
+        let cache_rust_items = rust_items.clone();
+        let cache_orch_items = orchestrator_items.clone();
+        let cache_instruction = instruction.clone();
+
         // 9. Substitute {{vars.name}} into every fetched body (§0.20.3).
         for item in rust_items.iter_mut() {
             item.effective_content = substitute_vars(&item.effective_content, &vars);
@@ -929,20 +1114,38 @@ impl PostgresSource {
             .map(|i| i.id.to_string())
             .collect();
 
+        let routing = TurnRoutingSignals {
+            override_prompt_creation,
+            matched_component_ids,
+            variant_label,
+            step_link,
+            llm_call_required,
+            wilson_lower,
+            tier0_eligible,
+            recipe_id: Some(recipe_id.to_string()),
+            recipe_name: recipe_name.clone(),
+        };
+
+        // N.3 — store pre-substitution snapshot in cache so per-turn slot
+        // values are freshly applied on each cache hit (§0.7 / Phase N.3).
+        self.split_cache
+            .lock()
+            .expect("split_cache mutex not poisoned")
+            .insert(
+                cache_map_key,
+                CachedSplitResult {
+                    rust_items: cache_rust_items,
+                    orchestrator_items: cache_orch_items,
+                    routing: routing.clone(),
+                    instruction: Some(cache_instruction),
+                    cached_at: chrono::Utc::now(),
+                },
+            );
+
         Ok(FetchForTurnResult::SplitResult {
             rust_items,
             orchestrator_items,
-            routing: TurnRoutingSignals {
-                override_prompt_creation,
-                matched_component_ids,
-                variant_label,
-                step_link,
-                llm_call_required,
-                wilson_lower,
-                tier0_eligible,
-                recipe_id: Some(recipe_id.to_string()),
-                recipe_name: recipe_name.clone(),
-            },
+            routing,
             instruction: Some(Box::new(instruction)),
         })
     }

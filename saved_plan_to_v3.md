@@ -8953,11 +8953,13 @@ In the intent expression input field:
 
 ### Phase N — Validation Queue (Populate + Drop)
 
-**Status:** [ ] Pending
+**Status:** [x] Complete — Migration renamed **V077** (was incorrectly named V059 on disk — out of sequence; see FIND-N-05 note below); `ValidationQueueStore.approve()` upgrade-copy graduation (`apply_upgrade_payload` helper, `resolve_content_column`); SplitResult memo-cache on `PostgresSource` (sha256 key, `last_graduation_at` eviction); `q1_orchestrator.rs` rewritten — orchestrated Q1 with Recipe lookup + graceful defer when no `05:validator` Recipe seeded; `ComponentValidator` retired (`component_validator.rs` deleted, `pub use` removed from `memory/mod.rs`); boot integrity check (`boot_integrity.rs`, `run_boot_integrity_check`, wired in `webui.rs` after Phase L seeder); all 5 legacy columns dropped from `reborn_recipes` (V077 Step 5); test fixtures cleaned (4 files). Full workspace clippy -D warnings clean.
+
+> **⚠️ FIND-N-05 — Migration renumbered V059 → V077.** The plan specified `V059__reborn_validation_queue_populate.sql` but V056–V059 were never committed (those numbers were used for planned migrations that were renumbered or folded before being committed). As of Phase N completion, committed migrations go V055 → V060 (gap, no V056–V059 on disk in git). A file named V059 placed in the migrations directory would be silently skipped by Refinery on any DB where V060+ already exist in `refinery_schema_history`. The file was therefore renamed to **V077** (one after the last committed migration V076) to ensure it always runs in order. All in-code references (`include_str!`, comments) updated to V077.
 
 > **§0.23.2 + §0.23.5 + §0.23.9 fold-in:** Phase N also (1) implements **orchestrated
-> Q1** — a new `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs`
-> (`run_q1_validation`) that loads the validation Recipe for the component's class and
+> Q1** — rewrites `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs`
+> (`run_q1_validation`) so it loads the validation Recipe for the component's class and
 > runs a **full sandboxed agent-loop orchestrator** (existing `sandbox_process` /
 > `process_executor`, restricted capabilities, per-validation token budget, cannot
 > mutate production state); on a clean result it writes `state = 2` (the retained
@@ -8968,11 +8970,29 @@ In the intent expression input field:
 > `proposed_payload` to the live row on Q2 approval (live row stayed validated+served
 > until then), delete queue row. (3) **Seeds intents from graduated `variants`**
 > (FIND-NEW-17 revised — intent seeding moves here from save-time, per §0.23.6).
+>
+> **⚠️ FIND-N-01 — `q1_orchestrator.rs` already exists as a Phase A.5 stub.** The file
+> `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs` was created in Phase A.5
+> and currently calls `ComponentValidator::validate_by_class` (the pure-Rust validator).
+> Phase N **rewrites** this file — it does not create it. The stub's `run_q1_validation`
+> signature (pool, scope, component_id, class_code, payload, config, queue_store) is the
+> correct entry point; Phase N replaces the `ComponentValidator` body with the sandboxed
+> orchestrator path.
+>
+> **⚠️ FIND-N-02 — `builtin_bootstrap.rs` bypasses Q1 intentionally and is NOT affected
+> by the orchestrated-Q1 change.** Every component seeded by Phase L inserts with
+> `validation_status = "validated"` directly (documented at `builtin_bootstrap.rs:28`).
+> Phase N's orchestrated Q1 applies to **user-authored and Sempai-authored** components
+> only. The §0.23.3 trusted-root seeding note (right before Phase N) means those
+> validator Recipes used by orchestrated Q1 are already in the DB as `validated`
+> builtins — no bootstrapping gap blocks Phase N. Phase P.0 (automated-but-auditable Q2)
+> is the phase that removes the `builtin_bootstrap.rs` bypass; Phase N does not change it.
 
 **Goal:** Populate `reborn_validation_queue` from existing component tables; add the
 `last_graduation_at` scope cursor; wire the graduation trigger; drop `queue_code`,
 `review_attempts`, `review_feedback`, `rejected_at`, and `validation_errors` off the
-13 component tables.
+**remaining** component table — `reborn_recipes` (all 12 other tables were already
+cleaned by V070–V075).
 
 > **Decision 2:** `reborn_validation_queue` table and `ValidationQueueStore` were created
 > in Phase A.5 (V051). Phase N only contains: Step 2 (populate), Step 3 (last_graduation_at),
@@ -8980,10 +9000,35 @@ In the intent expression input field:
 > already exists.** Phase N.2 (`ValidationQueueStore`) is also **already done** at Phase A.5 —
 > mark it as [DONE] when you reach Phase N.
 
-> **Pre-requisite awareness:** Phase N touches 13 component tables. Each column removal
-> is a two-step migration: (2) populate the queue from the component columns (data migration),
-> then (5) drop the now-redundant columns. Both steps are in V059, additive-first,
-> destructive-second within one transaction to guarantee atomicity.
+> **⚠️ FIND-N-03 — V070–V075 have already dropped the five legacy columns from 12 of
+> the 13 component tables.** The plan originally said V059 Step 5 drops these columns
+> from ALL 13 tables. Migrations V070–V075 (landed after Phase A.5 but before Phase N)
+> pre-empted that work for every table except `reborn_recipes`:
+>
+> | Migration | Table(s) cleaned |
+> |-----------|-----------------|
+> | V070 | `reborn_tool_skills` (only `queue_code` + `validation_errors`; the other 3 were absent from V037 DDL) |
+> | V071 | `reborn_tools` (all 5) |
+> | V072 | `reborn_skills` (all 5) |
+> | V073 | `reborn_actions` (all 5) |
+> | V074 | `reborn_specs`, `reborn_plans`, `reborn_summaries`, `reborn_docus`, `reborn_lessons`, `reborn_issues`, `reborn_notes` (all 5 each) |
+> | V075 | `reborn_extensions_unified` (all 5) |
+>
+> `reborn_recipes` is the **sole remaining table** carrying all five legacy columns.
+> V059 Step 5 still drops them from `reborn_recipes` (the only table where the DROP is
+> not yet a no-op); the `IF EXISTS` guards make the ALTERs on the other 12 tables safe
+> no-ops if written for completeness.
+>
+> **Consequence for Step 2 (populate):** Only `reborn_recipes` rows can reference
+> `review_attempts`, `review_feedback`, `validation_errors` by column name. The UNION
+> ALL arms for all other tables must substitute literal defaults for those three fields
+> — identical to the Phase B/C tables (reborn_python_code, reborn_extension_catalogues).
+> See the corrected SQL in N.1 below.
+
+> **Pre-requisite awareness:** Phase N now touches effectively 1 component table for
+> the column-drop work (`reborn_recipes`), with `IF EXISTS` no-ops for the 12 already
+> cleaned tables. The populate step must use literal defaults for any table that no longer
+> carries the five legacy columns — see N.1 for the corrected SQL pattern.
 
 #### N.1 New migration: V059 (**was V058 before Decision 2**)
 
@@ -8996,6 +9041,21 @@ In the intent expression input field:
 -- Step 2: populate from existing component table state
 -- For every component that is NOT yet 'validated':
 -- Map validation_status → state, review_attempts → counter, etc.
+--
+-- ⚠️ FIND-N-03 (updated): V070–V075 already dropped the five legacy columns from
+-- 12 of the 13 original component tables. As of Phase N, ONLY reborn_recipes
+-- still carries review_attempts / review_feedback / validation_errors / rejected_at /
+-- queue_code. Every other table's arm MUST use literal defaults for those fields.
+-- The "15 tables" model below is:
+--   • 1 table  (reborn_recipes)    — can read real columns
+--   • 12 tables (all others, pre-cleaned by V070–V075) — must use literals
+--   • 2 Phase B/C tables (py_code, ext_catalogues) — never had these columns, use literals
+--
+-- ⚠️ FIND-P6-08 still applies: Use class_code::SMALLINT for variable-class tables
+-- (reborn_skills: 1/2/3/10/50; reborn_extensions_unified: 4-9), literal for fixed
+-- (reborn_recipes: 21, reborn_tools: 0, reborn_actions: 16, etc.).
+--
+-- Pattern A — tables that still have all 5 legacy columns (reborn_recipes ONLY):
 INSERT INTO reborn_validation_queue
     (tenant_id, user_id, agent_id, project_id,
      component_id, component_class, state, counter,
@@ -9003,12 +9063,7 @@ INSERT INTO reborn_validation_queue
 SELECT
     tenant_id, user_id, agent_id, project_id,
     id,
-    -- ⚠️ FIND-P6-08: Use the actual class_code column value for tables with variable class codes
-    -- (reborn_skills: 1/2/3; reborn_extensions_unified: 4-9).
-    -- Use a literal for tables with a single fixed class code
-    -- (reborn_recipes: 21, reborn_actions: 16, reborn_tools: 0, etc.).
-    -- Example for reborn_skills (variable class code):
-    class_code::SMALLINT,
+    21::SMALLINT,   -- fixed class code for reborn_recipes
     CASE validation_status
         WHEN 'pending'           THEN 1
         WHEN 'upgrade_queued'    THEN 1
@@ -9019,30 +9074,48 @@ SELECT
         WHEN 'garbage'           THEN 4
         ELSE 1
     END,
-    COALESCE(review_attempts::INT, 0),  -- SCHEMA-01: ::INT cast on every arm (uniform)
+    COALESCE(review_attempts::INT, 0),  -- SCHEMA-01: ::INT cast (reborn_recipes is SMALLINT)
     review_feedback,
     validation_errors,
     created_at
+FROM reborn_recipes
+WHERE validation_status != 'validated'
+ON CONFLICT DO NOTHING;
+
+-- Pattern B — all 14 tables already cleaned by V070–V075 (or never had these columns):
+-- substitute literal defaults for the missing columns.
+-- Shown for reborn_skills (variable class code) and reborn_tools (fixed 0);
+-- repeat the same pattern for reborn_tool_skills, reborn_actions, reborn_specs,
+-- reborn_plans, reborn_summaries, reborn_docus, reborn_lessons, reborn_issues,
+-- reborn_notes, reborn_extensions_unified, reborn_python_code (class 22),
+-- reborn_extension_catalogues (class 23).
+INSERT INTO reborn_validation_queue
+    (tenant_id, user_id, agent_id, project_id,
+     component_id, component_class, state, counter,
+     review_feedback, validation_errors, submitted_at)
+SELECT
+    tenant_id, user_id, agent_id, project_id,
+    id,
+    class_code::SMALLINT,   -- variable: 1/2/3/10/50 for reborn_skills
+    CASE validation_status
+        WHEN 'pending'           THEN 1
+        WHEN 'upgrade_queued'    THEN 1
+        WHEN 'auto_failed'       THEN 1
+        WHEN 'auto_passed'       THEN 2
+        WHEN 'review_requested'  THEN 2
+        WHEN 'rejected'          THEN 3
+        WHEN 'garbage'           THEN 4
+        ELSE 1
+    END,
+    0,              -- counter: columns already dropped (no prior attempts)
+    NULL,           -- review_feedback: already dropped
+    '{}'::TEXT[],   -- validation_errors: already dropped
+    created_at
 FROM reborn_skills
 WHERE validation_status != 'validated'
--- Repeated for each of the 15 component tables with the correct class_code value:
--- the 13 existing tables + reborn_python_code (class 22) and reborn_extension_catalogues
--- (class 23). The two Phase B/C tables carry validation_status (the column that STAYS on
--- the component table — see §0.18) even though they never carried the five queue-tracking
--- columns, so their pending rows MUST be populated here too.
---
--- IMPLEMENTATION NOTE: the SELECT above references review_attempts / review_feedback /
--- validation_errors — columns the 13 EXISTING tables have. The two Phase B/C tables
--- (reborn_python_code, reborn_extension_catalogues) do NOT have these columns, so their
--- per-table INSERT arm must substitute literal defaults in place of the column refs:
---     COALESCE(NULL, 0) AS counter,           -- 0  (no prior attempts)
---     NULL       AS review_feedback,           -- no Q2 feedback yet
---     '{}'::TEXT[] AS validation_errors         -- no Q1 errors yet
--- (the scope columns tenant_id/user_id/agent_id/project_id and the CASE on
--- validation_status ARE available on all 15 tables). Failing to substitute the
--- literals would make the 22/23 arm reference a non-existent column and abort V059.
--- ⚠️ FIND-P9-11: this is V059 (not V058; after Decision 2 V-number shift).
 ON CONFLICT DO NOTHING;
+-- ... (repeat Pattern B for each of the remaining 13 tables) ...
+-- ⚠️ FIND-P9-11: this is V059 (not V058; after Decision 2 V-number shift).
 
 -- Step 3: add last_graduation_at to scope cursor
 ALTER TABLE reborn_monty_vm_settings
@@ -9077,19 +9150,34 @@ CREATE TRIGGER reborn_validation_queue_on_delete
     AFTER DELETE ON reborn_validation_queue
     FOR EACH ROW EXECUTE FUNCTION reborn_validation_queue_graduation();
 
--- Step 5: drop redundant columns from component tables
--- (After data has been migrated to the queue)
-ALTER TABLE reborn_skills
+-- Step 5: drop redundant columns from component tables.
+-- ⚠️ FIND-N-03: V070–V075 already dropped these 5 columns from all tables except
+-- reborn_recipes. Only reborn_recipes requires real work here; the other 12 tables'
+-- DROP COLUMN IF EXISTS are explicit no-ops (IF EXISTS prevents errors).
+--
+-- The only DROP that is not yet a no-op:
+ALTER TABLE reborn_recipes
     DROP COLUMN IF EXISTS queue_code,
     DROP COLUMN IF EXISTS review_attempts,
     DROP COLUMN IF EXISTS review_feedback,
     DROP COLUMN IF EXISTS rejected_at,
     DROP COLUMN IF EXISTS validation_errors;
--- Repeated for all 13 EXISTING component tables (the ones that carried these columns).
--- The Phase B/C tables (reborn_python_code, reborn_extension_catalogues) never carried
--- these five columns (see §0.18 / Phase B+C "Do NOT include") so there is nothing to
--- drop from them — no ALTER is needed for those two.
--- validation_status is NOT dropped — it remains as the post-validation gate.
+-- For completeness (all no-ops — IF EXISTS guards them — but explicitly listed so
+-- the migration is self-documenting as the workspace-wide drop V051 always intended):
+ALTER TABLE reborn_skills            DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_tools             DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_tool_skills       DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_actions           DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_specs             DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_plans             DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_summaries         DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_docus             DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_lessons           DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_issues            DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_notes             DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+ALTER TABLE reborn_extensions_unified DROP COLUMN IF EXISTS queue_code, DROP COLUMN IF EXISTS review_attempts, DROP COLUMN IF EXISTS review_feedback, DROP COLUMN IF EXISTS rejected_at, DROP COLUMN IF EXISTS validation_errors;
+-- reborn_python_code and reborn_extension_catalogues never had these columns — no ALTER needed.
+-- validation_status is NOT dropped — it remains as the post-validation gate on all tables.
 ```
 
 **Note on scope cursor:** `reborn_monty_vm_settings` has a guaranteed row for every
@@ -9233,59 +9321,77 @@ correct. Fine-grained per-component eviction is a future optimisation.
 
 #### N.4 Component table cleanup
 
-Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_feedback`,
-`rejected_at`, `validation_errors`.
+Remove `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
+`validation_errors` from `reborn_recipes` — the only table that still carries them
+(all 12 others were cleaned by V070–V075). The V059 Step 5 ALTERs on those 12 tables
+are `IF EXISTS` no-ops, included only for self-documentation.
 
-> **Rust struct sync required:** After V059 drops these columns, ALL structs that read
-> or write them must be updated atomically. Affected:
+> **⚠️ FIND-N-03 (N.4 consequence) — only `reborn_recipes` requires Rust struct changes.**
+> V070–V075 already refactored the stores for all 12 other tables (`DbSkillStore`,
+> `PgUnifiedExtensionStore`, etc.) at the time of their respective column drops. As of
+> Phase N the only outstanding Rust cleanup is the `reborn_recipes` store and the
+> shared domain `Recipe` struct.
 >
-> - **`Recipe` + `ToolSkill` in `crates/brassclaw_engine/src/types/recipe.rs`:**
->   Confirmed by inspection — these structs DO carry `validation_errors: Vec<String>`,
->   `review_feedback: Option<String>`, `review_attempts: u32`, `rejected_at: Option<DateTime<Utc>>`.
->   They do NOT have `queue_code` (queue_code is only in `PgRecipe`, not the domain type).
->   Remove the four fields listed above.
+> **⚠️ FIND-N-04 — `pg_recipe_store.rs` has additional live callers of the dropped columns
+> beyond the ones originally listed.** Verified against current code:
 >
-> - **⚠️ SCHEMA-01 — `review_attempts` type inconsistency across tables:**
->   Verified against every migration (grep `review_attempts` + type): **10 tables define
->   `review_attempts SMALLINT`** — `reborn_extensions_unified` (V032), `reborn_recipes`
->   (V033), `reborn_specs` (V036), `reborn_tool_skills` (V037), `reborn_plans` (V038),
->   `reborn_summaries` (V039), `reborn_docus` (V040), `reborn_lessons` (V041),
->   `reborn_issues` (V042), `reborn_notes` (V043) — and **3 tables define it `INT`** —
->   `reborn_skills` (V027), `reborn_actions` (V029), `reborn_tools` (V030). `PgRecipe.
->   review_attempts` is `i16` (matching SMALLINT for recipes). This type inconsistency is
->   pre-existing and affects V059's populate step: each per-table arm's
->   `COALESCE(review_attempts, 0)` feeds `reborn_validation_queue.counter INT`. For the 10
->   SMALLINT arms the expression's type is SMALLINT; PostgreSQL *will* implicitly widen
->   SMALLINT→INT on INSERT into the INT column, so it does not hard-fail — BUT relying on
->   the implicit assignment cast is fragile (a future reader cannot tell if it is
->   intentional) and the plan's prior wording ("for reborn_recipes rows: cast needed")
->   only named ONE of the ten SMALLINT tables. **Cleanest fix (apply on EVERY per-table
->   arm, both SMALLINT and INT): `COALESCE(review_attempts::INT, 0)`.** `INT::INT` is a
->   harmless no-op for the 3 INT tables; the cast makes all 13 arms produce INT
->   deterministically, removing any reliance on implicit-cast rules and any ambiguity.
->   Also update the populate SQL example (the `counter` line) to use this cast. This is a
->   minor V059 migration detail but must be handled uniformly to avoid runtime type
->   surprises.
+> - **`auto_validate_pending` (line 1596):** The Q1 auto-validation sweep for
+>   `reborn_recipes`. Queries `queue_code = 'q1_auto'` (line 1636) and writes
+>   `queue_code`, `validation_errors` (lines 1690–1691). This method is **replaced by
+>   Phase N's orchestrated Q1 path via `ValidationQueueStore`**. Remove the entire
+>   method and its helper `derive_queue_code` (line 1746) before V059 runs.
+>
+> - **`retention_sweep.rs::spawn_q1_validation_sweep` (line 172):** The 30-second
+>   background loop that calls `auto_validate_pending`. Confirmed caller:
+>   `crates/brassclaw_reborn_cli/src/commands/serve.rs:358`. Remove
+>   `spawn_q1_validation_sweep` from `retention_sweep.rs` and its invocation from
+>   `serve.rs`. This is a required pre-step for the V059 column drop.
+>
+> - **`update_recipe_validation_status` (line 1253):** Calls `derive_queue_code` +
+>   `update_validation_status` with a `queue_code` field. Rewrite to only set
+>   `validation_status` (and optionally log feedback); the `queue_code` and
+>   `review_attempts` tracking moves to `reborn_validation_queue`.
+>
+> - **`re_review_component` (line 1387):** Checks `review_attempts >= 3` and writes
+>   `queue_code: Some("q1_auto")`. Rewrite to call `ValidationQueueStore::submit`
+>   (re-enqueue at state 1) instead of writing the legacy fields.
+>
+> - **`delete_component` (line 1472):** Writes `queue_code = 'garbage'` (line 1496).
+>   Change the UPDATE to only set `validation_status = 'garbage'`; queue-row deletion
+>   follows `ValidationQueueStore::purge_deletion_candidates` semantics.
+>
+> **Rust struct sync — `Recipe` domain type + `PgRecipe` store struct:**
+>
+> - **`Recipe` in `crates/brassclaw_engine/src/types/recipe.rs`:**
+>   Confirmed — carries `validation_errors: Vec<String>` (:199), `review_feedback:
+>   Option<String>` (:200), `review_attempts: u32` (:201), `rejected_at:
+>   Option<DateTime<Utc>>` (:202). No `queue_code` on the domain type. Remove all four.
 >
 > - **`PgRecipe` in `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`:**
->   Confirmed by inspection — `RECIPE_SELECT` selects `queue_code`, `review_attempts`,
->   `review_feedback`, `rejected_at`, `validation_errors` and the struct has matching fields.
->   Remove all five from both `PgRecipe` and `RECIPE_SELECT`.
+>   Confirmed — carries all five at lines 116–120. `RECIPE_SELECT` names them at lines
+>   234–235. `decode_recipe_row` decodes them at indices 22–26 (lines 264–268).
+>   Remove all five from `PgRecipe`, `RECIPE_SELECT`, and re-index `decode_recipe_row`
+>   per the FIND-P6-04 table below.
 >
-> - **`RecipeValidationStatusUpdate` in `pg_recipe_store.rs`:**
->   This param struct has `validation_errors`, `review_feedback`, `queue_code` fields.
->   Must be updated when the columns are dropped.
+> - **`RecipeValidationStatusUpdate` (line 192):**
+>   Has `validation_errors`, `review_feedback`, `queue_code`. Remove all three; update
+>   `update_validation_status` (line 413) and every call site.
 >
-> - **`component_validator.rs`** — creates `Recipe` structs with `validation_errors`.
-> - **`recipe_matcher.rs`** — reads `wilson_lower` + `tier` (NOT dropped by V059).
->   **⚠️ FIND-P5-08:** After removing `validation_errors` / `review_feedback` /
->   `review_attempts` / `rejected_at` from the Rust structs, `cargo check` will catch
->   ALL struct-field references that no longer exist. Run `cargo check --all` immediately
->   after the struct changes and resolve every error before running V059. The "audit
->   required" is the Rust compiler, not a manual inspection.
-> - Any other caller that constructs or destructures these structs: identified fully by
->   `cargo check` after the struct fields are removed.
+> - **⚠️ SCHEMA-01 — `review_attempts` type:** `reborn_recipes.review_attempts` is
+>   `SMALLINT` (V033). The V059 populate arm uses `COALESCE(review_attempts::INT, 0)` —
+>   correct. All other tables' arms use the literal `0`, no cast needed. This is now a
+>   single-table concern, not a 13-table one.
 >
+> - **`component_validator.rs`** — `q1_orchestrator.rs` currently uses
+>   `ComponentValidator::validate_by_class`. Phase N rewrites `run_q1_validation` to use
+>   the sandboxed orchestrator path. After that, the two remaining production callers of
+>   `ComponentValidator` are `auto_validate_pending` (being removed) and the unit tests
+>   inside `component_validator.rs` itself. Once both are gone, retire the file and its
+>   `pub use` re-export in `memory/mod.rs`.
+>
+> - **⚠️ FIND-P5-08:** `cargo check --all` after all struct field removals catches any
+>   remaining references; resolve every compile error before running V059.
+
 > **⚠️ FIND-P6-04 — `decode_recipe_row` re-index map after Phase N drops 5 columns.**
 > Phase A appended `step_descriptions`, `variants`, `dependency_registry` at indices 31, 32, 33.
 > Phase N drops 5 columns from the middle. After the drops, the NEW indices for `decode_recipe_row`
@@ -9332,49 +9438,42 @@ Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_fe
 > must lose those 5 fields. `decode_recipe_row` must be completely rewritten with these new indices.
 > Run `cargo check --all` after the struct changes and resolve every compile error.
 
-> **Two-phase deploy required (zero-downtime):**
-> V059 drops columns. If the old binary is still running when V059 runs (rolling deploy),
-> it will SELECT dropped columns → runtime panic on every request. Required deploy order:
-> 1. Deploy new binary (with structs updated to use `Option<T>` + `#[serde(default)]`
->    for the fields being dropped — existing data still returns values, new `None` is fine).
-> 2. Run V059 migration (now safe — binary no longer queries dropped columns as required).
+> **Two-phase deploy required (zero-downtime) — scoped to `reborn_recipes` only:**
+> V059 drops columns from `reborn_recipes`. If the old binary is still running when V059
+> runs (rolling deploy), it will SELECT dropped columns → runtime panic on every
+> `reborn_recipes`-touching request. Required deploy order:
+> 1. Deploy new binary (with `PgRecipe` and `Recipe` fields for the 5 columns changed to
+>    `Option<T>` + `#[serde(default)]` — existing data still returns values; `None` after drop
+>    is fine). All other tables' stores were already cleaned by V070–V075 deploys.
+> 2. Run V059 migration (now safe — binary no longer requires the dropped columns).
 > 3. Remove the `Option` wrappers in a follow-up cleanup commit.
 
-> **✅ Review note (pre-v3 audit) — N.4 struct audit verified with exact line refs — RESOLVED:**
-> the positional-re-index caveat is captured below (dropping a column from `RECIPE_SELECT`
-> requires renumbering every later `row.get(N)` in `decode_recipe_row`); the N.4 task now
-> carries that re-index instruction so the column-drop migration does not silently read the
-> wrong column. This gates the Phase N column-drop migration — no code change yet.
-> Original detail retained:
-> Confirmed against current code: the engine `Recipe` struct (`types/recipe.rs:144`) carries
-> `validation_errors: Vec<String>` (:167), `review_feedback: Option<String>` (:168),
-> `review_attempts: u32` (:169), `rejected_at: Option<DateTime<Utc>>` (:170) and has **no**
-> `queue_code` (matches N.4). `PgRecipe` (`pg_recipe_store.rs:117`) + `RECIPE_SELECT` (:208–217)
-> select and decode all five incl. `queue_code` (:120, :236 area) — `decode_recipe_row` (:219) is
-> positional, so dropping a column requires renumbering every `row.get(N)` index after it (the
-> plan's "remove all five from both `PgRecipe` and `RECIPE_SELECT`" must therefore also re-index
-> `decode_recipe_row`, not just delete the lines). `RecipeValidationStatusUpdate` (:170) does
-> carry `validation_errors`/`review_feedback`/`queue_code`. `recipe_matcher.rs` reads
-> `wilson_lower` + `tier` (not dropped) and does reference the dropped fields in conversion
-> paths — the N.4 "audit required" is genuine. The two-phase deploy is the correct mitigation.
-
-The 13 tables are: `reborn_skills`, `reborn_tools`, `reborn_tool_skills`,
-`reborn_recipes`, `reborn_actions`, `reborn_specs`, `reborn_plans`, `reborn_summaries`,
+> **✅ Review note (pre-v3 audit) — N.4 struct audit verified with exact line refs — RESOLVED
+> and updated for FIND-N-03/FIND-N-04:**
+> The positional re-index caveat stands (dropping a column from `RECIPE_SELECT` requires
+> renumbering every later `row.get(N)` in `decode_recipe_row`). The scope is now confirmed
+> as `reborn_recipes` only. Current code confirmed: `Recipe` struct (`types/recipe.rs:199–202`)
+> carries all four domain fields; `PgRecipe` (`pg_recipe_store.rs:116–120`) + `RECIPE_SELECT`
+> (:234–235) carry all five including `queue_code`; `decode_recipe_row` is positional at
+> indices 22–26 (:264–268). The `auto_validate_pending` + `spawn_q1_validation_sweep` sweep
+> path was not mentioned in the original N.4 but is a mandatory removal — confirmed live
+> in the codebase at the lines cited above.
+The 13 tables covered by V059 Step 5 are: `reborn_skills`, `reborn_tools`,
+`reborn_tool_skills`, `reborn_recipes` (**real DROP — only this table has the
+columns**), `reborn_actions`, `reborn_specs`, `reborn_plans`, `reborn_summaries`,
 `reborn_lessons`, `reborn_docus`, `reborn_issues`, `reborn_notes`,
-`reborn_extensions_unified`, plus the new Phase B/C tables `reborn_python_code` and
-`reborn_extension_catalogues` — which are designed without these columns from
-the start (they use the queue from day one, as of Phase A.5 / V051).
+`reborn_extensions_unified` (**12 tables: no-ops via IF EXISTS — already cleaned by
+V070–V075**), plus the Phase B/C tables `reborn_python_code` and
+`reborn_extension_catalogues` — which never had these columns (designed without them
+since V052/V053; no ALTER needed).
 
-**`reborn_python_code` and `reborn_extension_catalogues` (Phases B and C):** These
-tables are created in V052/V053, **after** `reborn_validation_queue` exists (V051/Phase A.5).
-They must NOT include `queue_code`, `review_attempts`,
-`review_feedback`, `rejected_at`, or `validation_errors` columns (those five are
-centralised on the queue). They DO carry `validation_status` (the post-validation gate,
-which STAYS on the component table — see §0.18). WebUI-authored rows in these tables can
-enter the queue from day one (Phase A.5 created the queue table before these tables exist).
-The V059 populate step (Phase N) back-fills any pending rows from the 13 pre-existing
-tables; for classes 22/23 there is no gap to back-fill since the queue already existed
-when these tables were created.
+**`reborn_python_code` and `reborn_extension_catalogues` (Phases B and C):**
+Created in V052/V053 after `reborn_validation_queue` exists (V051/Phase A.5).
+Never included `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
+or `validation_errors` — confirmed in the V052/V053 DDL comments. They DO carry
+`validation_status` (the post-validation gate, which stays on every component table).
+For the V059 populate step, any pending rows in these tables must use literal defaults
+(Pattern B in N.1 above) since the legacy columns were never present.
 
 #### N.5 Integrity check at boot
 

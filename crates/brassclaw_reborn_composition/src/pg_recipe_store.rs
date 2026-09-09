@@ -113,11 +113,6 @@ pub(crate) struct PgRecipe {
     pub(crate) failure_count: i32,
     pub(crate) wilson_lower: f64,
     pub(crate) validation_status: String,
-    pub(crate) validation_errors: Vec<String>,
-    pub(crate) review_feedback: Option<String>,
-    pub(crate) review_attempts: i16,
-    pub(crate) rejected_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub(crate) queue_code: Option<String>,
     pub(crate) source: String,
     pub(crate) content_hash: Option<String>,
     pub(crate) created_at: chrono::DateTime<chrono::Utc>,
@@ -189,9 +184,6 @@ pub(crate) struct NewPgRecipe {
 #[derive(Debug)]
 pub(crate) struct RecipeValidationStatusUpdate<'a> {
     pub(crate) validation_status: &'a str,
-    pub(crate) validation_errors: Vec<String>,
-    pub(crate) review_feedback: Option<String>,
-    pub(crate) queue_code: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -231,8 +223,7 @@ const RECIPE_SELECT: &str = "
     prior_knowledge_content, override_prompt_creation,
     class_code, prompt_uid, consumer_tags, intent_examples,
     tier, usage_count, success_count, failure_count, wilson_lower,
-    validation_status, validation_errors, review_feedback,
-    review_attempts, rejected_at, queue_code, source, content_hash,
+    validation_status, source, content_hash,
     created_at, updated_at,
     step_descriptions, variants, dependency_registry
 ";
@@ -261,18 +252,13 @@ fn decode_recipe_row(row: &tokio_postgres::Row) -> Result<PgRecipe, PgRecipeStor
         failure_count: row.get(19),
         wilson_lower: row.get(20),
         validation_status: row.get(21),
-        validation_errors: row.get(22),
-        review_feedback: row.get(23),
-        review_attempts: row.get(24),
-        rejected_at: row.get(25),
-        queue_code: row.get(26),
-        source: row.get(27),
-        content_hash: row.get(28),
-        created_at: row.get(29),
-        updated_at: row.get(30),
-        step_descriptions: row.get(31),
-        variants: row.get(32),
-        dependency_registry: row.get(33),
+        source: row.get(22),
+        content_hash: row.get(23),
+        created_at: row.get(24),
+        updated_at: row.get(25),
+        step_descriptions: row.get(26),
+        variants: row.get(27),
+        dependency_registry: row.get(28),
     })
 }
 
@@ -409,7 +395,7 @@ impl PgRecipeStore {
         rows.iter().map(decode_recipe_row).collect()
     }
 
-    /// Update validation status + queue code.
+    /// Update validation status.
     pub(crate) async fn update_validation_status(
         &self,
         tenant_id: &str,
@@ -424,17 +410,12 @@ impl PgRecipeStore {
             .execute(
                 "UPDATE reborn_recipes
                  SET validation_status = $1,
-                     validation_errors = $2,
-                     review_feedback   = COALESCE($3, review_feedback),
-                     queue_code        = $4
-                 WHERE id = $5
-                   AND tenant_id = $6 AND user_id = $7
-                   AND agent_id  = $8 AND project_id = $9",
+                     updated_at        = NOW()
+                 WHERE id = $2
+                   AND tenant_id = $3 AND user_id = $4
+                   AND agent_id  = $5 AND project_id = $6",
                 &[
                     &update.validation_status,
-                    &update.validation_errors,
-                    &update.review_feedback,
-                    &update.queue_code,
                     &id,
                     &tenant_id,
                     &user_id,
@@ -970,8 +951,6 @@ fn recipe_to_summary(r: &PgRecipe) -> brassclaw_product_workflow::RecipeSummary 
         tier: r.tier.clone(),
         tier0_eligible: r.is_tier0_eligible(),
         validation_status: r.validation_status.clone(),
-        validation_errors: r.validation_errors.clone(),
-        review_attempts: r.review_attempts.max(0) as u32,
         source: r.source.clone(),
         created_at: r.created_at.to_rfc3339(),
         updated_at: r.updated_at.to_rfc3339(),
@@ -999,11 +978,6 @@ fn recipe_to_detail(r: &PgRecipe) -> brassclaw_product_workflow::RecipeDetail {
         "failure_count": r.failure_count,
         "wilson_lower": r.wilson_lower,
         "validation_status": r.validation_status,
-        "validation_errors": r.validation_errors,
-        "review_feedback": r.review_feedback,
-        "review_attempts": r.review_attempts,
-        "rejected_at": r.rejected_at.map(|t| t.to_rfc3339()),
-        "queue_code": r.queue_code,
         "source": r.source,
         "content_hash": r.content_hash,
         "created_at": r.created_at.to_rfc3339(),
@@ -1016,18 +990,31 @@ fn recipe_to_detail(r: &PgRecipe) -> brassclaw_product_workflow::RecipeDetail {
 }
 
 #[cfg(feature = "postgres")]
-fn recipe_to_queue_item(r: &PgRecipe) -> brassclaw_product_workflow::ValidationQueueItem {
-    let queue_code = r.queue_code.clone().unwrap_or_else(|| {
-        // Derive queue code from validation_status when not stored.
-        match r.validation_status.as_str() {
+fn recipe_to_queue_item(
+    r: &PgRecipe,
+    counter: i32,
+    review_feedback: Option<String>,
+    validation_errors: Vec<String>,
+    queue_state: Option<i32>,
+) -> brassclaw_product_workflow::ValidationQueueItem {
+    // Derive queue_code from reborn_validation_queue.state:
+    // 1 = q1_auto, 2 = q2_manual, 3 = q3_revision (counter<3) or q4_rejection (counter>=3), 4 = garbage.
+    // Fall back to status-based derivation when no queue row exists yet.
+    let queue_code = match queue_state {
+        Some(1) => "q1_auto".to_string(),
+        Some(2) => "q2_manual".to_string(),
+        Some(3) if counter < 3 => "q3_revision".to_string(),
+        Some(3) => "q4_rejection".to_string(),
+        Some(4) => "garbage".to_string(),
+        _ => match r.validation_status.as_str() {
             "pending" | "auto_failed" => "q1_auto".to_string(),
             "auto_passed" | "review_requested" | "upgrade_queued" => "q2_manual".to_string(),
-            "rejected" if r.review_attempts < 3 => "q3_revision".to_string(),
+            "rejected" if counter < 3 => "q3_revision".to_string(),
             "rejected" => "q4_rejection".to_string(),
             "garbage" => "garbage".to_string(),
             _ => "q2_manual".to_string(),
-        }
-    });
+        },
+    };
     let trigger_summary = r
         .trigger
         .as_ref()
@@ -1049,9 +1036,9 @@ fn recipe_to_queue_item(r: &PgRecipe) -> brassclaw_product_workflow::ValidationQ
         trigger_summary,
         estimated_tokens: None,
         validation_status: r.validation_status.clone(),
-        validation_errors: r.validation_errors.clone(),
-        review_feedback: r.review_feedback.clone(),
-        review_attempts: r.review_attempts.max(0) as u32,
+        validation_errors,
+        review_feedback,
+        review_attempts: counter.max(0) as u32,
         similarity_parent_id: None,
         created_at: r.created_at.to_rfc3339(),
         source: r.source.clone(),
@@ -1168,7 +1155,9 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
         })?;
 
-        // Build a query with a dynamic IN clause.
+        // Build a query with a dynamic IN clause.  LEFT JOIN reborn_validation_queue
+        // to get counter/review_feedback/validation_errors/state — these columns were
+        // dropped from reborn_recipes in Phase N.4.
         let placeholders: String = statuses
             .iter()
             .enumerate()
@@ -1176,10 +1165,23 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             .collect::<Vec<_>>()
             .join(", ");
         let q = format!(
-            "SELECT {RECIPE_SELECT} FROM reborn_recipes
-             WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
-               AND validation_status IN ({placeholders})
-             ORDER BY created_at ASC
+            "SELECT {RECIPE_SELECT},
+                    COALESCE(q.counter, 0)                    AS q_counter,
+                    q.review_feedback                         AS q_review_feedback,
+                    COALESCE(q.validation_errors, ARRAY[]::TEXT[]) AS q_validation_errors,
+                    q.state                                   AS q_state
+             FROM reborn_recipes r
+             LEFT JOIN reborn_validation_queue q
+                    ON q.component_id  = r.id
+                   AND q.component_class = 21
+                   AND q.tenant_id    = r.tenant_id
+                   AND q.user_id      = r.user_id
+                   AND q.agent_id     = r.agent_id
+                   AND q.project_id   = r.project_id
+             WHERE r.tenant_id = $1 AND r.user_id = $2
+               AND r.agent_id  = $3 AND r.project_id = $4
+               AND r.validation_status IN ({placeholders})
+             ORDER BY r.created_at ASC
              LIMIT {MAX_RECIPE_LIST_ROWS}"
         );
 
@@ -1202,19 +1204,27 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             let recipe = decode_recipe_row(row).map_err(|e| {
                 brassclaw_product_workflow::RecipeStoreError::Internal(e.to_string())
             })?;
-            // For Rejection filter: only include rows with review_attempts >= 3.
-            // For Revision filter: only include rows with review_attempts < 3.
+            // Queue columns appended after the 29 RECIPE_SELECT columns (indices 29–32).
+            let counter: i32 = row.get(29);
+            let review_feedback: Option<String> = row.get(30);
+            let validation_errors: Vec<String> = row.get(31);
+            let queue_state: Option<i32> = row.try_get::<_, i16>(32).ok().map(|s| s as i32);
+
+            // For Rejection filter: only include rows with counter >= 3.
+            // For Revision filter: only include rows with counter < 3.
             let include = match filter {
-                brassclaw_product_workflow::ValidationQueueFilter::Rejection => {
-                    recipe.review_attempts >= 3
-                }
-                brassclaw_product_workflow::ValidationQueueFilter::Revision => {
-                    recipe.review_attempts < 3
-                }
+                brassclaw_product_workflow::ValidationQueueFilter::Rejection => counter >= 3,
+                brassclaw_product_workflow::ValidationQueueFilter::Revision => counter < 3,
                 _ => true,
             };
             if include {
-                items.push(recipe_to_queue_item(&recipe));
+                items.push(recipe_to_queue_item(
+                    &recipe,
+                    counter,
+                    review_feedback,
+                    validation_errors,
+                    queue_state,
+                ));
             }
         }
         Ok(items)
@@ -1256,7 +1266,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         project_id: &str,
         recipe_id: &str,
         new_status: &str,
-        feedback: Option<&str>,
+        _feedback: Option<&str>,
     ) -> Result<
         brassclaw_product_workflow::UpdateValidationStatusResponse,
         brassclaw_product_workflow::RecipeStoreError,
@@ -1276,12 +1286,6 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 brassclaw_product_workflow::RecipeStoreError::NotFound(recipe_id.to_string())
             })?;
         let previous_status = current.validation_status.clone();
-        let new_review_attempts = if new_status == "rejected" {
-            current.review_attempts + 1
-        } else {
-            current.review_attempts
-        };
-        let queue_code = derive_queue_code(new_status, new_review_attempts);
         self.inner
             .update_validation_status(
                 &self.tenant_id,
@@ -1291,9 +1295,6 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 uuid,
                 RecipeValidationStatusUpdate {
                     validation_status: new_status,
-                    validation_errors: vec![],
-                    review_feedback: feedback.map(|s| s.to_string()),
-                    queue_code: Some(queue_code),
                 },
             )
             .await
@@ -1310,7 +1311,8 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             item_type: brassclaw_product_workflow::RecipeKind::Recipe,
             previous_status,
             new_status: new_status.to_string(),
-            review_attempts: new_review_attempts.max(0) as u32,
+            // review_attempts is now owned by reborn_validation_queue.
+            review_attempts: 0,
         })
     }
 
@@ -1390,7 +1392,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         project_id: &str,
         class_code: u16,
         component_id: &str,
-        feedback: Option<&str>,
+        _feedback: Option<&str>,
     ) -> Result<
         brassclaw_product_workflow::UpdateValidationStatusResponse,
         brassclaw_product_workflow::RecipeStoreError,
@@ -1413,10 +1415,11 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             .ok_or_else(|| {
                 brassclaw_product_workflow::RecipeStoreError::NotFound(component_id.to_string())
             })?;
-        // Only allow re-review from Q4 (rejected, review_attempts >= 3).
-        if current.validation_status != "rejected" || current.review_attempts < 3 {
+        // Q4 guard is enforced by the caller (ValidationQueueStore) which checks
+        // reborn_validation_queue.counter — no longer available on PgRecipe.
+        if current.validation_status != "rejected" {
             return Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
-                "re_review_component requires the component to be in Q4 (rejected, review_attempts >= 3)".to_string(),
+                "re_review_component requires the component to be in rejected status".to_string(),
             ));
         }
         let previous_status = current.validation_status.clone();
@@ -1429,9 +1432,6 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 uuid,
                 RecipeValidationStatusUpdate {
                     validation_status: "pending",
-                    validation_errors: vec![],
-                    review_feedback: feedback.map(|s| s.to_string()),
-                    queue_code: Some("q1_auto".to_string()),
                 },
             )
             .await
@@ -1465,7 +1465,8 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             item_type: brassclaw_product_workflow::RecipeKind::Recipe,
             previous_status,
             new_status: "pending".to_string(),
-            review_attempts: current.review_attempts.max(0) as u32,
+            // review_attempts is now owned by reborn_validation_queue.
+            review_attempts: 0,
         })
     }
 
@@ -1493,7 +1494,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         let affected = client
             .execute(
                 "UPDATE reborn_recipes
-                 SET validation_status = 'garbage', queue_code = 'garbage'
+                 SET validation_status = 'garbage', updated_at = NOW()
                  WHERE id = $1 AND tenant_id = $2 AND user_id = $3
                    AND agent_id = $4 AND project_id = $5",
                 &[
@@ -1577,183 +1578,6 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         }
     }
 
-    /// Q1 auto-validation sweep for `reborn_recipes` rows.
-    ///
-    /// Fetches all rows with `validation_status = 'pending'` and
-    /// `queue_code = 'q1_auto'` for the given `(user_id, project_id)` scope,
-    /// runs [`brassclaw_engine::memory::ComponentValidator::validate_by_class`]
-    /// against each, then writes either `auto_passed` or `auto_failed` back.
-    ///
-    /// Available Rusty tools are fetched once per call via the
-    /// `reborn_tools` table (same scope tuple).  An empty tool registry is a
-    /// valid transient state — ToolSkill validation still runs; the
-    /// `tool_name` cross-reference check is skipped when the registry is
-    /// empty (same contract as passing `&[]` to `validate_by_class`).
-    ///
-    /// **Feature gate:** only compiled when both `postgres` and `skills-db`
-    /// features are active — the `DbToolSource` type lives behind `skills-db`.
-    #[cfg(feature = "skills-db")]
-    async fn auto_validate_pending(
-        &self,
-        user_id: &str,
-        project_id: &str,
-    ) -> Result<u32, brassclaw_product_workflow::RecipeStoreError> {
-        use brassclaw_capabilities::tool_registry::{ToolRegistryStore, ToolScopeKey};
-        use brassclaw_engine::capability::DbToolSource;
-        use brassclaw_engine::memory::{
-            ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig,
-        };
-
-        // ── 1. Fetch available tool names for this scope ──────────────────
-        let tool_scope = ToolScopeKey {
-            tenant_id: self.tenant_id.clone(),
-            user_id: user_id.to_string(),
-            agent_id: self.agent_id.clone(),
-            project_id: project_id.to_string(),
-        };
-        let tool_source = DbToolSource::new((*self.inner.pool).clone());
-        let available_tools = tool_source
-            .fetch_tool_names(&tool_scope)
-            .await
-            .map_err(|e| {
-                brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-            })?;
-
-        // ── 2. Fetch all pending rows in q1_auto ──────────────────────────
-        let client = self.inner.pool.get().await.map_err(|e| {
-            brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-        })?;
-
-        let rows = client
-            .query(
-                "SELECT id, name, description, class_code, steps
-                 FROM reborn_recipes
-                 WHERE tenant_id  = $1
-                   AND user_id    = $2
-                   AND agent_id   = $3
-                   AND project_id = $4
-                   AND validation_status = 'pending'
-                   AND (queue_code = 'q1_auto' OR queue_code IS NULL)
-                 ORDER BY created_at ASC
-                 LIMIT 500",
-                &[
-                    &self.tenant_id.as_str(),
-                    &user_id,
-                    &self.agent_id.as_str(),
-                    &project_id,
-                ],
-            )
-            .await
-            .map_err(|e| {
-                brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-            })?;
-
-        let mut processed: u32 = 0;
-
-        for row in &rows {
-            let id: uuid::Uuid = row.get(0);
-            let name: String = row.get(1);
-            let description: String = row.get(2);
-            let class_code_raw: i16 = row.get(3);
-            let steps_json: serde_json::Value = row.get(4);
-            let class_code = class_code_raw.max(0) as u16;
-
-            // Build a generic payload from name + description + steps content.
-            let steps_str = serde_json::to_string(&steps_json).unwrap_or_default();
-            let content_combined = format!("{description}\n{steps_str}");
-            let component = ComponentPayload::Generic(GenericComponent {
-                name: &name,
-                description: &description,
-                content: &content_combined,
-                extra: None,
-            });
-
-            let result = ComponentValidator::validate_by_class(
-                class_code,
-                component,
-                &ValidationConfig::default(),
-                &available_tools,
-                &[],
-            );
-
-            let (new_status, new_queue_code, errors) = if result.errors.is_empty() {
-                ("auto_passed", "q2_manual", vec![])
-            } else {
-                ("auto_failed", "q1_auto", result.errors)
-            };
-
-            // ── 3. Write result back ──────────────────────────────────────
-            let update_result = client
-                .execute(
-                    "UPDATE reborn_recipes
-                     SET validation_status = $1,
-                         queue_code        = $2,
-                         validation_errors = $3,
-                         updated_at        = NOW()
-                     WHERE id         = $4
-                       AND tenant_id  = $5
-                       AND user_id    = $6
-                       AND agent_id   = $7
-                       AND project_id = $8
-                       AND validation_status = 'pending'",
-                    &[
-                        &new_status,
-                        &new_queue_code,
-                        &errors,
-                        &id,
-                        &self.tenant_id.as_str(),
-                        &user_id,
-                        &self.agent_id.as_str(),
-                        &project_id,
-                    ],
-                )
-                .await;
-
-            match update_result {
-                Ok(n) if n > 0 => {
-                    processed += 1;
-                    debug!(
-                        recipe_id = %id,
-                        class_code,
-                        new_status,
-                        "q1_auto_validate: processed component"
-                    );
-                }
-                Ok(_) => {
-                    // Row was updated concurrently — skip silently.
-                    debug!(recipe_id = %id, "q1_auto_validate: row already updated, skipping");
-                }
-                Err(e) => {
-                    debug!(
-                        recipe_id = %id,
-                        error = %e,
-                        "q1_auto_validate: DB update failed, skipping row"
-                    );
-                }
-            }
-        }
-
-        debug!(
-            processed,
-            user_id, project_id, "q1_auto_validate: sweep complete"
-        );
-        Ok(processed)
-    }
-}
-
-/// Derive a queue_code string from new_status + review_attempts.
-#[cfg(feature = "postgres")]
-fn derive_queue_code(new_status: &str, review_attempts: i16) -> String {
-    match new_status {
-        "pending" | "auto_failed" => "q1_auto".to_string(),
-        "auto_passed" | "review_requested" | "upgrade_queued" | "validated" => {
-            "q2_manual".to_string()
-        }
-        "rejected" if review_attempts < 3 => "q3_revision".to_string(),
-        "rejected" => "q4_rejection".to_string(),
-        "garbage" => "garbage".to_string(),
-        _ => "q2_manual".to_string(),
-    }
 }
 
 #[cfg(test)]
@@ -1762,21 +1586,24 @@ mod tests {
     use chrono::Utc;
 
     /// Phase A p7: `RECIPE_SELECT` must end with the three v3 authoring
-    /// columns at indices 31/32/33, matching `decode_recipe_row`'s
-    /// `row.get(31..=33)`. This catches the most error-prone p7 hazard — a
+    /// columns at indices 26/27/28, matching `decode_recipe_row`'s
+    /// `row.get(26..=28)`. This catches the most error-prone p7 hazard — a
     /// column inserted in the middle of the SELECT would silently shift every
     /// downstream `row.get(N)` index, and a missing new column would orphan
     /// the round-trip. tokio-postgres checks these at runtime (not compile
     /// time), so this static assertion is the narrowest regression guard.
+    ///
+    /// Phase N.4: dropped 5 legacy columns (validation_errors, review_feedback,
+    /// review_attempts, rejected_at, queue_code) → 34 - 5 = 29 columns.
     #[test]
     fn recipe_select_round_trips_v3_authoring_columns() {
         let cols: Vec<&str> = RECIPE_SELECT.trim().split(',').map(|c| c.trim()).collect();
-        assert_eq!(cols.len(), 34, "RECIPE_SELECT must select 34 columns");
+        assert_eq!(cols.len(), 29, "RECIPE_SELECT must select 29 columns (34 - 5 legacy)");
         assert_eq!(cols[0], "id");
-        assert_eq!(cols[30], "updated_at");
-        assert_eq!(cols[31], "step_descriptions");
-        assert_eq!(cols[32], "variants");
-        assert_eq!(cols[33], "dependency_registry");
+        assert_eq!(cols[25], "updated_at");
+        assert_eq!(cols[26], "step_descriptions");
+        assert_eq!(cols[27], "variants");
+        assert_eq!(cols[28], "dependency_registry");
     }
 
     /// Build a `PgRecipe` that is Tier-0 eligible by default: validated, no
@@ -1806,11 +1633,6 @@ mod tests {
             failure_count: 0,
             wilson_lower: 0.80,
             validation_status: "validated".to_string(),
-            validation_errors: vec![],
-            review_feedback: None,
-            review_attempts: 0,
-            rejected_at: None,
-            queue_code: None,
             source: "test".to_string(),
             content_hash: None,
             created_at: Utc::now(),

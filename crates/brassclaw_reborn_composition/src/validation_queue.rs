@@ -84,11 +84,6 @@ pub enum ValidationQueueError {
     )]
     ComponentMissing { component_id: Uuid },
     #[error(
-        "upgrade-copy graduation for component {component_id} lands in Phase N \
-         (proposed_payload is set); refusing to silently drop the upgrade"
-    )]
-    UpgradeGraduationNotImplemented { component_id: Uuid },
-    #[error(
         "queue row for component {component_id} is not in state 2 (Q1_passed); current state {state}"
     )]
     NotQ1Passed { component_id: Uuid, state: i16 },
@@ -391,16 +386,23 @@ impl ValidationQueueStore {
         Ok(())
     }
 
-    /// Q2 approval = graduation: flip the component row to
-    /// `validation_status = 'validated'` and delete the queue row, in ONE
-    /// transaction (FIND-P9-05).
+    /// Q2 approval = graduation.
     ///
-    /// Phase A.5 implements the **new-component** graduation path only. A row
-    /// carrying a non-null `proposed_payload` (an upgrade copy) is refused with
-    /// [`ValidationQueueError::UpgradeGraduationNotImplemented`] — the upgrade
-    /// *apply* logic lands in Phase N (§0.23.9), and silently graduating an
-    /// upgrade row here would drop the edited payload (Q1 answer — defer per
-    /// plan).
+    /// **New-component path** (`proposed_payload IS NULL`): flip the component
+    /// row to `validation_status = 'validated'` and delete the queue row in
+    /// ONE transaction (FIND-P9-05).
+    ///
+    /// **Upgrade-copy path** (`proposed_payload IS NOT NULL`, §0.23.5 / Phase N):
+    /// the live component row stays `'validated'` and keeps serving retrieval
+    /// throughout. On approval, the `proposed_payload` JSONB is merged into
+    /// the live row's writable columns (`name`, `description`, plus the
+    /// class-specific primary content column) while leaving `validation_status =
+    /// 'validated'`. The queue row is then deleted (graduation trigger fires).
+    /// The live row is NEVER taken out of retrieval during the upgrade window —
+    /// only its content changes at approval.
+    ///
+    /// On rejection: the queue copy moves to state 3/4 (via [`Self::reject`]);
+    /// the live row is untouched.
     ///
     /// Returns `Ok(component_id)` on success.
     pub async fn approve(
@@ -440,9 +442,6 @@ impl ValidationQueueStore {
             });
         }
         let proposed_payload: Option<Value> = row.get(1);
-        if proposed_payload.is_some() {
-            return Err(ValidationQueueError::UpgradeGraduationNotImplemented { component_id });
-        }
         let class_code: i16 = row.get(2);
 
         // (1) Resolve the target table BEFORE BEGIN — no wasted BEGIN on an
@@ -456,20 +455,27 @@ impl ValidationQueueStore {
         )?;
 
         // (2) BEGIN — UPDATE the component, then DELETE the queue row.
-        // Ordering: UPDATE before DELETE so the graduation trigger (Phase N)
-        // fires only after the component is already validated — no window where
-        // the queue row is gone but the component is still `pending`.
+        // Ordering: UPDATE before DELETE so the graduation trigger (V077)
+        // fires only after the component is already updated — no window where
+        // the queue row is gone but the component change is not yet committed.
         let tx = client.transaction().await.map_err(map_pg)?;
 
-        let update_sql = format!(
-            "UPDATE {table}
-             SET validation_status = 'validated', updated_at = now()
-             WHERE id = $1
-               AND tenant_id = $2 AND user_id = $3
-               AND agent_id = $4 AND project_id = $5"
-        );
-        let updated = tx
-            .execute(
+        let updated = if let Some(payload) = proposed_payload {
+            // Upgrade-copy graduation (§0.23.5 / Phase N): apply proposed
+            // payload to the live validated row. Only writable content columns
+            // are updated; `validation_status` stays 'validated'. Unknown
+            // payload keys are silently ignored (forward-compat).
+            apply_upgrade_payload(&tx, table, class_code, component_id, scope, &payload).await?
+        } else {
+            // New-component graduation: flip pending → validated.
+            let update_sql = format!(
+                "UPDATE {table}
+                 SET validation_status = 'validated', updated_at = now()
+                 WHERE id = $1
+                   AND tenant_id = $2 AND user_id = $3
+                   AND agent_id = $4 AND project_id = $5"
+            );
+            tx.execute(
                 update_sql.as_str(),
                 &[
                     &component_id,
@@ -480,7 +486,9 @@ impl ValidationQueueStore {
                 ],
             )
             .await
-            .map_err(map_pg)?;
+            .map_err(map_pg)?
+        };
+
         if updated == 0 {
             // Component disappeared — ROLLBACK, queue row preserved (FIND-P9-05).
             tx.rollback().await.map_err(map_pg)?;
@@ -796,6 +804,144 @@ pub(crate) fn resolve_component_table(class_code: i32) -> Option<&'static str> {
     }
 }
 
+/// Resolve the primary writable content column name for a component class.
+///
+/// Returns `(column_name, is_jsonb)` — `is_jsonb = true` means the column is
+/// JSONB and the payload value must be cast with `::jsonb` in the UPDATE.
+/// Used by [`apply_upgrade_payload`] to update the live row on upgrade-copy
+/// graduation (§0.23.5 / Phase N).
+///
+/// Column map verified against migration DDL:
+/// - V027 skills:                 `body TEXT`
+/// - V029 actions:                `steps JSONB`
+/// - V032 extensions_unified:     `payload JSONB`
+/// - V033 recipes:                `steps JSONB`
+/// - V036 specs:                  `content TEXT`
+/// - V037 tool_skills:            `content TEXT`
+/// - V038–V043 plans/summaries/docus/lessons/issues/notes: `content TEXT`
+/// - V052 python_code:            `content TEXT`
+/// - V053 extension_catalogues:   `overview_doc TEXT`
+/// - V030 tools (class 0):        no single body column → `None`
+fn resolve_content_column(class_code: i16) -> Option<(&'static str, bool)> {
+    match class_code {
+        // Skills (1–3, 10, 50): body TEXT
+        1..=3 | 10 | 50 => Some(("body", false)),
+        // Extensions unified (4–9): payload JSONB
+        4..=9 => Some(("payload", true)),
+        // ToolSkills (13) + doc-type classes (12, 14–20) + PythonCode (22): content TEXT
+        12..=15 | 17..=20 | 22 => Some(("content", false)),
+        // Actions (16): steps JSONB
+        16 => Some(("steps", true)),
+        // Recipes (21): steps JSONB
+        21 => Some(("steps", true)),
+        // ExtensionCatalogues (23): overview_doc TEXT
+        23 => Some(("overview_doc", false)),
+        // Tools (0): no single content column; name+description suffice.
+        _ => None,
+    }
+}
+
+/// Apply an upgrade `proposed_payload` to the live component row inside a
+/// transaction. Updates `name`, `description`, and the primary content column
+/// (class-specific — see [`resolve_content_column`]) from the JSONB payload.
+/// Leaves `validation_status = 'validated'` and all other columns untouched.
+/// Missing payload keys are ignored (forward-compat).
+///
+/// Returns the row count (0 = component not found, 1 = updated).
+async fn apply_upgrade_payload(
+    tx: &tokio_postgres::Transaction<'_>,
+    table: &str,
+    class_code: i16,
+    component_id: uuid::Uuid,
+    scope: &ComponentScope,
+    payload: &Value,
+) -> Result<u64, ValidationQueueError> {
+    let name: Option<String> = payload.get("name").and_then(|v| v.as_str()).map(str::to_owned);
+    let description: Option<String> = payload
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+    let content_col = resolve_content_column(class_code);
+
+    // Resolve the primary content value from the payload.
+    // Callers encode the content under the well-known key "content" regardless of
+    // which DB column it maps to (the class→column dispatch is done here).
+    let content_info: Option<((&'static str, bool), String)> =
+        if let Some((col, is_jsonb)) = content_col {
+            payload.get("content").map(|v| {
+                let s = if is_jsonb {
+                    serde_json::to_string(v).unwrap_or_default()
+                } else {
+                    v.as_str().unwrap_or_default().to_owned()
+                };
+                ((col, is_jsonb), s)
+            })
+        } else {
+            None
+        };
+
+    // Build a dynamic SET clause from the present payload fields.
+    // Only fields present in the payload are overwritten; others remain unchanged.
+    let has_name = name.is_some();
+    let has_description = description.is_some();
+    let has_content = content_info.is_some();
+
+    let mut set_parts: Vec<String> = vec!["updated_at = now()".to_string()];
+    let mut next_param: usize = 6;
+
+    if has_name {
+        set_parts.push(format!("name = ${next_param}"));
+        next_param += 1;
+    }
+    if has_description {
+        set_parts.push(format!("description = ${next_param}"));
+        next_param += 1;
+    }
+    if let Some(((col, is_jsonb), _)) = &content_info {
+        if *is_jsonb {
+            set_parts.push(format!("{col} = ${next_param}::jsonb"));
+        } else {
+            set_parts.push(format!("{col} = ${next_param}"));
+        }
+        let _ = next_param; // last param; suppress unused warning
+    }
+
+    let set_clause = set_parts.join(", ");
+    let update_sql = format!(
+        "UPDATE {table}
+         SET {set_clause}
+         WHERE id = $1
+           AND tenant_id = $2 AND user_id = $3
+           AND agent_id = $4 AND project_id = $5"
+    );
+
+    // Consume Options into owned Strings before building the params slice.
+    let name_str: String = name.unwrap_or_default();
+    let description_str: String = description.unwrap_or_default();
+
+    let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![
+        &component_id,
+        &scope.tenant_id,
+        &scope.user_id,
+        &scope.agent_id,
+        &scope.project_id,
+    ];
+    // Append extras in the same order the SET placeholders were pushed.
+    if has_name {
+        params.push(&name_str);
+    }
+    if has_description {
+        params.push(&description_str);
+    }
+    if has_content && let Some((_, ref content_val)) = content_info {
+        params.push(content_val);
+    }
+
+    tx.execute(update_sql.as_str(), &params)
+        .await
+        .map_err(map_pg)
+}
+
 /// The post-reject state after `counter` has been incremented: `4` (deletion
 /// candidate) when `counter >= threshold`, else `3` (rejected) — §0.18.
 pub(crate) fn next_reject_state(counter_after_increment: i32, threshold: u8) -> i16 {
@@ -930,11 +1076,55 @@ mod tests {
             sql.contains("UNIQUE (tenant_id, user_id, agent_id, project_id, component_id)"),
             "scope-first UNIQUE missing"
         );
-        // No data migration / DROPs (those are V059 / Phase N).
+        // No data migration / DROPs (those are V077 / Phase N).
         assert!(!sql.contains("DROP COLUMN"), "V051 must not drop columns");
         assert!(
             !sql.contains("INSERT INTO reborn_validation_queue"),
             "V051 must not populate rows"
+        );
+    }
+
+    #[test]
+    fn v077_migration_populates_queue_and_drops_legacy_columns() {
+        let sql = include_str!("../../brassclaw_pg/migrations/V077__reborn_validation_queue_populate.sql");
+        // Must NOT re-create the queue table (that's V051).
+        assert!(
+            !sql.contains("CREATE TABLE"),
+            "V077 must not CREATE TABLE — table is in V051"
+        );
+        // Step 2: populate arms present for all 15 component tables.
+        assert!(sql.contains("FROM reborn_recipes"), "V077 must populate from reborn_recipes");
+        assert!(sql.contains("FROM reborn_skills"), "V077 must populate from reborn_skills");
+        assert!(sql.contains("FROM reborn_tools"), "V077 must populate from reborn_tools");
+        assert!(sql.contains("FROM reborn_tool_skills"), "V077 must populate from reborn_tool_skills");
+        assert!(sql.contains("FROM reborn_actions"), "V077 must populate from reborn_actions");
+        assert!(sql.contains("FROM reborn_python_code"), "V077 must populate from reborn_python_code");
+        assert!(sql.contains("FROM reborn_extension_catalogues"), "V077 must populate from reborn_extension_catalogues");
+        // ON CONFLICT DO NOTHING — idempotent.
+        assert!(sql.contains("ON CONFLICT") && sql.contains("DO NOTHING"), "V077 populate must be idempotent");
+        // Step 3: last_graduation_at column.
+        assert!(sql.contains("last_graduation_at"), "V077 must add last_graduation_at");
+        assert!(sql.contains("ADD COLUMN IF NOT EXISTS last_graduation_at"), "last_graduation_at must be IF NOT EXISTS");
+        // Step 4: graduation trigger.
+        assert!(
+            sql.contains("reborn_validation_queue_graduation"),
+            "V077 must create graduation trigger function"
+        );
+        assert!(
+            sql.contains("reborn_validation_queue_on_delete"),
+            "V077 must create the AFTER DELETE trigger"
+        );
+        // Step 5: the only real DROP is on reborn_recipes (FIND-N-03).
+        assert!(sql.contains("ALTER TABLE reborn_recipes"), "V077 must drop columns from reborn_recipes");
+        assert!(sql.contains("DROP COLUMN IF EXISTS queue_code"), "V077 must drop queue_code");
+        assert!(sql.contains("DROP COLUMN IF EXISTS review_attempts"), "V077 must drop review_attempts");
+        assert!(sql.contains("DROP COLUMN IF EXISTS review_feedback"), "V077 must drop review_feedback");
+        assert!(sql.contains("DROP COLUMN IF EXISTS rejected_at"), "V077 must drop rejected_at");
+        assert!(sql.contains("DROP COLUMN IF EXISTS validation_errors"), "V077 must drop validation_errors");
+        // validation_status is NOT dropped.
+        assert!(
+            !sql.contains("DROP COLUMN IF EXISTS validation_status"),
+            "V077 must NOT drop validation_status"
         );
     }
 
@@ -949,9 +1139,6 @@ mod tests {
 
     mod pg {
         use super::*;
-        use brassclaw_engine::memory::component_validator::{
-            ComponentPayload, GenericComponent, ValidationConfig,
-        };
         use brassclaw_engine::memory::retrieval_source::ComponentScope;
         use brassclaw_pg::PgPool;
 
@@ -1273,119 +1460,117 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn approve_refuses_upgrade_copy_until_phase_n() {
+        async fn approve_upgrade_copy_applies_payload_phase_n() {
+            // Phase N: upgrade-copy graduation applies proposed_payload to the
+            // live component row and removes the queue row (§0.23.5).
             let Some(rig) = pg_rig_or_skip().await else {
                 return;
             };
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
-            let cid = Uuid::new_v4();
-            let payload = serde_json::json!({"content": "edited version"});
+            let client = rig.pool.get().await.expect("pool");
+
+            // Insert a validated reborn_notes (class 20) row as the "live" row.
+            let note_id = Uuid::new_v4();
+            let note_name = format!("note-{}", Uuid::new_v4());
+            client
+                .execute(
+                    "INSERT INTO reborn_notes
+                         (id, tenant_id, user_id, agent_id, project_id, name, validation_status)
+                     VALUES ($1,$2,$3,$4,$5,$6,'validated')",
+                    &[
+                        &note_id,
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                        &note_name,
+                    ],
+                )
+                .await
+                .expect("insert live note");
+
+            // Submit an upgrade copy: proposed_payload carries the edited content.
+            // The well-known key "content" is used by callers regardless of which
+            // DB column the class maps to (class 20 notes → `content TEXT`).
+            let payload = serde_json::json!({"content": "upgraded content text"});
             store
-                .submit(&scope, cid, 20, Some(payload))
+                .submit(&scope, note_id, 20, Some(payload))
                 .await
                 .expect("submit upgrade copy");
-            store.gate1_pass(&scope, cid, &[]).await.unwrap();
-            let err = store
-                .approve(&scope, cid)
-                .await
-                .expect_err("upgrade graduation not implemented in Phase A.5");
+            store.gate1_pass(&scope, note_id, &[]).await.unwrap();
+
+            // Approve — should succeed and apply the upgrade (Phase N).
+            let result = store.approve(&scope, note_id).await;
+            assert!(result.is_ok(), "upgrade graduation must succeed: {result:?}");
+
+            // Queue row deleted.
+            let queue_rows = store.list(&scope, None).await.unwrap();
             assert!(
-                matches!(
-                    err,
-                    ValidationQueueError::UpgradeGraduationNotImplemented { .. }
-                ),
-                "wrong error: {err:?}"
+                !queue_rows.iter().any(|r| r.component_id == note_id),
+                "queue row must be deleted after graduation"
             );
-            // Queue row preserved at state 2 with the payload intact.
+
+            // Live row still validated; content updated.
+            let row = client
+                .query_one(
+                    "SELECT validation_status, content FROM reborn_notes WHERE id = $1",
+                    &[&note_id],
+                )
+                .await
+                .expect("live note still exists");
+            let vs: String = row.get(0);
+            let content: String = row.get(1);
+            assert_eq!(vs, "validated", "validation_status must stay 'validated'");
+            assert_eq!(content, "upgraded content text", "content must be updated from payload");
+        }
+
+        /// Phase N: run_q1_validation defers when no validation Recipe is seeded.
+        ///
+        /// In a test environment `reborn_recipes` has no `05:validator`-tagged rows,
+        /// so every Q1 attempt returns `Q1Outcome::Deferred` and leaves the queue
+        /// row at state 1 (Q1_pending) — the graceful-defer path documented in §0.23.9.
+        #[tokio::test]
+        async fn run_q1_validation_defers_when_no_recipe_seeded() {
+            use crate::q1_orchestrator::{Q1Outcome, run_q1_validation};
+            let Some(rig) = pg_rig_or_skip().await else {
+                return;
+            };
+            let scope = test_scope();
+            let store = ValidationQueueStore::new(rig.pool.clone());
+
+            let cid = Uuid::new_v4();
+            store.submit(&scope, cid, 20, None).await.unwrap();
+
+            let outcome = run_q1_validation(&rig.pool, &scope, cid, 20, &store)
+                .await
+                .expect("run q1");
+
+            // No validator Recipe in the test DB → Deferred, not Passed or Failed.
+            assert!(
+                matches!(outcome, Q1Outcome::Deferred { .. }),
+                "expected Deferred when no Recipe is seeded; got {outcome:?}"
+            );
+
+            // Queue row must still be at state 1 (unchanged).
             let row = store
-                .list(&scope, Some(2))
+                .list(&scope, Some(STATE_Q1_PENDING as u8))
                 .await
                 .unwrap()
                 .into_iter()
                 .find(|r| r.component_id == cid)
-                .expect("queue row preserved");
-            assert_eq!(row.state, STATE_Q1_PASSED);
-            assert!(
-                row.proposed_payload.is_some(),
-                "upgrade payload must survive"
-            );
-        }
-
-        #[tokio::test]
-        async fn run_q1_validation_valid_passes_and_invalid_fails_queue() {
-            use crate::q1_orchestrator::run_q1_validation;
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
-            let scope = test_scope();
-            let store = ValidationQueueStore::new(rig.pool.clone());
-
-            // Valid payload → gate1_pass (state 1 → 2, errors empty).
-            let good = Uuid::new_v4();
-            store.submit(&scope, good, 20, None).await.unwrap();
-            let outcome = run_q1_validation(
-                &rig.pool,
-                &scope,
-                good,
-                20,
-                ComponentPayload::Generic(GenericComponent {
-                    name: "good-note",
-                    description: "d",
-                    content: "c",
-                    extra: None,
-                }),
-                &ValidationConfig::default(),
-                &store,
-            )
-            .await
-            .expect("run q1");
-            assert!(outcome.passed, "valid payload should pass: {outcome:?}");
-            let row = store
-                .list(&scope, Some(2))
-                .await
-                .unwrap()
-                .into_iter()
-                .find(|r| r.component_id == good)
-                .expect("passed row");
-            assert_eq!(row.state, STATE_Q1_PASSED);
-            assert!(row.validation_errors.is_empty());
-
-            // Invalid payload (empty name) → gate1_fail (stays 1, errors recorded).
-            let bad = Uuid::new_v4();
-            store.submit(&scope, bad, 20, None).await.unwrap();
-            let outcome = run_q1_validation(
-                &rig.pool,
-                &scope,
-                bad,
-                20,
-                ComponentPayload::Generic(GenericComponent {
-                    name: "",
-                    description: "d",
-                    content: "c",
-                    extra: None,
-                }),
-                &ValidationConfig::default(),
-                &store,
-            )
-            .await
-            .expect("run q1");
-            assert!(!outcome.passed, "invalid payload should fail: {outcome:?}");
-            assert!(!outcome.errors.is_empty());
-            let row = store
-                .list(&scope, Some(1))
-                .await
-                .unwrap()
-                .into_iter()
-                .find(|r| r.component_id == bad)
-                .expect("failed row");
+                .expect("queue row at state 1");
             assert_eq!(row.state, STATE_Q1_PENDING);
-            assert!(!row.validation_errors.is_empty());
         }
 
+        /// submit → gate1_pass (pub(crate)) → approve: full graduation round-trip.
+        ///
+        /// Since orchestrated Q1 defers until validator Recipes are seeded, the
+        /// round-trip test drives `gate1_pass` directly (the only path that writes
+        /// state 2) so the Q2 approval path can be verified independently of Recipe
+        /// availability.
         #[tokio::test]
-        async fn integration_submit_q1_approve_graduates() {
-            use crate::q1_orchestrator::run_q1_validation;
+        async fn integration_submit_gate1pass_approve_graduates() {
             let Some(rig) = pg_rig_or_skip().await else {
                 return;
             };
@@ -1394,23 +1579,11 @@ mod tests {
             let cid = insert_pending_note(&rig.pool, &scope).await;
 
             store.submit(&scope, cid, 20, None).await.expect("submit");
-            let outcome = run_q1_validation(
-                &rig.pool,
-                &scope,
-                cid,
-                20,
-                ComponentPayload::Generic(GenericComponent {
-                    name: "roundtrip",
-                    description: "d",
-                    content: "c",
-                    extra: None,
-                }),
-                &ValidationConfig::default(),
-                &store,
-            )
-            .await
-            .expect("q1");
-            assert!(outcome.passed);
+            // Advance to state 2 via pub(crate) gate1_pass (simulates Q1 pass).
+            store
+                .gate1_pass(&scope, cid, &[])
+                .await
+                .expect("gate1_pass");
             store.approve(&scope, cid).await.expect("approve");
             assert!(
                 store

@@ -4,11 +4,12 @@
 //! - [`SkillTracker`] — confidence tracking for auto-extracted skills
 //! - [`RecipeMatcher`] — Recipe / ToolSkill match for tiered execution
 //! - [`RecipeValidator`] — Step-1 structural validation
-//! - [`ComponentValidator`] — Phase 3 generalized class-dispatch validator
 //! - [`SimilarityChecker`] — pre-validation deduplication gate
 //! - [`intent_system`] — unified intent resolution (§3.12, V028)
+//!
+//! `ComponentValidator` was retired in Phase N (§0.23.2): Q1 is now orchestrated
+//! via `brassclaw_reborn_composition::q1_orchestrator::run_q1_validation`.
 
-pub mod component_validator;
 pub mod composition;
 pub mod instruction_builder;
 pub mod intent_system;
@@ -21,9 +22,6 @@ pub mod skill_tracker;
 pub mod store;
 pub mod template_extractor;
 
-pub use component_validator::{
-    ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig,
-};
 pub use composition::{
     ComponentResolver, ComposedProgram, ComposedStep, ResolvedComponent, RustDirective, SkillRef,
 };

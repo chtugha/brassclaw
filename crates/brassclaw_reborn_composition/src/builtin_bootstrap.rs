@@ -10306,9 +10306,6 @@ async fn seed_host_group(
             recipe_host_assemble_prior_knowledge,
             crate::pg_recipe_store::RecipeValidationStatusUpdate {
                 validation_status: "validated",
-                validation_errors: vec![],
-                review_feedback: None,
-                queue_code: None,
             },
         )
         .await

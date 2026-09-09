@@ -191,13 +191,33 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         // (read_file, write_file, shell, …). Distinct from the host.* stack
         // above. Idempotent; safe on every boot.
         if let Err(e) =
-            crate::builtin_bootstrap::seed_builtin_components(pool, &host_tenant_id).await
+            crate::builtin_bootstrap::seed_builtin_components(pool.clone(), &host_tenant_id).await
         {
             tracing::warn!(
                 error = %e,
                 "builtin bootstrap component seeding failed; first-party capability \
                  components may be missing until the next restart"
             );
+        }
+
+        // Phase N — N.5 boot integrity check.
+        // Finds non-validated components with no queue entry (crash-recovery /
+        // manual imports / restored backups) and re-submits them to Q1.
+        match crate::boot_integrity::run_boot_integrity_check(&pool).await {
+            Ok(0) => {} // steady state — nothing to recover
+            Ok(n) => {
+                tracing::warn!(
+                    recovered = n,
+                    "boot integrity: recovered {n} component(s) missing from validation queue"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "boot integrity check failed; some pending components may lack queue entries \
+                     until the next restart"
+                );
+            }
         }
     }
 

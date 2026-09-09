@@ -2640,10 +2640,20 @@ pub async fn build_reborn_runtime(
         );
         #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
         let (component_port, kohai_port): MontyPortPair = {
+            // Build PgBasicPromptStore once and share it between PgCompositionPort
+            // (for mark_stale on Q2 graduation — §K.1.4 / Phase N) and PgKohaiPort.
+            let shared_basic_prompt = services.pg_pool.as_ref().map(|pool| {
+                Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+                    Arc::clone(pool),
+                    validated_identity.tenant_id.as_str(),
+                    validated_identity.agent_id.as_str(),
+                ))
+            });
             let component_port = services.pg_pool.as_ref().map(|pool| {
                 Arc::new(crate::pg_composition_port::PgCompositionPort::new(
                     Arc::clone(pool),
                     Some(Arc::clone(&thread_store_for_driver)),
+                    shared_basic_prompt.clone(),
                 )) as Arc<dyn brassclaw_engine::executor::ComponentPort>
             });
             let kohai_port = services.pg_pool.as_ref().and_then(|pool| {
@@ -2652,13 +2662,15 @@ pub async fn build_reborn_runtime(
                     validated_identity.tenant_id.as_str(),
                 ))
                     as Arc<dyn brassclaw_interceptor::InterceptorStore>;
-                let basic_prompt = Arc::new(
-                    crate::pg_basic_prompt_store::PgBasicPromptStore::new(
-                        Arc::clone(pool),
-                        validated_identity.tenant_id.as_str(),
-                        validated_identity.agent_id.as_str(),
-                    ),
-                );
+                let basic_prompt = shared_basic_prompt
+                    .clone()
+                    .unwrap_or_else(|| Arc::new(
+                        crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+                            Arc::clone(pool),
+                            validated_identity.tenant_id.as_str(),
+                            validated_identity.agent_id.as_str(),
+                        ),
+                    ));
                 match crate::pg_kohai_port::PgKohaiPort::new(
                     interceptor,
                     basic_prompt,
