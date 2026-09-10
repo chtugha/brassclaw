@@ -10046,9 +10046,13 @@ Phase P.0 path); everything else is v3 artifacts authored as DB rows through Q1+
    leaf skills seeded with `source='system'`, `validation_status='validated'`,
    class 1, `LEAF_SKILL_TAGS`. Body constants `SKILL_FILE_LIST_BODY` through
    `SKILL_DB_MARK_PREFIX_STALE_BODY` added. Clippy clean.
-5. **Domain Orchestrator Skill (classes 1-3):** author `doc-convert-method`
+5. **[DONE]** **Domain Orchestrator Skill (classes 1-3):** author `doc-convert-method`
    (§0.22.4) — the doc-specific overview referencing the leaves by name.
    Through Q1+Q2 — no bypass.
+
+   **Implemented:** `builtin_bootstrap.rs` Pass 15 — class-2 skill `doc-convert-method`
+   seeded with `SKILL_DOC_CONVERT_METHOD_BODY` (pipeline, staleness check, extract-vs-compress
+   rule, conversion invariants). Uses `concat!()` to avoid raw-string quoting issues.
 6. **Recipe (class 21):** author `doc-convert` (variants `by-extract` Tier 0,
    `by-llm-compress` Tier 1) with `step_descriptions` JSONB; steps `include`
    the step-4 leaf UUIDs + the step-5 domain skill + the step-3 `component_db`
