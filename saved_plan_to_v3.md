@@ -9789,7 +9789,11 @@ Q1 infrastructure, `q1_orchestrator.rs` rewrite, `ComponentValidator` retired).
 
 ### Phase P.1 — Migrate on-disk system skills to DB rows through Q1+Q2 (prerequisite for Phase P; audit finding)
 
-**Status:** [ ] Pending
+**Status:** [x] DONE — all workflow skills seeded in `builtin_bootstrap.rs` (Passes 8–14);
+`bundled_skills.rs` deleted; `build.rs` reduced to stub; `SYSTEM_SKILLS_ROOT` disk-load
+removed from `management.rs`. Committed in two commits on main:
+`270da40b` (seed workflow skills passes 8–14) and `665f65ac` (Steps 3–6 cleanup).
+`web-browse` and `portfolio` remain deferred (no `builtin.browser` / `portfolio` Rust Tool).
 
 **Goal:** Remove **both** pre-v3 filesystem-skill mechanisms (validation-bypass
 audit finding 1): on-disk `SKILL.md` system skills become `reborn_skills` DB
@@ -9863,11 +9867,18 @@ They are narrative domain skills describing workflows: `code-review` (diff analy
 (DeFi discovery and rebalancing), `qa-review` (test-coverage analysis), `security-review`
 (OWASP/auth/secrets audit), `web-browse` (Playwright MCP browser interaction).
 Each must be rewritten from scratch to reference v3 tools and recipes (not v1
-`MemoryDocs`/`Missions` concepts). Once all 9 have `validation_status = 'validated'`
-rows in `reborn_skills`, remove `embed_reborn_skills()` and the `println!("cargo:rerun-if-changed=…")`
-for `skills_dir`/`archive_skills_dir` from `build.rs`. Delete
+`MemoryDocs`/`Missions` concepts). `portfolio` has extra non-SKILL.md files
+(widget JS/CSS, 4 Python scripts); the scripts use `import` statements and fail
+Q1 scan — do not seed them in `builtin_bootstrap.rs`; document as "pending
+manual Q1+Q2 via WebUI". The widget files are a v1 UI artifact with no v3 equivalent.
+Once all 9 have `validation_status = 'validated'` rows in `reborn_skills`:
+(1) remove `embed_reborn_skills()` and the `println!("cargo:rerun-if-changed=…")`
+for `skills_dir`/`archive_skills_dir` from `build.rs`; also remove
+`embed_migrated_skills_catalog()` and `MIGRATED_SKILL_NAMES` — `migrated_skills_catalog.json`
+is produced by the build but **never consumed** (`crate::migrated_skills` referenced in the
+comment does not exist); it is dead build output; (2) delete
 `crates/brassclaw_reborn_composition/src/bundled_skills.rs` and its
-`mod bundled_skills` declaration in `lib.rs`. Remove all call sites of
+`mod bundled_skills` declaration in `lib.rs`; (3) remove all call sites of
 `ensure_bundled_reborn_skills_installed()` and `bundled_reborn_skill_summaries()`.
 
 *Step B — `management.rs` `SkillSource::System` removal (active bypass):*
