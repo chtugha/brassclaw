@@ -76,8 +76,16 @@ fn class_label(class_code: u16) -> &'static str {
     match class_code {
         0 => "Tool",
         1 => "Skill",
+        2 => "DomainSkill",
+        3 => "ScaffoldSkill",
+        4 => "RustyExtension",
+        5 => "MontyExtension",
+        6 => "McpServer",
+        7 => "McpClient",
+        8 => "LlmExtension",
         9 => "Extension",
         10 => "Orchestrator",
+        11 => "Component", // reserved; no table
         12 => "Spec",
         13 => "ToolSkill",
         14 => "Plan",
@@ -567,6 +575,18 @@ mod tests {
     #[test]
     fn class_label_23_is_catalogue() {
         assert_eq!(class_label(23), "Catalogue");
+    }
+
+    #[test]
+    fn class_label_previously_missing_arms() {
+        assert_eq!(class_label(2), "DomainSkill");
+        assert_eq!(class_label(3), "ScaffoldSkill");
+        assert_eq!(class_label(4), "RustyExtension");
+        assert_eq!(class_label(5), "MontyExtension");
+        assert_eq!(class_label(6), "McpServer");
+        assert_eq!(class_label(7), "McpClient");
+        assert_eq!(class_label(8), "LlmExtension");
+        assert_eq!(class_label(11), "Component"); // reserved
     }
 
     #[test]
