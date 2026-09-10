@@ -13,9 +13,7 @@ publish = false
 [dependencies]
 async-trait = "0.1"
 futures = "0.3"
-brassclaw_filesystem = { path = "../brassclaw_filesystem" }
 brassclaw_host_api = { path = "../brassclaw_host_api" }
-brassclaw_loop_support = { path = "../brassclaw_loop_support" }
 brassclaw_skills = { path = "../brassclaw_skills" }
 brassclaw_turns = { path = "../brassclaw_turns" }
 thiserror = "2"

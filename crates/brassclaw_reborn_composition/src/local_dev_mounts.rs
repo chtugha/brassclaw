@@ -11,6 +11,7 @@ const HOST_TARGET: &str = "/projects/host";
 const MEMORY_ALIAS: &str = "/memory";
 const MEMORY_TARGET: &str = "/memory";
 
+#[cfg(test)]
 pub(crate) fn workspace_mount_view(
     permissions: MountPermissions,
     host_home_aliases: &[&Path],
@@ -51,22 +52,6 @@ pub(crate) fn ambient_workspace_mount_view(
         )?;
     }
     MountView::new(mounts)
-}
-
-pub(crate) fn skill_context_mount_view() -> Result<MountView, HostApiError> {
-    MountView::new(vec![
-        grant("/skills", "/projects/skills", MountPermissions::read_only())?,
-        grant(
-            "/tenant-shared/skills",
-            "/projects/tenant-shared/skills",
-            MountPermissions::read_only(),
-        )?,
-        grant(
-            "/system/skills",
-            "/projects/system/skills",
-            MountPermissions::read_only(),
-        )?,
-    ])
 }
 
 pub(crate) fn skill_management_mount_view() -> Result<MountView, HostApiError> {

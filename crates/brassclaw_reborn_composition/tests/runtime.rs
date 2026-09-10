@@ -10,8 +10,7 @@ use brassclaw_host_api::runtime_policy::{
 };
 use brassclaw_reborn_composition::{
     HooksActivationConfig, PollSettings, RebornBuildInput, RebornRuntimeError,
-    RebornRuntimeIdentity, RebornRuntimeInput, RebornSkillSourceKind, TurnRunnerSettings,
-    build_reborn_runtime,
+    RebornRuntimeIdentity, RebornRuntimeInput, TurnRunnerSettings, build_reborn_runtime,
 };
 use brassclaw_turns::TurnStatus;
 use tokio_util::sync::CancellationToken;
@@ -156,80 +155,6 @@ async fn send_user_message_with_cancellation_cancels_submitted_run() {
     runtime.shutdown().await.unwrap();
 }
 
-#[tokio::test]
-async fn skill_execution_adapter_prepares_filesystem_bundles_end_to_end() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
-    let _db_guard = rig.lock_db().await;
-    let root = tempfile::tempdir().unwrap();
-    let storage_root = root.path().join("db");
-    std::fs::create_dir_all(storage_root.join("skills/filesystem-review/references")).unwrap();
-    std::fs::write(
-        storage_root.join("skills/filesystem-review/SKILL.md"),
-        skill_md(
-            "filesystem-review",
-            "filesystem-review",
-            "Use filesystem-backed review guidance.",
-        ),
-    )
-    .unwrap();
-    std::fs::write(
-        storage_root.join("skills/filesystem-review/references/policy.md"),
-        "filesystem policy",
-    )
-    .unwrap();
-    let input = RebornRuntimeInput::from_services(
-        rig.build_input("runtime-skill-execution-owner", root.path())
-            .with_runtime_policy(local_dev_runtime_policy()),
-    )
-    .with_identity(RebornRuntimeIdentity {
-        tenant_id: "runtime-skill-execution-tenant".to_string(),
-        agent_id: "runtime-skill-execution-agent".to_string(),
-        source_binding_id: "runtime-skill-execution-source".to_string(),
-        reply_target_binding_id: "runtime-skill-execution-reply".to_string(),
-    })
-    .with_poll_settings(PollSettings {
-        interval: Duration::from_millis(10),
-        max_total: Duration::from_secs(10),
-    });
-
-    let runtime = build_reborn_runtime(input).await.unwrap();
-    let conversation = runtime.new_conversation().await.unwrap();
-    let result = tokio::time::timeout(
-        Duration::from_secs(15),
-        runtime.execute_skill_message(&conversation, "$filesystem-review"),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-
-    assert_eq!(result.plan.activations().len(), 1);
-    assert_eq!(result.plan.activations()[0].name, "filesystem-review");
-    assert_eq!(result.plan.active_bundles().len(), 1);
-    assert_eq!(
-        result.plan.active_bundles()[0].source,
-        RebornSkillSourceKind::User
-    );
-    assert_eq!(
-        result.plan.active_bundles()[0].skill_name,
-        "filesystem-review"
-    );
-
-    let asset = runtime
-        .read_skill_execution_asset(
-            &conversation,
-            &result.plan,
-            &result.plan.activations()[0],
-            "references/policy.md",
-        )
-        .await
-        .unwrap();
-    assert_eq!(asset.into_utf8().unwrap(), "filesystem policy");
-
-    runtime.shutdown().await.unwrap();
-}
-
 /// Drives `build_reborn_runtime` through the third-party hook activation wiring
 /// (runtime.rs: third-party discovery input + projection registry + tenant
 /// threading) with BOTH flags on and a real `/system/extensions` manifest tree
@@ -349,12 +274,6 @@ kind = "before_capability"
 scope = "own_capabilities"
 body = {{ mode = "predicate", spec = {{ type = "deny_capability", reason = "blocked", when = {{ type = "name_equals", name = "{id}.run" }} }} }}
 "#
-    )
-}
-
-fn skill_md(name: &str, keyword: &str, prompt: &str) -> String {
-    format!(
-        "---\nname: {name}\ndescription: {name} description\nactivation:\n  keywords: [\"{keyword}\"]\n---\n\n{prompt}"
     )
 }
 

@@ -12,6 +12,4 @@ pub enum FirstPartySkillsExtensionError {
     },
     #[error("invalid first-party skills extension root path: {0}")]
     InvalidRootPath(String),
-    #[error("invalid first-party skills extension bundle source: {0}")]
-    InvalidBundleSource(String),
 }

@@ -1738,9 +1738,7 @@ name = "brassclaw_first_party_extension_ports"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "brassclaw_filesystem",
  "brassclaw_host_api",
- "brassclaw_loop_support",
  "brassclaw_skills",
  "brassclaw_turns",
  "futures",

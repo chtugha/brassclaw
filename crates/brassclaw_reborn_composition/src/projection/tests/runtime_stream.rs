@@ -598,8 +598,6 @@ async fn webui_event_stream_drains_skill_activation_projection_from_observer() {
         ),
         activations: vec![SkillActivationRequest {
             name: "code-review".to_string(),
-            source: None,
-            bundle_id: None,
             mode: SkillActivationMode::ExplicitMention,
         }],
         feedback: vec!["code-review: force-activated via explicit mention".to_string()],
@@ -661,8 +659,6 @@ async fn webui_event_stream_bounds_skill_activation_projection_from_observer() {
     let mut activations = (0..=PROJECTION_SKILL_ACTIVATION_MAX_ITEMS)
         .map(|index| SkillActivationRequest {
             name: format!("skill-{index}"),
-            source: None,
-            bundle_id: None,
             mode: SkillActivationMode::ExplicitMention,
         })
         .collect::<Vec<_>>();

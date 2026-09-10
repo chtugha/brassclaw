@@ -63,8 +63,7 @@ use crate::input::{RebornRuntimeProcessBinding, RebornStorageInput};
 use crate::lifecycle::{RebornLocalSkillManagementPort, build_local_skill_management_port};
 use crate::local_dev_capability_policy::local_dev_capability_policy;
 use crate::local_dev_mounts::{
-    ambient_workspace_mount_view, memory_mount_view, skill_context_mount_view,
-    skill_management_mount_view, workspace_mount_view,
+    ambient_workspace_mount_view, memory_mount_view, skill_management_mount_view,
 };
 use crate::mcp::hosted_http_mcp_runtime;
 #[cfg(feature = "postgres")]
@@ -105,12 +104,6 @@ pub(crate) type LocalDevRootFilesystem = CompositeRootFilesystem;
 struct LocalDevRootFilesystemBundle {
     filesystem: Arc<LocalDevRootFilesystem>,
 }
-
-type LocalDevWorkspaceFilesystems = (
-    Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
-    Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
-    MountView,
-);
 
 const LOCAL_DEV_DEFAULT_SYSTEM_PROMPT_PATH: &str = "system/prompts/default-system.md";
 const LOCAL_DEV_SECRETS_MASTER_KEY_PATH: &str = ".reborn-local-dev-secrets-master-key";
@@ -337,8 +330,6 @@ pub(crate) struct RebornLocalRuntimeServices {
     pub(crate) host_runtime_http_egress: Option<HostRuntimeHttpEgressPort>,
     pub(crate) skill_mounts: MountView,
     pub(crate) memory_mounts: MountView,
-    pub(crate) skill_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
-    pub(crate) workspace_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
     pub(crate) subagent_goal_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
     /// Tenant-scoped root filesystem used for third-party extension hook
     /// discovery (`/system/extensions/<tenant>`). The runtime derives the
@@ -484,8 +475,6 @@ struct RebornLocalDevStoreGraph {
 struct RebornLocalDevStoreGraphInput {
     filesystem: Arc<LocalDevRootFilesystem>,
     owner_user_id: UserId,
-    skill_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
-    workspace_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
     workspace_mounts: MountView,
     local_dev_storage_root: PathBuf,
     default_system_prompt_path: PathBuf,
@@ -786,12 +775,10 @@ async fn build_local_dev(
         build_local_dev_root_filesystem(&root, &workspace_root, host_home_root.as_ref()).await?;
     let filesystem = filesystem_bundle.filesystem;
     let trigger_repository = local_dev_trigger_repository();
-    let (skill_filesystem, workspace_filesystem, runtime_workspace_mounts) =
-        build_workspace_filesystems(
-            Arc::clone(&filesystem),
-            &workspace_root,
-            host_home_root.as_ref(),
-        )?;
+    let runtime_workspace_mounts = build_workspace_mounts(
+        &workspace_root,
+        host_home_root.as_ref(),
+    )?;
     let http_body_filesystem = Arc::new(ScopedFilesystem::with_fixed_view(
         Arc::clone(&filesystem),
         runtime_workspace_mounts.clone(),
@@ -810,8 +797,6 @@ async fn build_local_dev(
     let mut store_graph = build_local_dev_store_graph(RebornLocalDevStoreGraphInput {
         filesystem: Arc::clone(&filesystem),
         owner_user_id,
-        skill_filesystem,
-        workspace_filesystem,
         workspace_mounts: runtime_workspace_mounts,
         local_dev_storage_root: root.clone(),
         default_system_prompt_path,
@@ -1093,8 +1078,6 @@ async fn build_local_dev_store_graph(
     let RebornLocalDevStoreGraphInput {
         filesystem,
         owner_user_id,
-        skill_filesystem,
-        workspace_filesystem,
         workspace_mounts,
         local_dev_storage_root,
         default_system_prompt_path,
@@ -1155,8 +1138,6 @@ async fn build_local_dev_store_graph(
         host_runtime_http_egress: None,
         skill_mounts,
         memory_mounts,
-        skill_filesystem,
-        workspace_filesystem,
         subagent_goal_filesystem,
         extension_filesystem: Arc::clone(&filesystem),
         workspace_mounts,
@@ -1615,15 +1596,10 @@ impl LocalDevHostHomeRoot {
 /// ambient coding-tool view: it grants raw workspace and host-home aliases so
 /// real local paths resolve through the same virtual roots as `/workspace` and
 /// `/host`.
-fn build_workspace_filesystems(
-    filesystem: Arc<LocalDevRootFilesystem>,
+fn build_workspace_mounts(
     workspace_root: &Path,
     host_home_root: Option<&LocalDevHostHomeRoot>,
-) -> Result<LocalDevWorkspaceFilesystems, RebornBuildError> {
-    let read_only_workspace_mounts = workspace_mount_view(MountPermissions::read_only(), &[])
-        .map_err(|error| RebornBuildError::InvalidConfig {
-            reason: error.to_string(),
-        })?;
+) -> Result<MountView, RebornBuildError> {
     let host_home_aliases = host_home_root
         .map(|root| root.aliases())
         .unwrap_or_default();
@@ -1632,29 +1608,14 @@ fn build_workspace_filesystems(
     } else {
         Vec::new()
     };
-    let runtime_workspace_mounts = ambient_workspace_mount_view(
+    ambient_workspace_mount_view(
         MountPermissions::read_write(),
         &workspace_aliases,
         &host_home_aliases,
     )
     .map_err(|error| RebornBuildError::InvalidConfig {
         reason: error.to_string(),
-    })?;
-    let skill_filesystem = Arc::new(ScopedFilesystem::with_fixed_view(
-        Arc::clone(&filesystem),
-        skill_context_mount_view().map_err(|error| RebornBuildError::InvalidConfig {
-            reason: error.to_string(),
-        })?,
-    ));
-    let workspace_filesystem = Arc::new(ScopedFilesystem::with_fixed_view(
-        filesystem,
-        read_only_workspace_mounts,
-    ));
-    Ok((
-        skill_filesystem,
-        workspace_filesystem,
-        runtime_workspace_mounts,
-    ))
+    })
 }
 
 fn canonicalize_local_dev_existing_dir(
@@ -2185,11 +2146,10 @@ mod tests {
     };
     use brassclaw_host_api::{
         CapabilityGrant, CapabilityGrantId, CapabilityId, CapabilitySet, EffectKind,
-        ExecutionContext, ExtensionId, GrantConstraints, InvocationId, MountAlias, MountGrant,
-        MountPermissions, NetworkPolicy, NetworkScheme, NetworkTargetPattern, Principal,
-        ResourceEstimate, ResourceScope, RuntimeCredentialAccountProviderId,
-        RuntimeCredentialRequirementSource, RuntimeKind, ScopedPath, SecretHandle, TenantId,
-        TrustClass, UserId, VirtualPath,
+        ExecutionContext, ExtensionId, GrantConstraints, MountAlias, MountGrant, MountPermissions,
+        NetworkPolicy, NetworkScheme, NetworkTargetPattern, Principal, ResourceEstimate,
+        RuntimeCredentialAccountProviderId, RuntimeCredentialRequirementSource, RuntimeKind,
+        SecretHandle, TenantId, TrustClass, UserId, VirtualPath,
     };
     use brassclaw_host_runtime::{
         MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID,
@@ -2327,8 +2287,6 @@ mod tests {
             host_runtime_http_egress: base_runtime.host_runtime_http_egress.clone(),
             skill_mounts: base_runtime.skill_mounts.clone(),
             memory_mounts: base_runtime.memory_mounts.clone(),
-            skill_filesystem: Arc::clone(&base_runtime.skill_filesystem),
-            workspace_filesystem: Arc::clone(&base_runtime.workspace_filesystem),
             subagent_goal_filesystem: Arc::new(ScopedFilesystem::with_fixed_view(
                 Arc::new(failing_root),
                 MountView::new(vec![MountGrant::new(
@@ -2785,52 +2743,6 @@ mod tests {
         let services = attach_hosted_mcp_runtime(services).expect("attach is optional");
 
         assert!(services.product_auth_provider_runtime_ports().is_none());
-    }
-
-    #[tokio::test]
-    async fn local_dev_setup_marker_workspace_filesystem_is_read_only() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let storage_root = dir.path().join("local-dev");
-        let marker_path = storage_root.join("workspace/markers/setup.done");
-        std::fs::create_dir_all(marker_path.parent().expect("marker parent"))
-            .expect("marker directory");
-        std::fs::write(&marker_path, "done").expect("marker file");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-marker-workspace-owner",
-            storage_root,
-        ))
-        .await
-        .expect("local-dev services build");
-        let local_runtime = services
-            .local_runtime
-            .as_ref()
-            .expect("local-dev runtime substrate");
-        let scope = ResourceScope::local_default(
-            UserId::new("local-dev-marker-user").expect("valid user"),
-            InvocationId::new(),
-        )
-        .expect("valid resource scope");
-
-        let stat = local_runtime
-            .workspace_filesystem
-            .stat(
-                &scope,
-                &ScopedPath::new("/workspace/markers/setup.done").expect("valid marker path"),
-            )
-            .await
-            .expect("marker stat succeeds");
-        assert_eq!(stat.len, 4);
-
-        let error = local_runtime
-            .workspace_filesystem
-            .write_file(
-                &scope,
-                &ScopedPath::new("/workspace/markers/new.done").expect("valid marker path"),
-                b"done",
-            )
-            .await
-            .expect_err("setup marker workspace filesystem should be read-only");
-        assert!(matches!(error, FilesystemError::PermissionDenied { .. }));
     }
 
     #[tokio::test]

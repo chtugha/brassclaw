@@ -6,10 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod activation;
-mod assets;
 mod error;
-mod execution;
-mod setup_markers;
 mod skills;
 
 pub use activation::{
@@ -18,9 +15,5 @@ pub use activation::{
     SkillActivationPlan, SkillActivationRequest, SkillActivationSelection,
     SkillActivationSelectionError, SkillActivationSelectionMode, SkillActivationSelectorConfig,
 };
-pub use assets::{SkillBundleAsset, SkillBundleAssetReadError, SkillBundleAssetReader};
 pub use error::FirstPartySkillsExtensionError;
-pub use execution::{SkillExecutionAdapter, SkillExecutionAdapterError, SkillExecutionPlan};
-pub use skills::{
-    FirstPartySelectableSkillsRuntime, FirstPartySkillsExtension, FirstPartySkillsExtensionHandles,
-};
+pub use skills::{FirstPartySkillsExtension, FirstPartySkillsExtensionHandles};

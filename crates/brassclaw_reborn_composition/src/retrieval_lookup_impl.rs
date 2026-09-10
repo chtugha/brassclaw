@@ -8,7 +8,7 @@
 //! This crate — the sole one depending on both — supplies the backing impls:
 //!
 //! - [`PgRetrievalLookup`] wraps `brassclaw_engine::memory::PostgresSource` and delegates to its intent-driven `fetch_for_turn` (which runs `resolve_intent` + the SEC-01-gated component fetch against Postgres). It is gated on the composition `skills-db` feature, which enables the engine's `skills-db`-gated `PostgresSource` methods. When the feature is off the type is absent and the host's `retrieval_lookup` slot stays `None` so `RecipeStage` falls through to Tier 2 (correct explicit behaviour).
-//! - [`SkillActivationMessageTextResolver`] wraps the local-dev `SelectableSkillContextSource` and resolves the **raw** accepted-message body via `peek_message_text` (the non-consuming `messages_by_run` read). It is not engine-gated — raw-text resolution does not need Postgres.
+//! - [`SkillActivationMessageTextResolver`] wraps `SelectableSkillContextSource` and resolves the **raw** accepted-message body via `peek_message_text` (the non-consuming `messages_by_run` read). It is not engine-gated — raw-text resolution does not need Postgres.
 //!
 //! E.0 uses conservative routing booleans (`tier0_eligible = false`,
 //! `llm_call_required = true`) and leaves `rust_items == orchestrator_items`;
@@ -19,6 +19,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+#[cfg(feature = "skills-db")]
+use brassclaw_first_party_extension_ports::{
+    SkillActivationMode, SkillActivationObservedEvent, SkillActivationObserver,
+    SkillActivationRequest,
+};
 use brassclaw_turns::run_profile::{
     AgentLoopHostError, AgentLoopHostErrorKind, LoopRunContext, MessageTextResolver,
 };
@@ -40,12 +45,28 @@ use brassclaw_turns::run_profile::{RetrievalLookup, RetrievalLookupError, Retrie
 #[cfg(feature = "skills-db")]
 pub(crate) struct PgRetrievalLookup {
     source: Arc<brassclaw_engine::memory::PostgresSource>,
+    /// Optional observer that receives a `SkillActivationObservedEvent` for
+    /// every successful intent match so the WebUI projection panel can show
+    /// which recipe/component was activated. Wired from composition runtime
+    /// via `with_skill_activation_observer`.
+    observer: Option<Arc<dyn SkillActivationObserver>>,
 }
 
 #[cfg(feature = "skills-db")]
 impl PgRetrievalLookup {
     pub(crate) fn new(source: Arc<brassclaw_engine::memory::PostgresSource>) -> Self {
-        Self { source }
+        Self {
+            source,
+            observer: None,
+        }
+    }
+
+    pub(crate) fn with_skill_activation_observer(
+        mut self,
+        observer: Arc<dyn SkillActivationObserver>,
+    ) -> Self {
+        self.observer = Some(observer);
+        self
     }
 }
 
@@ -70,27 +91,60 @@ impl RetrievalLookup for PgRetrievalLookup {
                 RetrievalSourceError::Db(reason) => RetrievalLookupError::Db(reason),
                 RetrievalSourceError::Engine(reason) => RetrievalLookupError::Backend(reason),
             })?;
-        Ok(match result {
+        let turn_result = match result {
             FetchForTurnResult::Components(items) if items.is_empty() => None,
-            FetchForTurnResult::Components(items) => {
-                Some(retrieval_turn_result_for_components(items)?)
+            FetchForTurnResult::Components(ref items) => {
+                self.emit_activation_event(context, items);
+                Some(retrieval_turn_result_for_components(items.clone())?)
             }
             FetchForTurnResult::Disambiguation(candidates) if candidates.is_empty() => None,
             FetchForTurnResult::Disambiguation(candidates) => {
                 Some(retrieval_turn_result_for_disambiguation(candidates)?)
             }
             FetchForTurnResult::SplitResult {
-                rust_items,
+                ref rust_items,
                 orchestrator_items,
                 routing,
                 instruction,
-            } => Some(retrieval_turn_result_for_split(
-                rust_items,
-                orchestrator_items,
-                routing,
-                instruction,
-            )?),
-        })
+            } => {
+                self.emit_activation_event(context, rust_items);
+                Some(retrieval_turn_result_for_split(
+                    rust_items.clone(),
+                    orchestrator_items,
+                    routing,
+                    instruction,
+                )?)
+            }
+        };
+        Ok(turn_result)
+    }
+}
+
+#[cfg(feature = "skills-db")]
+impl PgRetrievalLookup {
+    fn emit_activation_event(
+        &self,
+        context: &LoopRunContext,
+        items: &[brassclaw_engine::memory::ComponentItem],
+    ) {
+        let Some(observer) = &self.observer else {
+            return;
+        };
+        let activations = items
+            .iter()
+            .map(|item| SkillActivationRequest {
+                name: item.name.clone(),
+                mode: SkillActivationMode::ActivationCriteria,
+            })
+            .collect::<Vec<_>>();
+        if activations.is_empty() {
+            return;
+        }
+        observer.observe_skill_activation(SkillActivationObservedEvent {
+            run_context: context.clone(),
+            activations,
+            feedback: Vec::new(),
+        });
     }
 }
 
@@ -232,42 +286,25 @@ fn retrieval_turn_result_for_split(
 /// `MessageTextResolver` backed by the skill-activation
 /// `SelectableSkillContextSource` (v3 Phase E.0 / plan §H3).
 ///
-/// Generic over the bundle source `S` so the resolver can be unit-tested with
-/// a trivial mock `SkillBundleSource` (no filesystem, no Postgres) while the
-/// production wiring instantiates it with the local-dev
-/// `FilesystemSkillBundleSource<LocalDevRootFilesystem>` substrate — type
-/// inference + the `Arc<dyn MessageTextResolver>` upcast keep the call site
-/// unchanged. `peek_message_text` only touches the `messages_by_run` store, so
-/// the bundle source is never consulted on the resolver path.
-///
 /// `resolve_message_text` reads the **raw** accepted-message body recorded for
 /// the turn's `accepted_message_ref` via the non-consuming `peek_message_text`
 /// accessor, so intent matching is not corrupted by `[redacted]` placeholders.
 /// Returns `Ok(None)` (soft miss → Tier-2 fall-through) when the turn carries
 /// no accepted message. Not engine-gated: raw-text resolution needs no Postgres.
-pub(crate) struct SkillActivationMessageTextResolver<S>
-where
-    S: brassclaw_loop_support::SkillBundleSource + ?Sized,
-{
-    source: Arc<brassclaw_first_party_extension_ports::SelectableSkillContextSource<S>>,
+pub(crate) struct SkillActivationMessageTextResolver {
+    source: Arc<brassclaw_first_party_extension_ports::SelectableSkillContextSource>,
 }
 
-impl<S> SkillActivationMessageTextResolver<S>
-where
-    S: brassclaw_loop_support::SkillBundleSource + ?Sized,
-{
+impl SkillActivationMessageTextResolver {
     pub(crate) fn new(
-        source: Arc<brassclaw_first_party_extension_ports::SelectableSkillContextSource<S>>,
+        source: Arc<brassclaw_first_party_extension_ports::SelectableSkillContextSource>,
     ) -> Self {
         Self { source }
     }
 }
 
 #[async_trait]
-impl<S> MessageTextResolver for SkillActivationMessageTextResolver<S>
-where
-    S: brassclaw_loop_support::SkillBundleSource + ?Sized,
-{
+impl MessageTextResolver for SkillActivationMessageTextResolver {
     async fn resolve_message_text(
         &self,
         context: &LoopRunContext,
@@ -290,17 +327,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::{MessageTextResolver, SkillActivationMessageTextResolver};
-    use async_trait::async_trait;
     use std::sync::Arc;
 
-    use brassclaw_first_party_extension_ports::{
-        SelectableSkillContextSource, SkillActivationSelectorConfig,
-    };
+    use brassclaw_first_party_extension_ports::SelectableSkillContextSource;
     use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId};
-    use brassclaw_loop_support::{
-        SkillBundleDescriptor, SkillBundleId, SkillBundleSource, SkillBundleSourceError,
-        SkillFilePath,
-    };
     use brassclaw_turns::{
         AcceptedMessageRef, LoopMessageRef, TurnActor, TurnId, TurnRunId, TurnScope,
         run_profile::{
@@ -326,37 +356,8 @@ mod tests {
     #[cfg(feature = "skills-db")]
     use uuid::Uuid;
 
-    // -------------------------------------------------------------------------
-    // Mock SkillBundleSource — the resolver never consults it (peek_message_text
-    // only touches messages_by_run), so the trait impls are trivial stubs.
-    // -------------------------------------------------------------------------
-
-    struct MockBundleSource;
-
-    #[async_trait]
-    impl SkillBundleSource for MockBundleSource {
-        async fn list_skill_bundles(
-            &self,
-            _run_context: &LoopRunContext,
-        ) -> Result<Vec<SkillBundleDescriptor>, SkillBundleSourceError> {
-            Ok(Vec::new())
-        }
-
-        async fn read_skill_bundle_file(
-            &self,
-            _run_context: &LoopRunContext,
-            _bundle_id: &SkillBundleId,
-            _path: &SkillFilePath,
-        ) -> Result<Vec<u8>, SkillBundleSourceError> {
-            Err(SkillBundleSourceError::FileNotFound)
-        }
-    }
-
-    fn mock_selectable() -> Arc<SelectableSkillContextSource<MockBundleSource>> {
-        Arc::new(SelectableSkillContextSource::new(
-            Arc::new(MockBundleSource),
-            SkillActivationSelectorConfig::default(),
-        ))
+    fn mock_selectable() -> Arc<SelectableSkillContextSource> {
+        Arc::new(SelectableSkillContextSource::new())
     }
 
     /// Build a `LoopRunContext` for the resolver tests. `accepted_message = None`

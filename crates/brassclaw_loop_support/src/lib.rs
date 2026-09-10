@@ -23,13 +23,11 @@ mod capability_port;
 mod capability_surface_filter;
 mod compaction_task;
 mod filesystem_checkpoint_state;
-mod filesystem_skill_bundle_source;
 pub mod identity_context;
 mod input_port;
 mod input_queue;
 mod model_capability_view;
 pub mod pg_checkpoint_state_store;
-mod skill_bundle_source;
 pub(crate) mod skill_context;
 mod subagent_prompt_port;
 mod subagent_spawn_port;
@@ -63,7 +61,6 @@ pub use compaction_task::{
     HostManagedLoopCompactionPort, default_host_managed_loop_compaction_port,
 };
 pub use filesystem_checkpoint_state::FilesystemCheckpointStateStore;
-pub use filesystem_skill_bundle_source::{FilesystemSkillBundleRoot, FilesystemSkillBundleSource};
 pub use identity_context::{
     HostIdentityContextBuildError, HostIdentityContextCandidate, HostIdentityContextSource,
     HostIdentityMessageContent, IdentityApplicability, IdentityBudget, IdentityFileName,
@@ -74,10 +71,6 @@ pub use identity_context::{
 pub use input_port::HostQueueLoopInputPort;
 pub use input_queue::{HostInputBatch, HostInputEnvelope, HostInputQueue, HostInputQueueError};
 pub use pg_checkpoint_state_store::PgCheckpointStateStore;
-pub use skill_bundle_source::{
-    SkillBundleDescriptor, SkillBundleId, SkillBundleProvenance, SkillBundleSource,
-    SkillBundleSourceError, SkillFilePath, SkillSourceKind, sort_skill_bundle_descriptors,
-};
 /// Source for the pre-assembled Kohai/Sempai prefix-cache bundle (§K.1.5).
 ///
 /// Implementations return the full bundle text for a given `(user_id,

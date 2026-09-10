@@ -33,10 +33,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use brassclaw_events::{DurableAuditLog, DurableEventLog, InMemoryAuditSink, RuntimeEvent};
-use brassclaw_first_party_extension_ports::{
-    FirstPartySkillsExtension, FirstPartySkillsExtensionHandles, SelectableSkillContextSource,
-    SkillActivationSelectorConfig, SkillExecutionAdapter,
-};
+use brassclaw_first_party_extension_ports::SelectableSkillContextSource;
 use brassclaw_host_api::{
     ActionResultSummary, ActionSummary, AgentId, AuditEnvelope, AuditEventId, AuditStage,
     CapabilityId, CorrelationId, DecisionSummary, EffectKind, InvocationId, ResourceScope,
@@ -44,8 +41,7 @@ use brassclaw_host_api::{
 };
 use brassclaw_loop_support::{
     CapabilityAllowSet, CapabilityResolveError, CapabilitySurfaceProfileResolver,
-    FilesystemSkillBundleSource, JsonSpawnSubagentInputCodec,
-    ModelGatewayBackedSystemInferencePort,
+    JsonSpawnSubagentInputCodec, ModelGatewayBackedSystemInferencePort,
 };
 use brassclaw_product_adapters::ProjectionStream;
 use brassclaw_product_workflow::{
@@ -115,17 +111,9 @@ mod local_dev;
 // without widening the whole `local_dev` module's visibility.
 #[cfg(feature = "skills-db")]
 pub(crate) use local_dev::TierZeroEffectExecutorBuilder;
-mod skills;
 #[cfg(test)]
 #[path = "runtime/test_pg.rs"]
 pub(crate) mod test_pg;
-
-pub use skills::{
-    RebornSkillActivation, RebornSkillActivationMode, RebornSkillAsset, RebornSkillBundle,
-    RebornSkillExecutionPlan, RebornSkillExecutionResult, RebornSkillSourceKind,
-};
-
-use skills::skill_asset_error;
 
 #[cfg(feature = "root-llm-provider")]
 use crate::runtime_input::ResolvedRebornLlm;
@@ -181,10 +169,6 @@ pub enum RebornRuntimeError {
     LlmProvider(String),
     #[error("turn-runner worker is no longer running")]
     WorkerStopped,
-    #[error("skill execution unavailable for assembled runtime")]
-    SkillExecutionUnavailable,
-    #[error("skill execution failed: {0}")]
-    SkillExecution(String),
 }
 
 impl From<TurnError> for RebornRuntimeError {
@@ -232,8 +216,18 @@ pub struct RebornRuntime {
     default_run_profile_id: String,
     wake_sender: TurnRunnerWakeSender,
     send_locks: Mutex<HashMap<ConversationId, Arc<Mutex<()>>>>,
-    skill_activation_source: Option<Arc<LocalDevSelectableSkillContextSource>>,
-    skill_execution_adapter: Option<Arc<LocalDevSkillExecutionAdapter>>,
+    skill_activation_source: Option<Arc<SelectableSkillContextSource>>,
+    /// Live projection observer for recipe/component/skill activations.
+    /// Populated unconditionally; `PgRetrievalLookup` uses it on the skills-db
+    /// path (Phase P.1 Step C). The field and accessor are intentionally kept
+    /// active in all feature configurations so adding non-skills-db callers
+    /// (e.g. ExplicitMention activation via WebUI) requires no structural change.
+    ///
+    /// Intentionally stored but not read: the field keeps the Arc alive for the
+    /// runtime lifetime and exposes it via `webui_skill_activation_observer`.
+    /// See `subplan_step8_wire_skill_activation_observer.md`.
+    #[allow(dead_code)]
+    skill_activation_observer: Arc<dyn brassclaw_first_party_extension_ports::SkillActivationObserver>,
     /// Plan library processor: active when `plan_library_enabled = true`.
     /// After each completed turn, scores the session and persists plan docs.
     plan_library: Option<Arc<crate::plan_library::PlanLibraryService<LocalDevRootFilesystem>>>,
@@ -251,11 +245,6 @@ pub struct RebornRuntime {
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
 }
-
-pub(crate) type LocalDevSelectableSkillContextSource =
-    SelectableSkillContextSource<FilesystemSkillBundleSource<LocalDevRootFilesystem>>;
-type LocalDevSkillExecutionAdapter =
-    SkillExecutionAdapter<FilesystemSkillBundleSource<LocalDevRootFilesystem>>;
 
 // Known tech-debt (#4416): when a second test-only handle is
 // needed off the trigger poller seam (e.g. trusted_submitter,
@@ -823,8 +812,22 @@ impl RebornRuntime {
 
     pub(crate) fn webui_skill_activation_source(
         &self,
-    ) -> Option<Arc<LocalDevSelectableSkillContextSource>> {
+    ) -> Option<Arc<SelectableSkillContextSource>> {
         self.skill_activation_source.clone()
+    }
+
+    /// Returns the live projection observer for skill/recipe/component
+    /// activations. The observer is pre-wired to the live WebUI projection
+    /// publisher so any caller can emit activation events without a feature gate.
+    ///
+    /// Production callers: `PgRetrievalLookup` (skills-db path, §H4) and
+    /// future ExplicitMention detection (WebUI path, non-skills-db).
+    /// See `subplan_step8_wire_skill_activation_observer.md`.
+    #[allow(dead_code)]
+    pub(crate) fn webui_skill_activation_observer(
+        &self,
+    ) -> Arc<dyn brassclaw_first_party_extension_ports::SkillActivationObserver> {
+        Arc::clone(&self.skill_activation_observer)
     }
 
     /// Test-only handle on the resource governor backing the budget
@@ -977,7 +980,7 @@ impl RebornRuntime {
         text: &str,
         cancellation: CancellationToken,
     ) -> Result<AssistantReply, RebornRuntimeError> {
-        self.send_user_message_internal(conversation, text, cancellation, false)
+        self.send_user_message_internal(conversation, text, cancellation)
             .await
     }
 
@@ -986,7 +989,6 @@ impl RebornRuntime {
         conversation: &ConversationId,
         text: &str,
         cancellation: CancellationToken,
-        capture_skill_execution_plan: bool,
     ) -> Result<AssistantReply, RebornRuntimeError> {
         let send_lock = self.send_lock_for(conversation).await;
         let _send_guard = send_lock.lock().await;
@@ -1024,19 +1026,7 @@ impl RebornRuntime {
         ))
         .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
 
-        if capture_skill_execution_plan {
-            let adapter = self
-                .skill_execution_adapter
-                .as_ref()
-                .ok_or(RebornRuntimeError::SkillExecutionUnavailable)?;
-            adapter
-                .record_user_message_for_execution(
-                    scope.clone(),
-                    accepted_message_ref.clone(),
-                    text,
-                )
-                .map_err(|error| RebornRuntimeError::TurnSubmission(error.to_string()))?;
-        } else if let Some(skill_activation_source) = &self.skill_activation_source {
+        if let Some(skill_activation_source) = &self.skill_activation_source {
             skill_activation_source
                 .record_user_message(scope.clone(), accepted_message_ref.clone(), text)
                 .map_err(|error| RebornRuntimeError::TurnSubmission(error.to_string()))?;
@@ -1129,55 +1119,6 @@ impl RebornRuntime {
         reply
     }
 
-    /// Submit a skill-aware message through the normal Reborn loop and return
-    /// the structured activation plan produced during prompt construction.
-    pub async fn execute_skill_message(
-        &self,
-        conversation: &ConversationId,
-        text: &str,
-    ) -> Result<RebornSkillExecutionResult, RebornRuntimeError> {
-        let adapter = self
-            .skill_execution_adapter
-            .as_ref()
-            .ok_or(RebornRuntimeError::SkillExecutionUnavailable)?;
-        let scope = self.turn_scope_for(&conversation.0);
-        let reply = self
-            .send_user_message_internal(conversation, text, CancellationToken::new(), true)
-            .await?;
-        let plan = self.skill_execution_plan_for_run(adapter, &scope, reply.run_id)?;
-        Ok(RebornSkillExecutionResult { plan, reply })
-    }
-
-    /// Read a bundle-relative asset from a skill activated by
-    /// [`Self::execute_skill_message`].
-    pub async fn read_skill_execution_asset(
-        &self,
-        conversation: &ConversationId,
-        plan: &RebornSkillExecutionPlan,
-        activation: &RebornSkillActivation,
-        path: impl AsRef<str>,
-    ) -> Result<RebornSkillAsset, RebornRuntimeError> {
-        if plan.run_context().thread_id != conversation.0 {
-            return Err(RebornRuntimeError::SkillExecution(
-                "skill execution plan does not belong to this conversation".to_string(),
-            ));
-        }
-        let adapter = self
-            .skill_execution_adapter
-            .as_ref()
-            .ok_or(RebornRuntimeError::SkillExecutionUnavailable)?;
-        adapter
-            .read_file_for_activation(
-                plan.run_context(),
-                plan.first_party_plan(),
-                &activation.to_first_party_request(),
-                path,
-            )
-            .await
-            .map(RebornSkillAsset::from)
-            .map_err(skill_asset_error)
-    }
-
     /// Stop the turn-runner worker and the budget-event projection.
     /// Awaits both tasks before returning so background state is fully
     /// drained when the runtime drops.
@@ -1209,22 +1150,6 @@ impl RebornRuntime {
             thread_id.clone(),
         )
     }
-
-    fn skill_execution_plan_for_run(
-        &self,
-        adapter: &SkillExecutionAdapter<FilesystemSkillBundleSource<LocalDevRootFilesystem>>,
-        scope: &TurnScope,
-        run_id: TurnRunId,
-    ) -> Result<RebornSkillExecutionPlan, RebornRuntimeError> {
-        adapter
-            .take_execution_plan_for_run(scope, run_id)
-            .map_err(|error| RebornRuntimeError::SkillExecution(error.to_string()))?
-            .map(RebornSkillExecutionPlan::from_first_party)
-            .ok_or_else(|| {
-                RebornRuntimeError::SkillExecution("skill activation plan unavailable".to_string())
-            })
-    }
-
     async fn send_lock_for(&self, conversation: &ConversationId) -> Arc<Mutex<()>> {
         let mut locks = self.send_locks.lock().await;
         Arc::clone(
@@ -1606,9 +1531,9 @@ pub async fn build_reborn_runtime(
         poll,
         identity,
         default_project_id,
-        regex_skill_activation_enabled,
+        regex_skill_activation_enabled: _regex_skill_activation_enabled,
         conversation_context_tokens,
-        skill_context_tokens,
+        skill_context_tokens: _skill_context_tokens,
         identity_token_ceiling,
         capability_surface_tokens,
         capability_focus_enabled,
@@ -2100,33 +2025,17 @@ pub async fn build_reborn_runtime(
             .map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
 
     let validated_identity = validate_runtime_identity(identity)?;
-    let (skill_activation_source, skill_execution_adapter) = {
-        // On the non-postgres build, `local_runtime` is a named local.
-        // On the postgres build (hybrid or pure-PG), use services.local_runtime;
-        // the pure-PG path has no local-dev filesystem so skill context is None.
-        #[cfg(not(feature = "postgres"))]
-        let local_runtime_ref: Option<
-            &crate::factory::RebornLocalRuntimeServices,
-        > = Some(local_runtime);
-        #[cfg(feature = "postgres")]
-        let local_runtime_ref: Option<
-            &crate::factory::RebornLocalRuntimeServices,
-        > = services.local_runtime.as_deref();
-        if let Some(lr) = local_runtime_ref {
-            let local_dev_skills = local_dev_filesystem_skill_context_source(
-                lr,
-                &validated_identity.tenant_id,
-                regex_skill_activation_enabled,
-                skill_context_tokens,
-            )?;
-            (
-                Some(local_dev_skills.activation_source),
-                Some(local_dev_skills.execution_adapter),
-            )
-        } else {
-            // Pure-PG path: no local-dev skill filesystem available.
-            (None, None)
-        }
+    // Build the message-text recorder used by intent matching (InputStage).
+    // The VFS-based SKILL.md loading path was removed in Phase P.1 Step C;
+    // this is now a plain in-memory message recorder.
+    #[cfg(not(feature = "postgres"))]
+    let has_local_runtime = true;
+    #[cfg(feature = "postgres")]
+    let has_local_runtime = services.local_runtime.is_some();
+    let skill_activation_source: Option<Arc<SelectableSkillContextSource>> = if has_local_runtime {
+        Some(Arc::new(SelectableSkillContextSource::new()))
+    } else {
+        None
     };
 
     let tenant_id = validated_identity.tenant_id.clone();
@@ -2382,14 +2291,13 @@ pub async fn build_reborn_runtime(
     );
     let live_projection_publisher =
         projection_services.live_projection_publisher(actor_user_id.clone());
-    if let Some(skill_activation_source) = &skill_activation_source {
-        skill_activation_source
-            .set_activation_observer(
-                projection_services
-                    .skill_activation_observer(Arc::clone(&live_projection_publisher)),
-            )
-            .map_err(|error| RebornRuntimeError::SkillExecution(error.to_string()))?;
-    }
+    // v3 Phase P.1 Step C: construct the skill-activation observer before the
+    // publisher Arc is moved into the milestone sink. The observer is stored in
+    // `RebornRuntime` (always, not feature-gated) and also wired into
+    // `PgRetrievalLookup` on the skills-db path so intent matches emit live
+    // WebUI projection events (§H4).
+    let skill_activation_observer_arc =
+        projection_services.skill_activation_observer(Arc::clone(&live_projection_publisher));
     let milestone_sink = projection_services.with_live_progress_milestone_sink_for_publisher(
         durable_milestone_sink,
         live_projection_publisher,
@@ -2549,14 +2457,20 @@ pub async fn build_reborn_runtime(
     // Postgres pool is available. When the feature is off or PG is unavailable
     // the slot stays `None` and `RecipeStage` falls through to Tier 2 (the
     // correct explicit behaviour — no intent-driven retrieval).
+    // v3 Phase P.1 Step C: `skill_activation_observer_arc` (constructed above,
+    // unconditionally) is cloned into PgRetrievalLookup so intent matches emit
+    // live WebUI projection events via the same publisher as the milestone sink.
     #[cfg(feature = "skills-db")]
     let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> =
         services.pg_pool.as_ref().map(|pool| {
-            Arc::new(crate::retrieval_lookup_impl::PgRetrievalLookup::new(
-                Arc::new(brassclaw_engine::memory::PostgresSource::new(Arc::clone(
-                    pool,
-                ))),
-            )) as Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>
+            Arc::new(
+                crate::retrieval_lookup_impl::PgRetrievalLookup::new(
+                    Arc::new(brassclaw_engine::memory::PostgresSource::new(Arc::clone(
+                        pool,
+                    ))),
+                )
+                .with_skill_activation_observer(Arc::clone(&skill_activation_observer_arc)),
+            ) as Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>
         });
     #[cfg(not(feature = "skills-db"))]
     let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> = None;
@@ -3075,7 +2989,7 @@ pub async fn build_reborn_runtime(
         wake_sender,
         send_locks: Mutex::new(HashMap::new()),
         skill_activation_source,
-        skill_execution_adapter,
+        skill_activation_observer: skill_activation_observer_arc,
         plan_library,
         plan_state_slot,
         #[cfg(feature = "root-llm-provider")]
@@ -3169,65 +3083,6 @@ async fn append_trusted_laptop_access_audit(
         .map_err(|error| RebornRuntimeError::InvalidArgument {
             reason: format!("could not record trusted laptop access audit event: {error}"),
         })
-}
-
-struct LocalDevSkillContextSource {
-    activation_source: Arc<LocalDevSelectableSkillContextSource>,
-    execution_adapter: Arc<LocalDevSkillExecutionAdapter>,
-}
-
-const LOCAL_DEV_MAX_SKILL_CONTEXT_TOKENS: usize = 6000;
-
-/// Build the [`SkillActivationSelectorConfig`] used by the local-dev
-/// filesystem skill context source. Extracted from
-/// [`local_dev_filesystem_skill_context_source`] so the wiring of the
-/// `regex_skill_activation_enabled` flag from [`RebornRuntimeInput`] is
-/// covered by a unit test (see `tests::local_dev_selector_config_*`).
-/// Without this seam the propagation was tested only indirectly through
-/// the full [`build_reborn_runtime`] path, where an accidental
-/// `..SkillActivationSelectorConfig::default()` regression would slip
-/// through silently.
-fn local_dev_selector_config(
-    regex_skill_activation_enabled: bool,
-    skill_context_tokens: Option<usize>,
-) -> SkillActivationSelectorConfig {
-    SkillActivationSelectorConfig {
-        max_context_tokens: skill_context_tokens.unwrap_or(LOCAL_DEV_MAX_SKILL_CONTEXT_TOKENS),
-        selection_mode:
-            brassclaw_first_party_extension_ports::SkillActivationSelectionMode::ExplicitOnly,
-        regex_activation_enabled: regex_skill_activation_enabled,
-        ..SkillActivationSelectorConfig::default()
-    }
-}
-
-fn local_dev_filesystem_skill_context_source(
-    local_runtime: &crate::factory::RebornLocalRuntimeServices,
-    tenant_id: &TenantId,
-    regex_skill_activation_enabled: bool,
-    skill_context_tokens: Option<usize>,
-) -> Result<LocalDevSkillContextSource, RebornRuntimeError> {
-    let extension = FirstPartySkillsExtension::new(
-        Arc::clone(&local_runtime.skill_filesystem),
-        FirstPartySkillsExtensionHandles::without_tenant_shared().map_err(|reason| {
-            RebornRuntimeError::InvalidArgument {
-                reason: format!("first-party skills extension handles: {reason}"),
-            }
-        })?,
-        tenant_id.clone(),
-    )
-    .map_err(|reason| RebornRuntimeError::InvalidArgument {
-        reason: format!("first-party skills extension source: {reason}"),
-    })?;
-    let selector_config =
-        local_dev_selector_config(regex_skill_activation_enabled, skill_context_tokens);
-    let selectable_skills = extension.selectable_skill_runtime_with_setup_markers(
-        selector_config,
-        Arc::clone(&local_runtime.workspace_filesystem),
-    );
-    Ok(LocalDevSkillContextSource {
-        activation_source: selectable_skills.activation_source(),
-        execution_adapter: selectable_skills.execution_adapter(),
-    })
 }
 
 struct ValidatedRuntimeIdentity {
@@ -3571,54 +3426,6 @@ mod tests {
     use async_trait::async_trait;
     use brassclaw_auth::{GOOGLE_CALENDAR_EVENTS_SCOPE, GOOGLE_CALENDAR_READONLY_SCOPE};
     use chrono::Utc;
-
-    /// Wiring guard: the `regex_skill_activation_enabled` flag from
-    /// [`RebornRuntimeInput`] must reach
-    /// [`SkillActivationSelectorConfig::regex_activation_enabled`]
-    /// unchanged, not get clobbered by a stray
-    /// `..SkillActivationSelectorConfig::default()` spread or by the
-    /// helper accidentally taking `Default::default()`. Covers the
-    /// composition-level path that
-    /// [`local_dev_filesystem_skill_context_source`] depends on.
-    #[test]
-    fn local_dev_selector_config_propagates_regex_activation_disabled() {
-        let cfg = super::local_dev_selector_config(false, None);
-        assert!(
-            !cfg.regex_activation_enabled,
-            "regex_skill_activation_enabled=false must propagate into SkillActivationSelectorConfig"
-        );
-        assert!(matches!(
-            cfg.selection_mode,
-            brassclaw_first_party_extension_ports::SkillActivationSelectionMode::ExplicitOnly
-        ));
-    }
-
-    #[test]
-    fn local_dev_selector_config_propagates_regex_activation_enabled() {
-        let cfg = super::local_dev_selector_config(true, None);
-        assert!(
-            cfg.regex_activation_enabled,
-            "regex_skill_activation_enabled=true must propagate into SkillActivationSelectorConfig"
-        );
-    }
-
-    #[test]
-    fn local_dev_selector_config_uses_large_skill_context_budget() {
-        let cfg = super::local_dev_selector_config(true, None);
-        assert_eq!(
-            cfg.max_context_tokens, 6000,
-            "local-dev Reborn skill activation should match the legacy 6000-token skill budget"
-        );
-    }
-
-    #[test]
-    fn local_dev_selector_config_uses_custom_skill_context_budget() {
-        let cfg = super::local_dev_selector_config(true, Some(3000));
-        assert_eq!(
-            cfg.max_context_tokens, 3000,
-            "custom skill_context_tokens must override the default budget"
-        );
-    }
     use brassclaw_authorization::CapabilityLeaseStore;
     use brassclaw_events::{EventStreamKey, ReadScope};
     use brassclaw_host_api::{
@@ -3672,9 +3479,8 @@ mod tests {
     use crate::webui::build_webui_services;
 
     use super::{
-        RebornSkillSourceKind, TRUSTED_LAPTOP_ACCESS_AUDIT_KIND,
-        TRUSTED_LAPTOP_ACCESS_AUDIT_STATUS, TRUSTED_LAPTOP_ACCESS_AUDIT_TARGET,
-        build_reborn_runtime,
+        TRUSTED_LAPTOP_ACCESS_AUDIT_KIND, TRUSTED_LAPTOP_ACCESS_AUDIT_STATUS,
+        TRUSTED_LAPTOP_ACCESS_AUDIT_TARGET, build_reborn_runtime,
     };
 
     const RUNTIME_SEND_TIMEOUT: Duration = Duration::from_secs(10);
@@ -4031,23 +3837,6 @@ mod tests {
             run_id: TurnRunId::new(),
             turn_id: TurnId::new(),
         }
-    }
-
-    fn skill_md(name: &str, description: &str, prompt: &str) -> String {
-        format!(
-            "---\nname: {name}\ndescription: {description}\nactivation:\n  keywords: [\"{name}\"]\n---\n\n{prompt}"
-        )
-    }
-
-    fn skill_md_with_setup_marker(
-        name: &str,
-        description: &str,
-        marker: &str,
-        prompt: &str,
-    ) -> String {
-        format!(
-            "---\nname: {name}\ndescription: {description}\nactivation:\n  keywords: [\"{name}\"]\n  setup_marker: \"{marker}\"\n---\n\n{prompt}"
-        )
     }
 
     fn recorded_request_count(requests: &StdMutex<Vec<HostManagedModelRequest>>) -> usize {
@@ -4807,550 +4596,6 @@ mod tests {
             provider_call.capability_id,
             CapabilityId::new("builtin.echo").unwrap()
         );
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
-    async fn local_dev_runtime_wires_filesystem_skills_by_default_to_model_calls() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        std::fs::create_dir_all(storage_root.join("system/skills/system-helper"))
-            .expect("system skill dir");
-        std::fs::write(
-            storage_root.join("system/skills/system-helper/SKILL.md"),
-            skill_md(
-                "system-helper",
-                "system helper description",
-                "SYSTEM_HELPER_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write system skill");
-        std::fs::create_dir_all(storage_root.join("skills/local-helper")).expect("user skill dir");
-        std::fs::write(
-            storage_root.join("skills/local-helper/SKILL.md"),
-            skill_md(
-                "local-helper",
-                "local helper description",
-                "USER_HELPER_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write user skill");
-        std::fs::create_dir_all(storage_root.join("tenant-shared/skills/shared-helper"))
-            .expect("tenant shared skill dir");
-        std::fs::write(
-            storage_root.join("tenant-shared/skills/shared-helper/SKILL.md"),
-            skill_md(
-                "shared-helper",
-                "tenant shared helper description",
-                "TENANT_SHARED_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write tenant shared skill");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "filesystem skill context ok".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-filesystem-skill-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-filesystem-skill-tenant".to_string(),
-            agent_id: "runtime-filesystem-skill-agent".to_string(),
-            source_binding_id: "runtime-filesystem-skill-source".to_string(),
-            reply_target_binding_id: "runtime-filesystem-skill-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let reply = tokio::time::timeout(
-            RUNTIME_SEND_TIMEOUT,
-            runtime.send_user_message(&conversation, "/system-helper and /local-helper"),
-        )
-        .await
-        .expect("runtime send should finish")
-        .expect("runtime send should succeed");
-
-        assert_eq!(reply.status, TurnStatus::Completed);
-        assert_eq!(reply.text.as_deref(), Some("filesystem skill context ok"));
-        let skill_messages = {
-            let requests = requests
-                .lock()
-                .expect("recording gateway requests lock poisoned");
-            requests[0]
-                .messages
-                .iter()
-                .filter(|message| {
-                    message.role == HostManagedModelMessageRole::System
-                        && message
-                            .content_ref
-                            .as_str()
-                            .starts_with("msg:snippet.skill.")
-                })
-                .map(|message| message.content.clone())
-                .collect::<Vec<_>>()
-        };
-        let combined_skill_context = skill_messages.join("\n");
-        assert_eq!(skill_messages.len(), 2);
-        assert!(combined_skill_context.contains("system helper description"));
-        assert!(combined_skill_context.contains("SYSTEM_HELPER_PROMPT_SENTINEL"));
-        assert!(combined_skill_context.contains("local helper description"));
-        assert!(combined_skill_context.contains("USER_HELPER_PROMPT_SENTINEL"));
-        assert!(!combined_skill_context.contains("tenant shared helper description"));
-        assert!(!combined_skill_context.contains("TENANT_SHARED_PROMPT_SENTINEL"));
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
-    async fn execute_skill_message_returns_plan_and_reads_active_bundle_assets() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        std::fs::create_dir_all(storage_root.join("skills/asset-helper/references"))
-            .expect("asset skill references dir");
-        std::fs::write(
-            storage_root.join("skills/asset-helper/SKILL.md"),
-            skill_md(
-                "asset-helper",
-                "asset helper description",
-                "ASSET_HELPER_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write asset helper skill");
-        std::fs::write(
-            storage_root.join("skills/asset-helper/references/policy.md"),
-            "asset helper policy",
-        )
-        .expect("write asset helper policy");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "asset helper ok".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-skill-exec-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-skill-exec-tenant".to_string(),
-            agent_id: "runtime-skill-exec-agent".to_string(),
-            source_binding_id: "runtime-skill-exec-source".to_string(),
-            reply_target_binding_id: "runtime-skill-exec-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let result = tokio::time::timeout(
-            Duration::from_secs(3),
-            runtime.execute_skill_message(&conversation, "$asset-helper use policy"),
-        )
-        .await
-        .expect("skill execution should finish")
-        .expect("skill execution should succeed");
-
-        assert_eq!(result.reply.status, TurnStatus::Completed);
-        assert_eq!(result.reply.text.as_deref(), Some("asset helper ok"));
-        assert_eq!(result.plan.activations().len(), 1);
-        assert_eq!(result.plan.activations()[0].name, "asset-helper");
-        assert_eq!(
-            result.plan.activations()[0].source,
-            Some(RebornSkillSourceKind::User)
-        );
-        assert_eq!(result.plan.active_bundles().len(), 1);
-        assert_eq!(result.plan.active_bundles()[0].skill_name, "asset-helper");
-        assert_eq!(
-            result.plan.run_context().run_id,
-            result.reply.run_id,
-            "post-activation asset reads must reuse the real activation run context"
-        );
-        let asset = runtime
-            .read_skill_execution_asset(
-                &conversation,
-                &result.plan,
-                &result.plan.activations()[0],
-                "references/policy.md",
-            )
-            .await
-            .expect("active bundle asset read succeeds");
-
-        assert_eq!(asset.skill_name, "asset-helper");
-        assert_eq!(asset.path, "references/policy.md");
-        assert_eq!(asset.into_utf8().unwrap(), "asset helper policy");
-
-        let other_conversation = runtime
-            .new_conversation()
-            .await
-            .expect("other conversation");
-        let error = runtime
-            .read_skill_execution_asset(
-                &other_conversation,
-                &result.plan,
-                &result.plan.activations()[0],
-                "references/policy.md",
-            )
-            .await
-            .expect_err("plan should be bound to its activation conversation");
-        assert!(
-            error
-                .to_string()
-                .contains("skill execution plan does not belong to this conversation"),
-            "unexpected error: {error}"
-        );
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
-    async fn local_dev_runtime_fails_closed_for_ambiguous_explicit_skill_before_model_call() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        std::fs::create_dir_all(storage_root.join("system/skills/code-review"))
-            .expect("system skill dir");
-        std::fs::write(
-            storage_root.join("system/skills/code-review/SKILL.md"),
-            skill_md(
-                "code-review",
-                "system review description",
-                "SYSTEM_REVIEW_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write system skill");
-        std::fs::create_dir_all(storage_root.join("skills/code-review")).expect("user skill dir");
-        std::fs::write(
-            storage_root.join("skills/code-review/SKILL.md"),
-            skill_md(
-                "code-review",
-                "user review description",
-                "USER_REVIEW_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write user skill");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "should not reach model".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-ambiguous-skill-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-ambiguous-skill-tenant".to_string(),
-            agent_id: "runtime-ambiguous-skill-agent".to_string(),
-            source_binding_id: "runtime-ambiguous-skill-source".to_string(),
-            reply_target_binding_id: "runtime-ambiguous-skill-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let reply = tokio::time::timeout(
-            RUNTIME_SEND_TIMEOUT,
-            runtime.send_user_message(&conversation, "/code-review this PR"),
-        )
-        .await
-        .expect("runtime send should finish")
-        .expect("runtime send should succeed");
-
-        assert_ne!(reply.status, TurnStatus::Completed);
-        assert!(
-            requests
-                .lock()
-                .expect("recording gateway requests lock poisoned")
-                .is_empty(),
-            "ambiguous explicit skill should fail before model dispatch"
-        );
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
-    async fn local_dev_runtime_suppresses_explicit_setup_skill_when_workspace_marker_exists() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        std::fs::create_dir_all(storage_root.join("skills/marker-helper")).expect("user skill dir");
-        std::fs::create_dir_all(storage_root.join("workspace/markers")).expect("marker dir");
-        std::fs::write(
-            storage_root.join("skills/marker-helper/SKILL.md"),
-            skill_md_with_setup_marker(
-                "marker-helper",
-                "marker helper description",
-                "markers/marker-helper.done",
-                "MARKER_HELPER_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write marker helper skill");
-        std::fs::write(
-            storage_root.join("workspace/markers/marker-helper.done"),
-            "done",
-        )
-        .expect("write setup marker");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "setup marker ok".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-setup-marker-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-setup-marker-tenant".to_string(),
-            agent_id: "runtime-setup-marker-agent".to_string(),
-            source_binding_id: "runtime-setup-marker-source".to_string(),
-            reply_target_binding_id: "runtime-setup-marker-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let result = tokio::time::timeout(
-            RUNTIME_SEND_TIMEOUT,
-            runtime.execute_skill_message(&conversation, "$marker-helper"),
-        )
-        .await
-        .expect("skill execution should finish")
-        .expect("skill execution should succeed");
-
-        assert_eq!(result.reply.status, TurnStatus::Completed);
-        assert!(result.plan.activations().is_empty());
-        let skill_messages = {
-            let requests = requests
-                .lock()
-                .expect("recording gateway requests lock poisoned");
-            requests[0]
-                .messages
-                .iter()
-                .filter(|message| {
-                    message.role == HostManagedModelMessageRole::System
-                        && message
-                            .content_ref
-                            .as_str()
-                            .starts_with("msg:snippet.skill.")
-                })
-                .count()
-        };
-        assert_eq!(skill_messages, 0);
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
-    async fn local_dev_runtime_activates_setup_skill_when_workspace_marker_is_absent() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        std::fs::create_dir_all(storage_root.join("skills/marker-helper")).expect("user skill dir");
-        std::fs::write(
-            storage_root.join("skills/marker-helper/SKILL.md"),
-            skill_md_with_setup_marker(
-                "marker-helper",
-                "marker helper description",
-                "markers/marker-helper.done",
-                "MARKER_HELPER_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write marker helper skill");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "setup marker absent ok".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-setup-marker-absent-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-setup-marker-absent-tenant".to_string(),
-            agent_id: "runtime-setup-marker-absent-agent".to_string(),
-            source_binding_id: "runtime-setup-marker-absent-source".to_string(),
-            reply_target_binding_id: "runtime-setup-marker-absent-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let result = tokio::time::timeout(
-            Duration::from_secs(3),
-            runtime.execute_skill_message(&conversation, "$marker-helper"),
-        )
-        .await
-        .expect("skill execution should finish")
-        .expect("skill execution should succeed");
-
-        assert_eq!(result.reply.status, TurnStatus::Completed);
-        assert_eq!(result.plan.activations().len(), 1);
-        assert_eq!(result.plan.activations()[0].name, "marker-helper");
-        let skill_context = {
-            let requests = requests
-                .lock()
-                .expect("recording gateway requests lock poisoned");
-            requests[0]
-                .messages
-                .iter()
-                .filter(|message| {
-                    message.role == HostManagedModelMessageRole::System
-                        && message
-                            .content_ref
-                            .as_str()
-                            .starts_with("msg:snippet.skill.")
-                })
-                .map(|message| message.content.as_str())
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
-        assert!(skill_context.contains("marker helper description"));
-        assert!(skill_context.contains("MARKER_HELPER_PROMPT_SENTINEL"));
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
-    async fn local_dev_runtime_rejects_workspace_overlapping_default_skill_roots() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        let workspace_root = storage_root.join("skills");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "should not build".to_string(),
-            requests,
-        });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-overlap-owner", root.path())
-                .with_local_dev_workspace_root(workspace_root)
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-overlap-tenant".to_string(),
-            agent_id: "runtime-overlap-agent".to_string(),
-            source_binding_id: "runtime-overlap-source".to_string(),
-            reply_target_binding_id: "runtime-overlap-reply".to_string(),
-        })
-        .with_model_gateway_override(gateway);
-
-        let error = match build_reborn_runtime(input).await {
-            Ok(runtime) => {
-                runtime.shutdown().await.expect("runtime shutdown");
-                panic!("overlapping workspace and skill roots should fail closed");
-            }
-            Err(error) => error,
-        };
-
-        assert!(
-            error
-                .to_string()
-                .contains("must not overlap default skill root /skills"),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[tokio::test]
-    async fn local_dev_runtime_skips_invalid_filesystem_skill_before_model_call() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        std::fs::create_dir_all(storage_root.join("skills/bad-helper")).expect("bad skill dir");
-        std::fs::write(
-            storage_root.join("skills/bad-helper/SKILL.md"),
-            skill_md(
-                "different-name",
-                "bad helper description",
-                "BAD_HELPER_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write bad skill");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "invalid skill skipped".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-bad-skill-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-bad-skill-tenant".to_string(),
-            agent_id: "runtime-bad-skill-agent".to_string(),
-            source_binding_id: "runtime-bad-skill-source".to_string(),
-            reply_target_binding_id: "runtime-bad-skill-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let reply = tokio::time::timeout(
-            RUNTIME_SEND_TIMEOUT,
-            runtime.send_user_message(&conversation, "hello with no matching skill"),
-        )
-        .await
-        .expect("runtime send should finish")
-        .expect("runtime send should succeed");
-
-        assert_eq!(reply.status, TurnStatus::Completed);
-        assert_eq!(reply.text.as_deref(), Some("invalid skill skipped"));
-        let combined_request_content = requests
-            .lock()
-            .expect("recording gateway requests lock poisoned")
-            .iter()
-            .flat_map(|request| request.messages.iter())
-            .map(|message| message.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(!combined_request_content.contains("BAD_HELPER_PROMPT_SENTINEL"));
 
         runtime.shutdown().await.expect("runtime shutdown");
     }

@@ -147,6 +147,7 @@ impl RebornProjectionServices {
         ))
     }
 
+    #[cfg_attr(not(feature = "skills-db"), allow(dead_code))]
     pub(crate) fn skill_activation_observer(
         &self,
         publisher: Arc<LiveProjectionPublisher>,
