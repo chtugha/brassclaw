@@ -533,6 +533,7 @@ async fn seed_host_resolve_intent(
                 ])),
                 variants: None,
                 dependency_registry: None,
+                validates_class_code: None,
             },
             "host-resolve-intent",
         )
@@ -755,6 +756,7 @@ async fn seed_host_compose_orchestrator(
                 ])),
                 variants: None,
                 dependency_registry: None,
+                validates_class_code: None,
             },
             "host-compose-and-run-orchestrator",
         )
@@ -927,6 +929,7 @@ async fn seed_host_post_reply(
                 ])),
                 variants: None,
                 dependency_registry: None,
+                validates_class_code: None,
             },
             "host-post-reply",
         )
@@ -1365,6 +1368,7 @@ for k, v in summary.items():
                 ])),
                 variants: None,
                 dependency_registry: None,
+                validates_class_code: None,
             },
             "host-save-history",
         )
@@ -1467,6 +1471,7 @@ bundle = {
                 ])),
                 variants: None,
                 dependency_registry: None,
+                validates_class_code: None,
             },
             "host-assemble-prior-knowledge",
         )
@@ -1581,6 +1586,7 @@ prompt = {
                 ])),
                 variants: None,
                 dependency_registry: None,
+                validates_class_code: None,
             },
             "host-non-match-llm-answer",
         )

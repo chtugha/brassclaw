@@ -28,11 +28,10 @@
 //! [`PgExtensionCatalogueStore::create_and_submit`] inserts a new row then
 //! submits it to `reborn_validation_queue` (state 1) via
 //! [`crate::validation_queue::ValidationQueueStore::submit`] with
-//! `proposed_payload = None` (new-component submission). The actual save-path
-//! *wiring* (WebUI manual authoring + Sempai auto-creation) lands in Phase K
-//! (§0.23.6) for ALL component classes via a generic class→table dispatch;
-//! Phase C only delivers this store + the `create_and_submit` surface ready
-//! for Phase K to call.
+//! `proposed_payload = None` (new-component submission). This is the canonical
+//! non-builtin save path — all non-builtin components must go through the queue.
+//! `create_and_submit` is already wired in `sempai_proposal_sink.rs` (Phase K
+//! gap resolved). WebUI manual authoring routes land in Phase K (§0.23.6).
 //!
 //! # Feature gate
 //!

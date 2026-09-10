@@ -54,6 +54,7 @@ use sha2::{Digest, Sha256};
 use tracing::debug;
 
 use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
+use crate::validation_queue::ValidationQueueStore;
 use brassclaw_extensions::unified_store::{
     ExtensionClass, NewUnifiedExtension, PgUnifiedExtensionStore, UnifiedExtensionStore as _,
 };
@@ -72,10 +73,14 @@ const PLAN_LIBRARY_ROOT: &str =
 ///
 /// Reads plan documents from the virtual filesystem and writes the dissected
 /// rows to `reborn_extensions_unified` + `reborn_recipes`.
+///
+/// All emitted recipe rows are non-builtin and go through the validation queue
+/// via `upsert_and_submit` — they sit at Q1 pending until a human approves them.
 pub(crate) struct DocPlanDissector<F: RootFilesystem + ?Sized> {
     filesystem: Arc<F>,
     unified_store: PgUnifiedExtensionStore,
     recipe_store: PgRecipeStore,
+    queue_store: ValidationQueueStore,
 }
 
 impl<F: RootFilesystem + ?Sized + 'static> DocPlanDissector<F> {
@@ -83,11 +88,13 @@ impl<F: RootFilesystem + ?Sized + 'static> DocPlanDissector<F> {
         filesystem: Arc<F>,
         unified_store: PgUnifiedExtensionStore,
         recipe_store: PgRecipeStore,
+        queue_store: ValidationQueueStore,
     ) -> Self {
         Self {
             filesystem,
             unified_store,
             recipe_store,
+            queue_store,
         }
     }
 
@@ -285,16 +292,17 @@ impl<F: RootFilesystem + ?Sized + 'static> DocPlanDissector<F> {
             step_descriptions: None,
             variants: None,
             dependency_registry: None,
+            validates_class_code: None,
         };
         self.recipe_store
-            .upsert(new_recipe, &hash)
+            .upsert_and_submit(new_recipe, &hash, &self.queue_store)
             .await
-            .map_err(|e| format!("recipe_store upsert: {e}"))?;
+            .map_err(|e| format!("recipe_store upsert_and_submit: {e}"))?;
         debug!(
             plan_type,
             slug,
             name = %recipe_name,
-            "docplan_dissector: emitted class-21 recipe row"
+            "docplan_dissector: emitted class-21 recipe row (submitted to Q1 queue)"
         );
 
         Ok(())

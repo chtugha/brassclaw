@@ -33,8 +33,8 @@
 //!
 //! Requires the `postgres` feature.
 
-// Phase A.5 wiring into WebUI-save (Phase B/C) + boot-integrity (Phase N)
-// lands later; the store API itself is complete and tested here.
+// Phase A.5 wiring is complete (Phase B/C + Phase N). Phase P.0 adds the
+// q2_actor audit column and the builtin bootstrap audit path.
 #![allow(dead_code)]
 #![forbid(unsafe_code)]
 
@@ -121,6 +121,10 @@ pub struct QueueRow {
     pub proposed_payload: Option<Value>,
     pub submitted_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    /// Phase P.0: who performed the Q2 graduation. `None` = pending (not yet
+    /// approved). `Some("human")` = operator via WebUI. `Some("builtin")` =
+    /// bootstrap seeder (exempt from human-Q2; audit label only).
+    pub q2_actor: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -405,10 +409,15 @@ impl ValidationQueueStore {
     /// the live row is untouched.
     ///
     /// Returns `Ok(component_id)` on success.
+    /// `q2_actor` must be `Some("human")` for WebUI operator approvals and
+    /// `Some("builtin")` for the bootstrap-seeder audit path.  No other value
+    /// is sanctioned — enforcement is at the application layer (TEXT is left
+    /// open for future auditing categories but callers must not invent values).
     pub async fn approve(
         &self,
         scope: &ComponentScope,
         component_id: Uuid,
+        q2_actor: Option<&str>,
     ) -> Result<Uuid, ValidationQueueError> {
         let mut client = self.pool.get().await.map_err(map_pool)?;
 
@@ -495,6 +504,31 @@ impl ValidationQueueStore {
             return Err(ValidationQueueError::ComponentMissing { component_id });
         }
 
+        // Record q2_actor before deleting the row so the graduation is
+        // auditable if the row is later inspected via DB-level tooling.
+        // The UPDATE is best-effort (the column may be NULL if V078 has not
+        // run yet in a dev migration catch-up); we do not fail the approval
+        // if the UPDATE matches 0 rows — the DELETE below is authoritative.
+        if let Some(actor) = q2_actor {
+            tx.execute(
+                "UPDATE reborn_validation_queue
+                 SET q2_actor = $6
+                 WHERE tenant_id = $1 AND user_id = $2
+                   AND agent_id = $3 AND project_id = $4
+                   AND component_id = $5",
+                &[
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                    &component_id,
+                    &actor,
+                ],
+            )
+            .await
+            .map_err(map_pg)?;
+        }
+
         let deleted = tx
             .execute(
                 "DELETE FROM reborn_validation_queue
@@ -550,7 +584,7 @@ impl ValidationQueueStore {
                 .query(
                     "SELECT id, component_id, component_class, state, counter,
                             review_feedback, validation_errors, proposed_payload,
-                            submitted_at, updated_at
+                            submitted_at, updated_at, q2_actor
                      FROM reborn_validation_queue
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id = $3 AND project_id = $4
@@ -571,7 +605,7 @@ impl ValidationQueueStore {
                 .query(
                     "SELECT id, component_id, component_class, state, counter,
                             review_feedback, validation_errors, proposed_payload,
-                            submitted_at, updated_at
+                            submitted_at, updated_at, q2_actor
                      FROM reborn_validation_queue
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id = $3 AND project_id = $4
@@ -769,6 +803,7 @@ fn decode_queue_row(row: tokio_postgres::Row) -> Result<QueueRow, ValidationQueu
         proposed_payload: row.get(7),
         submitted_at: row.get(8),
         updated_at: row.get(9),
+        q2_actor: row.get(10),
     })
 }
 
@@ -1088,8 +1123,13 @@ mod tests {
     fn v077_migration_populates_queue_and_drops_legacy_columns() {
         let sql = include_str!("../../brassclaw_pg/migrations/V077__reborn_validation_queue_populate.sql");
         // Must NOT re-create the queue table (that's V051).
+        // Use a newline-anchored check so the comment "-- Step 1: CREATE TABLE is NOT here"
+        // (which contains the substring but is not DDL) does not trigger the assertion.
+        let has_create_table_ddl = sql
+            .lines()
+            .any(|l| l.trim_start().starts_with("CREATE TABLE"));
         assert!(
-            !sql.contains("CREATE TABLE"),
+            !has_create_table_ddl,
             "V077 must not CREATE TABLE — table is in V051"
         );
         // Step 2: populate arms present for all 15 component tables.
@@ -1387,7 +1427,7 @@ mod tests {
             let cid = insert_pending_note(&rig.pool, &scope).await;
             store.submit(&scope, cid, 20, None).await.expect("submit");
             store.gate1_pass(&scope, cid, &[]).await.expect("pass");
-            let returned = store.approve(&scope, cid).await.expect("approve");
+            let returned = store.approve(&scope, cid, Some("human")).await.expect("approve");
             assert_eq!(returned, cid, "approve returns the component id");
             // Queue row deleted.
             let rows = store.list(&scope, None).await.unwrap();
@@ -1411,7 +1451,7 @@ mod tests {
             store.submit(&scope, cid, 11, None).await.expect("submit");
             store.gate1_pass(&scope, cid, &[]).await.unwrap();
             let err = store
-                .approve(&scope, cid)
+                .approve(&scope, cid, None)
                 .await
                 .expect_err("unknown class must error before tx");
             assert!(
@@ -1441,7 +1481,7 @@ mod tests {
             store.submit(&scope, cid, 20, None).await.unwrap();
             store.gate1_pass(&scope, cid, &[]).await.unwrap();
             let err = store
-                .approve(&scope, cid)
+                .approve(&scope, cid, None)
                 .await
                 .expect_err("missing component must error");
             assert!(
@@ -1501,7 +1541,7 @@ mod tests {
             store.gate1_pass(&scope, note_id, &[]).await.unwrap();
 
             // Approve — should succeed and apply the upgrade (Phase N).
-            let result = store.approve(&scope, note_id).await;
+            let result = store.approve(&scope, note_id, Some("human")).await;
             assert!(result.is_ok(), "upgrade graduation must succeed: {result:?}");
 
             // Queue row deleted.
@@ -1584,7 +1624,7 @@ mod tests {
                 .gate1_pass(&scope, cid, &[])
                 .await
                 .expect("gate1_pass");
-            store.approve(&scope, cid).await.expect("approve");
+            store.approve(&scope, cid, Some("human")).await.expect("approve");
             assert!(
                 store
                     .list(&scope, None)

@@ -140,6 +140,7 @@ pub struct ToolSkillDetail {
 /// Extended in Phase 3 (Step 3.5) to carry `class_code`, `class_label`,
 /// `queue_code`, `validator_tag_present`, `consumer_tags`,
 /// `llm_audit_status`, and `llm_audit_findings` for the 4-queue UI.
+/// Phase P.0: extended with `q2_actor` audit field.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationQueueItem {
     pub id: String,
@@ -171,6 +172,10 @@ pub struct ValidationQueueItem {
     pub llm_audit_status: String,
     /// LLM code-audit findings when `llm_audit_status == "flagged"`.
     pub llm_audit_findings: Vec<String>,
+    /// Phase P.0: who performed the Q2 graduation. `None` = not yet approved.
+    /// `Some("human")` = operator via WebUI. `Some("builtin")` = bootstrap seeder
+    /// (builtin-exempt audit label only — not a generic automated graduation path).
+    pub q2_actor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

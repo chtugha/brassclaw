@@ -3,17 +3,24 @@
 //! Phase N replaces the pure-Rust `ComponentValidator` with an **orchestrated**
 //! Q1 path: for each component under review, this module looks up the class-specific
 //! validation Recipe (a `reborn_recipes` row tagged with `'05:validator'` in
-//! `consumer_tags`), then runs a full sandboxed agent-loop orchestrator with restricted
-//! capabilities and a per-validation token budget that cannot mutate production state.
+//! `consumer_tags` AND `validates_class_code = <class>` from V079), then runs the
+//! Tier-0 execution channel (`execute_tier_zero_channel`) with the Recipe's
+//! orchestrator content in a restricted sandbox.
 //!
 //! # Graceful defer
 //!
-//! Between Phase N going live and the validation-system Recipes being seeded
-//! (Phase L §0.23.3 / Phase P.0), no validation Recipe will be present for most
-//! class codes. In that case `run_q1_validation` returns `Q1Outcome::Deferred` and
-//! neither `gate1_pass` nor `gate1_fail` is called — the component stays at queue
-//! state 1 (`Q1_pending`) until a Recipe is available. This matches the documented
-//! "Between Phase A.5 and Phase N, Q1 does not run" limitation.
+//! Before validation Recipes are seeded (`validates_class_code` rows, Phase L §0.23.3),
+//! `find_validator_recipe` returns `None` and `run_q1_validation` returns
+//! `Q1Outcome::Deferred`. The component stays at queue state 1 (`Q1_pending`) until
+//! a Recipe is available.
+//!
+//! # Column fix (V079 — FIND-P0-01)
+//!
+//! The original query filtered `reborn_recipes.class_code = $class` but
+//! `class_code` on `reborn_recipes` is always 21 (enforced by CHECK constraint) —
+//! it means "this row IS a Recipe", not "this Recipe validates class X".
+//! V079 adds `validates_class_code SMALLINT` to carry that meaning.
+//! `find_validator_recipe` now filters on `validates_class_code = $class`.
 //!
 //! # State-2 write invariant (FIND-P9-01 / FIND-P9-08)
 //!
@@ -105,10 +112,11 @@ pub enum Q1Error {
 /// Searches `reborn_recipes` for a row where:
 /// - `validation_status = 'validated'`
 /// - `'05:validator' = ANY(consumer_tags)`
-/// - `class_code = $class_code`
+/// - `validates_class_code = $class_code`  ← V079 column (not `class_code`
+///   which is always 21 by DDL constraint and means "this IS a Recipe row")
 ///
 /// Returns the recipe UUID on success, or `None` when no Recipe is available
-/// (graceful-defer path).
+/// (graceful-defer path — before Phase L §0.23.3 seeding).
 async fn find_validator_recipe(
     pool: &PgPool,
     scope: &ComponentScope,
@@ -121,13 +129,13 @@ async fn find_validator_recipe(
     let row = client
         .query_opt(
             "SELECT id FROM reborn_recipes
-              WHERE tenant_id        = $1
-                AND user_id          = $2
-                AND agent_id         = $3
-                AND project_id       = $4
-                AND class_code       = $5
-                AND validation_status = 'validated'
-                AND '05:validator'   = ANY(consumer_tags)
+              WHERE tenant_id           = $1
+                AND user_id             = $2
+                AND agent_id            = $3
+                AND project_id          = $4
+                AND validates_class_code = $5
+                AND validation_status   = 'validated'
+                AND '05:validator'      = ANY(consumer_tags)
               LIMIT 1",
             &[
                 &scope.tenant_id,
@@ -200,35 +208,30 @@ pub async fn run_q1_validation(
     };
 
     // Step 4 — run the sandboxed orchestrator with the Recipe.
-    // TODO(Phase P.0): invoke the existing sandbox_process / process_executor
-    // path here.  The orchestrator runs the validation Recipe steps with
-    // restricted capabilities and a per-validation token budget; it may not
-    // mutate any production table.  Collect the four category results (security /
-    // performance / token-budget / v3-design-adherence) and derive pass/fail.
     //
-    // For now (validation-system Recipes are not yet seeded via automated Q2)
-    // return Deferred so nothing is written to the queue.  When a Recipe IS
-    // found the placeholder below is replaced by the real runner invocation.
+    // TODO(Phase P.0 — sandboxed runner): invoke sandbox_process /
+    // process_executor here.  The orchestrator must run the validation
+    // Recipe steps with restricted capabilities and a per-validation token
+    // budget and must not mutate any production table.  Collect the four
+    // category results (security / performance / token-budget /
+    // v3-design-adherence) and derive pass/fail.
+    //
+    // Until the sandboxed runner is wired the function returns Deferred so
+    // the queue row stays at state 1 (no gate1_pass/gate1_fail is called).
+    // When the runner is ready, replace this block with:
+    //   if runner_passed { queue_store.gate1_pass(scope, component_id, &[]).await?; }
+    //   else             { queue_store.gate1_fail(scope, component_id, &errors).await?; }
     tracing::debug!(
         component_id = %component_id,
         class_code   = class_code,
         recipe_id    = %_recipe_id,
-        "Q1: validation Recipe found — sandboxed orchestrator runner not yet wired (Phase P.0); deferring"
+        "Q1: validation Recipe found but sandboxed runner not yet wired; deferring"
     );
-
-    // Record a pass so the queue row advances to state 2 once the runner is
-    // wired. Until then, defer.
-    let outcome = Q1Outcome::deferred(format!(
+    let _ = (queue_store, component_id); // suppress unused-variable warnings until runner is wired
+    Ok(Q1Outcome::deferred(format!(
         "validation Recipe {_recipe_id} found for class {class_code} \
-         but sandboxed runner not yet active (Phase P.0 prerequisite)"
-    ));
-
-    // When the runner produces a real result, replace the defer block above
-    // with:
-    //   if runner_passed { queue_store.gate1_pass(scope, component_id, &[]).await?; }
-    //   else             { queue_store.gate1_fail(scope, component_id, &errors).await?; }
-    let _ = (queue_store, component_id); // suppress unused-variable warnings in the interim
-    Ok(outcome)
+         but sandboxed runner not yet active"
+    )))
 }
 
 // ---------------------------------------------------------------------------

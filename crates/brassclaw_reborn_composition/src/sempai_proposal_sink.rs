@@ -37,16 +37,23 @@ mod inner {
 
     use crate::pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore};
     use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
+    use crate::validation_queue::ValidationQueueStore;
 
     /// Postgres-backed [`SempaiProposalSink`].
     ///
     /// Constructed from a shared [`PgPool`] and the fixed scope identifiers
     /// (`tenant_id`, `agent_id`) that are baked into the runtime at startup.
     /// Per-call `user_id` / `project_id` are provided by the caller.
+    ///
+    /// All proposals are non-builtin — they must go through the Q1→Q2
+    /// validation queue before becoming usable. `create_and_submit` on the
+    /// recipe/python_code stores ensures every inserted row immediately gets
+    /// a `reborn_validation_queue` entry at state 1.
     #[derive(Clone)]
     pub(crate) struct PgSempaiProposalSink {
         recipe_store: PgRecipeStore,
         python_code_store: PgPythonCodeStore,
+        queue_store: ValidationQueueStore,
         tenant_id: String,
         agent_id: String,
     }
@@ -67,12 +74,18 @@ mod inner {
             Self {
                 recipe_store: PgRecipeStore::new(Arc::clone(&pool)),
                 python_code_store: PgPythonCodeStore::new(Arc::clone(&pool)),
+                queue_store: ValidationQueueStore::new(Arc::clone(&pool)),
                 tenant_id,
                 agent_id,
             }
         }
 
-        /// Insert a recipe-class (21) proposal row.
+        /// Insert a recipe-class (21) proposal row and enqueue it for Q1.
+        ///
+        /// Uses `create_and_submit` so the row is immediately tracked by
+        /// `reborn_validation_queue` (state 1). The row carries
+        /// `05:validator` in `consumer_tags` so it is invisible to consumers
+        /// until a human approves it via Q2 (spec §3.9).
         async fn insert_recipe_proposal(
             &self,
             blob: &serde_json::Value,
@@ -119,21 +132,29 @@ mod inner {
                 step_descriptions: None,
                 variants: None,
                 dependency_registry: None,
+                validates_class_code: None,
             };
 
-            match self.recipe_store.insert(row).await {
+            match self
+                .recipe_store
+                .create_and_submit(row, &self.queue_store)
+                .await
+            {
                 Ok(id) => {
-                    debug!(%id, "sempai_proposal: recipe row queued in Q1");
+                    debug!(%id, "sempai_proposal: recipe row inserted and submitted to Q1");
                     true
                 }
                 Err(err) => {
-                    debug!(error = %err, "sempai_proposal: failed to queue recipe row — skipped");
+                    debug!(error = %err, "sempai_proposal: failed to insert+submit recipe row — skipped");
                     false
                 }
             }
         }
 
-        /// Insert a python_code-class (22) proposal row.
+        /// Insert a python_code-class (22) proposal row and enqueue it for Q1.
+        ///
+        /// Uses `create_and_submit` so the row is immediately tracked by
+        /// `reborn_validation_queue` (state 1).
         async fn insert_python_code_proposal(
             &self,
             blob: &serde_json::Value,
@@ -175,13 +196,17 @@ mod inner {
                 includes: vec![],
             };
 
-            match self.python_code_store.insert(row).await {
+            match self
+                .python_code_store
+                .create_and_submit(row, &self.queue_store)
+                .await
+            {
                 Ok(id) => {
-                    debug!(%id, "sempai_proposal: python_code row queued in Q1");
+                    debug!(%id, "sempai_proposal: python_code row inserted and submitted to Q1");
                     true
                 }
                 Err(err) => {
-                    debug!(error = %err, "sempai_proposal: failed to queue python_code row — skipped");
+                    debug!(error = %err, "sempai_proposal: failed to insert+submit python_code row — skipped");
                     false
                 }
             }

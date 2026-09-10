@@ -32,6 +32,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use brassclaw_agent_loop::plan_scoring::{SkillMaturityTier, classify_tier, wilson_lower_bound};
+use brassclaw_engine::memory::retrieval_source::ComponentScope;
 use brassclaw_pg::PgPool;
 use brassclaw_turns::run_profile::{
     RecipeLookup, RecipeLookupError, RecipeMatchDto, RecipeStepDto, ToolSkillMatchDto,
@@ -40,6 +41,8 @@ use serde_json::Value;
 use thiserror::Error;
 use tracing::debug;
 use uuid::Uuid;
+
+use crate::validation_queue::ValidationQueueStore;
 
 /// Hard cap on how many recipes `list_all` / `fetch_validated` may return in a
 /// single call.  Guards against accidental full-table scans on large tenants.
@@ -68,6 +71,8 @@ pub(crate) enum PgRecipeStoreError {
     NotFound { id: String },
     #[error("invalid transition or data: {reason}")]
     Invalid { reason: String },
+    #[error("validation queue error: {reason}")]
+    Queue { reason: String },
 }
 
 fn map_pool(e: deadpool_postgres::PoolError) -> PgRecipeStoreError {
@@ -126,6 +131,12 @@ pub(crate) struct PgRecipe {
     pub(crate) step_descriptions: Option<Value>,
     pub(crate) variants: Option<Value>,
     pub(crate) dependency_registry: Option<Value>,
+
+    /// Phase P.0 (V079): which component class this Recipe validates.
+    /// `None` = general-purpose Recipe (not a validator).
+    /// `Some(N)` = validator Recipe for component class N.
+    /// Used by `find_validator_recipe` in `q1_orchestrator.rs`.
+    pub(crate) validates_class_code: Option<i16>,
 }
 
 impl PgRecipe {
@@ -174,6 +185,9 @@ pub(crate) struct NewPgRecipe {
     pub(crate) step_descriptions: Option<Value>,
     pub(crate) variants: Option<Value>,
     pub(crate) dependency_registry: Option<Value>,
+    /// Phase P.0 (V079): which component class this Recipe validates.
+    /// `None` = general-purpose Recipe. `Some(N)` = validator for class N.
+    pub(crate) validates_class_code: Option<i16>,
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +231,7 @@ impl PgRecipeStore {
 }
 
 /// Canonical SELECT column list — order must match [`decode_recipe_row`].
+/// Indices 0–28: existing columns. Index 29: validates_class_code (V079).
 const RECIPE_SELECT: &str = "
     id, tenant_id, user_id, agent_id, project_id,
     name, description, trigger, steps, status,
@@ -225,7 +240,8 @@ const RECIPE_SELECT: &str = "
     tier, usage_count, success_count, failure_count, wilson_lower,
     validation_status, source, content_hash,
     created_at, updated_at,
-    step_descriptions, variants, dependency_registry
+    step_descriptions, variants, dependency_registry,
+    validates_class_code
 ";
 
 fn decode_recipe_row(row: &tokio_postgres::Row) -> Result<PgRecipe, PgRecipeStoreError> {
@@ -259,6 +275,7 @@ fn decode_recipe_row(row: &tokio_postgres::Row) -> Result<PgRecipe, PgRecipeStor
         step_descriptions: row.get(26),
         variants: row.get(27),
         dependency_registry: row.get(28),
+        validates_class_code: row.get(29),
     })
 }
 
@@ -273,8 +290,9 @@ impl PgRecipeStore {
                      name, description, trigger, steps,
                      prior_knowledge_content, override_prompt_creation,
                      consumer_tags, intent_examples, source,
-                     step_descriptions, variants, dependency_registry)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                     step_descriptions, variants, dependency_registry,
+                     validates_class_code)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -293,11 +311,74 @@ impl PgRecipeStore {
                     &row.step_descriptions,
                     &row.variants,
                     &row.dependency_registry,
+                    &row.validates_class_code,
                 ],
             )
             .await
             .map_err(map_pg)?;
         Ok(db_row.get(0))
+    }
+
+    /// Insert a new recipe AND submit it to the Q1 validation queue (state 1)
+    /// in one call — the canonical non-builtin save path for all recipe
+    /// authoring (WebUI manual, Sempai auto-creation, DocPlan dissector).
+    ///
+    /// Mirrors `PgPythonCodeStore::create_and_submit` and
+    /// `PgExtensionCatalogueStore::create_and_submit`. All non-builtin
+    /// components must go through the queue; builtins bypass it via
+    /// `builtin_bootstrap.rs` (exempt by design). Returns the new UUID.
+    pub(crate) async fn create_and_submit(
+        &self,
+        row: NewPgRecipe,
+        queue_store: &ValidationQueueStore,
+    ) -> Result<Uuid, PgRecipeStoreError> {
+        let scope = ComponentScope {
+            tenant_id: row.tenant_id.clone(),
+            user_id: row.user_id.clone(),
+            agent_id: row.agent_id.clone(),
+            project_id: row.project_id.clone(),
+        };
+        let id = self.insert(row).await?;
+        queue_store
+            .submit(&scope, id, 21, None)
+            .await
+            .map_err(|e| PgRecipeStoreError::Queue {
+                reason: e.to_string(),
+            })?;
+        Ok(id)
+    }
+
+    /// Upsert a recipe by name AND ensure it has a queue row (state 1).
+    ///
+    /// If the row is fresh or its content changed (`pending` reset), a new
+    /// queue row is submitted.  If one already exists for this component
+    /// (`AlreadyQueued`), the error is silently ignored — the existing queue
+    /// entry is the correct state. Returns the recipe UUID.
+    pub(crate) async fn upsert_and_submit(
+        &self,
+        row: NewPgRecipe,
+        content_hash: &str,
+        queue_store: &ValidationQueueStore,
+    ) -> Result<Uuid, PgRecipeStoreError> {
+        let scope = ComponentScope {
+            tenant_id: row.tenant_id.clone(),
+            user_id: row.user_id.clone(),
+            agent_id: row.agent_id.clone(),
+            project_id: row.project_id.clone(),
+        };
+        let id = self.upsert(row, content_hash).await?;
+        // Submit to the queue. AlreadyQueued is benign — the component is
+        // already tracked; any other error is surfaced.
+        match queue_store.submit(&scope, id, 21, None).await {
+            Ok(()) => {}
+            Err(crate::validation_queue::ValidationQueueError::AlreadyQueued { .. }) => {}
+            Err(e) => {
+                return Err(PgRecipeStoreError::Queue {
+                    reason: e.to_string(),
+                });
+            }
+        }
+        Ok(id)
     }
 
     /// Fetch a single recipe by id + scope.
@@ -577,8 +658,9 @@ impl PgRecipeStore {
                      prior_knowledge_content, override_prompt_creation,
                      consumer_tags, intent_examples, source, content_hash,
                      step_descriptions, variants, dependency_registry,
+                     validates_class_code,
                      validation_status)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'pending')
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'pending')
                  ON CONFLICT ON CONSTRAINT reborn_recipes_scope_name_unique DO UPDATE
                      SET description             = EXCLUDED.description,
                          trigger                 = EXCLUDED.trigger,
@@ -595,6 +677,7 @@ impl PgRecipeStore {
                          step_descriptions       = EXCLUDED.step_descriptions,
                          variants                = EXCLUDED.variants,
                          dependency_registry     = EXCLUDED.dependency_registry,
+                         validates_class_code    = EXCLUDED.validates_class_code,
                          validation_status       = CASE
                              WHEN reborn_recipes.content_hash = $14 THEN reborn_recipes.validation_status
                              ELSE 'pending'
@@ -618,6 +701,7 @@ impl PgRecipeStore {
                     &row.step_descriptions,
                     &row.variants,
                     &row.dependency_registry,
+                    &row.validates_class_code,
                 ],
             )
             .await
@@ -925,7 +1009,9 @@ fn map_pg_recipe_error(e: PgRecipeStoreError) -> brassclaw_product_workflow::Rec
         PgRecipeStoreError::Invalid { reason } => {
             brassclaw_product_workflow::RecipeStoreError::Invalid(reason)
         }
-        PgRecipeStoreError::Pool { reason } | PgRecipeStoreError::Db { reason } => {
+        PgRecipeStoreError::Pool { reason }
+        | PgRecipeStoreError::Db { reason }
+        | PgRecipeStoreError::Queue { reason } => {
             brassclaw_product_workflow::RecipeStoreError::Unavailable(reason)
         }
         PgRecipeStoreError::Serialize { reason } => {
@@ -996,6 +1082,7 @@ fn recipe_to_queue_item(
     review_feedback: Option<String>,
     validation_errors: Vec<String>,
     queue_state: Option<i32>,
+    q2_actor: Option<String>,
 ) -> brassclaw_product_workflow::ValidationQueueItem {
     // Derive queue_code from reborn_validation_queue.state:
     // 1 = q1_auto, 2 = q2_manual, 3 = q3_revision (counter<3) or q4_rejection (counter>=3), 4 = garbage.
@@ -1050,6 +1137,7 @@ fn recipe_to_queue_item(
         // reborn_recipes has no llm_audit_status column — always not_applicable.
         llm_audit_status: "not_applicable".to_string(),
         llm_audit_findings: vec![],
+        q2_actor,
     }
 }
 
@@ -1169,7 +1257,8 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                     COALESCE(q.counter, 0)                    AS q_counter,
                     q.review_feedback                         AS q_review_feedback,
                     COALESCE(q.validation_errors, ARRAY[]::TEXT[]) AS q_validation_errors,
-                    q.state                                   AS q_state
+                    q.state                                   AS q_state,
+                    q.q2_actor                                AS q_q2_actor
              FROM reborn_recipes r
              LEFT JOIN reborn_validation_queue q
                     ON q.component_id  = r.id
@@ -1204,11 +1293,13 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             let recipe = decode_recipe_row(row).map_err(|e| {
                 brassclaw_product_workflow::RecipeStoreError::Internal(e.to_string())
             })?;
-            // Queue columns appended after the 29 RECIPE_SELECT columns (indices 29–32).
-            let counter: i32 = row.get(29);
-            let review_feedback: Option<String> = row.get(30);
-            let validation_errors: Vec<String> = row.get(31);
-            let queue_state: Option<i32> = row.try_get::<_, i16>(32).ok().map(|s| s as i32);
+            // Queue columns appended after the 30 RECIPE_SELECT columns (indices 30–34).
+            // RECIPE_SELECT now has 30 columns (0–29) after V079 added validates_class_code.
+            let counter: i32 = row.get(30);
+            let review_feedback: Option<String> = row.get(31);
+            let validation_errors: Vec<String> = row.get(32);
+            let queue_state: Option<i32> = row.try_get::<_, i16>(33).ok().map(|s| s as i32);
+            let q2_actor: Option<String> = row.try_get(34).unwrap_or(None);
 
             // For Rejection filter: only include rows with counter >= 3.
             // For Revision filter: only include rows with counter < 3.
@@ -1224,6 +1315,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                     review_feedback,
                     validation_errors,
                     queue_state,
+                    q2_actor,
                 ));
             }
         }
@@ -1598,12 +1690,14 @@ mod tests {
     #[test]
     fn recipe_select_round_trips_v3_authoring_columns() {
         let cols: Vec<&str> = RECIPE_SELECT.trim().split(',').map(|c| c.trim()).collect();
-        assert_eq!(cols.len(), 29, "RECIPE_SELECT must select 29 columns (34 - 5 legacy)");
+        // 29 original + 1 (validates_class_code, V079) = 30.
+        assert_eq!(cols.len(), 30, "RECIPE_SELECT must select 30 columns (29 + validates_class_code V079)");
         assert_eq!(cols[0], "id");
         assert_eq!(cols[25], "updated_at");
         assert_eq!(cols[26], "step_descriptions");
         assert_eq!(cols[27], "variants");
         assert_eq!(cols[28], "dependency_registry");
+        assert_eq!(cols[29], "validates_class_code");
     }
 
     /// Build a `PgRecipe` that is Tier-0 eligible by default: validated, no
@@ -1640,6 +1734,7 @@ mod tests {
             step_descriptions: None,
             variants: None,
             dependency_registry: None,
+            validates_class_code: None,
         }
     }
 
