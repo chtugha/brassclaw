@@ -9694,12 +9694,17 @@ graduation and a human-reviewed graduation in the WebUI queue tab.
 - `builtin_bootstrap.rs` inserts builtins with `source="system"` + `validation_status=
   "validated"` directly. `audit_builtin_graduation()` records `q2_actor='builtin'` in the
   queue for each new insert. Committed `abd69e4f`.
-- **Remaining:** Step 5 (sandboxed runner wiring in `run_q1_validation`) — the
-  `// TODO(Phase P.0)` stub is still present. When a Recipe IS found the function
-  still returns `Deferred` because the Monty executor is not yet called. Step 5 is
-  the next task. WebUI queue-tab `q2_actor` surface (step 5b) also pending.
+- **Step 5 done** (`run_q1_validation` runner wired — committed `b03830c7`):
+  `fetch_component_content_fields`, `fetch_validator_pc_body`, `run_validator_python`
+  added to `q1_orchestrator.rs`. `run_q1_validation` now calls `gate1_pass` /
+  `gate1_fail` based on the Monty `run_python_code_body` result. Graceful-defer
+  paths preserved (no Recipe, no PC body, component not found). 6 new unit tests.
+  The `// TODO(Phase P.0)` stub is fully replaced.
+- **Remaining:** WebUI queue-tab `q2_actor` surface (step 5b) — surface `q2_actor`
+  field on queue list rows so operators can see `'human'` vs `'builtin'` in the UI.
+  This is a UI-only change; the DB column + store method are already live.
 
-**What changes.**
+**What changes (all done).**
 
 1. **V078 migration** — add `q2_actor` column to `reborn_validation_queue`:
    ```sql
