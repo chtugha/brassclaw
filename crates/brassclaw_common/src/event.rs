@@ -412,22 +412,6 @@ pub enum AppEvent {
         thread_id: Option<String>,
     },
 
-    /// Skills activated for a conversation turn.
-    ///
-    /// `feedback` is a list of human-readable notes about the
-    /// activation (e.g. "chain-loaded from code-review", "ceo-setup
-    /// excluded by setup marker"). May be empty — `skip_serializing_if`
-    /// keeps the SSE payload lean for the common no-note case and
-    /// preserves wire-format backwards compatibility.
-    #[serde(rename = "skill_activated")]
-    SkillActivated {
-        skill_names: Vec<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        thread_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        feedback: Vec<String>,
-    },
-
     /// Extension activation status change (WASM channels).
     #[serde(rename = "extension_status")]
     ExtensionStatus {
@@ -729,7 +713,6 @@ impl AppEvent {
             Self::ImageGenerated { .. } => "image_generated",
             Self::Suggestions { .. } => "suggestions",
             Self::TurnCost { .. } => "turn_cost",
-            Self::SkillActivated { .. } => "skill_activated",
             Self::ExtensionStatus { .. } => "extension_status",
             Self::ReasoningUpdate { .. } => "reasoning_update",
             Self::JobReasoning { .. } => "job_reasoning",
@@ -895,11 +878,6 @@ mod tests {
                 output_tokens: 0,
                 cost_usd: String::new(),
                 thread_id: None,
-            },
-            AppEvent::SkillActivated {
-                skill_names: vec![],
-                thread_id: None,
-                feedback: vec![],
             },
             AppEvent::ExtensionStatus {
                 extension_name: ExtensionName::from_trusted(String::new()),

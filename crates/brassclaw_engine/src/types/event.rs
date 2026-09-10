@@ -346,11 +346,6 @@ pub enum EventKind {
         error: String,
     },
 
-    // ── Skill activation ───────────────────────────────────────
-    SkillActivated {
-        skill_names: Vec<String>,
-    },
-
     // ── Code execution instrumentation ────────────────────────
     /// Emitted when a code (REPL) execution attempt fails. Enables aggregate
     /// analysis of code execution failure modes to determine whether the

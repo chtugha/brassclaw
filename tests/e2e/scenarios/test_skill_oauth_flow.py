@@ -455,7 +455,6 @@ class TestSSEAuthEvents:
 
         has_auth_event = any(_is_auth_gate(e) for e in events_received)
         has_approval_event = "approval_needed" in event_types
-        has_skill_event = "skill_activated" in event_types
         has_tool_event = any(
             t in event_types for t in ["tool_started", "tool_completed"]
         )
@@ -472,8 +471,8 @@ class TestSSEAuthEvents:
             and "running" in (e.get("message") or "").lower()
             for e in events_received
         )
-        assert has_tool_event or has_skill_event or has_running_tool_status, (
-            f"Expected tool/skill events in SSE stream, got types: {event_types}"
+        assert has_tool_event or has_running_tool_status, (
+            f"Expected tool events in SSE stream, got types: {event_types}"
         )
 
 
