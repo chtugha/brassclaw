@@ -136,7 +136,6 @@ mod provider_admin;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin_product_command;
 mod readiness;
-mod recipe_library;
 pub mod recipe_outcome_listener;
 #[cfg(feature = "postgres")]
 pub(crate) mod reduction_rules_store;
