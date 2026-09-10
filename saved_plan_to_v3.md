@@ -9941,7 +9941,7 @@ first-class DB skills.
 
 ### Phase P — Doc-Conversion Mechanism (§0.22; user repeat item 4)
 
-**Status:** [ ] Pending — all prerequisite migrations are **live**; outstanding work is Steps 1–11 (no Rust except step 1 + step 3).
+**Status:** [-] In progress — Step 1 done (commit pending); outstanding work is Steps 2–11.
 
 **Goal:** Implement the §0.22 mechanism — auto-convert each
 `docs/agents-v3/*.md` to an LLM-optimized form, store both versions in
@@ -9960,7 +9960,7 @@ Skills + Tools + PythonCode + Action), not Rust code.
 | `reborn_basic_prompt_store` | V056 (planned) | **`V063__reborn_basic_prompt_store.sql`** | ✅ live |
 | `capability_id` + `source='system'` on tools/skills | V057 (planned) | **`V066__allow_system_source_on_tools_and_skills.sql`** | ✅ live |
 | `PgBasicPromptStore::mark_stale` (Phase K.1) | — | `pg_basic_prompt_store.rs` | ✅ live |
-| Phase P.0 (`q2_actor` audit column + Q1 runner) | V078 | `V078__reborn_validation_queue_q2_actor.sql` | ✅ live (step 5b WebUI pending) |
+| Phase P.0 (`q2_actor` audit column + Q1 runner + Step 5b WebUI) | V078 | `V078__reborn_validation_queue_q2_actor.sql` | ✅ live + WebUI done (`bfeb7728`) |
 | Phase P.1 (skills DB migration, `bundled_skills` removed) | — | `builtin_bootstrap.rs` Passes 8–14 | ✅ done |
 
 > **Note on planned vs actual migration numbers:** V056 and V057 (as named in the plan)
@@ -9975,17 +9975,32 @@ const edit (`COMPONENT_TABLES` + `class_label` in `interceptor_config_service.rs
 and the step-3 `component_db` Rust Tool (+ its ToolSkill DB row, seeded through
 Phase P.0 path); everything else is v3 artifacts authored as DB rows through Q1+Q2.
 
-> **Step 1 not yet done:** `("reborn_docus", 17)` is absent from `COMPONENT_TABLES`
-> and `17 => "Docu"` is absent from `class_label` in `interceptor_config_service.rs`.
-> This is the only blocking Rust change before the remaining steps can be authored as
-> DB components.
+> **Step 1 not yet done — verified against live code:**
+> - `("reborn_docus", 17)` is absent from `COMPONENT_TABLES` in `interceptor_config_service.rs`.
+> - `("reborn_python_code", 22)` is absent from `COMPONENT_TABLES`.
+> - `("reborn_extension_catalogues", 23)` is absent from `COMPONENT_TABLES`.
+> - `17 => "Docu"` is absent from `class_label` in `interceptor_config_service.rs`
+>   (classes 22/23 labels ARE already present as `"PythonCode"` / `"Catalogue"`).
+> - `boot_integrity.rs` already covers all three tables (17, 22, 23) — the gap is
+>   only in `COMPONENT_TABLES` / `class_label` (the prefix-bundle assembler).
+> - All three tables are also already in `retrieval_source.rs` UNION ALL arms (classes
+>   17, 22, 23 confirmed in the engine retrieval layer).
+> - This is the only blocking Rust change before the remaining steps can be authored as
+>   DB components.
 
 **Steps (the §8 sequence; one at a time, commit + push after each):**
 
-1. **Composition prerequisite:** add `("reborn_docus", 17)` to
-   `COMPONENT_TABLES` and `17 => "Docu"` to `class_label` in
-   `interceptor_config_service.rs`; unit test that `do_reassemble` includes a
-   validated Docu row. (Small Rust edit; no migration.)
+1. **[DONE]** **Composition prerequisite:** add `("reborn_docus", 17)`, `("reborn_python_code", 22)`,
+   and `("reborn_extension_catalogues", 23)` to `COMPONENT_TABLES`; add `17 => "Docu"` to
+   `class_label` in `interceptor_config_service.rs` (22/23 labels already present). Unit
+   tests: (a) `class_label(17) == "Docu"`, (b) `COMPONENT_TABLES` contains all three new
+   entries. The `do_assemble_bundle` loop already skips tables that don't exist in the DB
+   at runtime (graceful skip), so adding future-table entries is safe. (Small Rust edit;
+   no migration.)
+
+   **Implemented:** `interceptor_config_service.rs` — added three entries to `COMPONENT_TABLES`
+   and `17 => "Docu"` arm to `class_label`; 4 new unit tests (labels 17/22/23 + table entries);
+   all 8 tests pass; clippy clean. No migration needed.
 2. **PythonCode leaves (class 22):** author `sha256`, `hash_changed`,
    `markdown_section`, `format_component_header` — pure logic, one concern
    each, no I/O; Q1-scanned; through Q1+Q2 (Phase P.0). General-purpose →
