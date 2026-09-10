@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use brassclaw_loop_support::{
-    HostSkillContextBuildError, HostSkillContextCandidate, HostSkillContextSource,
     SkillBundleDescriptor, SkillBundleId, SkillBundleSource, SkillBundleSourceError,
     SkillSourceKind, sort_skill_bundle_descriptors,
 };
@@ -162,20 +161,6 @@ pub enum SkillActivationSelectionError {
     Internal,
 }
 
-impl SkillActivationSelectionError {
-    fn into_context_error(self) -> HostSkillContextBuildError {
-        match self {
-            Self::SourceUnavailable => HostSkillContextBuildError::SourceUnavailable,
-            Self::AmbiguousSkill { name, sources } => {
-                HostSkillContextBuildError::AmbiguousSkill { name, sources }
-            }
-            Self::ParseFailed => HostSkillContextBuildError::ParseFailed,
-            Self::VisibilityDataMissing => HostSkillContextBuildError::VisibilityDataMissing,
-            Self::ContextBudgetExceeded => HostSkillContextBuildError::ContextBudgetExceeded,
-            Self::Internal => HostSkillContextBuildError::Internal,
-        }
-    }
-}
 
 /// Host skill context source that activates only conversation-selected skills.
 ///
@@ -362,6 +347,7 @@ where
         Ok(())
     }
 
+    #[cfg(test)]
     fn take_message_for_run(
         &self,
         scope: &TurnScope,
@@ -404,12 +390,13 @@ where
             .map(|message| message.text.clone()))
     }
 
+    #[cfg(test)]
     async fn selected_candidates(
         &self,
         run_context: &LoopRunContext,
         message: &str,
         capture_plan: bool,
-    ) -> Result<Vec<HostSkillContextCandidate>, SkillActivationSelectionError> {
+    ) -> Result<Vec<ActivationCandidate>, SkillActivationSelectionError> {
         let (plan, candidates) = self
             .resolve_activation_plan_with_candidates(run_context, message)
             .await?;
@@ -444,19 +431,6 @@ where
             return Ok(Vec::new());
         }
         Ok(context_candidates_for_plan(&plan, candidates))
-    }
-
-    async fn active_plan_candidates(
-        &self,
-        run_context: &LoopRunContext,
-    ) -> Result<Vec<HostSkillContextCandidate>, SkillActivationSelectionError> {
-        let Some(plan) = self.active_plan(run_context)? else {
-            return Ok(Vec::new());
-        };
-        let candidate_set = self
-            .load_active_plan_candidate_set(run_context, &plan)
-            .await?;
-        Ok(context_candidates_for_plan(&plan, candidate_set.candidates))
     }
 
     async fn resolve_activation_plan(
@@ -521,22 +495,6 @@ where
             .filter(|descriptor| {
                 requested_names.contains(&descriptor.id().name().to_ascii_lowercase())
             })
-            .collect::<Vec<_>>();
-        self.load_activation_candidate_set_for_descriptors(run_context, descriptors)
-            .await
-    }
-
-    async fn load_active_plan_candidate_set(
-        &self,
-        run_context: &LoopRunContext,
-        plan: &SkillActivationPlan,
-    ) -> Result<ActivationCandidateSet, SkillActivationSelectionError> {
-        let active_bundles = plan.activated_bundles().iter().collect::<HashSet<_>>();
-        let descriptors = self
-            .load_activation_descriptors(run_context)
-            .await?
-            .into_iter()
-            .filter(|descriptor| active_bundles.contains(descriptor.id()))
             .collect::<Vec<_>>();
         self.load_activation_candidate_set_for_descriptors(run_context, descriptors)
             .await
@@ -647,7 +605,6 @@ where
             return Ok(ActivationCandidate {
                 descriptor: descriptor.clone(),
                 loaded: cached.loaded,
-                skill_md,
             });
         }
 
@@ -660,7 +617,6 @@ where
             return Ok(ActivationCandidate {
                 descriptor: descriptor.clone(),
                 loaded: cached.loaded,
-                skill_md,
             });
         }
         if cache.len() >= MAX_ACTIVATION_CACHE_ENTRIES {
@@ -675,7 +631,6 @@ where
         Ok(ActivationCandidate {
             descriptor: descriptor.clone(),
             loaded,
-            skill_md,
         })
     }
 
@@ -787,37 +742,10 @@ impl ActivePlanCache {
     }
 }
 
-#[async_trait]
-impl<S> HostSkillContextSource for SelectableSkillContextSource<S>
-where
-    S: SkillBundleSource + ?Sized,
-{
-    async fn load_skill_context_candidates(
-        &self,
-        run_context: &LoopRunContext,
-    ) -> Result<Vec<HostSkillContextCandidate>, HostSkillContextBuildError> {
-        let Some(accepted_message_ref) = run_context.accepted_message_ref.as_ref() else {
-            return Ok(Vec::new());
-        };
-        let Some(message) = self
-            .take_message_for_run(&run_context.scope, accepted_message_ref)
-            .map_err(SkillActivationSelectionError::into_context_error)?
-        else {
-            return self
-                .active_plan_candidates(run_context)
-                .await
-                .map_err(SkillActivationSelectionError::into_context_error);
-        };
-        self.selected_candidates(run_context, &message.text, message.capture_plan)
-            .await
-            .map_err(SkillActivationSelectionError::into_context_error)
-    }
-}
-
+#[derive(Debug)]
 struct ActivationCandidate {
     descriptor: SkillBundleDescriptor,
     loaded: LoadedSkill,
-    skill_md: String,
 }
 
 struct ActivationCandidateSet {
@@ -855,13 +783,6 @@ impl ActivationCandidateCacheKey {
     }
 }
 
-impl ActivationCandidate {
-    fn into_context_candidate(self) -> HostSkillContextCandidate {
-        HostSkillContextCandidate::new(self.skill_md, self.descriptor.visibility().copied())
-            .with_ordering_key(descriptor_context_ordering_key(&self.descriptor))
-    }
-}
-
 fn activation_plan_for_candidates(selection: SkillActivationSelection) -> SkillActivationPlan {
     let activated_bundles = selection
         .activations
@@ -872,10 +793,11 @@ fn activation_plan_for_candidates(selection: SkillActivationSelection) -> SkillA
     SkillActivationPlan::new(selection, activated_bundles)
 }
 
+#[cfg(test)]
 fn context_candidates_for_plan(
     plan: &SkillActivationPlan,
     candidates: Vec<ActivationCandidate>,
-) -> Vec<HostSkillContextCandidate> {
+) -> Vec<ActivationCandidate> {
     if plan.selection.activations.is_empty() {
         return Vec::new();
     }
@@ -888,7 +810,6 @@ fn context_candidates_for_plan(
     candidates
         .into_iter()
         .filter(|candidate| active_bundles.contains(candidate.descriptor.id()))
-        .map(ActivationCandidate::into_context_candidate)
         .collect()
 }
 
@@ -1325,23 +1246,6 @@ mod tests {
         error: SkillBundleSourceError,
     }
 
-    struct ChangingSkillBundleSource {
-        descriptor: SkillBundleDescriptor,
-        first: Vec<u8>,
-        second: Vec<u8>,
-        reads: std::sync::atomic::AtomicUsize,
-    }
-
-    struct ReadCountingSkillBundleSource {
-        inner: StaticSkillBundleSource,
-        reads: Mutex<Vec<String>>,
-    }
-
-    #[derive(Debug)]
-    struct StaticSetupMarkerSource {
-        satisfied_markers: HashSet<String>,
-    }
-
     impl StaticSkillBundleSource {
         fn new(skills: Vec<(SkillSourceKind, &str, &str)>) -> Self {
             let mut descriptors = Vec::new();
@@ -1361,50 +1265,6 @@ mod tests {
     impl ErroringListSkillBundleSource {
         fn new(error: SkillBundleSourceError) -> Self {
             Self { error }
-        }
-    }
-
-    impl ChangingSkillBundleSource {
-        fn new(name: &str, first: String, second: String) -> Self {
-            let id = SkillBundleId::new(SkillSourceKind::User, name).unwrap();
-            let descriptor = SkillBundleDescriptor::new(id, Some(SkillVisibility::Visible))
-                .with_provenance(
-                    brassclaw_loop_support::SkillBundleProvenance::new(SkillSourceKind::User)
-                        .with_content_hash("stable-test-hash"),
-                );
-            Self {
-                descriptor,
-                first: first.into_bytes(),
-                second: second.into_bytes(),
-                reads: std::sync::atomic::AtomicUsize::new(0),
-            }
-        }
-    }
-
-    impl ReadCountingSkillBundleSource {
-        fn new(skills: Vec<(SkillSourceKind, &str, &str)>) -> Self {
-            Self {
-                inner: StaticSkillBundleSource::new(skills),
-                reads: Mutex::new(Vec::new()),
-            }
-        }
-
-        fn reads(&self) -> Vec<String> {
-            self.reads
-                .lock()
-                .map(|reads| reads.clone())
-                .unwrap_or_default()
-        }
-    }
-
-    impl StaticSetupMarkerSource {
-        fn new(satisfied_markers: &[&str]) -> Self {
-            Self {
-                satisfied_markers: satisfied_markers
-                    .iter()
-                    .map(|marker| marker.to_string())
-                    .collect(),
-            }
         }
     }
 
@@ -1449,69 +1309,6 @@ mod tests {
         }
     }
 
-    #[async_trait]
-    impl SkillBundleSource for ChangingSkillBundleSource {
-        async fn list_skill_bundles(
-            &self,
-            _run_context: &LoopRunContext,
-        ) -> Result<Vec<SkillBundleDescriptor>, SkillBundleSourceError> {
-            Ok(vec![self.descriptor.clone()])
-        }
-
-        async fn read_skill_bundle_file(
-            &self,
-            _run_context: &LoopRunContext,
-            _bundle_id: &SkillBundleId,
-            _path: &SkillFilePath,
-        ) -> Result<Vec<u8>, SkillBundleSourceError> {
-            let read = self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            if read == 0 {
-                Ok(self.first.clone())
-            } else {
-                Ok(self.second.clone())
-            }
-        }
-    }
-
-    #[async_trait]
-    impl SkillBundleSource for ReadCountingSkillBundleSource {
-        async fn list_skill_bundles(
-            &self,
-            run_context: &LoopRunContext,
-        ) -> Result<Vec<SkillBundleDescriptor>, SkillBundleSourceError> {
-            self.inner.list_skill_bundles(run_context).await
-        }
-
-        async fn read_skill_bundle_file(
-            &self,
-            run_context: &LoopRunContext,
-            bundle_id: &SkillBundleId,
-            path: &SkillFilePath,
-        ) -> Result<Vec<u8>, SkillBundleSourceError> {
-            self.reads
-                .lock()
-                .map_err(|_| SkillBundleSourceError::Internal)?
-                .push(bundle_id.name().to_string());
-            self.inner
-                .read_skill_bundle_file(run_context, bundle_id, path)
-                .await
-        }
-    }
-
-    #[async_trait]
-    impl SetupMarkerSource for StaticSetupMarkerSource {
-        async fn satisfied_setup_markers(
-            &self,
-            _run_context: &LoopRunContext,
-            markers: &HashSet<String>,
-        ) -> Result<HashSet<String>, SkillActivationSelectionError> {
-            Ok(markers
-                .intersection(&self.satisfied_markers)
-                .cloned()
-                .collect())
-        }
-    }
-
     fn skill_md(name: &str, description: &str, keywords: &[&str], prompt: &str) -> String {
         let keyword_list = keywords
             .iter()
@@ -1520,12 +1317,6 @@ mod tests {
             .join(", ");
         format!(
             "---\nname: {name}\ndescription: {description}\nactivation:\n  keywords: [{keyword_list}]\n---\n\n{prompt}"
-        )
-    }
-
-    fn skill_md_with_activation(name: &str, activation: &str, prompt: &str) -> String {
-        format!(
-            "---\nname: {name}\ndescription: {name} description\nactivation:\n{activation}\n---\n\n{prompt}"
         )
     }
 
@@ -1563,331 +1354,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn selector_returns_no_context_without_matching_activation() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md(
-                "code-review",
-                "Review code",
-                &["review"],
-                "CODE_REVIEW_SENTINEL",
-            ),
-        )]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "hello there",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-
-        assert!(selected.is_empty());
-    }
-
-    #[tokio::test]
-    async fn selector_activates_only_keyword_matching_skill() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::System,
-                "code-review",
-                &skill_md(
-                    "code-review",
-                    "Review code",
-                    &["review"],
-                    "CODE_REVIEW_SENTINEL",
-                ),
-            ),
-            (
-                SkillSourceKind::User,
-                "spreadsheet",
-                &skill_md(
-                    "spreadsheet",
-                    "Spreadsheet work",
-                    &["sheet"],
-                    "SHEET_SENTINEL",
-                ),
-            ),
-        ]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "please review this PR",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-
-        assert_eq!(selected.len(), 1);
-        assert!(
-            selected[0]
-                .skill_md
-                .as_ref()
-                .expect("skill context")
-                .contains("CODE_REVIEW_SENTINEL")
-        );
-    }
-
-    #[tokio::test]
-    async fn selector_can_disable_regex_activation_criteria() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::User,
-                "regex-review",
-                &skill_md_with_activation(
-                    "regex-review",
-                    "  patterns: [\"review\\\\s+this\"]",
-                    "REGEX_REVIEW_SENTINEL",
-                ),
-            ),
-            (
-                SkillSourceKind::User,
-                "keyword-review",
-                &skill_md(
-                    "keyword-review",
-                    "Review code",
-                    &["review"],
-                    "KEYWORD_REVIEW_SENTINEL",
-                ),
-            ),
-        ]));
-        let selectable = SelectableSkillContextSource::new(
-            source,
-            SkillActivationSelectorConfig {
-                regex_activation_enabled: false,
-                ..SkillActivationSelectorConfig::default()
-            },
-        );
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "please review this PR",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-
-        let combined = selected
-            .iter()
-            .map(|candidate| candidate.skill_md.as_deref().unwrap_or(""))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        assert_eq!(selected.len(), 1);
-        assert!(combined.contains("KEYWORD_REVIEW_SENTINEL"));
-        assert!(!combined.contains("REGEX_REVIEW_SENTINEL"));
-    }
-
-    #[tokio::test]
-    async fn selector_keeps_explicit_activation_when_regex_activation_is_disabled() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md("code-review", "Review code", &[], "CODE_REVIEW_SENTINEL"),
-        )]));
-        let selectable = SelectableSkillContextSource::new(
-            source,
-            SkillActivationSelectorConfig {
-                regex_activation_enabled: false,
-                ..SkillActivationSelectorConfig::default()
-            },
-        );
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "$code-review this PR",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-
-        assert_eq!(selected.len(), 1);
-        assert!(
-            selected[0]
-                .skill_md
-                .as_ref()
-                .expect("skill context")
-                .contains("CODE_REVIEW_SENTINEL")
-        );
-    }
-
-    #[tokio::test]
-    async fn selector_can_disable_activation_criteria_but_keep_explicit_mentions() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md(
-                "code-review",
-                "Review code",
-                &["review"],
-                "CODE_REVIEW_SENTINEL",
-            ),
-        )]));
-        let selectable = SelectableSkillContextSource::new(
-            source,
-            SkillActivationSelectorConfig {
-                selection_mode: SkillActivationSelectionMode::ExplicitOnly,
-                ..SkillActivationSelectorConfig::default()
-            },
-        );
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "please review this PR",
-            )
-            .expect("record natural-language message");
-        assert!(
-            selectable
-                .load_skill_context_candidates(&context)
-                .await
-                .expect("natural-language selection succeeds")
-                .is_empty(),
-            "keyword/tag/pattern criteria should not inject full skill bodies when disabled"
-        );
-
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "$code-review this PR",
-            )
-            .expect("record explicit message");
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("explicit selection succeeds");
-
-        assert_eq!(selected.len(), 1);
-        assert!(
-            selected[0]
-                .skill_md
-                .as_ref()
-                .expect("skill context")
-                .contains("CODE_REVIEW_SENTINEL")
-        );
-    }
-
-    #[tokio::test]
-    async fn model_selected_skill_persists_for_later_prompt_builds() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md(
-                "code-review",
-                "Review code",
-                &["review"],
-                "CODE_REVIEW_SENTINEL",
-            ),
-        )]));
-        let selectable = SelectableSkillContextSource::new(
-            source,
-            SkillActivationSelectorConfig {
-                selection_mode: SkillActivationSelectionMode::ExplicitOnly,
-                ..SkillActivationSelectorConfig::default()
-            },
-        );
-        let context = run_context().await;
-
-        selectable
-            .activate_skills_for_run(&context, &["code-review".to_string()])
-            .await
-            .expect("model-selected skill activates");
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("active plan context loads");
-        let selected_again = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("active plan context reloads");
-
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected_again.len(), 1);
-        assert!(
-            selected_again[0]
-                .skill_md
-                .as_ref()
-                .expect("skill context")
-                .contains("CODE_REVIEW_SENTINEL")
-        );
-    }
-
-    #[tokio::test]
-    async fn model_selected_activation_reads_only_requested_skill_bodies() {
-        let source = Arc::new(ReadCountingSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::User,
-                "code-review",
-                &skill_md("code-review", "Review code", &[], "CODE_REVIEW_SENTINEL"),
-            ),
-            (
-                SkillSourceKind::User,
-                "large-audit",
-                &skill_md("large-audit", "Large audit", &[], "LARGE_AUDIT_SENTINEL"),
-            ),
-        ]));
-        let selectable = SelectableSkillContextSource::new(
-            source.clone(),
-            SkillActivationSelectorConfig {
-                selection_mode: SkillActivationSelectionMode::ExplicitOnly,
-                ..SkillActivationSelectorConfig::default()
-            },
-        );
-        let context = run_context().await;
-
-        selectable
-            .activate_skills_for_run(&context, &["code-review".to_string()])
-            .await
-            .expect("model-selected skill activates");
-        assert_eq!(source.reads(), vec!["code-review".to_string()]);
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("active plan context loads");
-
-        assert_eq!(selected.len(), 1);
-        assert_eq!(
-            source.reads(),
-            vec!["code-review".to_string(), "code-review".to_string()]
-        );
-        assert!(
-            selected[0]
-                .skill_md
-                .as_ref()
-                .expect("skill context")
-                .contains("CODE_REVIEW_SENTINEL")
-        );
-    }
-
-    #[tokio::test]
     async fn activate_skills_for_run_returns_budget_exceeded_when_max_active_skills_is_zero() {
         let source = Arc::new(StaticSkillBundleSource::new(vec![(
             SkillSourceKind::User,
@@ -1909,95 +1375,6 @@ mod tests {
             .expect_err("model-selected activation should honor active skill limit");
 
         assert_eq!(error, SkillActivationSelectionError::ContextBudgetExceeded);
-    }
-
-    #[tokio::test]
-    async fn merge_active_plan_deduplicates_overlapping_skill_activations_across_two_activate_calls()
-     {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::User,
-                "code-review",
-                &skill_md("code-review", "Review code", &[], "CODE_REVIEW_SENTINEL"),
-            ),
-            (
-                SkillSourceKind::User,
-                "spreadsheet",
-                &skill_md("spreadsheet", "Spreadsheet work", &[], "SHEET_SENTINEL"),
-            ),
-        ]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-
-        selectable
-            .activate_skills_for_run(&context, &["code-review".to_string()])
-            .await
-            .expect("first activation succeeds");
-        let plan = selectable
-            .activate_skills_for_run(
-                &context,
-                &["code-review".to_string(), "spreadsheet".to_string()],
-            )
-            .await
-            .expect("overlapping activation succeeds");
-
-        assert_eq!(plan.selection.activations.len(), 2);
-        assert_eq!(plan.activated_bundles().len(), 2);
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("active plan context loads");
-        assert_eq!(selected.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn selected_candidates_merges_with_existing_model_selected_active_plan() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::User,
-                "code-review",
-                &skill_md("code-review", "Review code", &[], "CODE_REVIEW_SENTINEL"),
-            ),
-            (
-                SkillSourceKind::User,
-                "release-helper",
-                &skill_md(
-                    "release-helper",
-                    "Release helper",
-                    &["release"],
-                    "RELEASE_SENTINEL",
-                ),
-            ),
-        ]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-
-        selectable
-            .activate_skills_for_run(&context, &["code-review".to_string()])
-            .await
-            .expect("model-selected activation succeeds");
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "please prepare release notes",
-            )
-            .expect("record message");
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("natural-language activation merges");
-
-        let combined = selected
-            .iter()
-            .map(|candidate| candidate.skill_md.as_deref().unwrap_or(""))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert_eq!(selected.len(), 2);
-        assert!(combined.contains("CODE_REVIEW_SENTINEL"));
-        assert!(combined.contains("RELEASE_SENTINEL"));
     }
 
     // Phase 3: SkillTrust::Installed removed — all validated skills are Trusted.
@@ -2134,219 +1511,6 @@ mod tests {
         assert_eq!(error, SkillActivationSelectionError::ContextBudgetExceeded);
     }
 
-    /// Regression test: `take_activation_plan_for_run` must reflect
-    /// model-selected activations made after the first prompt build.
-    #[tokio::test]
-    async fn take_activation_plan_for_run_reflects_model_selected_activations_after_prompt_build() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::User,
-                "alpha-helper",
-                &skill_md("alpha-helper", "Alpha helper", &["alpha"], "ALPHA_SENTINEL"),
-            ),
-            (
-                SkillSourceKind::User,
-                "beta-helper",
-                &skill_md("beta-helper", "Beta helper", &[], "BETA_SENTINEL"),
-            ),
-        ]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-
-        // Simulate the first prompt build: record a message that triggers a capture.
-        selectable
-            .record_user_message_for_execution(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "please use alpha",
-            )
-            .expect("record message");
-        let _ = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("first prompt build");
-
-        // Now the model selects an additional skill after the first build.
-        selectable
-            .activate_skills_for_run(&context, &["beta-helper".to_string()])
-            .await
-            .expect("model-selected activation succeeds");
-
-        // The captured execution plan must include the model-selected skill.
-        let plan = selectable
-            .take_activation_plan_for_run(&context.scope, context.run_id)
-            .expect("take plan")
-            .expect("plan must be present");
-        let names: Vec<_> = plan
-            .plan
-            .selection
-            .activations
-            .iter()
-            .map(|a| a.name.as_str())
-            .collect();
-        assert!(
-            names.contains(&"beta-helper"),
-            "captured plan must include model-selected beta-helper; got {names:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn selector_suppresses_explicit_skill_when_setup_marker_is_satisfied() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "setup-helper",
-            &skill_md_with_activation(
-                "setup-helper",
-                "  keywords: [\"setup-helper\"]\n  setup_marker: \"markers/setup-helper.done\"",
-                "SETUP_HELPER_SENTINEL",
-            ),
-        )]));
-        let setup_markers = Arc::new(StaticSetupMarkerSource::new(&["markers/setup-helper.done"]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default())
-                .with_setup_marker_source(setup_markers);
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "$setup-helper",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-
-        assert!(
-            selected.is_empty(),
-            "setup markers must suppress explicit and natural-language activation"
-        );
-    }
-
-    #[tokio::test]
-    async fn selector_keeps_recorded_messages_isolated_by_accepted_message_ref() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md(
-                "code-review",
-                "Review code",
-                &["review"],
-                "CODE_REVIEW_SENTINEL",
-            ),
-        )]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let first_context = run_context().await;
-        let second_context = LoopRunContext::new(
-            first_context.scope.clone(),
-            first_context.turn_id,
-            TurnRunId::new(),
-            first_context.resolved_run_profile.clone(),
-        )
-        .with_accepted_message_ref(AcceptedMessageRef::new("msg:run-b").unwrap())
-        .with_actor(first_context.actor().expect("actor").clone());
-
-        selectable
-            .record_user_message(
-                first_context.scope.clone(),
-                accepted_message_ref(&first_context),
-                "please review this PR",
-            )
-            .expect("record first message");
-        selectable
-            .record_user_message(
-                second_context.scope.clone(),
-                accepted_message_ref(&second_context),
-                "hello there",
-            )
-            .expect("record second message");
-
-        let first_selected = selectable
-            .load_skill_context_candidates(&first_context)
-            .await
-            .expect("first selection succeeds");
-        assert_eq!(first_selected.len(), 1);
-
-        let first_selected_after_message_consumed = selectable
-            .load_skill_context_candidates(&first_context)
-            .await
-            .expect("first selection after clear succeeds");
-        assert_eq!(
-            first_selected_after_message_consumed.len(),
-            1,
-            "activated skill context persists across later prompt builds in the same run"
-        );
-
-        let second_selected = selectable
-            .load_skill_context_candidates(&second_context)
-            .await
-            .expect("second selection succeeds");
-        assert!(
-            second_selected.is_empty(),
-            "clearing one run must not remove another run's recorded message"
-        );
-    }
-
-    #[tokio::test]
-    async fn clear_accepted_message_removes_only_requested_message() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md(
-                "code-review",
-                "Review code",
-                &["review"],
-                "CODE_REVIEW_SENTINEL",
-            ),
-        )]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let first_context = run_context().await;
-        let second_context = run_context_for("thread-a", "msg:run-b").await;
-
-        selectable
-            .record_user_message(
-                first_context.scope.clone(),
-                accepted_message_ref(&first_context),
-                "please review this PR",
-            )
-            .expect("record first message");
-        selectable
-            .record_user_message(
-                second_context.scope.clone(),
-                accepted_message_ref(&second_context),
-                "please review this PR",
-            )
-            .expect("record second message");
-
-        selectable
-            .clear_accepted_message(&first_context.scope, &accepted_message_ref(&first_context))
-            .expect("clear first message");
-
-        let first_selected = selectable
-            .load_skill_context_candidates(&first_context)
-            .await
-            .expect("first selection succeeds");
-        assert!(
-            first_selected.is_empty(),
-            "cleared message should not activate skills"
-        );
-
-        let second_selected = selectable
-            .load_skill_context_candidates(&second_context)
-            .await
-            .expect("second selection succeeds");
-        assert_eq!(
-            second_selected.len(),
-            1,
-            "clearing one accepted message must not remove another message"
-        );
-    }
-
     #[tokio::test]
     async fn peek_message_text_returns_raw_text_and_is_non_consuming() {
         // v3 plan §H3: `peek_message_text` returns the raw (unsanitized)
@@ -2441,58 +1605,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn selector_force_activates_dollar_skill_mention() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md("code-review", "Review code", &[], "CODE_REVIEW_SENTINEL"),
-        )]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "$code-review this PR",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-
-        assert_eq!(selected.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn selector_force_activates_bracketed_dollar_skill_mention() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md("code-review", "Review code", &[], "CODE_REVIEW_SENTINEL"),
-        )]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "[$code-review](/skills/code-review/SKILL.md) this PR",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-
-        assert_eq!(selected.len(), 1);
-    }
-
-    #[tokio::test]
     async fn selector_rejects_ambiguous_explicit_mentions() {
         let source = Arc::new(StaticSkillBundleSource::new(vec![
             (
@@ -2531,239 +1643,6 @@ mod tests {
             error,
             SkillActivationSelectionError::AmbiguousSkill { .. }
         ));
-    }
-
-    #[tokio::test]
-    async fn selector_activates_skills_from_tags_and_patterns() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::System,
-                "tag-helper",
-                &skill_md_with_activation(
-                    "tag-helper",
-                    "  tags: [\"release\"]",
-                    "TAG_HELPER_SENTINEL",
-                ),
-            ),
-            (
-                SkillSourceKind::User,
-                "pattern-helper",
-                &skill_md_with_activation(
-                    "pattern-helper",
-                    "  patterns: [\"deploy\\\\s+plan\"]",
-                    "PATTERN_HELPER_SENTINEL",
-                ),
-            ),
-            (
-                SkillSourceKind::User,
-                "quiet-helper",
-                &skill_md("quiet-helper", "Quiet", &["quiet"], "QUIET_HELPER_SENTINEL"),
-            ),
-        ]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "review release deploy plan",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-        let combined = selected
-            .iter()
-            .map(|candidate| candidate.skill_md.as_deref().unwrap_or(""))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        assert_eq!(selected.len(), 2);
-        assert!(combined.contains("TAG_HELPER_SENTINEL"));
-        assert!(combined.contains("PATTERN_HELPER_SENTINEL"));
-        assert!(!combined.contains("QUIET_HELPER_SENTINEL"));
-    }
-
-    #[tokio::test]
-    async fn selector_respects_configured_active_skill_and_token_limits() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::System,
-                "alpha-helper",
-                &skill_md_with_activation(
-                    "alpha-helper",
-                    "  keywords: [\"shared\"]\n  max_context_tokens: 2",
-                    "ALPHA_SENTINEL",
-                ),
-            ),
-            (
-                SkillSourceKind::User,
-                "beta-helper",
-                &skill_md_with_activation(
-                    "beta-helper",
-                    "  keywords: [\"shared\"]\n  max_context_tokens: 2",
-                    "BETA_SENTINEL",
-                ),
-            ),
-        ]));
-        let selectable = SelectableSkillContextSource::new(
-            source,
-            SkillActivationSelectorConfig {
-                max_active_skills: 1,
-                max_context_tokens: 4,
-                ..SkillActivationSelectorConfig::default()
-            },
-        );
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "shared",
-            )
-            .expect("record message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-
-        assert_eq!(selected.len(), 1);
-
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "/alpha-helper /beta-helper",
-            )
-            .expect("record message");
-        let error = selectable
-            .selected_candidates(&context, "/alpha-helper /beta-helper", false)
-            .await
-            .expect_err("explicit activation should honor active skill limit");
-        assert_eq!(error, SkillActivationSelectionError::ContextBudgetExceeded);
-    }
-
-    #[tokio::test]
-    async fn selector_maps_ambiguous_activation_to_context_error() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            (
-                SkillSourceKind::System,
-                "code-review",
-                &skill_md(
-                    "code-review",
-                    "System review",
-                    &[],
-                    "SYSTEM_REVIEW_SENTINEL",
-                ),
-            ),
-            (
-                SkillSourceKind::User,
-                "code-review",
-                &skill_md("code-review", "User review", &[], "USER_REVIEW_SENTINEL"),
-            ),
-        ]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "/code-review this PR",
-            )
-            .expect("record message");
-
-        let error = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect_err("ambiguous activation should fail");
-
-        assert!(matches!(
-            error,
-            HostSkillContextBuildError::AmbiguousSkill { .. }
-        ));
-    }
-
-    #[tokio::test]
-    async fn selector_extracts_explicit_mentions_after_multibyte_text() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md("code-review", "Review code", &[], "CODE_REVIEW_SENTINEL"),
-        )]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "café/code-review this PR",
-            )
-            .expect("record slash message");
-
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("slash selection succeeds");
-        assert_eq!(selected.len(), 1);
-
-        selectable
-            .record_user_message(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "café$code-review this PR",
-            )
-            .expect("record dollar message");
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("dollar selection succeeds");
-        assert_eq!(selected.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn selector_reuses_parsed_skill_for_stable_content_hash() {
-        let source = Arc::new(ChangingSkillBundleSource::new(
-            "code-review",
-            skill_md(
-                "code-review",
-                "Review code",
-                &["review"],
-                "CODE_REVIEW_SENTINEL",
-            ),
-            "not valid skill md".to_string(),
-        ));
-        let selectable = SelectableSkillContextSource::new(
-            source.clone(),
-            SkillActivationSelectorConfig::default(),
-        );
-        let context = run_context().await;
-
-        for _ in 0..2 {
-            selectable
-                .record_user_message(
-                    context.scope.clone(),
-                    accepted_message_ref(&context),
-                    "please review this",
-                )
-                .expect("record message");
-            let selected = selectable
-                .load_skill_context_candidates(&context)
-                .await
-                .expect("cached selection succeeds");
-            assert_eq!(selected.len(), 1);
-        }
-
-        assert_eq!(
-            source.reads.load(std::sync::atomic::Ordering::SeqCst),
-            2,
-            "cache avoids reparsing but still reads the current bundle content"
-        );
     }
 
     #[test]
@@ -2869,126 +1748,6 @@ mod tests {
             .await
             .expect_err("missing visibility should fail closed");
         assert_eq!(error, SkillActivationSelectionError::VisibilityDataMissing);
-    }
-
-    #[tokio::test]
-    async fn execution_message_capture_stores_and_consumes_plan_once() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md(
-                "code-review",
-                "Review code",
-                &["review"],
-                "CODE_REVIEW_SENTINEL",
-            ),
-        )]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-
-        selectable
-            .record_user_message_for_execution(
-                context.scope.clone(),
-                accepted_message_ref(&context),
-                "please review this",
-            )
-            .expect("record message");
-        let selected = selectable
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("selection succeeds");
-        assert_eq!(selected.len(), 1);
-        let plan = selectable
-            .take_activation_plan_for_run(&context.scope, context.run_id)
-            .expect("take captured plan")
-            .expect("plan should be captured");
-        assert_eq!(plan.plan.selection.activations.len(), 1);
-        assert!(
-            selectable
-                .take_activation_plan_for_run(&context.scope, context.run_id)
-                .expect("take is repeatable")
-                .is_none(),
-            "captured plans are single-consumer"
-        );
-    }
-
-    #[tokio::test]
-    async fn clear_accepted_message_removes_pending_execution_capture() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![(
-            SkillSourceKind::User,
-            "code-review",
-            &skill_md(
-                "code-review",
-                "Review code",
-                &["review"],
-                "CODE_REVIEW_SENTINEL",
-            ),
-        )]));
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let captured_a = run_context_for("thread-a", "msg:a-captured").await;
-        let pending_a = run_context_for("thread-a", "msg:a-pending").await;
-        let captured_b = run_context_for("thread-b", "msg:b-captured").await;
-
-        selectable
-            .record_user_message_for_execution(
-                captured_a.scope.clone(),
-                accepted_message_ref(&captured_a),
-                "please review this",
-            )
-            .expect("record captured scope a message");
-        selectable
-            .load_skill_context_candidates(&captured_a)
-            .await
-            .expect("scope a selection succeeds");
-
-        selectable
-            .record_user_message_for_execution(
-                pending_a.scope.clone(),
-                accepted_message_ref(&pending_a),
-                "please review this",
-            )
-            .expect("record pending scope a message");
-
-        selectable
-            .record_user_message_for_execution(
-                captured_b.scope.clone(),
-                accepted_message_ref(&captured_b),
-                "please review this",
-            )
-            .expect("record captured scope b message");
-        selectable
-            .load_skill_context_candidates(&captured_b)
-            .await
-            .expect("scope b selection succeeds");
-
-        selectable
-            .clear_accepted_message(&pending_a.scope, &accepted_message_ref(&pending_a))
-            .expect("clear pending scope a message");
-
-        assert!(
-            selectable
-                .take_activation_plan_for_run(&captured_a.scope, captured_a.run_id)
-                .expect("take cleared scope a plan")
-                .is_some(),
-            "clearing a pending message must not remove an already captured plan"
-        );
-        assert!(
-            selectable
-                .load_skill_context_candidates(&pending_a)
-                .await
-                .expect("pending scope a selection after clear succeeds")
-                .is_empty(),
-            "clearing the accepted message removes its pending execution capture"
-        );
-        assert!(
-            selectable
-                .take_activation_plan_for_run(&captured_b.scope, captured_b.run_id)
-                .expect("take scope b plan")
-                .is_some(),
-            "clearing one accepted message must not remove another scope's plan"
-        );
     }
 
     #[test]

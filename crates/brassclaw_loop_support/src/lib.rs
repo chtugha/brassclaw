@@ -29,7 +29,6 @@ mod input_port;
 mod input_queue;
 mod model_capability_view;
 pub mod pg_checkpoint_state_store;
-mod skill_bundle_context_source;
 mod skill_bundle_source;
 pub(crate) mod skill_context;
 mod subagent_prompt_port;
@@ -75,23 +74,10 @@ pub use identity_context::{
 pub use input_port::HostQueueLoopInputPort;
 pub use input_queue::{HostInputBatch, HostInputEnvelope, HostInputQueue, HostInputQueueError};
 pub use pg_checkpoint_state_store::PgCheckpointStateStore;
-pub use skill_bundle_context_source::SkillBundleContextSource;
 pub use skill_bundle_source::{
     SkillBundleDescriptor, SkillBundleId, SkillBundleProvenance, SkillBundleSource,
     SkillBundleSourceError, SkillFilePath, SkillSourceKind, sort_skill_bundle_descriptors,
 };
-pub use skill_context::{
-    HostSkillContextBuildError, HostSkillContextCandidate, HostSkillContextSource,
-    build_skill_run_snapshot,
-};
-
-// ---------------------------------------------------------------------------
-// Step 1 of skill-context removal: `HostSkillContextSource` is still re-exported
-// (downstream crates import it).  The field on ThreadBackedLoopContextPort and
-// ThreadBackedLoopModelPort is removed here; the trait and its impls will be
-// removed in subsequent steps once all callers are gone.
-// ---------------------------------------------------------------------------
-
 /// Source for the pre-assembled Kohai/Sempai prefix-cache bundle (§K.1.5).
 ///
 /// Implementations return the full bundle text for a given `(user_id,
