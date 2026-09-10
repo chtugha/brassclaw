@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use brassclaw_loop_support::{
-    HostIdentityContextSource, HostManagedModelGateway, HostSkillContextSource,
-    ThreadBackedLoopModelPort,
+    HostIdentityContextSource, HostManagedModelGateway, ThreadBackedLoopModelPort,
 };
 use brassclaw_threads::{SessionThreadService, ThreadScope};
 use brassclaw_turns::run_profile::{
@@ -21,7 +20,6 @@ where
     pub(super) thread_scope: ThreadScope,
     pub(super) host_gateway: Arc<G>,
     pub(super) max_messages: usize,
-    pub(super) skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     pub(super) identity_context_source: Option<Arc<dyn HostIdentityContextSource>>,
     pub(super) instruction_materialization_store: Option<Arc<dyn InstructionMaterializationStore>>,
     pub(super) capabilities: Option<Arc<dyn LoopCapabilityPort>>,
@@ -46,9 +44,6 @@ where
             self.max_messages,
         )
         .with_prompt_bundle_authority(self.prompt_authority.clone());
-        if let Some(source) = self.skill_context_source.as_ref() {
-            model_port = model_port.with_skill_context_source(source.clone());
-        }
         if let Some(source) = self.identity_context_source.as_ref() {
             model_port = model_port.with_identity_context_source(source.clone());
         }

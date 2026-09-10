@@ -1,14 +1,10 @@
 use async_trait::async_trait;
 use brassclaw_skills::{ParsedSkill, parse_skill_md};
 use brassclaw_turns::run_profile::{
-    AgentLoopHostError, AgentLoopHostErrorKind, InstalledSkillSnapshot, LoopContextSnippet,
-    LoopRunContext, SkillContextError, SkillContextService, SkillContextSource, SkillRunSnapshot,
-    SkillVisibility,
+    AgentLoopHostError, AgentLoopHostErrorKind, InstalledSkillSnapshot, LoopRunContext,
+    SkillRunSnapshot, SkillVisibility,
 };
-pub(crate) use brassclaw_turns::run_profile::{
-    is_skill_snippet_model_message_ref as is_snippet_model_message_ref,
-    skill_snippet_model_message_ref as snippet_model_message_ref,
-};
+pub(crate) use brassclaw_turns::run_profile::is_skill_snippet_model_message_ref as is_snippet_model_message_ref;
 use thiserror::Error;
 
 use crate::SkillSourceKind;
@@ -103,27 +99,6 @@ impl HostSkillContextBuildError {
     }
 }
 
-pub(crate) async fn build_skill_instruction_snippets(
-    source: &(dyn HostSkillContextSource + Send + Sync),
-    run_context: &LoopRunContext,
-) -> Result<Vec<LoopContextSnippet>, AgentLoopHostError> {
-    let candidates = source
-        .load_skill_context_candidates(run_context)
-        .await
-        .map_err(HostSkillContextBuildError::into_host_error)?;
-    let snapshot = build_skill_run_snapshot(candidates)
-        .map_err(HostSkillContextBuildError::into_host_error)?;
-    let service = SkillContextService::new(snapshot.clone());
-    let snippets = service
-        .skill_snippets(&snapshot)
-        .await
-        .map_err(skill_context_error_to_host_error)?;
-    Ok(snippets
-        .into_iter()
-        .map(|snippet| snippet.into_loop_snippet())
-        .collect())
-}
-
 pub fn build_skill_run_snapshot(
     candidates: Vec<HostSkillContextCandidate>,
 ) -> Result<SkillRunSnapshot, HostSkillContextBuildError> {
@@ -169,28 +144,3 @@ fn parsed_skill_to_snapshot_entry(
     }
 }
 
-fn skill_context_error_to_host_error(error: SkillContextError) -> AgentLoopHostError {
-    tracing::debug!(
-        component = "skill_context",
-        operation = "map_context_error",
-        error = %error,
-        error_debug = ?error,
-        "skill context error mapped to safe host error"
-    );
-    let build_error = match error {
-        SkillContextError::VisibilityDataMissing => {
-            HostSkillContextBuildError::VisibilityDataMissing
-        }
-        SkillContextError::ContextBudgetExceeded => {
-            HostSkillContextBuildError::ContextBudgetExceeded
-        }
-        SkillContextError::UnsafeModelVisibleContent => {
-            HostSkillContextBuildError::UnsafeModelVisibleContent
-        }
-        SkillContextError::BudgetMisconfigured => HostSkillContextBuildError::BudgetMisconfigured,
-        SkillContextError::InvalidSnapshotVersion | SkillContextError::Internal => {
-            HostSkillContextBuildError::Internal
-        }
-    };
-    build_error.into_host_error()
-}

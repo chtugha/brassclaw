@@ -16,12 +16,14 @@ publish = false
 dist = false
 
 [features]
-default = ["root-llm-provider", "migrate-from-libsql", "postgres"]
+default = ["root-llm-provider", "migrate-from-libsql", "postgres", "skills-db"]
 # Postgres is the primary persistent backend. Always on in production.
 postgres = [
     "brassclaw_reborn_composition/postgres",
 ]
 # DB-backed skill store + Q1 auto-validation capability surface.
+# Always on in production (included in default) so the v1 bundled_skills VFS
+# installer is gated out and all system skills are served from reborn_skills DB rows.
 skills-db = [
     "brassclaw_reborn_composition/skills-db",
 ]

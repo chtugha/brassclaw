@@ -27,7 +27,6 @@ use async_trait::async_trait;
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, Timestamp, UserId};
 #[cfg(any(test, feature = "test-support"))]
 use brassclaw_loop_support::HostManagedModelGateway;
-use brassclaw_loop_support::HostSkillContextSource;
 use brassclaw_reborn_config::BudgetDefaults;
 use brassclaw_triggers::{TriggerId, TriggerPollerWorkerConfig};
 
@@ -279,7 +278,6 @@ pub struct RebornRuntimeInput {
     /// Wilson lower bound threshold for Candidate tier (GitHub PR) promotion.
     /// `None` → 0.80 default.
     pub skill_promotion_threshold: Option<f64>,
-    pub skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     /// Hook-framework activation knobs. Default OFF. Callers resolve
     /// environment or config into this typed value once at the edge.
     pub hooks: HooksActivationConfig,
@@ -336,7 +334,6 @@ impl RebornRuntimeInput {
             content_cache_threshold: None,
             plan_library_enabled: false,
             skill_promotion_threshold: None,
-            skill_context_source: None,
             hooks: HooksActivationConfig::default(),
             budget_defaults: None,
             budget_event_observer: None,
@@ -468,11 +465,6 @@ impl RebornRuntimeInput {
         self.services = self
             .services
             .map(|services| services.with_owner_id(owner_id));
-        self
-    }
-
-    pub fn with_skill_context_source(mut self, source: Arc<dyn HostSkillContextSource>) -> Self {
-        self.skill_context_source = Some(source);
         self
     }
 

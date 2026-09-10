@@ -44,7 +44,7 @@ use brassclaw_host_api::{
 };
 use brassclaw_loop_support::{
     CapabilityAllowSet, CapabilityResolveError, CapabilitySurfaceProfileResolver,
-    FilesystemSkillBundleSource, HostSkillContextSource, JsonSpawnSubagentInputCodec,
+    FilesystemSkillBundleSource, JsonSpawnSubagentInputCodec,
     ModelGatewayBackedSystemInferencePort,
 };
 use brassclaw_product_adapters::ProjectionStream;
@@ -119,9 +119,6 @@ mod skills;
 #[cfg(test)]
 #[path = "runtime/test_pg.rs"]
 pub(crate) mod test_pg;
-
-#[cfg(test)]
-pub(crate) use local_dev::SKILL_ACTIVATE_CAPABILITY_ID;
 
 pub use skills::{
     RebornSkillActivation, RebornSkillActivationMode, RebornSkillAsset, RebornSkillBundle,
@@ -1619,7 +1616,6 @@ pub async fn build_reborn_runtime(
         content_cache_threshold,
         plan_library_enabled,
         skill_promotion_threshold,
-        skill_context_source: configured_skill_context_source,
         hooks: hooks_config,
         budget_defaults,
         budget_event_observer,
@@ -2104,39 +2100,34 @@ pub async fn build_reborn_runtime(
             .map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
 
     let validated_identity = validate_runtime_identity(identity)?;
-    let (skill_context_source, skill_activation_source, skill_execution_adapter) =
-        match configured_skill_context_source {
-            Some(source) => (Some(source), None, None),
-            None => {
-                // On the non-postgres build, `local_runtime` is a named local.
-                // On the postgres build (hybrid or pure-PG), use services.local_runtime;
-                // the pure-PG path has no local-dev filesystem so skill context is None.
-                #[cfg(not(feature = "postgres"))]
-                let local_runtime_ref: Option<
-                    &crate::factory::RebornLocalRuntimeServices,
-                > = Some(local_runtime);
-                #[cfg(feature = "postgres")]
-                let local_runtime_ref: Option<
-                    &crate::factory::RebornLocalRuntimeServices,
-                > = services.local_runtime.as_deref();
-                if let Some(lr) = local_runtime_ref {
-                    let local_dev_skills = local_dev_filesystem_skill_context_source(
-                        lr,
-                        &validated_identity.tenant_id,
-                        regex_skill_activation_enabled,
-                        skill_context_tokens,
-                    )?;
-                    (
-                        Some(local_dev_skills.source),
-                        Some(local_dev_skills.activation_source),
-                        Some(local_dev_skills.execution_adapter),
-                    )
-                } else {
-                    // Pure-PG path: no local-dev skill filesystem available.
-                    (None, None, None)
-                }
-            }
-        };
+    let (skill_activation_source, skill_execution_adapter) = {
+        // On the non-postgres build, `local_runtime` is a named local.
+        // On the postgres build (hybrid or pure-PG), use services.local_runtime;
+        // the pure-PG path has no local-dev filesystem so skill context is None.
+        #[cfg(not(feature = "postgres"))]
+        let local_runtime_ref: Option<
+            &crate::factory::RebornLocalRuntimeServices,
+        > = Some(local_runtime);
+        #[cfg(feature = "postgres")]
+        let local_runtime_ref: Option<
+            &crate::factory::RebornLocalRuntimeServices,
+        > = services.local_runtime.as_deref();
+        if let Some(lr) = local_runtime_ref {
+            let local_dev_skills = local_dev_filesystem_skill_context_source(
+                lr,
+                &validated_identity.tenant_id,
+                regex_skill_activation_enabled,
+                skill_context_tokens,
+            )?;
+            (
+                Some(local_dev_skills.activation_source),
+                Some(local_dev_skills.execution_adapter),
+            )
+        } else {
+            // Pure-PG path: no local-dev skill filesystem available.
+            (None, None)
+        }
+    };
 
     let tenant_id = validated_identity.tenant_id.clone();
     let agent_id = validated_identity.agent_id.clone();
@@ -2426,7 +2417,6 @@ pub async fn build_reborn_runtime(
             Arc::clone(&local_dev_capability_policy),
             model_gateway,
             milestone_sink.clone(),
-            skill_activation_source.clone(),
         )
         .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?
     } else {
@@ -2819,7 +2809,6 @@ pub async fn build_reborn_runtime(
         },
         model_route_resolver: None,
         cancellation_factory: None,
-        skill_context_source,
         input_queue: None,
         identity_context_source: Arc::new(
             // `storage_root` and `system_prompt_path` are extracted from the
@@ -3183,7 +3172,6 @@ async fn append_trusted_laptop_access_audit(
 }
 
 struct LocalDevSkillContextSource {
-    source: Arc<dyn HostSkillContextSource>,
     activation_source: Arc<LocalDevSelectableSkillContextSource>,
     execution_adapter: Arc<LocalDevSkillExecutionAdapter>,
 }
@@ -3237,7 +3225,6 @@ fn local_dev_filesystem_skill_context_source(
         Arc::clone(&local_runtime.workspace_filesystem),
     );
     Ok(LocalDevSkillContextSource {
-        source: selectable_skills.host_skill_context_source(),
         activation_source: selectable_skills.activation_source(),
         execution_adapter: selectable_skills.execution_adapter(),
     })
@@ -3578,10 +3565,7 @@ fn build_no_llm_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGat
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{
-        Arc, Mutex as StdMutex,
-        atomic::{AtomicUsize, Ordering},
-    };
+    use std::sync::{Arc, Mutex as StdMutex};
     use std::time::Duration;
 
     use async_trait::async_trait;
@@ -3649,7 +3633,7 @@ mod tests {
     use brassclaw_loop_support::{
         HostManagedModelError, HostManagedModelErrorKind, HostManagedModelGateway,
         HostManagedModelMessageRole, HostManagedModelRequest, HostManagedModelResponse,
-        HostSkillContextBuildError, HostSkillContextCandidate, HostSkillContextSource, ModelCost,
+        ModelCost,
         SpawnSubagentMode, SubagentKindId, SubagentThreadKind, SubagentThreadMetadata,
     };
     use brassclaw_product_adapters::{ProductOutboundPayload, ProductProjectionItem};
@@ -3672,9 +3656,8 @@ mod tests {
         SourceBindingRef, SubmitChildRunRequest, SubmitTurnRequest, SubmitTurnResponse, TurnActor,
         TurnCheckpointId, TurnId, TurnLeaseToken, TurnRunId, TurnRunnerId, TurnScope, TurnStatus,
         run_profile::{
-            InMemoryRunProfileResolver, LoopCapabilityPort, LoopCheckpointStateRef, LoopRunContext,
-            ModelProfileId, ProviderToolCall, RunProfileResolutionRequest, RunProfileResolver,
-            SkillVisibility, VisibleCapabilityRequest,
+            InMemoryRunProfileResolver, LoopCapabilityPort, LoopCheckpointStateRef,
+            ModelProfileId, ProviderToolCall, VisibleCapabilityRequest,
         },
         runner::{BlockRunRequest, ClaimRunRequest, TurnRunTransitionPort},
     };
@@ -3716,57 +3699,6 @@ mod tests {
         requests: Arc<StdMutex<Vec<HostManagedModelRequest>>>,
     }
 
-    #[derive(Debug, Default)]
-    struct FailingSkillContextSource {
-        calls: AtomicUsize,
-    }
-
-    #[derive(Debug, Default)]
-    struct ToolCallingGateway {
-        calls: StdMutex<usize>,
-        stream_model_calls: StdMutex<usize>,
-        requests: StdMutex<Vec<HostManagedModelRequest>>,
-    }
-
-    #[derive(Debug, Default)]
-    struct WorkspaceListingGateway {
-        calls: StdMutex<usize>,
-        requests: StdMutex<Vec<HostManagedModelRequest>>,
-    }
-
-    struct StaticSkillContextSource {
-        candidates: Vec<HostSkillContextCandidate>,
-    }
-
-    #[derive(Debug)]
-    struct AllowingTriggerFireAccessChecker;
-
-    impl StaticSkillContextSource {
-        fn new(candidates: Vec<HostSkillContextCandidate>) -> Self {
-            Self { candidates }
-        }
-    }
-
-    #[async_trait]
-    impl TriggerFireAccessChecker for AllowingTriggerFireAccessChecker {
-        async fn check_trigger_fire_access(
-            &self,
-            _request: TriggerFireAccessCheck,
-        ) -> Result<TriggerFireAccessDecision, TriggerFireAccessError> {
-            Ok(TriggerFireAccessDecision::Allowed)
-        }
-    }
-
-    #[async_trait]
-    impl HostSkillContextSource for StaticSkillContextSource {
-        async fn load_skill_context_candidates(
-            &self,
-            _run_context: &LoopRunContext,
-        ) -> Result<Vec<HostSkillContextCandidate>, HostSkillContextBuildError> {
-            Ok(self.candidates.clone())
-        }
-    }
-
     #[async_trait]
     impl HostManagedModelGateway for RecordingGateway {
         async fn stream_model(
@@ -3783,15 +3715,11 @@ mod tests {
         }
     }
 
-    #[async_trait]
-    impl HostSkillContextSource for FailingSkillContextSource {
-        async fn load_skill_context_candidates(
-            &self,
-            _run_context: &LoopRunContext,
-        ) -> Result<Vec<HostSkillContextCandidate>, HostSkillContextBuildError> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            Err(HostSkillContextBuildError::SourceUnavailable)
-        }
+    #[derive(Debug, Default)]
+    struct ToolCallingGateway {
+        calls: StdMutex<usize>,
+        stream_model_calls: StdMutex<usize>,
+        requests: StdMutex<Vec<HostManagedModelRequest>>,
     }
 
     #[async_trait]
@@ -3853,7 +3781,7 @@ mod tests {
             }
 
             let surface = capabilities
-                .visible_capabilities(VisibleCapabilityRequest)
+                .visible_capabilities(VisibleCapabilityRequest {})
                 .await
                 .map_err(model_capability_error)?;
             let echo_id = CapabilityId::new("builtin.echo").expect("echo id");
@@ -3889,6 +3817,12 @@ mod tests {
                 "",
             ))
         }
+    }
+
+    #[derive(Debug, Default)]
+    struct WorkspaceListingGateway {
+        calls: StdMutex<usize>,
+        requests: StdMutex<Vec<HostManagedModelRequest>>,
     }
 
     #[async_trait]
@@ -3961,6 +3895,19 @@ mod tests {
                 vec![candidate],
                 "",
             ))
+        }
+    }
+
+    #[derive(Debug)]
+    struct AllowingTriggerFireAccessChecker;
+
+    #[async_trait]
+    impl TriggerFireAccessChecker for AllowingTriggerFireAccessChecker {
+        async fn check_trigger_fire_access(
+            &self,
+            _request: TriggerFireAccessCheck,
+        ) -> Result<TriggerFireAccessDecision, TriggerFireAccessError> {
+            Ok(TriggerFireAccessDecision::Allowed)
         }
     }
 
@@ -4765,65 +4712,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn send_user_message_uses_caller_supplied_skill_context_source() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "should not reach model".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let skill_context_source = Arc::new(FailingSkillContextSource::default());
-        let skill_context_source_for_input: Arc<dyn HostSkillContextSource> =
-            skill_context_source.clone();
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-skill-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-skill-tenant".to_string(),
-            agent_id: "runtime-skill-agent".to_string(),
-            source_binding_id: "runtime-skill-source".to_string(),
-            reply_target_binding_id: "runtime-skill-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_skill_context_source(skill_context_source_for_input)
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let reply = tokio::time::timeout(
-            RUNTIME_SEND_TIMEOUT,
-            runtime.send_user_message(&conversation, "ping"),
-        )
-        .await
-        .expect("runtime send should finish")
-        .expect("runtime send should succeed");
-
-        assert_ne!(reply.status, TurnStatus::Completed);
-        assert_eq!(
-            skill_context_source.calls.load(Ordering::SeqCst),
-            1,
-            "composition should pass caller-supplied skill context into the planned runtime"
-        );
-        assert!(
-            requests
-                .lock()
-                .expect("recording gateway requests lock poisoned")
-                .is_empty(),
-            "skill context failure should stop before model dispatch"
-        );
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
     async fn local_dev_runtime_exposes_host_runtime_capabilities_to_model_calls() {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(ToolCallingGateway::default());
@@ -4919,172 +4807,6 @@ mod tests {
             provider_call.capability_id,
             CapabilityId::new("builtin.echo").unwrap()
         );
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
-    async fn local_dev_runtime_wires_input_skill_context_source_to_model_calls() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "skill context ok".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let skill_source = Arc::new(StaticSkillContextSource::new(vec![
-            HostSkillContextCandidate::new(
-                skill_md(
-                    "review-helper",
-                    "review helper description",
-                    "Use review helper prompt content.",
-                ),
-                Some(SkillVisibility::Visible),
-            ),
-        ]));
-        let skill_context_source: Arc<dyn HostSkillContextSource> = skill_source;
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-skill-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-skill-tenant".to_string(),
-            agent_id: "runtime-skill-agent".to_string(),
-            source_binding_id: "runtime-skill-source".to_string(),
-            reply_target_binding_id: "runtime-skill-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_skill_context_source(skill_context_source)
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let reply = tokio::time::timeout(
-            RUNTIME_SEND_TIMEOUT,
-            runtime.send_user_message(&conversation, "review this"),
-        )
-        .await
-        .expect("runtime send should finish")
-        .expect("runtime send should succeed");
-
-        assert_eq!(reply.status, TurnStatus::Completed);
-        assert_eq!(reply.text.as_deref(), Some("skill context ok"));
-        let (request_count, skill_message_content) = {
-            let requests = requests
-                .lock()
-                .expect("recording gateway requests lock poisoned");
-            let skill_message = requests[0]
-                .messages
-                .iter()
-                .find(|message| {
-                    message.role == HostManagedModelMessageRole::System
-                        && message
-                            .content_ref
-                            .as_str()
-                            .starts_with("msg:snippet.skill.review-helper.")
-                })
-                .expect("model request should include skill-context system message");
-            (requests.len(), skill_message.content.clone())
-        };
-        assert_eq!(request_count, 1);
-        assert!(skill_message_content.contains("review helper description"));
-        assert!(skill_message_content.contains("Use review helper prompt content."));
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
-
-    #[tokio::test]
-    async fn local_dev_runtime_prefers_configured_skill_context_source_over_filesystem_default() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        std::fs::create_dir_all(storage_root.join("system/skills/filesystem-helper"))
-            .expect("filesystem skill dir");
-        std::fs::write(
-            storage_root.join("system/skills/filesystem-helper/SKILL.md"),
-            skill_md(
-                "filesystem-helper",
-                "filesystem helper description",
-                "FILESYSTEM_HELPER_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write filesystem skill");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "configured skill context ok".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let skill_source = Arc::new(StaticSkillContextSource::new(vec![
-            HostSkillContextCandidate::new(
-                skill_md(
-                    "configured-helper",
-                    "configured helper description",
-                    "CONFIGURED_HELPER_PROMPT_SENTINEL",
-                ),
-                Some(SkillVisibility::Visible),
-            ),
-        ]));
-        let skill_context_source: Arc<dyn HostSkillContextSource> = skill_source;
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-skill-override-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-skill-override-tenant".to_string(),
-            agent_id: "runtime-skill-override-agent".to_string(),
-            source_binding_id: "runtime-skill-override-source".to_string(),
-            reply_target_binding_id: "runtime-skill-override-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_skill_context_source(skill_context_source)
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let conversation = runtime.new_conversation().await.expect("conversation");
-        let reply = tokio::time::timeout(
-            RUNTIME_SEND_TIMEOUT,
-            runtime.send_user_message(&conversation, "review this"),
-        )
-        .await
-        .expect("runtime send should finish")
-        .expect("runtime send should succeed");
-
-        assert_eq!(reply.status, TurnStatus::Completed);
-        assert_eq!(reply.text.as_deref(), Some("configured skill context ok"));
-        let combined_skill_context = {
-            let requests = requests
-                .lock()
-                .expect("recording gateway requests lock poisoned");
-            requests[0]
-                .messages
-                .iter()
-                .filter(|message| {
-                    message.role == HostManagedModelMessageRole::System
-                        && message
-                            .content_ref
-                            .as_str()
-                            .starts_with("msg:snippet.skill.")
-                })
-                .map(|message| message.content.as_str())
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
-        assert!(combined_skill_context.contains("configured helper description"));
-        assert!(combined_skill_context.contains("CONFIGURED_HELPER_PROMPT_SENTINEL"));
-        assert!(!combined_skill_context.contains("filesystem helper description"));
-        assert!(!combined_skill_context.contains("FILESYSTEM_HELPER_PROMPT_SENTINEL"));
 
         runtime.shutdown().await.expect("runtime shutdown");
     }
@@ -6374,122 +6096,4 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    #[tokio::test]
-    async fn local_dev_webui_bundle_records_selectable_filesystem_skill_context() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = super::test_pg::storage_root(root.path());
-        std::fs::create_dir_all(storage_root.join("skills/webui-helper")).expect("user skill dir");
-        std::fs::write(
-            storage_root.join("skills/webui-helper/SKILL.md"),
-            skill_md(
-                "webui-helper",
-                "webui helper description",
-                "WEBUI_HELPER_PROMPT_SENTINEL",
-            ),
-        )
-        .expect("write user skill");
-        let requests = Arc::new(StdMutex::new(Vec::new()));
-        let gateway = Arc::new(RecordingGateway {
-            reply: "webui skill context ok".to_string(),
-            requests: Arc::clone(&requests),
-        });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
-        let _db_guard = rig.lock_db().await;
-        let input = RebornRuntimeInput::from_services(
-            rig.build_input("runtime-webui-skill-owner", root.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_identity(RebornRuntimeIdentity {
-            tenant_id: "runtime-webui-skill-tenant".to_string(),
-            agent_id: "runtime-webui-skill-agent".to_string(),
-            source_binding_id: "runtime-webui-skill-source".to_string(),
-            reply_target_binding_id: "runtime-webui-skill-reply".to_string(),
-        })
-        .with_poll_settings(PollSettings {
-            interval: Duration::from_millis(10),
-            max_total: Duration::from_secs(3),
-        })
-        .with_model_gateway_override(gateway);
-
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None)
-            .await
-            .expect("webui bundle");
-        let webui_user_id = UserId::new("runtime-webui-skill-user").unwrap();
-        let caller = WebUiAuthenticatedCaller::new(
-            TenantId::new("runtime-webui-skill-tenant").unwrap(),
-            webui_user_id.clone(),
-            Some(AgentId::new("runtime-webui-skill-agent").unwrap()),
-            None,
-        );
-        let created = bundle
-            .api
-            .create_thread(
-                caller.clone(),
-                WebUiCreateThreadRequest {
-                    client_action_id: Some("create-webui-skill-thread".to_string()),
-                    requested_thread_id: None,
-                },
-            )
-            .await
-            .expect("create thread");
-        let submitted = bundle
-            .api
-            .submit_turn(
-                caller,
-                WebUiSendMessageRequest {
-                    client_action_id: Some("send-webui-skill-message".to_string()),
-                    thread_id: Some(created.thread.thread_id.to_string()),
-                    content: Some("$webui-helper please help".to_string()),
-                },
-            )
-            .await
-            .expect("submit turn");
-        let RebornSubmitTurnResponse::Submitted {
-            thread_id,
-            accepted_message_ref,
-            ..
-        } = submitted
-        else {
-            panic!("webui submit should start a run");
-        };
-        let resolved_run_profile = InMemoryRunProfileResolver::default()
-            .resolve_run_profile(RunProfileResolutionRequest::interactive_default())
-            .await
-            .expect("resolve run profile");
-        let source = runtime
-            .webui_skill_activation_source()
-            .expect("webui skill activation source");
-        let turn_scope = TurnScope::new_with_owner(
-            TenantId::new("runtime-webui-skill-tenant").unwrap(),
-            Some(AgentId::new("runtime-webui-skill-agent").unwrap()),
-            None,
-            thread_id.clone(),
-            Some(webui_user_id.clone()),
-        );
-        let context = LoopRunContext::new(
-            turn_scope,
-            TurnId::new(),
-            TurnRunId::new(),
-            resolved_run_profile,
-        )
-        .with_accepted_message_ref(accepted_message_ref)
-        .with_actor(TurnActor::new(webui_user_id));
-        let selected = source
-            .load_skill_context_candidates(&context)
-            .await
-            .expect("webui-recorded skill context should load");
-        let combined_skill_context = selected
-            .iter()
-            .map(|candidate| candidate.skill_md.as_deref().unwrap_or(""))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert_eq!(selected.len(), 1);
-        assert!(combined_skill_context.contains("webui helper description"));
-        assert!(combined_skill_context.contains("WEBUI_HELPER_PROMPT_SENTINEL"));
-
-        runtime.shutdown().await.expect("runtime shutdown");
-    }
 }

@@ -9,7 +9,7 @@ use brassclaw_host_api::CapabilityId;
 use brassclaw_loop_support::{
     CapabilitySurfaceProfileResolver, CompositeTurnRunWakeNotifier,
     DecoratingLoopCapabilityPortFactory, HostIdentityContextSource, HostInputQueue,
-    HostManagedModelGateway, HostSkillContextSource, LoopCapabilityPortDecorator,
+    HostManagedModelGateway, LoopCapabilityPortDecorator,
     LoopCapabilityPortFactory, LoopCapabilityResultWriter, ProductLiveCancellationReadiness,
     RunCancellationFactory, SpawnSubagentInputCodec, SubagentDefinitionResolver,
     SubagentPromptComposer, SubagentPromptMaterialSource, SubagentSpawnCapabilityPort,
@@ -134,7 +134,6 @@ where
     pub config: DefaultPlannedRuntimeConfig,
     pub model_route_resolver: Option<Arc<dyn ModelRouteResolver>>,
     pub cancellation_factory: Option<Arc<dyn RunCancellationFactory>>,
-    pub skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     pub input_queue: Option<Arc<dyn HostInputQueue>>,
     /// Required by live planned-runtime composition. Helper-level tests may use
     /// a no-op implementation, but the type signature always requires a valid
@@ -585,9 +584,6 @@ where
     }
     if let Some(factory) = parts.cancellation_factory {
         host_factory = host_factory.with_cancellation_factory(factory);
-    }
-    if let Some(source) = parts.skill_context_source {
-        host_factory = host_factory.with_skill_context_source(source);
     }
     if let Some(queue) = parts.input_queue {
         host_factory = host_factory.with_input_queue(queue);

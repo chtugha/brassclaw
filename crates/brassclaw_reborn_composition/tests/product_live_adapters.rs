@@ -1257,7 +1257,6 @@ async fn adapter_bundle_satisfies_product_live_runtime_readiness_gate() {
         config: DefaultPlannedRuntimeConfig::default(),
         model_route_resolver: Some(adapters.model_route_resolver),
         cancellation_factory: Some(adapters.cancellation_factory),
-        skill_context_source: None,
         input_queue: Some(adapters.input_queue),
         identity_context_source: adapters.identity_context_source,
         model_policy_guard: Some(adapters.model_policy_guard),

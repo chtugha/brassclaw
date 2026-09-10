@@ -209,9 +209,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        SkillBundleDescriptor, SkillFilePath, skill_context::build_skill_instruction_snippets,
-    };
+    use crate::{SkillBundleDescriptor, SkillFilePath};
     use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId};
 
     fn skill_md(name: &str, description: &str, prompt: &str) -> Vec<u8> {
@@ -442,90 +440,6 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(error, HostSkillContextBuildError::ContextBudgetExceeded);
-    }
-
-    #[tokio::test]
-    async fn adapter_reads_visible_trusted_bundle_into_model_snippet() {
-        let source = Arc::new(
-            StaticSkillBundleSource::new(vec![descriptor(
-                crate::SkillSourceKind::System,
-                "alpha",
-                Some(SkillVisibility::Visible),
-            )])
-            .with_skill_md(
-                crate::SkillSourceKind::System,
-                "alpha",
-                skill_md("alpha", "safe alpha description", "trusted alpha prompt"),
-            ),
-        );
-        let adapter = SkillBundleContextSource::new(source);
-
-        let snippets = build_skill_instruction_snippets(&adapter, &run_context().await)
-            .await
-            .unwrap();
-
-        assert_eq!(snippets.len(), 1);
-        assert_eq!(snippets[0].snippet_ref, "skill:alpha");
-        assert!(snippets[0].safe_summary.contains("safe alpha description"));
-        assert!(!snippets[0].safe_summary.contains("trusted alpha prompt"));
-        assert!(snippets[0].model_content.contains("safe alpha description"));
-        assert!(snippets[0].model_content.contains("trusted alpha prompt"));
-    }
-
-    // Phase 3: SkillTrust::Installed removed — prompt content is always included
-    // for visible skills. Renamed from adapter_keeps_installed_bundle_prompt_out_of_model_snippet.
-    #[tokio::test]
-    async fn adapter_includes_prompt_content_in_model_snippet_for_visible_bundles() {
-        let source = Arc::new(
-            StaticSkillBundleSource::new(vec![descriptor(
-                crate::SkillSourceKind::User,
-                "alpha",
-                Some(SkillVisibility::Visible),
-            )])
-            .with_skill_md(
-                crate::SkillSourceKind::User,
-                "alpha",
-                skill_md("alpha", "safe description", "PROMPT_CONTENT_SENTINEL"),
-            ),
-        );
-        let adapter = SkillBundleContextSource::new(source);
-
-        let snippets = build_skill_instruction_snippets(&adapter, &run_context().await)
-            .await
-            .unwrap();
-
-        assert_eq!(snippets.len(), 1);
-        assert!(snippets[0].safe_summary.contains("safe description"));
-        // Phase 3: prompt content is included in model_content for all visible skills.
-        assert!(
-            snippets[0]
-                .model_content
-                .contains("PROMPT_CONTENT_SENTINEL")
-        );
-    }
-
-    #[tokio::test]
-    async fn adapter_does_not_read_hidden_or_denied_bundles() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![
-            descriptor(
-                crate::SkillSourceKind::System,
-                "hidden",
-                Some(SkillVisibility::Hidden),
-            ),
-            descriptor(
-                crate::SkillSourceKind::User,
-                "denied",
-                Some(SkillVisibility::Denied),
-            ),
-        ]));
-        let adapter = SkillBundleContextSource::new(Arc::clone(&source));
-
-        let snippets = build_skill_instruction_snippets(&adapter, &run_context().await)
-            .await
-            .unwrap();
-
-        assert!(snippets.is_empty());
-        assert!(source.reads().is_empty());
     }
 
     // adapter_fails_closed_when_policy_metadata_is_missing_without_reads:

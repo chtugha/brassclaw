@@ -31,7 +31,7 @@ mod model_capability_view;
 pub mod pg_checkpoint_state_store;
 mod skill_bundle_context_source;
 mod skill_bundle_source;
-mod skill_context;
+pub(crate) mod skill_context;
 mod subagent_prompt_port;
 mod subagent_spawn_port;
 mod system_inference;
@@ -84,6 +84,13 @@ pub use skill_context::{
     HostSkillContextBuildError, HostSkillContextCandidate, HostSkillContextSource,
     build_skill_run_snapshot,
 };
+
+// ---------------------------------------------------------------------------
+// Step 1 of skill-context removal: `HostSkillContextSource` is still re-exported
+// (downstream crates import it).  The field on ThreadBackedLoopContextPort and
+// ThreadBackedLoopModelPort is removed here; the trait and its impls will be
+// removed in subsequent steps once all callers are gone.
+// ---------------------------------------------------------------------------
 
 /// Source for the pre-assembled Kohai/Sempai prefix-cache bundle (§K.1.5).
 ///
@@ -148,7 +155,7 @@ use brassclaw_turns::{
         LoopModelResponse, LoopModelUsage, LoopPromptBundleAuthority, LoopRunContext,
         LoopRunInfoPort, LoopSafeSummary, LoopTranscriptPort, ModelStreamChunk, ParentLoopOutput,
         PromptMode, UpdateAssistantDraft, VisibleCapabilityRequest, VisibleCapabilitySurface,
-        sanitize_model_visible_text, sort_instruction_snippets_for_prompt,
+        sanitize_model_visible_text,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -203,7 +210,6 @@ where
     thread_scope: ThreadScope,
     run_context: LoopRunContext,
     max_messages: usize,
-    skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     identity_context_source: Option<Arc<dyn HostIdentityContextSource>>,
     identity_budget: IdentityBudget,
     identity_candidates: Arc<IdentityCandidateCache>,
@@ -271,18 +277,12 @@ where
             thread_scope,
             run_context,
             max_messages,
-            skill_context_source: None,
             identity_context_source: None,
             identity_budget: IdentityBudget::default(),
             identity_candidates: Arc::new(IdentityCandidateCache::new()),
             milestone_sink: None,
             system_bundle_source: None,
         }
-    }
-
-    pub fn with_skill_context_source(mut self, source: Arc<dyn HostSkillContextSource>) -> Self {
-        self.skill_context_source = Some(source);
-        self
     }
 
     pub fn with_identity_context_source(
@@ -342,7 +342,7 @@ where
 
         // Prefix bundle (§K.1.5): prepend as snippet #0 so KV cache reuse
         // is maximised — stable content sits before per-turn skill snippets.
-        let mut instruction_snippets = if let Some(source) = self.system_bundle_source.as_deref() {
+        let instruction_snippets = if let Some(source) = self.system_bundle_source.as_deref() {
             let user_id = self
                 .run_context
                 .actor
@@ -367,14 +367,6 @@ where
             Vec::new()
         };
 
-        // Skill snippets follow the prefix bundle.
-        let skill_snippets = match self.skill_context_source.as_deref() {
-            Some(source) => {
-                skill_context::build_skill_instruction_snippets(source, &self.run_context).await?
-            }
-            None => Vec::new(),
-        };
-        instruction_snippets.extend(skill_snippets);
         let identity_messages = match self.identity_context_source.as_deref() {
             Some(source) => {
                 let mode = request.mode;
@@ -895,7 +887,6 @@ where
     max_messages: usize,
     prompt_authority: LoopPromptBundleAuthority,
     milestone_sink: Option<Arc<dyn LoopHostMilestoneSink>>,
-    skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     instruction_materialization_store: Option<Arc<dyn InstructionMaterializationStore>>,
     identity_context_source: Option<Arc<dyn HostIdentityContextSource>>,
 }
@@ -921,7 +912,6 @@ where
             max_messages,
             prompt_authority: LoopPromptBundleAuthority::shared(),
             milestone_sink: None,
-            skill_context_source: None,
             instruction_materialization_store: None,
             identity_context_source: None,
         }
@@ -944,15 +934,9 @@ where
             max_messages,
             prompt_authority: LoopPromptBundleAuthority::shared(),
             milestone_sink: Some(milestone_sink),
-            skill_context_source: None,
             instruction_materialization_store: None,
             identity_context_source: None,
         }
-    }
-
-    pub fn with_skill_context_source(mut self, source: Arc<dyn HostSkillContextSource>) -> Self {
-        self.skill_context_source = Some(source);
-        self
     }
 
     pub fn with_prompt_bundle_authority(
@@ -1363,31 +1347,7 @@ where
     async fn instruction_snippet_messages_by_ref(
         &self,
     ) -> Result<HashMap<String, HostManagedModelMessage>, AgentLoopHostError> {
-        let Some(source) = self.skill_context_source.as_deref() else {
-            return Ok(HashMap::new());
-        };
-        let mut snippets =
-            skill_context::build_skill_instruction_snippets(source, &self.run_context).await?;
-        sort_instruction_snippets_for_prompt(&mut snippets);
-        let mut messages = HashMap::with_capacity(snippets.len());
-        for (ordinal, snippet) in snippets.into_iter().enumerate() {
-            let content_ref = skill_context::snippet_model_message_ref(
-                &snippet.snippet_ref,
-                &snippet.safe_summary,
-                ordinal,
-            )?;
-            messages.insert(
-                content_ref.as_str().to_string(),
-                HostManagedModelMessage {
-                    role: HostManagedModelMessageRole::System,
-                    content: snippet.model_content,
-                    content_ref,
-                    tool_result_provider_call: None,
-                    tool_result_content: None,
-                },
-            );
-        }
-        Ok(messages)
+        Ok(HashMap::new())
     }
 }
 

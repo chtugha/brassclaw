@@ -2179,9 +2179,7 @@ mod tests {
     };
     use brassclaw_filesystem::FilesystemError;
 
-    use crate::{
-        extension_lifecycle::ExtensionActivationMode, runtime::SKILL_ACTIVATE_CAPABILITY_ID,
-    };
+    use crate::extension_lifecycle::ExtensionActivationMode;
     use brassclaw_filesystem::{
         DirEntry, FileStat, FilesystemOperation, RootFilesystem, VersionedEntry,
     };
@@ -2963,7 +2961,6 @@ mod tests {
             .map(|capability| capability.id.as_str())
             .collect::<Vec<_>>();
         assert!(ids.contains(&SKILL_LIST_CAPABILITY_ID));
-        assert!(!ids.contains(&SKILL_ACTIVATE_CAPABILITY_ID));
         assert!(ids.contains(&SKILL_INSTALL_CAPABILITY_ID));
         assert!(ids.contains(&SKILL_REMOVE_CAPABILITY_ID));
         assert!(ids.contains(&TRIGGER_CREATE_CAPABILITY_ID));
@@ -2984,9 +2981,6 @@ mod tests {
         ] {
             assert!(registry.contains_handler(&brassclaw_host_api::CapabilityId::new(id).unwrap()));
         }
-        assert!(!registry.contains_handler(
-            &brassclaw_host_api::CapabilityId::new(SKILL_ACTIVATE_CAPABILITY_ID).unwrap()
-        ));
     }
 
     #[test]

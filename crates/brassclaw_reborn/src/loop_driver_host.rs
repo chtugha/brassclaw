@@ -28,7 +28,7 @@ use brassclaw_loop_support::SystemBundleSource;
 use brassclaw_loop_support::{
     CapabilityResolveError, CapabilitySurfaceProfileFilter, CapabilitySurfaceProfileResolver,
     EmptyLoopCapabilityPort, GuardedSystemInferencePort, HostIdentityContextSource, HostInputQueue,
-    HostManagedModelGateway, HostQueueLoopInputPort, HostSkillContextSource, IdentityBudget,
+    HostManagedModelGateway, HostQueueLoopInputPort, IdentityBudget,
     LoopCapabilityInputResolver, LoopCapabilityPortFactory, ModelGatewayBackedSystemInferencePort,
     RunCancellationFactory, RunCancellationObservationKind, RunStateLoopCancellationPort,
     SubagentLoopPromptPort, SubagentPromptComposer, ThreadBackedLoopContextPort,
@@ -897,7 +897,6 @@ where
     model_policy_guard: Arc<dyn LoopModelPolicyGuard>,
     cancellation_factory: Arc<dyn RunCancellationFactory>,
     config: TextOnlyLoopHostConfig,
-    skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     /// Optional hook dispatcher factory. When set, the factory invokes the
     /// closure on every `build_text_only_host*` call to obtain a fresh
     /// `HookDispatcher`, wraps it in `Arc`, and then plumbs it through
@@ -1049,7 +1048,6 @@ where
             model_policy_guard: Arc::new(NoOpPolicyGuard),
             cancellation_factory,
             config,
-            skill_context_source: None,
             hook_dispatcher_factory: None,
             hook_dispatcher_builder_factory: None,
             hook_security_audit_sink: None,
@@ -1130,11 +1128,6 @@ where
             self.effective_thread_scope(run_context),
             include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md"),
         )
-    }
-
-    pub fn with_skill_context_source(mut self, source: Arc<dyn HostSkillContextSource>) -> Self {
-        self.skill_context_source = Some(source);
-        self
     }
 
     /// Install a hook dispatcher factory closure. The closure is invoked once
@@ -1537,9 +1530,6 @@ where
             run_context.clone(),
             max_messages,
         );
-        if let Some(source) = self.skill_context_source.as_ref() {
-            context_adapter = context_adapter.with_skill_context_source(source.clone());
-        }
         if let Some(source) = self.identity_context_source.as_ref() {
             context_adapter = context_adapter.with_identity_context_source(source.clone());
         }
@@ -1748,7 +1738,6 @@ where
             thread_scope: effective_scope.clone(),
             host_gateway: Arc::clone(&self.model_gateway),
             max_messages,
-            skill_context_source: self.skill_context_source.clone(),
             identity_context_source: self.identity_context_source.clone(),
             instruction_materialization_store: Some(Arc::clone(&instruction_materialization_store)),
             capabilities: Some(Arc::clone(&capabilities)),

@@ -37,7 +37,6 @@ use brassclaw_loop_support::{
     HostInputBatch, HostInputEnvelope, HostInputQueue, HostInputQueueError, HostManagedModelError,
     HostManagedModelErrorKind, HostManagedModelGateway, HostManagedModelMessageRole,
     HostManagedModelRequest, HostManagedModelResponse, HostRuntimeLoopCapabilityPort,
-    HostSkillContextBuildError, HostSkillContextCandidate, HostSkillContextSource,
     IdentityApplicability, IdentityFileName, JsonSpawnSubagentInputCodec,
     LoopCapabilityInputResolver, LoopCapabilityPortFactory, LoopCapabilityResultWriter,
     ProductLiveCancellationProbe, RunCancellationFactory, RunCancellationHandle,
@@ -108,7 +107,7 @@ use brassclaw_turns::{
         LoopModelPort, LoopModelRequest, LoopModelRouteSnapshot, LoopProgressEvent,
         LoopPromptBundleRequest, LoopPromptPort, LoopRunContext, LoopSafeSummary, ModelWorkKind,
         ModelWorkOutcome, ModelWorkRequest, NoOpBudgetAccountant, NoOpPolicyGuard,
-        ParentLoopOutput, PersonalContextPolicy, PromptMode, SkillVisibility,
+        ParentLoopOutput, PersonalContextPolicy, PromptMode,
         StageCheckpointPayloadRequest, SystemInferenceTaskId, VisibleCapabilityRequest,
         VisibleCapabilitySurface,
     },
@@ -2039,7 +2038,6 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
         },
         model_route_resolver: None,
         cancellation_factory: None,
-        skill_context_source: None,
         input_queue: None,
         identity_context_source: Arc::new(StaticIdentityContextSource::new(Vec::new())),
         model_policy_guard: None,
@@ -2222,7 +2220,6 @@ async fn build_runtime_host_with_optional_hooks(
         // present in the (otherwise unused) in-memory turn-state store. The
         // hook wiring under test is independent of cancellation.
         cancellation_factory: Some(Arc::new(ReadyRunCancellationFactory::default())),
-        skill_context_source: None,
         input_queue: None,
         identity_context_source: Arc::new(StaticIdentityContextSource::new(Vec::new())),
         model_policy_guard: None,
@@ -2566,7 +2563,6 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
         config: DefaultPlannedRuntimeConfig::default(),
         model_route_resolver: Some(model_route_resolver),
         cancellation_factory: Some(Arc::new(ReadyRunCancellationFactory::default())),
-        skill_context_source: None,
         input_queue: Some(Arc::new(EmptyHostInputQueue)),
         identity_context_source: Arc::new(EmptyIdentityContextSource),
         model_policy_guard: Some(Arc::new(NoOpPolicyGuard)),
@@ -2694,7 +2690,6 @@ async fn product_live_parts_for_gate_test(
         config: DefaultPlannedRuntimeConfig::default(),
         model_route_resolver: Some(model_route_resolver),
         cancellation_factory: Some(Arc::new(ReadyRunCancellationFactory::default())),
-        skill_context_source: None,
         input_queue: Some(Arc::new(EmptyHostInputQueue)),
         identity_context_source: Arc::new(EmptyIdentityContextSource),
         model_policy_guard: Some(Arc::new(NoOpPolicyGuard)),
@@ -3975,70 +3970,6 @@ async fn text_only_host_stage_checkpoint_payload_rejects_foreign_schema_id() {
         .await
         .expect_err("staging with a foreign schema_id must be rejected");
     assert_eq!(error.kind, AgentLoopHostErrorKind::CheckpointRejected);
-}
-
-#[tokio::test]
-async fn text_only_host_skill_context_does_not_expand_capability_surface() {
-    let fixture = HostFixture::new("thread-host-skill-capability", "hello").await;
-    // Phase 3: SkillTrust removed; all visible validated skills are treated as trusted.
-    // This test verifies that a skill (regardless of old trust level) does not
-    // expand the capability surface for text-only hosts.
-    let source = Arc::new(StaticSkillContextSource::new(vec![
-        HostSkillContextCandidate::new(
-            skill_md(
-                "alpha",
-                "skill description",
-                "skill prompt must not imply tool authority",
-            ),
-            Some(SkillVisibility::Visible),
-        ),
-    ]));
-    let host = fixture
-        .factory()
-        .with_skill_context_source(source)
-        .build_text_only_host(RebornLoopDriverHostRequest {
-            claimed_run: fixture.claimed.clone(),
-            loop_run_context: fixture.context.clone(),
-        })
-        .await
-        .unwrap();
-
-    let prompt_bundle = host
-        .build_prompt_bundle(LoopPromptBundleRequest {
-            mode: PromptMode::TextOnly,
-            context_cursor: None,
-            surface_version: None,
-            checkpoint_state_ref: None,
-            max_messages: Some(8),
-            inline_messages: Vec::new(),
-            capability_view: None,
-            recipe_hint: None,
-        })
-        .await
-        .unwrap();
-    assert_eq!(prompt_bundle.messages.len(), 3);
-
-    let surface = host
-        .visible_capabilities(VisibleCapabilityRequest)
-        .await
-        .unwrap();
-    assert!(surface.descriptors.is_empty());
-    let outcome = host
-        .invoke_capability_batch(brassclaw_turns::run_profile::CapabilityBatchInvocation {
-            invocations: vec![CapabilityInvocation {
-                surface_version: surface.version,
-                capability_id: CapabilityId::new("demo.echo").unwrap(),
-                input_ref: CapabilityInputRef::new("input:opaque-tool-input").unwrap(),
-            }],
-            stop_on_first_suspension: true,
-        })
-        .await
-        .unwrap();
-
-    assert!(matches!(
-        outcome.outcomes.as_slice(),
-        [CapabilityOutcome::Denied(denied)] if denied.reason_kind == CapabilityDeniedReasonKind::EmptySurface
-    ));
 }
 
 #[tokio::test]
@@ -5528,27 +5459,6 @@ async fn text_only_host_allows_retry_after_missing_capability_input_is_staged() 
 }
 
 #[derive(Clone)]
-struct StaticSkillContextSource {
-    candidates: Vec<HostSkillContextCandidate>,
-}
-
-impl StaticSkillContextSource {
-    fn new(candidates: Vec<HostSkillContextCandidate>) -> Self {
-        Self { candidates }
-    }
-}
-
-#[async_trait]
-impl HostSkillContextSource for StaticSkillContextSource {
-    async fn load_skill_context_candidates(
-        &self,
-        _run_context: &LoopRunContext,
-    ) -> Result<Vec<HostSkillContextCandidate>, HostSkillContextBuildError> {
-        Ok(self.candidates.clone())
-    }
-}
-
-#[derive(Clone)]
 struct StaticIdentityContextSource {
     candidates: Vec<HostIdentityContextCandidate>,
     content_by_ref: HashMap<String, HostIdentityMessageContent>,
@@ -5802,11 +5712,6 @@ impl LoopCapabilityPortFactory for TestHostRuntimeCapabilityFactory {
     }
 }
 
-fn skill_md(name: &str, description: &str, prompt: &str) -> String {
-    format!(
-        "---\nname: {name}\ndescription: {description}\nactivation:\n  keywords: [{name}]\n---\n\n{prompt}\n"
-    )
-}
 
 /// In-memory capability I/O fixture.
 ///
