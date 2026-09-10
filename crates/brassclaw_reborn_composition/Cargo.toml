@@ -163,8 +163,7 @@ tower = { version = "0.5", features = ["util"] }
 tracing-test = "0.2"
 
 [build-dependencies]
-brassclaw_skills = { path = "../brassclaw_skills" }
-serde_json = "1"
+# No external build-time dependencies — build.rs only uses std.
 
 [lints]
 workspace = true

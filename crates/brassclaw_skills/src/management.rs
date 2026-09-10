@@ -31,7 +31,6 @@ use install_bundle::{
 };
 
 pub(super) const USER_SKILLS_ROOT: &str = "/skills";
-const SYSTEM_SKILLS_ROOT: &str = "/system/skills";
 pub(super) const SKILL_FILE_NAME: &str = "SKILL.md";
 const SKILL_SEARCH_ENTRY_SCAN_LIMIT: usize = 250;
 type SkillMutationLock = Arc<tokio::sync::Mutex<()>>;
@@ -240,7 +239,6 @@ pub async fn list_skills(
     context: &SkillManagementContext,
 ) -> Result<Vec<SkillSummary>, SkillManagementError> {
     let mut skills = Vec::new();
-    skills.extend(list_skill_root(context, SYSTEM_SKILLS_ROOT, SkillSource::System).await?);
     skills.extend(list_skill_root(context, USER_SKILLS_ROOT, SkillSource::User).await?);
     tracing::debug!(skill_count = skills.len(), "skill management listed skills");
     Ok(skills)
@@ -258,16 +256,7 @@ pub async fn search_skills(
     let normalized_query = request.query.trim().to_lowercase();
     let mut skills = Vec::new();
     let mut remaining_entries = SKILL_SEARCH_ENTRY_SCAN_LIMIT;
-    let mut truncated = collect_matching_skill_root(
-        context,
-        SYSTEM_SKILLS_ROOT,
-        SkillSource::System,
-        &normalized_query,
-        request.limit,
-        &mut remaining_entries,
-        &mut skills,
-    )
-    .await?;
+    let mut truncated = false;
     if !truncated {
         truncated = collect_matching_skill_root(
             context,

@@ -14,19 +14,13 @@ use super::*;
 
 mod install_name;
 
+// NOTE: the SYSTEM_SKILLS_ROOT (/system/skills) disk-load path was removed in
+// Phase P.1 Step 6. System skills are now DB-seeded via builtin_bootstrap.rs
+// and served through the DB retrieval path, not the VFS skill management layer.
+// This test was updated to only verify user-skill install/list/remove behaviour.
 #[tokio::test]
 async fn install_list_and_remove_user_skills_through_scoped_mounts() {
     let filesystem = Arc::new(InMemoryBackend::default());
-    write_file(
-        filesystem.as_ref(),
-        "/projects/system/skills/system-helper/SKILL.md",
-        skill_md(
-            "system-helper",
-            "system skill description",
-            "SYSTEM_SKILL_PROMPT",
-        ),
-    )
-    .await;
     let context = skill_management_context(filesystem.clone(), skill_mounts());
 
     let installed = install_skill(
@@ -52,12 +46,7 @@ async fn install_list_and_remove_user_skills_through_scoped_mounts() {
     );
 
     let listed = list_skills(&context).await.unwrap();
-    assert_eq!(listed.len(), 2);
-    assert!(
-        listed
-            .iter()
-            .any(|skill| skill.name == "system-helper" && skill.source == SkillSource::System)
-    );
+    assert_eq!(listed.len(), 1);
     assert!(
         listed
             .iter()
@@ -73,7 +62,7 @@ async fn install_list_and_remove_user_skills_through_scoped_mounts() {
     .await
     .unwrap();
     assert_eq!(removed.name, "local-helper");
-    assert_eq!(list_skills(&context).await.unwrap().len(), 1);
+    assert_eq!(list_skills(&context).await.unwrap().len(), 0);
 }
 
 #[tokio::test]
@@ -658,19 +647,11 @@ async fn list_treats_unmounted_optional_skill_root_as_empty() {
     assert_eq!(listed[0].source, SkillSource::User);
 }
 
+// NOTE: SYSTEM_SKILLS_ROOT disk-load removed in Phase P.1 Step 6 — system skills
+// are now DB-seeded. This test verifies search over user skills only.
 #[tokio::test]
 async fn search_skills_empty_query_returns_all_matching_skills() {
     let filesystem = Arc::new(InMemoryBackend::default());
-    write_file(
-        filesystem.as_ref(),
-        "/projects/system/skills/system-helper/SKILL.md",
-        skill_md(
-            "system-helper",
-            "system skill description",
-            "SYSTEM_SKILL_PROMPT",
-        ),
-    )
-    .await;
     write_file(
         filesystem.as_ref(),
         "/projects/skills/local-helper/SKILL.md",
@@ -689,14 +670,8 @@ async fn search_skills_empty_query_returns_all_matching_skills() {
     .await
     .unwrap();
 
-    assert_eq!(result.skills.len(), 2);
+    assert_eq!(result.skills.len(), 1);
     assert!(!result.truncated);
-    assert!(
-        result
-            .skills
-            .iter()
-            .any(|skill| skill.name == "system-helper")
-    );
     assert!(
         result
             .skills
