@@ -40,6 +40,7 @@
 
 use std::sync::Arc;
 
+use brassclaw_engine::memory::retrieval_source::ComponentScope;
 use brassclaw_host_api::SYSTEM_RESERVED_ID;
 use brassclaw_pg::PgPool;
 use serde_json::{json, Value};
@@ -54,6 +55,7 @@ use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
 use crate::pg_skill_store::{NewPgSkill, PgSkillStore};
 use crate::pg_tool_skill_store::{NewPgToolSkill, PgToolSkillStore};
 use crate::pg_tool_store::{NewPgTool, PgToolStore};
+use crate::validation_queue::ValidationQueueStore;
 
 /// Marker `user_id` for seeded builtins — the system sentinel.
 const SEED_USER: &str = SYSTEM_RESERVED_ID;
@@ -89,6 +91,10 @@ struct BootstrapStores {
     skill: PgSkillStore,
     recipe: PgRecipeStore,
     catalogue: PgExtensionCatalogueStore,
+    /// Phase P.0 audit queue — records a `q2_actor='builtin'` graduation row
+    /// for each freshly inserted builtin component (new inserts only; re-runs
+    /// that hit the get-then-insert early-return skip the audit path).
+    queue: ValidationQueueStore,
 }
 
 impl BootstrapStores {
@@ -101,7 +107,75 @@ impl BootstrapStores {
             skill: PgSkillStore::new(pool.clone()),
             recipe: PgRecipeStore::new(pool.clone()),
             pool: pool.clone(),
+            queue: ValidationQueueStore::new(pool.clone()),
             catalogue: PgExtensionCatalogueStore::new(pool),
+        }
+    }
+
+    /// Phase P.0 audit path: submit a freshly-inserted builtin component to the
+    /// validation queue, run Q1 (graceful-defer path — no validator Recipes
+    /// seeded yet), then approve with `q2_actor = "builtin"`.
+    ///
+    /// Called only for *new* inserts (re-runs skip via the early-return in each
+    /// `upsert_*` method). The component row is already `validated` (direct
+    /// insert); this path purely adds the audit trail to the queue table.
+    ///
+    /// Errors are logged at `debug!` and suppressed — a missing audit record
+    /// must never block a seeder boot (the component itself is already valid).
+    async fn audit_builtin_graduation(
+        &self,
+        component_id: Uuid,
+        class_code: i32,
+        name: &str,
+    ) {
+        let scope = ComponentScope {
+            tenant_id: self.tenant.clone(),
+            user_id: SEED_USER.to_string(),
+            agent_id: SEED_AGENT.to_string(),
+            project_id: SEED_PROJECT.to_string(),
+        };
+        // submit → state 1
+        match self.queue.submit(&scope, component_id, class_code, None).await {
+            Ok(()) => {}
+            Err(crate::validation_queue::ValidationQueueError::AlreadyQueued { .. }) => {
+                // A stale queue row exists (e.g. crash-recovery left it). Skip
+                // the rest of the audit path — the component is already validated.
+                return;
+            }
+            Err(e) => {
+                tracing::debug!(
+                    component_id = %component_id,
+                    class_code,
+                    name,
+                    error = %e,
+                    "builtin audit: submit failed (non-fatal)"
+                );
+                return;
+            }
+        }
+        // Q1 — graceful defer until validator Recipes are seeded (Phase L).
+        // Advances state to 2 only when a validator Recipe exists; otherwise
+        // the queue row stays at state 1. Bypass that by calling gate1_pass
+        // directly so approve can proceed regardless of Recipe availability.
+        if let Err(e) = self.queue.gate1_pass(&scope, component_id, &[]).await {
+            tracing::debug!(
+                component_id = %component_id,
+                class_code,
+                name,
+                error = %e,
+                "builtin audit: gate1_pass failed (non-fatal)"
+            );
+            return;
+        }
+        // Q2 approve with actor = "builtin"
+        if let Err(e) = self.queue.approve(&scope, component_id, Some("builtin")).await {
+            tracing::debug!(
+                component_id = %component_id,
+                class_code,
+                name,
+                error = %e,
+                "builtin audit: approve failed (non-fatal)"
+            );
         }
     }
 
@@ -116,6 +190,8 @@ impl BootstrapStores {
             reason: e.to_string(),
         };
         if let Some(id) = self.tool.insert(row).await.map_err(map)? {
+            // New insert — record the builtin audit graduation.
+            self.audit_builtin_graduation(id, 0, name).await;
             return Ok(id);
         }
         self.tool
@@ -137,6 +213,8 @@ impl BootstrapStores {
             SeedBuiltinBootstrapError::Db { reason: e.to_string() }
         };
         if let Some(id) = self.tool_skill.insert(row).await.map_err(map)? {
+            // New insert — record the builtin audit graduation.
+            self.audit_builtin_graduation(id, 13, name).await;
             return Ok(id);
         }
         self.tool_skill
@@ -158,6 +236,8 @@ impl BootstrapStores {
             reason: e.to_string(),
         };
         if let Some(id) = self.skill.insert(row).await.map_err(map)? {
+            // New insert — record the builtin audit graduation.
+            self.audit_builtin_graduation(id, 1, name).await;
             return Ok(id);
         }
         self.skill
@@ -173,6 +253,7 @@ impl BootstrapStores {
     /// ON-CONFLICT, so get-then-insert via [`PgPythonCodeStore::get_by_name`].
     /// Builtins bypass Q1, so the row is graduated to `validated` directly
     /// (the DDL default is `pending`, which the SEC-01 delivery filter hides).
+    /// Phase P.0: the audit queue path records `q2_actor='builtin'` after insert.
     async fn upsert_python_code(
         &self,
         row: NewPgPythonCode,
@@ -201,11 +282,14 @@ impl BootstrapStores {
             )
             .await
             .map_err(map)?;
+        // New insert — record the builtin audit graduation.
+        self.audit_builtin_graduation(id, 22, name).await;
         Ok(id)
     }
 
     /// Insert-or-recover a Recipe id (class 21). `insert` is not ON-CONFLICT,
     /// so get-then-insert via [`PgRecipeStore::get_by_name`].
+    /// Phase P.0: the audit queue path records `q2_actor='builtin'` after insert.
     async fn upsert_recipe(
         &self,
         row: NewPgRecipe,
@@ -222,11 +306,15 @@ impl BootstrapStores {
         {
             return Ok(existing.id);
         }
-        self.recipe.insert(row).await.map_err(map)
+        let id = self.recipe.insert(row).await.map_err(map)?;
+        // New insert — record the builtin audit graduation.
+        self.audit_builtin_graduation(id, 21, name).await;
+        Ok(id)
     }
 
     /// Get-or-insert an ExtensionCatalogue (class 23) row and graduate it to
     /// `validated` directly (builtins bypass Q1). Returns the catalogue id.
+    /// Phase P.0: the audit queue path records `q2_actor='builtin'` after insert.
     async fn upsert_catalogue(
         &self,
         row: NewPgExtensionCatalogue,
@@ -256,6 +344,8 @@ impl BootstrapStores {
             )
             .await
             .map_err(map)?;
+        // New insert — record the builtin audit graduation.
+        self.audit_builtin_graduation(id, 23, name).await;
         Ok(id)
     }
 
@@ -386,6 +476,11 @@ pub async fn seed_builtin_components(
 
     // Pass 6 — host group (K4: the no-prefix fallback prior-knowledge recipe).
     seed_host_group(&stores).await?;
+
+    // Pass 7 — validation-system trusted-root (Phase L §0.23.3): one minimal
+    // Tier-0 structural validator Recipe per component class.  Seeds `05:validator`
+    // Recipes that `find_validator_recipe` (q1_orchestrator.rs) can look up.
+    seed_validator_recipes(&stores).await?;
 
     Ok(())
 }
@@ -3029,6 +3124,9 @@ fn recipe_row(
             "variable_patterns": [],
         }])),
         dependency_registry: None,
+        // General-purpose recipe — not a validator for any specific class.
+        // Validator recipes set validates_class_code = Some(class_code).
+        validates_class_code: None,
     }
 }
 
@@ -10321,6 +10419,215 @@ async fn seed_host_group(
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Validation-system trusted-root (Pass 7 — Phase L §0.23.3)
+// ---------------------------------------------------------------------------
+//
+// One minimal Tier-0 structural validator Recipe per component class.
+// These are the trusted-root Recipes that `find_validator_recipe` in
+// `q1_orchestrator.rs` looks up by `validates_class_code = <class>`.
+//
+// Each validator:
+//  - carries `consumer_tags = ["05:validator"]`
+//  - has `validates_class_code = Some(class_code)`
+//  - is seeded at `validation_status = "validated"` + `tier = "mature"` /
+//    `wilson_lower = 1.0` (Tier-0 eligible from boot)
+//  - consists of a single pure-logic PythonCode step that checks three
+//    structural invariants: name present, description non-empty, content
+//    non-empty.  This is the minimum viable check described in §0.23.3.
+//    The self-improvement loop can replace these bodies with smarter checks
+//    over time.
+//
+// Classes seeded: 0 (Tool), 1 (leaf Skill), 2 (domain Skill), 13 (ToolSkill),
+//                 21 (Recipe), 22 (PythonCode), 23 (ExtensionCatalogue).
+// Class 3 (LLM Skill) shares the same structural shape as 1/2 so it is
+// included here for symmetry even though the seeder does not currently seed
+// class-3 Skills.
+//
+// Each PythonCode body is a pure-logic function (no host calls, no imports).
+// IBS bakes {{vars.slot0}} / {{vars.slot1}} / {{vars.slot2}} into the body
+// before execution.
+
+/// Minimal structural-check PythonCode body used by all class validators.
+/// Slot mapping: slot0 = name, slot1 = description, slot2 = content/steps.
+/// Returns `{"pass": bool, "errors": [str]}`.
+const PC_VALIDATOR_STRUCTURAL_BODY: &str = r#"# Tier-0 structural validator (class 22, pure-logic).
+# Checks: name present, description non-empty, content non-empty.
+# IBS bakes {{vars.slot0/1/2}} into the body before execution.
+# No I/O, no imports, no host calls.
+_name = "{{vars.slot0}}"
+_desc = "{{vars.slot1}}"
+_content = "{{vars.slot2}}"
+_errors = []
+if not _name or not _name.strip():
+    _errors.append("name is empty")
+if not _desc or not _desc.strip():
+    _errors.append("description is empty")
+if not _content or not _content.strip():
+    _errors.append("content/steps is empty")
+result = {"pass": len(_errors) == 0, "errors": _errors}
+"#;
+
+/// YAML `step_descriptions` source shared by all class validators (single step).
+const VALIDATOR_YAML_SOURCE: &str = r#"step_descriptions:
+  - step_id: "step-1"
+    type: "component"
+    channel: "orchestrator"
+    label: "Structural check: name + description + content non-empty"
+"#;
+
+/// Build a `NewPgRecipe` row for a class validator Recipe.
+///
+/// Differs from [`recipe_row`] in three ways:
+/// 1. `validates_class_code = Some(class_code)` — marks this Recipe as a
+///    validator for the given class.
+/// 2. `consumer_tags = ["05:validator"]` only (no `"02:orchestrator"` — the
+///    delivery filter excludes `05:validator` rows from normal routing, so
+///    this Recipe is only reached via `find_validator_recipe`).
+/// 3. `description` and `intent_examples` are minimal — the Recipe is not
+///    intended to be user-routed.
+fn validator_recipe_row(
+    tenant: &str,
+    class_code: i16,
+    class_label: &str,
+    pc_id: Uuid,
+) -> NewPgRecipe {
+    let name = format!("validator-class-{class_code}");
+    let description = format!(
+        "Tier-0 structural validator for class {class_code} ({class_label}). \
+         Checks name, description, and content/steps are non-empty. \
+         Seeds the trusted-root Q1 gate (Phase L §0.23.3). \
+         The self-improvement loop replaces this body with smarter checks."
+    );
+    NewPgRecipe {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: name.clone(),
+        description: description.clone(),
+        trigger: None,
+        steps: serde_json::json!([]),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        // Only 05:validator — delivery filter excludes this from normal routing.
+        consumer_tags: vec!["05:validator".into()],
+        intent_examples: Some(serde_json::json!([])),
+        source: "system".into(),
+        step_descriptions: Some(serde_json::json!([{
+            "desc_idx": 0,
+            "label": description,
+            "yaml_source": VALIDATOR_YAML_SOURCE,
+            "steps": [step_entry(
+                1,
+                "orchestrator",
+                "Structural check: name + description + content non-empty",
+                "component",
+                &[pc_id],
+            )],
+        }])),
+        variants: Some(serde_json::json!([{
+            "variant_key": name,
+            "step_link": "0:1-0:E",
+            "description": description,
+            "intent_examples": serde_json::json!([]),
+            "variable_patterns": [],
+        }])),
+        dependency_registry: None,
+        validates_class_code: Some(class_code),
+    }
+}
+
+/// Phase L §0.23.3 — seed one minimal Tier-0 structural validator Recipe per
+/// component class.  Idempotent; safe to call on every boot.
+///
+/// For each class in {0, 1, 2, 3, 13, 21, 22, 23}:
+///  1. Insert the shared structural-check PythonCode (`pc-validator-class-N`).
+///  2. Insert the validator Recipe (`validator-class-N`) referencing that PC,
+///     with `validates_class_code = Some(N)` and `consumer_tags = ["05:validator"]`.
+///  3. Mark the Recipe Tier-0 eligible (`tier = 'mature'`, `wilson_lower = 1.0`).
+///  4. Explicitly set `validation_status = 'validated'` (builtins bypass Q1).
+async fn seed_validator_recipes(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    // (class_code, class_label) pairs for every class the seeder covers.
+    // Class 3 (LLM Skill) is included for symmetry even though no class-3 rows
+    // are seeded by the domain groups — the validator Recipe is the first class-3
+    // system row and is required for Q1 to cover it when it does appear.
+    let classes: &[(i16, &str)] = &[
+        (0, "Tool"),
+        (1, "leaf Skill"),
+        (2, "domain Skill"),
+        (3, "LLM Skill"),
+        (13, "ToolSkill"),
+        (21, "Recipe"),
+        (22, "PythonCode"),
+        (23, "ExtensionCatalogue"),
+    ];
+
+    for (class_code, class_label) in classes {
+        let pc_name = format!("pc-validator-class-{class_code}");
+        let recipe_name = format!("validator-class-{class_code}");
+
+        // Step 1 — PythonCode: shared structural-check body.
+        let pc_id = stores
+            .upsert_python_code(
+                pc_row(
+                    &tenant,
+                    &pc_name,
+                    &format!(
+                        "Tier-0 structural validator executor for class {class_code} \
+                         ({class_label}). Checks name, description, and content/steps \
+                         are non-empty. Pure-logic, no host calls."
+                    ),
+                    PC_VALIDATOR_STRUCTURAL_BODY,
+                ),
+                &pc_name,
+            )
+            .await?;
+
+        // Step 2 — Recipe: validator Recipe referencing the PC above.
+        let recipe_id = stores
+            .upsert_recipe(
+                validator_recipe_row(&tenant, *class_code, class_label, pc_id),
+                &recipe_name,
+            )
+            .await?;
+
+        // Step 3 — Tier-0 eligible: sets tier='mature' + wilson_lower=1.0.
+        stores.mark_recipe_tier0(recipe_id).await?;
+
+        // Step 4 — Graduate to 'validated' (builtins bypass the Q1 queue gate).
+        stores
+            .recipe
+            .update_validation_status(
+                &tenant,
+                SEED_USER,
+                SEED_AGENT,
+                SEED_PROJECT,
+                recipe_id,
+                crate::pg_recipe_store::RecipeValidationStatusUpdate {
+                    validation_status: "validated",
+                },
+            )
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            })?;
+    }
+
+    tracing::debug!(
+        "seeded validation-system trusted-root: 8 PythonCodes + 8 validator Recipes \
+         (classes 0, 1, 2, 3, 13, 21, 22, 23 — Phase L §0.23.3)"
+    );
+
+    Ok(())
+}
+
+
 
 fn process_primary_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
     NewPgExtensionCatalogue {
