@@ -147,6 +147,8 @@ mod runtime_input;
 pub mod seed_builtin_host;
 #[cfg(feature = "postgres")]
 pub mod builtin_bootstrap;
+/// Phase P Step 9: doc-sync file-watcher + PG listener.
+pub(crate) mod doc_sync_watcher;
 #[cfg(feature = "postgres")]
 pub mod secrets_master;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]

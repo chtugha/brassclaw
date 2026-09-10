@@ -219,6 +219,69 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                 );
             }
         }
+
+        // Phase P Step 9 — doc-sync event wiring.
+        //
+        // Spawn the file-watcher (docs/agents-v3/*.md → doc-sync trigger)
+        // and the Postgres NOTIFY listener (reborn_docus_changed → doc-sync
+        // trigger). Both are detached background tasks that run for the
+        // lifetime of the process; errors are non-fatal (logged at debug).
+        //
+        // The trigger poller picks up the one-shot TriggerRecord within its
+        // poll interval and submits "run doc-sync" as a synthetic user turn.
+        {
+            let docs_dir = std::env::current_dir()
+                .unwrap_or_default()
+                .join("docs/agents-v3");
+
+            let tenant_id_result =
+                brassclaw_host_api::TenantId::new(host_tenant_id.as_str());
+
+            if let Ok(tenant_id) = tenant_id_result {
+                let trigger_repo: std::sync::Arc<dyn brassclaw_triggers::TriggerRepository> =
+                    std::sync::Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(
+                        (*pool).clone(),
+                    ));
+                let watcher_ctx = std::sync::Arc::new(
+                    crate::doc_sync_watcher::DocSyncWatcher::new(
+                        trigger_repo,
+                        tenant_id,
+                    ),
+                );
+                let shutdown = tokio_util::sync::CancellationToken::new();
+
+                // Spawn file-watcher only if the docs directory exists.
+                if docs_dir.exists() {
+                    crate::doc_sync_watcher::spawn_doc_sync_file_watcher(
+                        docs_dir,
+                        std::sync::Arc::clone(&watcher_ctx),
+                        shutdown.clone(),
+                    );
+                } else {
+                    tracing::debug!(
+                        "doc-sync file-watcher: docs/agents-v3 not found; \
+                         file-watch not started"
+                    );
+                }
+
+                // Spawn PG NOTIFY listener if BRASSCLAW_PG_URL is set.
+                let pg_url_opt = std::env::var("BRASSCLAW_PG_URL").ok().or_else(|| {
+                    // Embedded Postgres fallback: default port 5434.
+                    let port = std::env::var("BRASSCLAW_EMBEDDED_PG_PORT")
+                        .unwrap_or_else(|_| "5434".to_string());
+                    Some(format!(
+                        "postgres://postgres@127.0.0.1:{port}/brassclaw"
+                    ))
+                });
+                if let Some(pg_url) = pg_url_opt {
+                    crate::doc_sync_watcher::spawn_doc_sync_pg_listener(
+                        pg_url,
+                        watcher_ctx,
+                        shutdown,
+                    );
+                }
+            }
+        }
     }
 
     // Wire the safety configuration store (Postgres path).
