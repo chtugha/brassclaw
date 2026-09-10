@@ -10012,11 +10012,16 @@ Phase P.0 path); everything else is v3 artifacts authored as DB rows through Q1+
    **Implemented:** `interceptor_config_service.rs` — added three entries to `COMPONENT_TABLES`
    and `17 => "Docu"` arm to `class_label`; 4 new unit tests (labels 17/22/23 + table entries);
    all 8 tests pass; clippy clean. No migration needed.
-2. **PythonCode leaves (class 22):** author `sha256`, `hash_changed`,
+2. **[DONE]** **PythonCode leaves (class 22):** author `sha256`, `hash_changed`,
    `markdown_section`, `format_component_header` — pure logic, one concern
    each, no I/O; Q1-scanned; through Q1+Q2 (Phase P.0). General-purpose →
    bootstrap candidates.
-3. **The one generic DB Tool + ToolSkill (class 0 + 13):** author the **Rust**
+
+   **Implemented:** `builtin_bootstrap.rs` Pass 15 seeds `pc-hash-changed` and
+   `pc-format-component-header` (SHA-256 computation moved to Rust `component_db`
+   op; `extract_section` likewise moved to Rust). Committed `dc8816c4`.
+
+3. **[DONE]** **The one generic DB Tool + ToolSkill (class 0 + 13):** author the **Rust**
    capability `component_db` (`op ∈ {read_hash, read_row, upsert, mark_stale}`,
    §0.22.4) + its single executor-facing ToolSkill. `upsert` does
    `INSERT … ON CONFLICT … DO UPDATE` into `reborn_docus` and **always sets
@@ -10024,12 +10029,23 @@ Phase P.0 path); everything else is v3 artifacts authored as DB rows through Q1+
    `PgBasicPromptStore::mark_stale`. `read_file`/`glob`/`memory_*` reused
    as-is. (Host Rust — the only part besides step 1 that touches Postgres /
    the kernel boundary.) One generic Tool, not three.
-4. **Leaf Orchestrator Skills (classes 1-3):** author the one-tool-each leaves
+
+   **Implemented:** `first_party_tools/component_db.rs` (Rust Tool with 6 ops:
+   `compute_hash`, `extract_section`, `read_hash`, `read_row`, `upsert`,
+   `mark_stale`); `pg_component_db_backend.rs` (Postgres impl); bootstrap
+   `tool_component_db_row` + `ts_component_db_row` seeded in Pass 15.
+   Committed `fcaf386e`.
+4. **[DONE]** **Leaf Orchestrator Skills (classes 1-3):** author the one-tool-each leaves
    — `file-list`, `file-read`, `hash-compute`, `hash-compare`, `db-read-hash`,
    `markdown-section`, `component-header-render`, `prompt-compress`, plus the
    doc-specific `db-upsert-docus` and `db-mark-prefix-stale`. The DB leaves
    bind to the one `component_db` Tool (different `op`); the rest bind to
    their own tool/pythoncode. Through Q1+Q2 (Phase P.0) — no bypass.
+
+   **Implemented:** `builtin_bootstrap.rs` Pass 15 `seed_doc_sync_group()` — 10
+   leaf skills seeded with `source='system'`, `validation_status='validated'`,
+   class 1, `LEAF_SKILL_TAGS`. Body constants `SKILL_FILE_LIST_BODY` through
+   `SKILL_DB_MARK_PREFIX_STALE_BODY` added. Clippy clean.
 5. **Domain Orchestrator Skill (classes 1-3):** author `doc-convert-method`
    (§0.22.4) — the doc-specific overview referencing the leaves by name.
    Through Q1+Q2 — no bypass.
