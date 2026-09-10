@@ -482,6 +482,13 @@ pub async fn seed_builtin_components(
     // Recipes that `find_validator_recipe` (q1_orchestrator.rs) can look up.
     seed_validator_recipes(&stores).await?;
 
+    // Pass 8–14 — workflow domain skills (Phase P.1): coding, commit, github,
+    // code-review, qa-review, security-review, plan-mode.
+    // These replace the v1 SKILL.md filesystem-bundled skills with proper v3
+    // component stacks: leaf Skills, PythonCode executors, domain Skills,
+    // Recipes, and ExtensionCatalogues.
+    seed_workflow_skills(&stores).await?;
+
     Ok(())
 }
 
@@ -13962,4 +13969,2242 @@ const RECIPE_HOST_ASSEMBLE_PRIOR_KNOWLEDGE_YAML: &str = r#"step_descriptions: [
     "label":   "Add basic 'what is going on' context so the LLM understands (no retrieval)."
   }
 ]
+"#;
+
+// ---------------------------------------------------------------------------
+// Workflow skills group (Passes 8–14) — coding, commit, github, code-review,
+// qa-review, security-review, plan-mode.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Pass 8 — coding domain skill + ext-coding catalogue
+// ---------------------------------------------------------------------------
+
+/// Domain skill body (class 2) — transcribed from skills/coding/SKILL.md,
+/// v1 tool names updated to their v3 equivalents (list_dir → glob, etc.).
+const SKILL_CODING_BODY: &str = r#"# Coding Best Practices
+
+## Tool Usage Discipline
+
+- **Prefer `apply_patch` over `write_file`** for modifying existing files. It sends only the changed portion, preventing accidental full-file rewrites.
+- **Always `read_file` before editing.** Understand the context before changing code. Never edit a file you haven't read.
+- **Use `glob` for file discovery** instead of shell with find or ls. It's faster, safer, and returns structured results sorted by modification time.
+- **Use `grep` for content search** instead of shell with grep or rg. It provides structured output modes (content, file paths, counts) and pagination.
+- **Read before writing.** Never create or overwrite a file without reading it first (unless it's genuinely a new file).
+
+## Code Change Discipline
+
+- **Minimal changes.** Don't add features, refactor, or "improve" beyond what was asked. A bug fix doesn't need surrounding code cleaned up.
+- **No unnecessary comments or docstrings.** Only add comments where the logic isn't self-evident.
+- **One thing at a time.** Make focused changes, verify with `read_file`, then move to the next change.
+- **Fix the pattern, not just the instance.** When you find a bug, use `grep` to search for all occurrences before committing a fix.
+
+## Code Quality
+
+- Don't introduce security vulnerabilities (command injection, XSS, SQL injection, path traversal).
+- Preserve existing code style and conventions. Match the indentation, naming, and patterns of surrounding code.
+- Test after changes when test infrastructure exists. Use `shell` to run the project's test command.
+- Don't add error handling for scenarios that can't happen.
+"#;
+
+const CAT_EXT_CODING_OVERVIEW: &str = r#"# Coding Best-Practices Domain
+
+Best-practice guidance for code editing, search, and file operations using v3 tools.
+
+## Approaches
+
+- Read before editing: → read_file recipe (Tier 0) then apply_patch recipe (Tier 1)
+- Search for a pattern: → grep recipe (Tier 0)
+- Discover files: → glob recipe (Tier 0)
+- Write new file: → file-write recipe (Tier 1 — LLM composes content)
+- Patch existing file: → file-patch recipe (Tier 1 — LLM composes patch)
+
+Load `skill-coding` context at the start of any code-editing session to apply these
+best-practice constraints automatically.
+"#;
+
+/// Seed workflow domain skills (Phase P.1 Passes 8–14).
+///
+/// Replaces the v1 SKILL.md filesystem-bundled skills with proper v3 component
+/// stacks. Each skill becomes: leaf Skills + PythonCode executors + domain
+/// Skill (class 2) + Recipes + ExtensionCatalogue (class 23).
+///
+/// `web-browse` (Playwright MCP) and `portfolio` (needs a new Rust Tool) are
+/// deferred — see `docs/agents-v3/subplan_P1_skill_migration.md`.
+async fn seed_workflow_skills(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    // ------------------------------------------------------------------
+    // Pass 8 — coding domain skill + ext-coding catalogue
+    // ------------------------------------------------------------------
+
+    let skill_coding = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-coding",
+                "Domain skill: coding best practices — prefer apply_patch over write_file, \
+                 always read_file before editing, use glob/grep over shell, minimal changes.",
+                SKILL_CODING_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-coding",
+        )
+        .await?;
+
+    let cat_coding = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-coding",
+                "Coding best-practices domain: tool usage discipline and code change rules.",
+                CAT_EXT_CODING_OVERVIEW,
+                json!([{"group_name": "coding-best-practices", "description": "Best-practice guidance for code editing, search, and file operations"}]),
+            ),
+            "ext-coding",
+        )
+        .await?;
+
+    stores.append_children(cat_coding, &[skill_coding]).await?;
+
+    tracing::debug!(
+        "seeded workflow skills Pass 8: coding domain skill + ext-coding catalogue"
+    );
+
+    // ------------------------------------------------------------------
+    // Pass 9 — commit-workflow domain skill + recipe + ext-commit catalogue
+    // ------------------------------------------------------------------
+
+    let skill_commit_workflow = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-commit-workflow",
+                "Domain skill: guided git commit workflow — check staged files, inspect diff, \
+                 read log style, draft message, confirm with user, stage and commit.",
+                SKILL_COMMIT_WORKFLOW_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-commit-workflow",
+        )
+        .await?;
+
+    let recipe_commit_workflow = stores
+        .seed_recipe(
+            &tenant,
+            "commit-workflow",
+            "Full guided commit: git status → diff --cached → log style → LLM drafts message → \
+             user confirms → git add (specific files) → git commit.",
+            false,
+            RECIPE_COMMIT_WORKFLOW_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load commit-workflow + git-status + git-log + git-diff-stat leaf skills", "component", &[]),
+                step_entry(2, "rust", "Pre-load ts-shell-run binding", "component", &[]),
+                step_entry(3, "orchestrator", "LLM runs git status + diff --cached + log, drafts commit message, confirms with user, stages and commits", "text", &[]),
+            ],
+            &[
+                json!({"input": "commit my changes", "class": 1}),
+                json!({"input": "create a git commit", "class": 1}),
+                json!({"input": "git commit", "class": 1}),
+                json!({"input": "commit staged files", "class": 1}),
+                json!({"input": "commit with a good message", "class": 2}),
+                json!({"input": "make a commit", "class": 1}),
+                json!({"input": "commit and push", "class": 2}),
+                json!({"input": "write a commit message for my changes", "class": 2}),
+                json!({"input": "git commit -m", "class": 1}),
+                json!({"input": "stage and commit", "class": 2}),
+                json!({"input": "help me commit", "class": 2}),
+                json!({"input": "create a meaningful commit message", "class": 2}),
+            ],
+        )
+        .await?;
+
+    let cat_commit = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-commit",
+                "Guided git commit workflow domain.",
+                CAT_EXT_COMMIT_OVERVIEW,
+                json!([{"group_name": "commit-workflow", "description": "Guided commit: inspect staged changes, draft message, confirm, commit"}]),
+            ),
+            "ext-commit",
+        )
+        .await?;
+
+    stores
+        .append_children(cat_commit, &[skill_commit_workflow, recipe_commit_workflow])
+        .await?;
+
+    tracing::debug!(
+        "seeded workflow skills Pass 9: commit-workflow skill + recipe + ext-commit catalogue"
+    );
+
+    // ------------------------------------------------------------------
+    // Pass 10 — github leaf skills, PythonCode, recipes, domain skill,
+    //           ext-github catalogue
+    // ------------------------------------------------------------------
+
+    // 10a. PythonCode executors (Tier-0 GET dispatchers)
+    let pc_github_list_issues = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-github-list-issues",
+                "Orchestrator executor: GET /repos/{owner}/{repo}/issues?state=open. \
+                 slot0=owner, slot1=repo. Tier 0.",
+                PC_GITHUB_LIST_ISSUES_CONTENT,
+            ),
+            "pc-github-list-issues",
+        )
+        .await?;
+    let pc_github_list_prs = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-github-list-prs",
+                "Orchestrator executor: GET /repos/{owner}/{repo}/pulls?state=open. \
+                 slot0=owner, slot1=repo. Tier 0.",
+                PC_GITHUB_LIST_PRS_CONTENT,
+            ),
+            "pc-github-list-prs",
+        )
+        .await?;
+    let pc_github_get_authenticated_user = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-github-get-authenticated-user",
+                "Orchestrator executor: GET /user — returns login, id, name, email. \
+                 Tier 0 (fixed URL, no input).",
+                PC_GITHUB_GET_AUTHENTICATED_USER_CONTENT,
+            ),
+            "pc-github-get-authenticated-user",
+        )
+        .await?;
+    let pc_github_search_issues = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-github-search-issues",
+                "Orchestrator executor: GET /search/issues?q={slot0}. \
+                 slot0 = URL-encoded query. Tier 0 (LLM builds query in prior step).",
+                PC_GITHUB_SEARCH_ISSUES_CONTENT,
+            ),
+            "pc-github-search-issues",
+        )
+        .await?;
+
+    // 10b. Leaf skills
+    let skill_github_list_issues = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-list-issues", "List open issues for a GitHub repo.", SKILL_GITHUB_LIST_ISSUES_BODY), "skill-github-list-issues")
+        .await?;
+    let skill_github_list_prs = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-list-prs", "List open pull requests for a GitHub repo.", SKILL_GITHUB_LIST_PRS_BODY), "skill-github-list-prs")
+        .await?;
+    let skill_github_get_pr = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-get-pr", "Get metadata for a specific GitHub PR.", SKILL_GITHUB_GET_PR_BODY), "skill-github-get-pr")
+        .await?;
+    let skill_github_get_pr_diff = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-get-pr-diff", "Get the unified diff for a GitHub PR.", SKILL_GITHUB_GET_PR_DIFF_BODY), "skill-github-get-pr-diff")
+        .await?;
+    let skill_github_get_pr_files = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-get-pr-files", "Get per-file summaries for a GitHub PR.", SKILL_GITHUB_GET_PR_FILES_BODY), "skill-github-get-pr-files")
+        .await?;
+    let skill_github_get_authenticated_user = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-get-authenticated-user", "Get the authenticated GitHub user (resolves @me).", SKILL_GITHUB_GET_AUTHENTICATED_USER_BODY), "skill-github-get-authenticated-user")
+        .await?;
+    let skill_github_search_issues = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-search-issues", "Search issues and PRs via /search/issues.", SKILL_GITHUB_SEARCH_ISSUES_BODY), "skill-github-search-issues")
+        .await?;
+    let skill_github_add_comment = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-add-comment", "Post a PR-level or issue comment on GitHub.", SKILL_GITHUB_ADD_COMMENT_BODY), "skill-github-add-comment")
+        .await?;
+    let skill_github_create_pr = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-github-create-pr", "Create a GitHub pull request (always draft unless told otherwise).", SKILL_GITHUB_CREATE_PR_BODY), "skill-github-create-pr")
+        .await?;
+
+    // 10c. Domain skill
+    let skill_github = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-github",
+                "Domain skill: GitHub REST API via http_fetch — credential injection, \
+                 response envelope, endpoint patterns, common mistakes.",
+                SKILL_GITHUB_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
+            "skill-github",
+        )
+        .await?;
+
+    // 10d. Recipes
+    let recipe_github_list_issues = stores
+        .seed_recipe(
+            &tenant,
+            "github-list-issues",
+            "List open issues for a GitHub repository.",
+            true,
+            RECIPE_GITHUB_LIST_ISSUES_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http_fetch GET /repos/{owner}/{repo}/issues", "component", &[pc_github_list_issues]),
+            ],
+            &[
+                json!({"input": "list issues for owner/repo", "class": 1}),
+                json!({"input": "show open issues", "class": 1}),
+                json!({"input": "what issues are open in this repo", "class": 2}),
+                json!({"input": "github issues", "class": 1}),
+                json!({"input": "list github issues for owner/repo", "class": 1}),
+                json!({"input": "show me the open issues", "class": 2}),
+                json!({"input": "fetch issues from github", "class": 2}),
+                json!({"input": "get issues list", "class": 2}),
+                json!({"input": "what bugs are open", "class": 2}),
+                json!({"input": "open issues on github", "class": 1}),
+                json!({"input": "show github issues", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_github_list_prs = stores
+        .seed_recipe(
+            &tenant,
+            "github-list-prs",
+            "List open pull requests for a GitHub repository.",
+            true,
+            RECIPE_GITHUB_LIST_PRS_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http_fetch GET /repos/{owner}/{repo}/pulls", "component", &[pc_github_list_prs]),
+            ],
+            &[
+                json!({"input": "list PRs for owner/repo", "class": 1}),
+                json!({"input": "show open pull requests", "class": 1}),
+                json!({"input": "what PRs are open", "class": 2}),
+                json!({"input": "github pull requests", "class": 1}),
+                json!({"input": "list open PRs", "class": 1}),
+                json!({"input": "show me the pull requests", "class": 2}),
+                json!({"input": "fetch PRs from github", "class": 2}),
+                json!({"input": "open pull requests on github", "class": 1}),
+                json!({"input": "what PRs need review", "class": 2}),
+                json!({"input": "list github pull requests", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_github_get_authenticated_user = stores
+        .seed_recipe(
+            &tenant,
+            "github-get-authenticated-user",
+            "Get the authenticated GitHub user — resolves who @me is.",
+            true,
+            RECIPE_GITHUB_GET_AUTHENTICATED_USER_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+                step_entry(2, "orchestrator", "PythonCode calls host.http_fetch GET /user", "component", &[pc_github_get_authenticated_user]),
+            ],
+            &[
+                json!({"input": "who am I on github", "class": 1}),
+                json!({"input": "get my github user", "class": 1}),
+                json!({"input": "github authenticated user", "class": 1}),
+                json!({"input": "what is my github login", "class": 2}),
+                json!({"input": "resolve @me on github", "class": 1}),
+                json!({"input": "my github account", "class": 2}),
+                json!({"input": "github /user endpoint", "class": 1}),
+                json!({"input": "get github token owner", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_github_search_issues = stores
+        .seed_recipe(
+            &tenant,
+            "github-search-issues",
+            "Search GitHub issues and PRs using the unified search API.",
+            false,
+            RECIPE_GITHUB_SEARCH_ISSUES_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load github-search-issues leaf skill (query syntax, URL encoding)", "component", &[skill_github_search_issues]),
+                step_entry(2, "orchestrator", "LLM builds the search query string and URL-encodes it", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+            ],
+            &[
+                json!({"input": "search github issues", "class": 1}),
+                json!({"input": "find PRs mentioning X", "class": 2}),
+                json!({"input": "my open PRs across all repos", "class": 2}),
+                json!({"input": "search for issues with label bug", "class": 2}),
+                json!({"input": "github search issues", "class": 1}),
+                json!({"input": "find issues assigned to me", "class": 2}),
+                json!({"input": "PRs that need my review", "class": 2}),
+                json!({"input": "my latest pull requests", "class": 2}),
+                json!({"input": "github search", "class": 1}),
+                json!({"input": "find github issues matching query", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_github_create_pr = stores
+        .seed_recipe(
+            &tenant,
+            "github-create-pr",
+            "Create a GitHub pull request (always draft unless user says ready for review).",
+            false,
+            RECIPE_GITHUB_CREATE_PR_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load github-create-pr + github domain skill context", "component", &[skill_github_create_pr, skill_github]),
+                step_entry(2, "orchestrator", "LLM reads git log for branch, asks for title/body, confirms draft", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+            ],
+            &[
+                json!({"input": "create a pull request", "class": 1}),
+                json!({"input": "open a PR", "class": 1}),
+                json!({"input": "create PR from this branch", "class": 2}),
+                json!({"input": "submit a pull request", "class": 2}),
+                json!({"input": "open a draft PR", "class": 1}),
+                json!({"input": "create github pull request", "class": 1}),
+                json!({"input": "make a PR", "class": 1}),
+                json!({"input": "push and create PR", "class": 2}),
+                json!({"input": "open pull request for my changes", "class": 2}),
+                json!({"input": "create draft PR", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_github_add_comment = stores
+        .seed_recipe(
+            &tenant,
+            "github-add-comment",
+            "Post a comment on a GitHub issue or pull request.",
+            false,
+            RECIPE_GITHUB_ADD_COMMENT_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load github-add-comment leaf skill context", "component", &[skill_github_add_comment]),
+                step_entry(2, "orchestrator", "LLM composes comment body and confirms with user", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+            ],
+            &[
+                json!({"input": "comment on issue 42", "class": 1}),
+                json!({"input": "add a comment to PR 7", "class": 1}),
+                json!({"input": "post a github comment", "class": 1}),
+                json!({"input": "comment on this pull request", "class": 2}),
+                json!({"input": "reply to github issue", "class": 2}),
+                json!({"input": "leave a note on the PR", "class": 2}),
+                json!({"input": "add comment to github issue", "class": 1}),
+                json!({"input": "post a review comment", "class": 2}),
+            ],
+        )
+        .await?;
+
+    // 10e. Catalogue
+    let cat_github = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-github",
+                "GitHub API integration domain: issues, PRs, search, authenticated user.",
+                CAT_EXT_GITHUB_OVERVIEW,
+                json!([
+                    {"group_name": "github-read", "description": "Tier-0 read operations: list issues, list PRs, get authenticated user"},
+                    {"group_name": "github-search", "description": "Search issues and PRs across GitHub"},
+                    {"group_name": "github-write", "description": "Create PRs and post comments"}
+                ]),
+            ),
+            "ext-github",
+        )
+        .await?;
+
+    let github_children: Vec<Uuid> = vec![
+        pc_github_list_issues, pc_github_list_prs,
+        pc_github_get_authenticated_user, pc_github_search_issues,
+        skill_github_list_issues, skill_github_list_prs,
+        skill_github_get_pr, skill_github_get_pr_diff, skill_github_get_pr_files,
+        skill_github_get_authenticated_user, skill_github_search_issues,
+        skill_github_add_comment, skill_github_create_pr, skill_github,
+        recipe_github_list_issues, recipe_github_list_prs,
+        recipe_github_get_authenticated_user, recipe_github_search_issues,
+        recipe_github_create_pr, recipe_github_add_comment,
+    ];
+    stores.append_children(cat_github, &github_children).await?;
+
+    tracing::debug!(
+        "seeded workflow skills Pass 10: github (4 PC + 9 leaf + 1 domain + 6 recipes + ext-github)"
+    );
+
+    // ------------------------------------------------------------------
+    // Pass 11 — code-review stack (3 PC + 3 leaf + 1 domain + 3 recipes
+    //           + ext-code-review catalogue)
+    // ------------------------------------------------------------------
+
+    // 11a. PythonCode executors
+    let pc_git_diff_unstaged = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-git-diff-unstaged",
+                "Orchestrator executor: git diff (unstaged changes). Tier 0, fixed command.",
+                PC_GIT_DIFF_UNSTAGED_CONTENT),
+            "pc-git-diff-unstaged",
+        )
+        .await?;
+    let pc_git_diff_staged = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-git-diff-staged",
+                "Orchestrator executor: git diff --cached (staged changes). Tier 0, fixed command.",
+                PC_GIT_DIFF_STAGED_CONTENT),
+            "pc-git-diff-staged",
+        )
+        .await?;
+    let pc_git_diff_head = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-git-diff-head",
+                "Orchestrator executor: git diff HEAD~1 (last commit). Tier 0, fixed command.",
+                PC_GIT_DIFF_HEAD_CONTENT),
+            "pc-git-diff-head",
+        )
+        .await?;
+
+    // 11b. Leaf skills
+    let skill_code_review_local = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-code-review-local",
+            "Leaf skill: gather local changes with git diff / git diff --cached / git diff HEAD~1.",
+            SKILL_CODE_REVIEW_LOCAL_BODY), "skill-code-review-local")
+        .await?;
+    let skill_code_review_pr = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-code-review-pr",
+            "Leaf skill: fetch GitHub PR metadata, unified diff, and per-file summaries.",
+            SKILL_CODE_REVIEW_PR_BODY), "skill-code-review-pr")
+        .await?;
+    let skill_code_review_post_comments = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-code-review-post-comments",
+            "Leaf skill: post line-level or PR-level review comments on GitHub.",
+            SKILL_CODE_REVIEW_POST_COMMENTS_BODY), "skill-code-review-post-comments")
+        .await?;
+
+    // 11c. Domain skill
+    let skill_code_review = stores
+        .upsert_skill(
+            skill_row(&tenant, "skill-code-review",
+                "Domain skill: paranoid architect code review — six lenses, two modes \
+                 (local diff / GitHub PR), severity scale, post comments.",
+                SKILL_CODE_REVIEW_BODY, 2, LEAF_SKILL_TAGS),
+            "skill-code-review",
+        )
+        .await?;
+
+    // 11d. Recipes
+    let recipe_code_review_local = stores
+        .seed_recipe(
+            &tenant, "code-review-local",
+            "Review local uncommitted, staged, or last-commit changes with a paranoid six-lens analysis.",
+            false,
+            RECIPE_CODE_REVIEW_LOCAL_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load code-review-local + code-review domain skill", "component", &[skill_code_review_local, skill_code_review]),
+                step_entry(2, "rust", "Pre-load ts-shell-run + ts-read-file bindings", "component", &[]),
+                step_entry(3, "orchestrator", "LLM runs git diff, reads files, six-lens review, findings table", "text", &[]),
+            ],
+            &[
+                json!({"input": "review my changes", "class": 1}),
+                json!({"input": "review local changes", "class": 1}),
+                json!({"input": "code review locally", "class": 1}),
+                json!({"input": "review the diff", "class": 2}),
+                json!({"input": "check my code", "class": 2}),
+                json!({"input": "paranoid review of current changes", "class": 2}),
+                json!({"input": "review uncommitted changes", "class": 1}),
+                json!({"input": "review staged changes", "class": 1}),
+                json!({"input": "review my last commit", "class": 2}),
+                json!({"input": "local code review", "class": 1}),
+                json!({"input": "check this diff for bugs", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_code_review_pr = stores
+        .seed_recipe(
+            &tenant, "code-review-pr",
+            "Review a GitHub pull request: fetch meta + diff + files, read changed files, six-lens analysis.",
+            false,
+            RECIPE_CODE_REVIEW_PR_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load code-review-pr + code-review domain + github domain", "component", &[skill_code_review_pr, skill_code_review, skill_github]),
+                step_entry(2, "rust", "Pre-load ts-http-fetch + ts-read-file bindings", "component", &[]),
+                step_entry(3, "orchestrator", "LLM fetches PR, reads files, six-lens review, findings, offers to post", "text", &[]),
+            ],
+            &[
+                json!({"input": "review PR 42", "class": 1}),
+                json!({"input": "review owner/repo #42", "class": 1}),
+                json!({"input": "code review github PR", "class": 1}),
+                json!({"input": "review this pull request", "class": 2}),
+                json!({"input": "review the PR", "class": 2}),
+                json!({"input": "check the pull request for issues", "class": 2}),
+                json!({"input": "paranoid review of PR 5", "class": 2}),
+                json!({"input": "review github.com/.../pull/42", "class": 1}),
+                json!({"input": "six-lens review of PR", "class": 2}),
+                json!({"input": "review pull request owner/repo 10", "class": 1}),
+                json!({"input": "code review PR", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_code_review_pr_post_comments = stores
+        .seed_recipe(
+            &tenant, "code-review-pr-post-comments",
+            "Post code-review findings as line-level or PR-level comments on a GitHub PR.",
+            false,
+            RECIPE_CODE_REVIEW_PR_POST_COMMENTS_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load code-review-post-comments leaf skill", "component", &[skill_code_review_post_comments]),
+                step_entry(2, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+                step_entry(3, "orchestrator", "LLM posts findings as line-level or PR-level comments", "text", &[]),
+            ],
+            &[
+                json!({"input": "post review comments on the PR", "class": 1}),
+                json!({"input": "add findings as github comments", "class": 2}),
+                json!({"input": "post code review comments", "class": 1}),
+                json!({"input": "submit review comments to github", "class": 2}),
+                json!({"input": "post my review findings on PR", "class": 2}),
+                json!({"input": "add line comments from review", "class": 2}),
+            ],
+        )
+        .await?;
+
+    // 11e. Catalogue
+    let cat_code_review = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant, "ext-code-review",
+                "Code review domain: local diff or GitHub PR, six lenses, post comments.",
+                CAT_EXT_CODE_REVIEW_OVERVIEW,
+                json!([
+                    {"group_name": "code-review-local", "description": "Local diff review (git diff / staged / HEAD~1)"},
+                    {"group_name": "code-review-pr", "description": "GitHub PR review with six-lens analysis"},
+                    {"group_name": "code-review-post", "description": "Post review findings as GitHub comments"}
+                ]),
+            ),
+            "ext-code-review",
+        )
+        .await?;
+
+    let code_review_children: Vec<Uuid> = vec![
+        pc_git_diff_unstaged, pc_git_diff_staged, pc_git_diff_head,
+        skill_code_review_local, skill_code_review_pr, skill_code_review_post_comments,
+        skill_code_review,
+        recipe_code_review_local, recipe_code_review_pr, recipe_code_review_pr_post_comments,
+    ];
+    stores.append_children(cat_code_review, &code_review_children).await?;
+
+    tracing::debug!(
+        "seeded workflow skills Pass 11: code-review (3 PC + 3 leaf + 1 domain + 3 recipes + ext-code-review)"
+    );
+
+    // ------------------------------------------------------------------
+    // Pass 12 — qa-review stack (4 PC + 4 leaf + 1 domain + 2 recipes
+    //           + ext-qa-review catalogue)
+    // ------------------------------------------------------------------
+
+    // 12a. PythonCode executors
+    let pc_glob_test_files_rust = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-glob-test-files-rust",
+                "Orchestrator executor: glob **/*_test.rs — find all Rust test files. Tier 0.",
+                PC_GLOB_TEST_FILES_RUST_CONTENT),
+            "pc-glob-test-files-rust",
+        )
+        .await?;
+    let pc_glob_test_files_ts = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-glob-test-files-ts",
+                "Orchestrator executor: glob **/*.test.ts — find all TypeScript test files. Tier 0.",
+                PC_GLOB_TEST_FILES_TS_CONTENT),
+            "pc-glob-test-files-ts",
+        )
+        .await?;
+    let pc_glob_test_files_py = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-glob-test-files-py",
+                "Orchestrator executor: glob **/*_test.py — find all Python test files. Tier 0.",
+                PC_GLOB_TEST_FILES_PY_CONTENT),
+            "pc-glob-test-files-py",
+        )
+        .await?;
+    let pc_grep_fn_tests = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-grep-fn-tests",
+                "Orchestrator executor: grep pattern=slot0 in *test* files — find tests for a function. Tier 0.",
+                PC_GREP_FN_TESTS_CONTENT),
+            "pc-grep-fn-tests",
+        )
+        .await?;
+
+    // 12b. Leaf skills
+    let skill_qa_coverage_analysis = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-qa-coverage-analysis",
+            "Leaf skill: identify changed functions, find test files, flag untested paths.",
+            SKILL_QA_COVERAGE_ANALYSIS_BODY), "skill-qa-coverage-analysis")
+        .await?;
+    let skill_qa_edge_cases = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-qa-edge-cases",
+            "Leaf skill: edge case checklist — boundary values, type edges, concurrency, external failures.",
+            SKILL_QA_EDGE_CASES_BODY), "skill-qa-edge-cases")
+        .await?;
+    let skill_qa_test_plan = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-qa-test-plan",
+            "Leaf skill: generate structured test plan (unit / integration / regression / manual).",
+            SKILL_QA_TEST_PLAN_BODY), "skill-qa-test-plan")
+        .await?;
+    let skill_qa_regression_risk = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-qa-regression-risk",
+            "Leaf skill: regression risk assessment — identify callers, API surfaces, schema contracts.",
+            SKILL_QA_REGRESSION_RISK_BODY), "skill-qa-regression-risk")
+        .await?;
+
+    // 12c. Domain skill
+    let skill_qa_review = stores
+        .upsert_skill(
+            skill_row(&tenant, "skill-qa-review",
+                "Domain skill: QA review — coverage analysis, edge cases, regression risks, \
+                 test plan generation, health score.",
+                SKILL_QA_REVIEW_BODY, 2, LEAF_SKILL_TAGS),
+            "skill-qa-review",
+        )
+        .await?;
+
+    // 12d. Recipes
+    let recipe_qa_review_local = stores
+        .seed_recipe(
+            &tenant, "qa-review-local",
+            "QA review of local changes: coverage analysis, edge cases, regression risks.",
+            false,
+            RECIPE_QA_REVIEW_LOCAL_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load qa-review domain + coverage + edge-cases leaf skills", "component", &[skill_qa_review, skill_qa_coverage_analysis, skill_qa_edge_cases]),
+                step_entry(2, "rust", "Pre-load ts-shell-run + ts-glob + ts-grep bindings", "component", &[]),
+                step_entry(3, "orchestrator", "LLM runs git diff stat, globs test files, greps for function tests, QA analysis", "text", &[]),
+            ],
+            &[
+                json!({"input": "qa review", "class": 1}),
+                json!({"input": "test coverage analysis", "class": 1}),
+                json!({"input": "what tests am I missing", "class": 2}),
+                json!({"input": "check test coverage", "class": 2}),
+                json!({"input": "review test quality", "class": 2}),
+                json!({"input": "edge case review", "class": 1}),
+                json!({"input": "QA check", "class": 1}),
+                json!({"input": "regression test review", "class": 2}),
+                json!({"input": "find missing tests", "class": 2}),
+                json!({"input": "quality review", "class": 2}),
+                json!({"input": "test coverage check", "class": 1}),
+            ],
+        )
+        .await?;
+    let recipe_qa_generate_test_plan = stores
+        .seed_recipe(
+            &tenant, "qa-generate-test-plan",
+            "Generate a structured test plan: unit, integration, regression, and manual verification steps.",
+            false,
+            RECIPE_QA_GENERATE_TEST_PLAN_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load qa-test-plan + qa-regression-risk leaf skills", "component", &[skill_qa_test_plan, skill_qa_regression_risk]),
+                step_entry(2, "rust", "Pre-load ts-read-file + ts-shell-run bindings", "component", &[]),
+                step_entry(3, "orchestrator", "LLM reads changed files, identifies dependencies, produces test plan markdown", "text", &[]),
+            ],
+            &[
+                json!({"input": "generate a test plan", "class": 1}),
+                json!({"input": "create a test plan for these changes", "class": 2}),
+                json!({"input": "write a test plan", "class": 1}),
+                json!({"input": "test plan for this feature", "class": 2}),
+                json!({"input": "what should I test", "class": 2}),
+                json!({"input": "generate test checklist", "class": 2}),
+                json!({"input": "produce a test plan", "class": 1}),
+                json!({"input": "test plan generation", "class": 1}),
+                json!({"input": "what tests do I need to write", "class": 2}),
+                json!({"input": "testing checklist for this PR", "class": 2}),
+            ],
+        )
+        .await?;
+
+    // 12e. Catalogue
+    let cat_qa_review = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant, "ext-qa-review",
+                "QA review domain: coverage analysis, edge cases, regression risks, test plan generation.",
+                CAT_EXT_QA_REVIEW_OVERVIEW,
+                json!([
+                    {"group_name": "qa-review", "description": "Full QA review of local changes"},
+                    {"group_name": "qa-test-plan", "description": "Generate structured test plan"}
+                ]),
+            ),
+            "ext-qa-review",
+        )
+        .await?;
+
+    let qa_review_children: Vec<Uuid> = vec![
+        pc_glob_test_files_rust, pc_glob_test_files_ts,
+        pc_glob_test_files_py, pc_grep_fn_tests,
+        skill_qa_coverage_analysis, skill_qa_edge_cases,
+        skill_qa_test_plan, skill_qa_regression_risk, skill_qa_review,
+        recipe_qa_review_local, recipe_qa_generate_test_plan,
+    ];
+    stores.append_children(cat_qa_review, &qa_review_children).await?;
+
+    tracing::debug!(
+        "seeded workflow skills Pass 12: qa-review (4 PC + 4 leaf + 1 domain + 2 recipes + ext-qa-review)"
+    );
+
+    // ------------------------------------------------------------------
+    // Pass 13 — security-review stack (3 PC + 6 leaf + 1 domain + 3 recipes
+    //           + ext-security-review catalogue)
+    // ------------------------------------------------------------------
+
+    // 13a. PythonCode executors
+    let pc_grep_hardcoded_secrets = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-grep-hardcoded-secrets",
+                "Orchestrator executor: grep for hardcoded secret patterns (password/api_key/token). Tier 0.",
+                PC_GREP_HARDCODED_SECRETS_CONTENT),
+            "pc-grep-hardcoded-secrets",
+        )
+        .await?;
+    let pc_grep_injection_patterns = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-grep-injection-patterns",
+                "Orchestrator executor: grep for injection-risk patterns (eval/exec/subprocess/sql format). Tier 0.",
+                PC_GREP_INJECTION_PATTERNS_CONTENT),
+            "pc-grep-injection-patterns",
+        )
+        .await?;
+    let pc_grep_env_files = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-grep-env-files",
+                "Orchestrator executor: glob **/.env* — find all .env files. Tier 0.",
+                PC_GREP_ENV_FILES_CONTENT),
+            "pc-grep-env-files",
+        )
+        .await?;
+
+    // 13b. Leaf skills
+    let skill_security_injection = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-security-injection",
+            "Leaf skill: trace user input to DB/shell/template, check parameterized queries and injection patterns.",
+            SKILL_SECURITY_INJECTION_BODY), "skill-security-injection")
+        .await?;
+    let skill_security_auth = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-security-auth",
+            "Leaf skill: auth review — token generation, password hashing, IDOR, role enforcement.",
+            SKILL_SECURITY_AUTH_BODY), "skill-security-auth")
+        .await?;
+    let skill_security_data_exposure = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-security-data-exposure",
+            "Leaf skill: data exposure review — error messages, logging, API over-fetching, CORS.",
+            SKILL_SECURITY_DATA_EXPOSURE_BODY), "skill-security-data-exposure")
+        .await?;
+    let skill_security_crypto = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-security-crypto",
+            "Leaf skill: crypto review — TLS, encryption algorithms, key management, RNG.",
+            SKILL_SECURITY_CRYPTO_BODY), "skill-security-crypto")
+        .await?;
+    let skill_security_supply_chain = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-security-supply-chain",
+            "Leaf skill: supply chain review — CVEs, lock files, build scripts.",
+            SKILL_SECURITY_SUPPLY_CHAIN_BODY), "skill-security-supply-chain")
+        .await?;
+    let skill_security_secrets = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-security-secrets",
+            "Leaf skill: secrets scan — grep patterns, .env gitignore, log scanning.",
+            SKILL_SECURITY_SECRETS_BODY), "skill-security-secrets")
+        .await?;
+
+    // 13c. Domain skill
+    let skill_security_review = stores
+        .upsert_skill(
+            skill_row(&tenant, "skill-security-review",
+                "Domain skill: OWASP security review — six categories, fix-first model, \
+                 severity scale P1/P2/P3.",
+                SKILL_SECURITY_REVIEW_BODY, 2, LEAF_SKILL_TAGS),
+            "skill-security-review",
+        )
+        .await?;
+
+    // 13d. Recipes
+    let recipe_security_review_scan = stores
+        .seed_recipe(
+            &tenant, "security-review-scan",
+            "Automated secret/injection/env scan: grep hardcoded secrets, grep injection patterns, glob .env files.",
+            true,
+            RECIPE_SECURITY_REVIEW_SCAN_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-grep + ts-glob bindings", "component", &[]),
+                step_entry(2, "orchestrator", "grep hardcoded secret patterns", "component", &[pc_grep_hardcoded_secrets]),
+                step_entry(3, "orchestrator", "grep injection-risk patterns", "component", &[pc_grep_injection_patterns]),
+                step_entry(4, "orchestrator", "glob .env files", "component", &[pc_grep_env_files]),
+            ],
+            &[
+                json!({"input": "scan for secrets", "class": 1}),
+                json!({"input": "grep for hardcoded secrets", "class": 1}),
+                json!({"input": "scan for injection patterns", "class": 1}),
+                json!({"input": "find .env files", "class": 1}),
+                json!({"input": "quick security scan", "class": 1}),
+                json!({"input": "automated security scan", "class": 1}),
+                json!({"input": "check for secrets in code", "class": 2}),
+                json!({"input": "scan codebase for vulnerabilities", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_security_review_full = stores
+        .seed_recipe(
+            &tenant, "security-review-full",
+            "Full security review: git diff + grep scans + LLM six-category OWASP analysis.",
+            false,
+            RECIPE_SECURITY_REVIEW_FULL_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load security-review domain + injection + secrets leaf skills", "component", &[skill_security_review, skill_security_injection, skill_security_secrets]),
+                step_entry(2, "rust", "Pre-load ts-shell-run + ts-grep + ts-glob + ts-read-file bindings", "component", &[]),
+                step_entry(3, "orchestrator", "LLM six-category OWASP analysis", "text", &[]),
+            ],
+            &[
+                json!({"input": "security review", "class": 1}),
+                json!({"input": "security audit", "class": 1}),
+                json!({"input": "check for vulnerabilities", "class": 2}),
+                json!({"input": "is this code secure", "class": 2}),
+                json!({"input": "OWASP check", "class": 1}),
+                json!({"input": "check for injection", "class": 2}),
+                json!({"input": "security check", "class": 1}),
+                json!({"input": "find vulnerabilities", "class": 2}),
+                json!({"input": "CVE check new dependencies", "class": 2}),
+                json!({"input": "full security audit", "class": 1}),
+                json!({"input": "review code for security issues", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_security_review_local = stores
+        .seed_recipe(
+            &tenant, "security-review-local",
+            "Security review of local working-tree changes: read changed files, LLM OWASP analysis.",
+            false,
+            RECIPE_SECURITY_REVIEW_LOCAL_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load security-review + auth + data-exposure + crypto leaf skills", "component", &[skill_security_review, skill_security_auth, skill_security_data_exposure, skill_security_crypto]),
+                step_entry(2, "rust", "Pre-load ts-shell-run + ts-read-file bindings", "component", &[]),
+                step_entry(3, "orchestrator", "LLM reads working-tree changes, security review methodology", "text", &[]),
+            ],
+            &[
+                json!({"input": "security review local changes", "class": 1}),
+                json!({"input": "security check my diff", "class": 2}),
+                json!({"input": "check these changes for security issues", "class": 2}),
+                json!({"input": "review uncommitted changes for vulnerabilities", "class": 2}),
+                json!({"input": "local security audit", "class": 1}),
+                json!({"input": "security review before committing", "class": 2}),
+            ],
+        )
+        .await?;
+
+    // 13e. Catalogue
+    let cat_security_review = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant, "ext-security-review",
+                "Security review domain: OWASP six-category audit, automated scan, local review.",
+                CAT_EXT_SECURITY_REVIEW_OVERVIEW,
+                json!([
+                    {"group_name": "security-scan", "description": "Automated grep/glob scan for secrets and injection patterns"},
+                    {"group_name": "security-full", "description": "Full OWASP six-category review with LLM analysis"},
+                    {"group_name": "security-local", "description": "Security review of local working-tree changes"}
+                ]),
+            ),
+            "ext-security-review",
+        )
+        .await?;
+
+    let security_review_children: Vec<Uuid> = vec![
+        pc_grep_hardcoded_secrets, pc_grep_injection_patterns, pc_grep_env_files,
+        skill_security_injection, skill_security_auth, skill_security_data_exposure,
+        skill_security_crypto, skill_security_supply_chain, skill_security_secrets,
+        skill_security_review,
+        recipe_security_review_scan, recipe_security_review_full, recipe_security_review_local,
+    ];
+    stores.append_children(cat_security_review, &security_review_children).await?;
+
+    tracing::debug!(
+        "seeded workflow skills Pass 13: security-review (3 PC + 6 leaf + 1 domain + 3 recipes + ext-security-review)"
+    );
+
+    // ------------------------------------------------------------------
+    // Pass 14 — plan-mode stack (4 PC + 4 leaf + 1 domain + 5 recipes
+    //           + ext-plan-mode catalogue)
+    // ------------------------------------------------------------------
+
+    // 14a. PythonCode executors
+    let pc_plan_create = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-plan-create",
+                "Orchestrator executor: write plan document to plans/{slug}.md via memory_write. \
+                 slot0=slug, slot1=plan body. Tier 1 (LLM composes body in prior step).",
+                PC_PLAN_CREATE_CONTENT),
+            "pc-plan-create",
+        )
+        .await?;
+    let pc_plan_read = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-plan-read",
+                "Orchestrator executor: read plan document from plans/{slug}.md via memory_read. \
+                 slot0=slug. Tier 0.",
+                PC_PLAN_READ_CONTENT),
+            "pc-plan-read",
+        )
+        .await?;
+    let pc_plan_search = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-plan-search",
+                "Orchestrator executor: memory_search query='plan_id:' — find all plan documents. \
+                 Tier 0 (fixed query).",
+                PC_PLAN_SEARCH_CONTENT),
+            "pc-plan-search",
+        )
+        .await?;
+    let pc_plan_status_update = stores
+        .upsert_python_code(
+            pc_row(&tenant, "pc-plan-status-update",
+                "Orchestrator executor: patch a step marker in a plan doc via memory_write patch mode. \
+                 slot0=slug, slot1=old_string, slot2=new_string. Tier 1.",
+                PC_PLAN_STATUS_UPDATE_CONTENT),
+            "pc-plan-status-update",
+        )
+        .await?;
+
+    // 14b. Leaf skills
+    let skill_plan_create = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-plan-create",
+            "Leaf skill: format and write a plan document to plans/<slug>.md.",
+            SKILL_PLAN_CREATE_BODY), "skill-plan-create")
+        .await?;
+    let skill_plan_track_progress = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-plan-track-progress",
+            "Leaf skill: read plan, patch step marker ([ ] → [x] or [-]), write back.",
+            SKILL_PLAN_TRACK_PROGRESS_BODY), "skill-plan-track-progress")
+        .await?;
+    let skill_plan_list = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-plan-list",
+            "Leaf skill: memory_search for plan_id: prefix, list plans with status.",
+            SKILL_PLAN_LIST_BODY), "skill-plan-list")
+        .await?;
+    let skill_plan_revise = stores
+        .upsert_skill(leaf_skill(&tenant, "skill-plan-revise",
+            "Leaf skill: read plan, apply feedback, reset failed steps, rewrite.",
+            SKILL_PLAN_REVISE_BODY), "skill-plan-revise")
+        .await?;
+
+    // 14c. Domain skill
+    let skill_plan_mode = stores
+        .upsert_skill(
+            skill_row(&tenant, "skill-plan-mode",
+                "Domain skill: structured task planning via memory docs — create, read, list, \
+                 update steps, revise plans. v3 only (no mission/keeper).",
+                SKILL_PLAN_MODE_BODY, 2, LEAF_SKILL_TAGS),
+            "skill-plan-mode",
+        )
+        .await?;
+
+    // 14d. Recipes
+    let recipe_plan_create = stores
+        .seed_recipe(
+            &tenant, "plan-create",
+            "Create a structured plan: LLM decomposes task, formats plan doc, writes to plans/<slug>.md.",
+            false,
+            RECIPE_PLAN_CREATE_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load plan-create + plan-mode domain skill context", "component", &[skill_plan_create, skill_plan_mode]),
+                step_entry(2, "orchestrator", "LLM decomposes task, formats plan document", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-memory-write + ts-memory-search bindings", "component", &[]),
+            ],
+            &[
+                json!({"input": "create a plan", "class": 1}),
+                json!({"input": "make a plan", "class": 1}),
+                json!({"input": "plan mode", "class": 1}),
+                json!({"input": "[PLAN MODE] create", "class": 1}),
+                json!({"input": "plan out how to do this", "class": 2}),
+                json!({"input": "execution plan for this task", "class": 2}),
+                json!({"input": "step by step plan", "class": 2}),
+                json!({"input": "plan before executing", "class": 2}),
+                json!({"input": "create an execution plan", "class": 1}),
+                json!({"input": "write a plan for this work", "class": 2}),
+                json!({"input": "plan this out", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_plan_read = stores
+        .seed_recipe(
+            &tenant, "plan-read",
+            "Read an existing plan document from plans/<slug>.md.",
+            true,
+            RECIPE_PLAN_READ_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-read binding", "component", &[]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_read for the plan doc", "component", &[pc_plan_read]),
+            ],
+            &[
+                json!({"input": "show plan slug", "class": 1}),
+                json!({"input": "read plan", "class": 1}),
+                json!({"input": "show me the plan", "class": 2}),
+                json!({"input": "[PLAN MODE] show plan", "class": 1}),
+                json!({"input": "what is in the current plan", "class": 2}),
+                json!({"input": "display the plan", "class": 2}),
+                json!({"input": "load plan from memory", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_plan_list = stores
+        .seed_recipe(
+            &tenant, "plan-list",
+            "List all plan documents in memory.",
+            true,
+            RECIPE_PLAN_LIST_YAML,
+            &[
+                step_entry(1, "rust", "Pre-load ts-memory-search binding", "component", &[]),
+                step_entry(2, "orchestrator", "PythonCode calls host.memory_search for plan_id:", "component", &[pc_plan_search]),
+            ],
+            &[
+                json!({"input": "list my plans", "class": 1}),
+                json!({"input": "show plans", "class": 1}),
+                json!({"input": "[PLAN MODE] list all plans", "class": 1}),
+                json!({"input": "what plans do I have", "class": 2}),
+                json!({"input": "list all plans", "class": 1}),
+                json!({"input": "show all plans in memory", "class": 2}),
+                json!({"input": "what plans exist", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_plan_update_step = stores
+        .seed_recipe(
+            &tenant, "plan-update-step",
+            "Update a plan step's status marker (pending → in-progress → done).",
+            false,
+            RECIPE_PLAN_UPDATE_STEP_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load plan-track-progress leaf skill", "component", &[skill_plan_track_progress]),
+                step_entry(2, "orchestrator", "LLM reads plan, identifies step, patches marker", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-memory-read + ts-memory-write bindings", "component", &[]),
+            ],
+            &[
+                json!({"input": "mark step 2 as done", "class": 2}),
+                json!({"input": "update plan step status", "class": 2}),
+                json!({"input": "step 3 is complete", "class": 2}),
+                json!({"input": "[PLAN MODE] mark step done", "class": 1}),
+                json!({"input": "update progress on plan", "class": 2}),
+                json!({"input": "check off step in plan", "class": 2}),
+                json!({"input": "mark current step completed", "class": 2}),
+            ],
+        )
+        .await?;
+    let recipe_plan_revise = stores
+        .seed_recipe(
+            &tenant, "plan-revise",
+            "Revise an existing plan: apply feedback, reset failed steps, rewrite.",
+            false,
+            RECIPE_PLAN_REVISE_YAML,
+            &[
+                step_entry(1, "orchestrator", "Load plan-revise + plan-mode domain skill context", "component", &[skill_plan_revise, skill_plan_mode]),
+                step_entry(2, "orchestrator", "LLM reads plan, applies revision, resets failed steps", "text", &[]),
+                step_entry(3, "rust", "Pre-load ts-memory-read + ts-memory-write bindings", "component", &[]),
+            ],
+            &[
+                json!({"input": "revise the plan", "class": 1}),
+                json!({"input": "[PLAN MODE] revise slug feedback", "class": 1}),
+                json!({"input": "update the plan with new feedback", "class": 2}),
+                json!({"input": "change the plan", "class": 2}),
+                json!({"input": "adjust the plan", "class": 2}),
+                json!({"input": "rework the plan", "class": 2}),
+                json!({"input": "revise plan with this feedback", "class": 2}),
+            ],
+        )
+        .await?;
+
+    // 14e. Catalogue
+    let cat_plan_mode = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant, "ext-plan-mode",
+                "Plan mode domain: structured task planning via memory documents.",
+                CAT_EXT_PLAN_MODE_OVERVIEW,
+                json!([
+                    {"group_name": "plan-create", "description": "Create new plans"},
+                    {"group_name": "plan-read-list", "description": "Read and list existing plans"},
+                    {"group_name": "plan-execute", "description": "Track step progress and revise plans"}
+                ]),
+            ),
+            "ext-plan-mode",
+        )
+        .await?;
+
+    let plan_mode_children: Vec<Uuid> = vec![
+        pc_plan_create, pc_plan_read, pc_plan_search, pc_plan_status_update,
+        skill_plan_create, skill_plan_track_progress, skill_plan_list,
+        skill_plan_revise, skill_plan_mode,
+        recipe_plan_create, recipe_plan_read, recipe_plan_list,
+        recipe_plan_update_step, recipe_plan_revise,
+    ];
+    stores.append_children(cat_plan_mode, &plan_mode_children).await?;
+
+    tracing::debug!(
+        "seeded workflow skills Pass 14: plan-mode (4 PC + 4 leaf + 1 domain + 5 recipes + ext-plan-mode)"
+    );
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Pass 9 — commit workflow domain skill + recipe
+// ---------------------------------------------------------------------------
+
+const SKILL_COMMIT_WORKFLOW_BODY: &str = r#"# Git Commit Workflow
+
+When the user asks to create a commit:
+
+1. Run `shell git status` to see what files are staged and unstaged.
+2. Run `shell git diff --cached` to see the exact changes that will be committed.
+3. Run `shell git log --oneline -5` to understand the repo's commit message style.
+4. Analyze the staged changes and draft a commit message:
+   - Summarize the nature of the change (new feature, bug fix, refactor, etc.)
+   - Keep it concise: 1–2 sentences focusing on **why**, not **what**
+   - Match the repo's existing commit message style
+5. **Do not commit files that likely contain secrets** (`.env`, `credentials.json`, API keys). Warn the user if such files are staged.
+6. Show the proposed commit message to the user and **ask for confirmation** before running `git commit`.
+7. Stage any requested files with `git add <specific files>` (never use `git add -A` or `git add .`).
+
+## Commit Message Format
+
+If the repo doesn't have a clear style, use:
+
+  <type>: <concise description>
+
+  <optional body explaining why>
+
+Where type is: fix, feat, refactor, test, docs, chore.
+"#;
+
+const RECIPE_COMMIT_WORKFLOW_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-commit-workflow>", "<uuid:skill-shell-git-status>", "<uuid:skill-shell-git-log>", "<uuid:skill-shell-git-diff-stat>"],
+    "label":   "Load commit-workflow + git-status + git-log + git-diff-stat leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM runs git status + diff --cached + log, drafts commit message, confirms with user, stages and commits"
+  }
+]
+"#;
+
+const CAT_EXT_COMMIT_OVERVIEW: &str = r#"# Git Commit Workflow Domain
+
+Guided commit workflow: inspect staged changes, check history style, draft message, confirm, commit.
+
+## Approaches
+
+- Full guided commit (status → diff → log → LLM drafts → confirm → commit): → commit-workflow recipe (Tier 1)
+- Just commit staged files with a known message: → shell-git-commit recipe (Tier 1)
+- Stage files first: → shell-git-add recipe (Tier 1)
+"#;
+
+// ---------------------------------------------------------------------------
+// Pass 10 — github domain skill, leaf skills, PythonCode, recipes, catalogue
+// ---------------------------------------------------------------------------
+
+const SKILL_GITHUB_BODY: &str = r#"# GitHub API Skill
+
+You have access to the GitHub REST API via the `http_fetch` tool. Credentials are
+automatically injected — **never construct Authorization headers manually**. When
+the URL host is `api.github.com`, the system injects `Authorization: Bearer {github_token}`.
+
+## Base URL and response envelope
+
+All endpoints use `https://api.github.com` as the base URL.
+
+The `http_fetch` tool returns: `{"status": 200, "headers": {...}, "body": <value>}`
+
+- JSON endpoints: `body` is a parsed dict/list — do NOT call `json.loads()` on it.
+- Diff endpoints (Accept: application/vnd.github.v3.diff): `body` is a plain string.
+- Non-2xx: `body` is `{"message": "..."}` — surface it literally.
+
+## Common endpoint patterns
+
+**Issues:**
+  GET  /repos/{owner}/{repo}/issues?state=open&per_page=30
+  GET  /repos/{owner}/{repo}/issues/{number}
+  POST /repos/{owner}/{repo}/issues  body={"title":"...","body":"...","labels":[...]}
+  POST /repos/{owner}/{repo}/issues/{number}/comments  body={"body":"..."}
+
+**Pull Requests:**
+  GET  /repos/{owner}/{repo}/pulls?state=open&per_page=30
+  GET  /repos/{owner}/{repo}/pulls/{number}
+  GET  /repos/{owner}/{repo}/pulls/{number}  Accept: application/vnd.github.v3.diff
+  GET  /repos/{owner}/{repo}/pulls/{number}/files?per_page=100
+  POST /repos/{owner}/{repo}/pulls  body={"title":"...","body":"...","head":"...","base":"main","draft":true}
+  POST /repos/{owner}/{repo}/pulls/{number}/comments  (line-level review comment)
+
+**Authenticated user / search (use for "my PRs / my issues"):**
+  GET  /user
+  GET  /search/issues?q=is:pr+author:%40me+sort:updated-desc&per_page=20
+  GET  /search/issues?q={query}
+
+## Common mistakes
+
+- Do NOT add an Authorization header — it is injected automatically.
+- Always use HTTPS.
+- For creating PRs, always set `draft: true` unless user explicitly says "ready for review".
+- URL-encode `@` as `%40` and spaces as `+` in `q=` values.
+- Use `per_page` to control result count (max 100). Default is 30.
+- For "my PRs / my issues" across all repos, use `/search/issues?q=...+author:%40me`.
+"#;
+
+const SKILL_GITHUB_LIST_ISSUES_BODY: &str = r#"List open issues for a repo: GET https://api.github.com/repos/{owner}/{repo}/issues?state=open&sort=created&direction=desc&per_page=30. Returns a list of issue objects. Each has: number, title, state, body, labels, assignees, created_at, updated_at, pull_request (absent if it's an issue, present if it's a PR). Use `state=all` to include closed issues or `state=closed` for only closed ones."#;
+
+const SKILL_GITHUB_LIST_PRS_BODY: &str = r#"List open pull requests for a repo: GET https://api.github.com/repos/{owner}/{repo}/pulls?state=open&sort=created&direction=desc&per_page=30. Returns a list of PR objects. Each has: number, title, state, head (ref+sha), base (ref+sha), user, draft, body, created_at, updated_at, merged_at. For the full diff, use the diff Accept header variant."#;
+
+const SKILL_GITHUB_GET_PR_BODY: &str = r#"Get metadata for a specific PR: GET https://api.github.com/repos/{owner}/{repo}/pulls/{number}. Returns a single PR object with: number, title, state, head (ref+sha), base (ref+sha), user, draft, body, diff_url, commits, additions, deletions, changed_files. The `head.sha` is needed when posting line-level review comments."#;
+
+const SKILL_GITHUB_GET_PR_DIFF_BODY: &str = r#"Get the unified diff for a PR: GET https://api.github.com/repos/{owner}/{repo}/pulls/{number} with header Accept: application/vnd.github.v3.diff. Returns `body` as a plain string containing the unified diff. Use this for code review. Do NOT call json.loads() on it."#;
+
+const SKILL_GITHUB_GET_PR_FILES_BODY: &str = r#"Get per-file summaries for a PR: GET https://api.github.com/repos/{owner}/{repo}/pulls/{number}/files?per_page=100. Returns a list of file objects each with: filename, status (added/modified/removed/renamed), additions, deletions, patch (diff hunks). Use this to know which files changed before fetching full file contents."#;
+
+const SKILL_GITHUB_GET_AUTHENTICATED_USER_BODY: &str = r#"Get the authenticated GitHub user (resolves who @me is): GET https://api.github.com/user. Returns: login, id, name, email, avatar_url. Use this before any query that needs the username (e.g. `author:{login}` or `assignee:{login}` in search queries). Requires a valid github_token credential."#;
+
+const SKILL_GITHUB_SEARCH_ISSUES_BODY: &str = r#"Search issues and PRs across GitHub using the unified search endpoint: GET https://api.github.com/search/issues?q={query}. Filter with `is:pr` or `is:issue`. Common qualifiers: `author:%40me`, `assignee:%40me`, `review-requested:%40me`, `repo:{owner}/{repo}`, `is:open`, `is:closed`, `label:{name}`, `sort:updated-desc`. URL-encode `@` as `%40` and spaces as `+`. Returns: `{total_count, items: [...]}`. There is no `/search/pulls` endpoint — this unified endpoint handles both."#;
+
+const SKILL_GITHUB_ADD_COMMENT_BODY: &str = r#"Post a comment on a GitHub issue or PR: POST https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments with body={"body": "..."}. Use for PR-level comments (not line-level). For line-level review comments use the PR comments endpoint (`/pulls/{number}/comments`) with commit_id, path, line, and side fields."#;
+
+const SKILL_GITHUB_CREATE_PR_BODY: &str = r#"Create a pull request: POST https://api.github.com/repos/{owner}/{repo}/pulls with body={"title":"...","body":"...","head":"feature-branch","base":"main","draft":true}. Always set `draft: true` unless the user explicitly says "ready for review". The `head` is the source branch, `base` is the target. Returns the created PR object with number and html_url."#;
+
+const PC_GITHUB_LIST_ISSUES_CONTENT: &str = r#"# §shell-guard: not applicable — read-only HTTP GET, fixed URL shape, Tier 0.
+# slot0 = owner, slot1 = repo
+result = host.http_fetch(method="GET", url="https://api.github.com/repos/{{vars.slot0}}/{{vars.slot1}}/issues?state=open&sort=created&direction=desc&per_page=30")
+"#;
+
+const PC_GITHUB_LIST_PRS_CONTENT: &str = r#"# §shell-guard: not applicable — read-only HTTP GET, fixed URL shape, Tier 0.
+# slot0 = owner, slot1 = repo
+result = host.http_fetch(method="GET", url="https://api.github.com/repos/{{vars.slot0}}/{{vars.slot1}}/pulls?state=open&sort=created&direction=desc&per_page=30")
+"#;
+
+const PC_GITHUB_GET_AUTHENTICATED_USER_CONTENT: &str = r#"# §shell-guard: not applicable — read-only HTTP GET, fixed URL, Tier 0.
+result = host.http_fetch(method="GET", url="https://api.github.com/user")
+"#;
+
+const PC_GITHUB_SEARCH_ISSUES_CONTENT: &str = r#"# §shell-guard: not applicable — read-only HTTP GET, Tier 0.
+# slot0 = URL-encoded search query (e.g. "is:pr+author:%40me+sort:updated-desc&per_page=20")
+result = host.http_fetch(method="GET", url="https://api.github.com/search/issues?q={{vars.slot0}}")
+"#;
+
+const RECIPE_GITHUB_LIST_ISSUES_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-github-list-issues>"],
+    "label":   "PythonCode calls host.http_fetch GET /repos/{owner}/{repo}/issues"
+  }
+]
+"#;
+
+const RECIPE_GITHUB_LIST_PRS_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-github-list-prs>"],
+    "label":   "PythonCode calls host.http_fetch GET /repos/{owner}/{repo}/pulls"
+  }
+]
+"#;
+
+const RECIPE_GITHUB_GET_AUTHENTICATED_USER_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-github-get-authenticated-user>"],
+    "label":   "PythonCode calls host.http_fetch GET /user"
+  }
+]
+"#;
+
+const RECIPE_GITHUB_SEARCH_ISSUES_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-github-search-issues>"],
+    "label":   "Load github-search-issues leaf skill (query syntax, URL encoding)"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM builds the search query string and URL-encodes it"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+"#;
+
+const RECIPE_GITHUB_CREATE_PR_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-github-create-pr>", "<uuid:skill-github>"],
+    "label":   "Load github-create-pr + github domain skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM reads git log for branch name and commits, asks for PR title/body if not provided, confirms draft status"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+"#;
+
+const RECIPE_GITHUB_ADD_COMMENT_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-github-add-comment>"],
+    "label":   "Load github-add-comment leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM composes the comment body and confirms with user"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+"#;
+
+const CAT_EXT_GITHUB_OVERVIEW: &str = r#"# GitHub API Integration Domain
+
+Provides access to the GitHub REST API via the http_fetch tool with automatic
+credential injection for api.github.com.
+
+## Tier-0 read operations (fixed URL, no LLM needed)
+
+- List open issues for a repo: → github-list-issues recipe
+- List open PRs for a repo: → github-list-prs recipe
+- Get authenticated user: → github-get-authenticated-user recipe
+
+## Tier-1 operations (LLM composes query or body)
+
+- Search issues/PRs across GitHub: → github-search-issues recipe
+- Create a pull request: → github-create-pr recipe
+- Add a comment to an issue or PR: → github-add-comment recipe
+
+## Key patterns
+
+- Never add Authorization headers — they are injected automatically.
+- Use /search/issues for cross-repo queries (no /search/pulls endpoint).
+- Always draft: true for new PRs unless user says "ready for review".
+- URL-encode @ as %40 in search queries.
+"#;
+
+// ---------------------------------------------------------------------------
+// Pass 11 — code-review stack
+// ---------------------------------------------------------------------------
+
+const SKILL_CODE_REVIEW_BODY: &str = r#"# Paranoid Architect Code Review
+
+You handle two input shapes:
+
+- **Local changes** — uncommitted edits or recent commits in the working tree.
+- **GitHub pull request** — `owner/repo N`, `owner/repo#N`, or a github.com URL.
+
+## Step 1 — Load the changes
+
+### GitHub PR path
+Fetch sequentially (no asyncio.gather — closure-capture issues):
+  meta  = host.http_fetch(GET /repos/{owner}/{repo}/pulls/{number})
+  diff  = host.http_fetch(GET /repos/{owner}/{repo}/pulls/{number}, Accept: application/vnd.github.v3.diff)
+  files = host.http_fetch(GET /repos/{owner}/{repo}/pulls/{number}/files?per_page=100)
+
+Capture head_sha = meta["body"]["head"]["sha"] for posting line comments later.
+
+### Local path
+Run: shell git diff (unstaged), git diff --cached (staged), or git diff HEAD~1 (last commit).
+
+## Step 2 — Read every changed file in full
+
+For each file in the diff, read the entire current file — not just the hunks.
+For GitHub files, use Accept: application/vnd.github.raw to get plain text (avoids base64).
+If PR touches more than 20 files, prioritize: service logic > routes > models > tests > docs.
+
+## Step 3 — Deep review (six lenses)
+
+For every finding capture: file, line range, severity, category, description, fix.
+
+3a. Correctness: off-by-one, inverted conditions, type confusion, broken invariants, races
+3b. Edge cases: empty input, None/null, external failures, integer boundaries, adversarial input
+3c. Security: AuthN/AuthZ bypass, injection, data leakage, resource exhaustion, crypto issues
+3d. Test coverage: every new public function tested? error paths? edge cases? integration tests?
+3e. Documentation: new assumptions documented? API contracts? TODO/FIXME tracked?
+3f. Architectural: new patterns justified? duplication? circular coupling? future maintainability?
+
+## Step 4 — Present findings
+
+Use this severity scale: Critical, High, Medium, Low, Nit.
+Present as a table: # | Severity | Category | File:Line | Finding | Suggested fix.
+Start with "Review of {owner}/{repo}#{N}: {title}" or "Review of local changes".
+Always cite at least one specific path:line from the diff.
+
+## Step 5 — Post comments (PR path only)
+
+Line-level: POST /repos/{owner}/{repo}/pulls/{number}/comments with commit_id=head_sha, path, line, side="RIGHT".
+PR-level: POST /repos/{owner}/{repo}/issues/{number}/comments.
+"#;
+
+const SKILL_CODE_REVIEW_LOCAL_BODY: &str = r#"For a local code review, gather changes with:
+- git diff (unstaged changes in working tree)
+- git diff --cached (staged changes ready to commit)
+- git diff HEAD~1 (changes in the last commit)
+
+Read every changed file in full (not just diff hunks) before writing findings. Present findings as a severity-tagged table. Skip GitHub posting steps for local reviews."#;
+
+const SKILL_CODE_REVIEW_PR_BODY: &str = r#"For a GitHub PR review, fetch sequentially:
+1. GET /repos/{owner}/{repo}/pulls/{number}  → PR metadata (title, head.sha, base, author)
+2. GET /repos/{owner}/{repo}/pulls/{number} with Accept: application/vnd.github.v3.diff  → unified diff string
+3. GET /repos/{owner}/{repo}/pulls/{number}/files?per_page=100  → per-file list with patch hunks
+
+Capture head_sha from meta["body"]["head"]["sha"] — required for posting line-level review comments.
+For file contents, use GET /repos/{owner}/{repo}/contents/{path}?ref={head_sha} with Accept: application/vnd.github.raw to get plain text (avoids base64 decoding)."#;
+
+const SKILL_CODE_REVIEW_POST_COMMENTS_BODY: &str = r#"To post line-level review comments on a PR:
+  POST /repos/{owner}/{repo}/pulls/{number}/comments
+  body = {"body": "**High** — ...", "commit_id": head_sha, "path": "src/foo.rs", "line": 42, "side": "RIGHT"}
+
+For multi-file or architectural findings, post a PR-level comment instead:
+  POST /repos/{owner}/{repo}/issues/{number}/comments
+  body = {"body": "**Architectural note**: ..."}
+
+Format every comment: bold severity tag, one-line summary, explanation, concrete fix with code."#;
+
+const PC_GIT_DIFF_UNSTAGED_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal command. Tier 0.
+result = host.shell(command="git diff")
+"#;
+
+const PC_GIT_DIFF_STAGED_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal command. Tier 0.
+result = host.shell(command="git diff --cached")
+"#;
+
+const PC_GIT_DIFF_HEAD_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal command. Tier 0.
+result = host.shell(command="git diff HEAD~1")
+"#;
+
+const RECIPE_CODE_REVIEW_LOCAL_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-code-review-local>", "<uuid:skill-code-review>"],
+    "label":   "Load code-review-local + code-review domain skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>", "<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-shell-run + ts-read-file bindings"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM runs git diff, reads changed files in full, applies six-lens review, presents findings table"
+  }
+]
+"#;
+
+const RECIPE_CODE_REVIEW_PR_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-code-review-pr>", "<uuid:skill-code-review>", "<uuid:skill-github>"],
+    "label":   "Load code-review-pr + code-review domain + github domain skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>", "<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-http-fetch + ts-read-file bindings"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM fetches PR meta + diff + files, reads changed files, applies six-lens review, presents findings, offers to post comments"
+  }
+]
+"#;
+
+const RECIPE_CODE_REVIEW_PR_POST_COMMENTS_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-code-review-post-comments>"],
+    "label":   "Load code-review-post-comments leaf skill (line-level vs PR-level comment format)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM posts findings as line-level or PR-level comments using head_sha captured from review step"
+  }
+]
+"#;
+
+const CAT_EXT_CODE_REVIEW_OVERVIEW: &str = r#"# Code Review Domain
+
+Paranoid architect code review for local diffs or GitHub pull requests.
+
+## Approaches
+
+- Review local uncommitted/staged/last-commit changes: → code-review-local recipe (Tier 1)
+- Review a GitHub PR by owner/repo number: → code-review-pr recipe (Tier 1)
+- Post review findings as GitHub comments: → code-review-pr-post-comments recipe (Tier 1)
+
+## Six review lenses
+
+1. Correctness & bugs (off-by-one, type confusion, races)
+2. Edge cases & failure handling (empty input, external failures, integer boundaries)
+3. Security (AuthN/AuthZ, injection, data leakage, crypto)
+4. Test coverage (new functions tested? error paths? integration tests?)
+5. Documentation & assumptions (new patterns explained? API contracts?)
+6. Architectural concerns (new patterns justified? duplication? coupling?)
+
+## Severity scale
+
+Critical → High → Medium → Low → Nit
+"#;
+
+// ---------------------------------------------------------------------------
+// Pass 12 — qa-review stack
+// ---------------------------------------------------------------------------
+
+const SKILL_QA_REVIEW_BODY: &str = r#"# QA Review
+
+You are a QA engineer reviewing code for test coverage, edge cases, and regression risks.
+Focus on what breaks in production, not theoretical completeness.
+
+## Review methodology
+
+### 1. Coverage analysis
+- Identify changed functions/modules and check for corresponding tests
+- Flag untested code paths: error handlers, edge cases, boundary conditions
+- Check test quality — a test that never asserts is worse than no test
+
+### 2. Edge case identification
+For each changed function, consider:
+- Boundary values: empty input, zero, max int, single element, exactly-at-limit
+- Type boundaries: null/None/nil, empty string vs missing, NaN, negative numbers
+- Concurrency: race conditions, concurrent access, timeout during operation
+- State transitions: invalid state transitions, repeated calls, out-of-order operations
+- External failures: network timeout, disk full, permission denied, malformed response
+
+### 3. Regression risk assessment
+- What existing behavior could break from these changes?
+- Are integration tests covering the changed interaction paths?
+- Are there implicit dependencies that tests don't capture?
+
+### 4. Test plan generation
+When asked to generate a test plan, produce:
+
+  ## Test Plan — <feature/PR>
+
+  ### Unit Tests
+  - [ ] <test description> — covers: <scenario>
+
+  ### Integration Tests
+  - [ ] <test description> — covers: <interaction>
+
+  ### Regression Tests
+  - [ ] <test description> — ensures: <existing behavior preserved>
+
+  ### Manual Verification
+  - [ ] <step> — verify: <expected outcome>
+
+## Output format
+
+  ## QA Review — <scope>
+
+  ### Coverage Gaps
+  - **<function>** — no tests for: <specific paths>
+
+  ### Edge Cases Missing
+  - **<scenario>** — <why it matters in production>
+
+  ### Regression Risks
+  - **<change>** could break: <existing behavior>
+
+  ### Health Score: <0-100>
+  (Coverage gaps: -10 each; Missing edge cases: -5 each; Regression risks: -15 each)
+
+## Fix-first model
+For obvious additions: generate test code and present for approval, mark [TEST GENERATED].
+For architectural decisions: present options with tradeoffs, ask the user.
+"#;
+
+const SKILL_QA_COVERAGE_ANALYSIS_BODY: &str = r#"Coverage analysis: identify changed functions/modules from the diff, then search for test files that cover them. Use glob to find test files (e.g. **/*_test.rs, **/*.test.ts, **/*_test.py). Use grep to find existing test functions that reference the changed function names. Flag: (1) changed public functions with no test file, (2) error paths not covered by any test, (3) boundary conditions not exercised."#;
+
+const SKILL_QA_EDGE_CASES_BODY: &str = r#"Edge case checklist for changed functions: empty input / zero / null / None, max/min integer boundaries, single-element collections, exactly-at-limit values, type boundary confusion (empty string vs missing field, NaN, negative when positive expected), concurrent access, out-of-order state transitions, external service failure (timeout, 500, malformed response), partial failure (wrote to DB but event emit failed)."#;
+
+const SKILL_QA_TEST_PLAN_BODY: &str = r#"Generate a structured test plan in this format:
+  ## Test Plan — <feature or PR name>
+  ### Unit Tests
+  - [ ] <function>_<scenario> — covers: <what this exercises>
+  ### Integration Tests
+  - [ ] <description> — covers: <interaction between modules>
+  ### Regression Tests
+  - [ ] <description> — ensures: <existing behavior not broken>
+  ### Manual Verification
+  - [ ] <step> — verify: <expected outcome>
+Each test item must name the specific function, path, or behaviour it targets — no generic entries."#;
+
+const SKILL_QA_REGRESSION_RISK_BODY: &str = r#"Regression risk assessment: for each changed function or module, identify what OTHER code depends on it (callers, trait impls, serialization contracts, DB schema assumptions). Check whether integration tests cover those interaction paths. Flag as high-risk: changes to public API surfaces, database schema changes, serialization format changes, and shared state mutations. For each risk, suggest the specific test that would catch it."#;
+
+const PC_GLOB_TEST_FILES_RUST_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
+result = host.glob(pattern="**/*_test.rs")
+"#;
+
+const PC_GLOB_TEST_FILES_TS_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
+result = host.glob(pattern="**/*.test.ts")
+"#;
+
+const PC_GLOB_TEST_FILES_PY_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
+result = host.glob(pattern="**/*_test.py")
+"#;
+
+const PC_GREP_FN_TESTS_CONTENT: &str = r#"# §shell-safe-fixed — pattern from slot0, include fixed to *test*, Tier 0.
+# slot0 = function name to search for in test files
+result = host.grep(pattern="{{vars.slot0}}", include="*test*")
+"#;
+
+const RECIPE_QA_REVIEW_LOCAL_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-qa-review>", "<uuid:skill-qa-coverage-analysis>", "<uuid:skill-qa-edge-cases>"],
+    "label":   "Load qa-review domain + coverage analysis + edge cases leaf skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>", "<uuid:ts-glob>", "<uuid:ts-grep>"],
+    "label":   "Pre-load ts-shell-run + ts-glob + ts-grep bindings"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM runs git diff stat, globs test files, greps for function tests, applies coverage + edge-case analysis, outputs QA review"
+  }
+]
+"#;
+
+const RECIPE_QA_GENERATE_TEST_PLAN_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-qa-test-plan>", "<uuid:skill-qa-regression-risk>"],
+    "label":   "Load qa-test-plan + qa-regression-risk leaf skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>", "<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-read-file + ts-shell-run bindings"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM reads changed files, identifies dependencies, produces structured test plan markdown"
+  }
+]
+"#;
+
+const CAT_EXT_QA_REVIEW_OVERVIEW: &str = r#"# QA Review Domain
+
+QA and test coverage analysis for code changes.
+
+## Approaches
+
+- Full QA review of local changes: → qa-review-local recipe (Tier 1)
+- Generate a structured test plan: → qa-generate-test-plan recipe (Tier 1)
+
+## Methodology
+
+1. Coverage analysis — find changed functions, search for tests, flag gaps
+2. Edge case identification — boundary values, type edges, concurrency, external failures
+3. Regression risk assessment — what else depends on changed code?
+4. Test plan generation — structured unit/integration/regression/manual checklist
+
+## Output
+
+QA Review with: Coverage Gaps, Edge Cases Missing, Regression Risks, Health Score (0–100).
+"#;
+
+// ---------------------------------------------------------------------------
+// Pass 13 — security-review stack
+// ---------------------------------------------------------------------------
+
+const SKILL_SECURITY_REVIEW_BODY: &str = r#"# Security Review
+
+You are a security engineer reviewing code for vulnerabilities. Flag real risks, not theoretical
+ones. Every finding must include a concrete fix.
+
+## Review categories (work through each systematically)
+
+### 1. Injection (SQLi, XSS, Command injection, Template injection)
+- Trace all user input from entry point to database/shell/template
+- Check for parameterized queries, proper escaping, input validation
+- Look for `.unwrap()` on user input, string interpolation in queries
+
+### 2. Authentication & Authorization
+- Session tokens: secure generation, httpOnly, secure flags, rotation
+- Password handling: hashing algorithm, salt, timing-safe comparison
+- Authorization: IDOR checks, role enforcement at every endpoint
+- API keys: not hardcoded, not in logs, not in error messages
+
+### 3. Data exposure
+- Error messages: no stack traces, DB details, or internal paths in responses
+- Logging: no PII, tokens, or secrets in log output
+- API responses: no over-fetching (returning more fields than needed)
+- CORS: restrictive origins, not wildcard in production
+
+### 4. Cryptography
+- TLS: enforced, no downgrade paths
+- Encryption: AES-256-GCM or ChaCha20-Poly1305, no ECB mode
+- Key management: keys in env/secrets store, not in code
+- Random: crypto-secure RNG for tokens and keys
+
+### 5. Supply chain
+- New dependencies: check for known CVEs, assess maintainer reputation
+- Lock files: committed, hashes verified
+- Build pipeline: no arbitrary code execution from dependencies at build time
+
+### 6. Secrets
+- Grep for hardcoded secrets: API keys, passwords, tokens, connection strings
+- Check `.env` files are gitignored
+- Verify secrets are not logged or included in error messages
+
+## Output format
+
+  ## Security Review — <scope>
+
+  ### Findings
+
+  #### [P1/CRITICAL] <title>
+  **Location:** <file:line>
+  **Risk:** <what an attacker could do>
+  **Fix:** <concrete code change>
+
+  ### Health Score: <0-100>
+  (P1: -30 each; P2: -15 each; P3: -5 each)
+
+## Fix-first model
+For obvious fixes: auto-fix and mark [AUTO-FIXED], still report the finding.
+For ambiguous issues: present options with severity labels, ask the user.
+"#;
+
+const SKILL_SECURITY_INJECTION_BODY: &str = r#"Injection review: trace all user input from entry points (HTTP params, headers, body, env vars) to sinks (DB queries, shell commands, template renderers, log lines). Check for: parameterized queries vs string interpolation in SQL, shell command composition with user strings, template injection, log injection. Scan for .format() with user data, f-strings in queries, subprocess calls with unsanitized input."#;
+
+const SKILL_SECURITY_AUTH_BODY: &str = r#"Auth review: session tokens must use crypto-secure RNG; check httpOnly+secure flags. Passwords must use bcrypt/argon2/scrypt — never md5/sha1/plain. Authorization: check for IDOR (can user A access user B's data by changing an ID?), role enforcement at every route/endpoint, not just the UI. API keys must not appear in logs, error messages, or API responses."#;
+
+const SKILL_SECURITY_DATA_EXPOSURE_BODY: &str = r#"Data exposure review: error messages must not include stack traces, DB connection strings, or internal paths. Log statements must not include tokens, PII, or secrets. API responses: check for over-fetching (struct serializes more fields than the client needs). CORS: must use specific origins in production, not wildcard (*). SSE/WebSocket streams must not broadcast data across tenant/user boundaries."#;
+
+const SKILL_SECURITY_CRYPTO_BODY: &str = r#"Cryptography review: TLS must be enforced on all outbound and inbound connections (no http:// in production). Symmetric encryption: AES-256-GCM or ChaCha20-Poly1305 only; never ECB mode. Key management: secrets and keys must be in env vars or a secrets store, never in source code or config files. RNG: use OS/crypto-secure random for tokens, nonces, and keys — never Math.random() or similar."#;
+
+const SKILL_SECURITY_SUPPLY_CHAIN_BODY: &str = r#"Supply chain review: for each new dependency added in this diff, check: (1) known CVEs — search crates.io/npm/PyPI advisory database; (2) maintainer reputation and last update date; (3) whether a lock file is committed with hash verification; (4) build scripts (build.rs, postinstall) — flag any that download or execute code at build time."#;
+
+const SKILL_SECURITY_SECRETS_BODY: &str = r#"Secrets scan: grep for patterns like (password|api_key|secret|token|credential)\s*[:=]\s*['"][^'"]{8,} to find hardcoded secrets. Check that .env files are listed in .gitignore. Verify that secrets are not included in: log.info!/warn!/error! calls, HTTP error response bodies, SSE event streams, or test fixture files committed to the repo."#;
+
+const PC_GREP_HARDCODED_SECRETS_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
+result = host.grep(pattern="(?i)(password|api_key|secret|token|credential)\\s*[:=]\\s*['\"][^'\"]{8,}")
+"#;
+
+const PC_GREP_INJECTION_PATTERNS_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
+result = host.grep(pattern="(?i)(eval\\(|exec\\(|subprocess|shell_exec|format!.*sql|query.*format)")
+"#;
+
+const PC_GREP_ENV_FILES_CONTENT: &str = r#"# §shell-safe-fixed — fixed literal pattern, Tier 0.
+result = host.glob(pattern="**/.env*")
+"#;
+
+const RECIPE_SECURITY_REVIEW_SCAN_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>", "<uuid:ts-glob>"],
+    "label":   "Pre-load ts-grep + ts-glob bindings"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-grep-hardcoded-secrets>"],
+    "label":   "PythonCode: grep for hardcoded secret patterns"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-grep-injection-patterns>"],
+    "label":   "PythonCode: grep for injection-risk patterns"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-grep-env-files>"],
+    "label":   "PythonCode: glob for .env files"
+  }
+]
+"#;
+
+const RECIPE_SECURITY_REVIEW_FULL_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-security-review>", "<uuid:skill-security-injection>", "<uuid:skill-security-secrets>"],
+    "label":   "Load security-review domain + injection + secrets leaf skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>", "<uuid:ts-grep>", "<uuid:ts-glob>", "<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-shell-run + ts-grep + ts-glob + ts-read-file bindings"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM runs git diff, grep scans, reads changed files, applies six-category OWASP analysis, outputs findings"
+  }
+]
+"#;
+
+const RECIPE_SECURITY_REVIEW_LOCAL_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-security-review>", "<uuid:skill-security-auth>", "<uuid:skill-security-data-exposure>", "<uuid:skill-security-crypto>"],
+    "label":   "Load security-review + auth + data-exposure + crypto leaf skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>", "<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-shell-run + ts-read-file bindings"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM reads working-tree changes, applies security review methodology, outputs severity-tagged findings"
+  }
+]
+"#;
+
+const CAT_EXT_SECURITY_REVIEW_OVERVIEW: &str = r#"# Security Review Domain
+
+OWASP-based security audit for code changes and pull requests.
+
+## Approaches
+
+- Quick automated scan (grep secrets + injection patterns + .env files): → security-review-scan recipe (Tier 0)
+- Full security review of changes (git diff + file read + LLM analysis): → security-review-full recipe (Tier 1)
+- Security review of local working-tree changes: → security-review-local recipe (Tier 1)
+
+## Six review categories
+
+1. Injection (SQLi, XSS, command injection, template injection)
+2. Authentication & Authorization (tokens, passwords, IDOR, role enforcement)
+3. Data exposure (error messages, logging, API over-fetching, CORS)
+4. Cryptography (TLS, algorithms, key management, RNG)
+5. Supply chain (CVEs, lock files, build scripts)
+6. Secrets (hardcoded, .env gitignore, log scanning)
+
+## Severity: P1/CRITICAL → P2/HIGH → P3/MEDIUM
+"#;
+
+// ---------------------------------------------------------------------------
+// Pass 14 — plan-mode stack
+// ---------------------------------------------------------------------------
+
+const SKILL_PLAN_MODE_BODY: &str = r#"# Plan Mode
+
+Structured planning using memory documents. Plans are stored as memory docs at
+`plans/<slug>.md`. v1 mission/keeper machinery does NOT exist in v3 — execution
+is orchestrated recipe steps tracked via memory_write patch.
+
+## Creating a plan
+
+1. Use memory_search to gather relevant prior work and decisions.
+2. Decompose the task into steps, identify tools and dependencies, assess risks.
+3. Write the plan to `plans/<slug>.md` using memory_write with this format:
+
+   plan_id: <slug>
+   status: draft
+
+   ## Goal
+   <clear statement of what needs to be accomplished>
+
+   ## Success Criteria
+   <how to know the plan is complete>
+
+   ## Steps
+   1. [ ] Step title — tools: [tool1, tool2] — risk: low — est: 5min
+   2. [ ] Step title — tools: [tool3] — risk: medium — est: 10min
+
+   ## Risks
+   - Risk description and mitigation
+
+   ## Progress Log
+   (updated during execution)
+
+4. Present the plan to the user. Say: "Use /plan approve to start execution, or /plan revise <slug> <feedback> to adjust."
+
+## Plan rules
+- Each step MUST specify which tools it needs.
+- Steps must be independently verifiable.
+- Keep plans under 20 steps; decompose larger work into sub-plans.
+- Steps ordered by dependency (earlier steps enable later ones).
+
+## Tracking progress
+
+Read the plan from memory, find the current step marker, update:
+- Current step: `[ ]` → `[x]` (done) or `[-]` (in-progress)
+- Write back with memory_write patch mode (old_string + new_string).
+
+## Listing plans
+
+Use memory_search with query "plan" to find plan documents.
+
+## Revising a plan
+
+Read the existing plan, apply feedback, reset failed/in-progress steps to `[ ]`,
+rewrite via memory_write with append=false.
+"#;
+
+const SKILL_PLAN_CREATE_BODY: &str = r#"Create a plan document: format with slug (kebab-case from goal), status: draft, goal, success criteria, numbered steps (each with tools, risk, estimate), risks section, empty progress log. Write to plans/<slug>.md via memory_write. Path must be plans/<slug>.md — do not use MEMORY.md or any other path."#;
+
+const SKILL_PLAN_TRACK_PROGRESS_BODY: &str = r#"Track plan step progress: (1) read the plan from memory at plans/<slug>.md; (2) find the step to update; (3) patch the step marker from [ ] to [x] (completed) or [-] (in-progress) using memory_write in patch mode (old_string = '- [ ] Step N', new_string = '- [x] Step N'); (4) append a progress note to the Progress Log section."#;
+
+const SKILL_PLAN_LIST_BODY: &str = r#"List plans: use memory_search with query "plan_id:" to find plan documents. For each result, extract: plan_id (slug), status (draft/executing/complete/failed), step count. If no plans found, say 'No plans found. Use /plan <description> to create one.'"#;
+
+const SKILL_PLAN_REVISE_BODY: &str = r#"Revise a plan: (1) read the plan from memory at plans/<slug>.md; (2) apply the user's feedback — update steps, reorder, split, or merge; (3) reset any failed/in-progress steps back to [ ] (pending); (4) rewrite the entire plan via memory_write with append=false; (5) present the revised plan and suggest /plan approve to re-execute."#;
+
+const PC_PLAN_CREATE_CONTENT: &str = r#"# Pure-logic formatter + one memory_write call. Tier 1 (LLM composes plan in prior step).
+# slot0 = slug, slot1 = full plan document body (composed by LLM in prior step)
+result = host.memory_write(path="plans/{{vars.slot0}}.md", content="{{vars.slot1}}", append=False)
+"#;
+
+const PC_PLAN_READ_CONTENT: &str = r#"# §shell-safe-fixed — fixed path shape. Tier 0.
+# slot0 = plan slug
+result = host.memory_read(path="plans/{{vars.slot0}}.md")
+"#;
+
+const PC_PLAN_SEARCH_CONTENT: &str = r#"# §shell-safe-fixed — fixed query shape. Tier 0.
+result = host.memory_search(query="plan_id:")
+"#;
+
+const PC_PLAN_STATUS_UPDATE_CONTENT: &str = r#"# Patch mode memory_write — updates step markers in plan doc. Tier 1 (LLM identifies step).
+# slot0 = slug, slot1 = old_string (step line to replace), slot2 = new_string (replacement)
+result = host.memory_write(path="plans/{{vars.slot0}}.md", old_string="{{vars.slot1}}", new_string="{{vars.slot2}}")
+"#;
+
+const RECIPE_PLAN_CREATE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-plan-create>", "<uuid:skill-plan-mode>"],
+    "label":   "Load plan-create + plan-mode domain skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM gathers context via memory_search, decomposes task into steps, formats plan document"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>", "<uuid:ts-memory-search>"],
+    "label":   "Pre-load ts-memory-write + ts-memory-search bindings"
+  }
+]
+"#;
+
+const RECIPE_PLAN_READ_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>"],
+    "label":   "Pre-load ts-memory-read binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-plan-read>"],
+    "label":   "PythonCode calls host.memory_read(path=plans/{slug}.md)"
+  }
+]
+"#;
+
+const RECIPE_PLAN_LIST_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-search>"],
+    "label":   "Pre-load ts-memory-search binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-plan-search>"],
+    "label":   "PythonCode calls host.memory_search(query='plan_id:')"
+  }
+]
+"#;
+
+const RECIPE_PLAN_UPDATE_STEP_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-plan-track-progress>"],
+    "label":   "Load plan-track-progress leaf skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM reads the plan, identifies the step to update, patches the step marker"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>", "<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-read + ts-memory-write bindings"
+  }
+]
+"#;
+
+const RECIPE_PLAN_REVISE_YAML: &str = r#"step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-plan-revise>", "<uuid:skill-plan-mode>"],
+    "label":   "Load plan-revise + plan-mode domain skill context"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM reads current plan, applies revision feedback, resets failed steps to pending, rewrites full plan"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>", "<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-read + ts-memory-write bindings"
+  }
+]
+"#;
+
+const CAT_EXT_PLAN_MODE_OVERVIEW: &str = r#"# Plan Mode Domain
+
+Structured task planning using memory documents. Plans stored at plans/<slug>.md.
+
+## Approaches
+
+- Create a new plan: → plan-create recipe (Tier 1)
+- Read an existing plan: → plan-read recipe (Tier 0)
+- List all plans: → plan-list recipe (Tier 0)
+- Update a step's status: → plan-update-step recipe (Tier 1)
+- Revise an existing plan: → plan-revise recipe (Tier 1)
+
+## Plan document format
+
+  plan_id: <slug>
+  status: draft | executing | complete | failed
+
+  ## Goal / ## Success Criteria / ## Steps / ## Risks / ## Progress Log
+
+## Step tracking convention
+
+  [ ] = pending, [-] = in-progress, [x] = done
+
+## Key rules
+
+- Plans live at plans/<slug>.md (NOT MEMORY.md).
+- Use memory_write patch mode for step updates (preserves rest of document).
+- v1 mission_create / mission_fire do NOT exist in v3 — use recipe steps instead.
 "#;
