@@ -1525,6 +1525,70 @@ pub trait RebornServicesApi: Send + Sync {
             false,
         ))
     }
+
+    // ── Phase V — Orchestrator MCP Server settings tab ────────────────────────
+
+    /// Get the current Orchestrator MCP Server settings and running state.
+    async fn get_mcp_server_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::McpServerSettingsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Update Orchestrator MCP Server settings (port, auto_start).
+    async fn update_mcp_server_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::settings::UpdateMcpServerSettingsRequest,
+    ) -> Result<crate::settings::McpServerSettingsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Get the live status of the Orchestrator MCP Server.
+    async fn get_mcp_server_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::McpServerStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Start the Orchestrator MCP Server.
+    async fn start_mcp_server(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::settings::McpServerStartRequest,
+    ) -> Result<crate::settings::McpServerActionResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Stop the Orchestrator MCP Server.
+    async fn stop_mcp_server(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::McpServerActionResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -1593,6 +1657,9 @@ pub struct RebornServices {
     /// Docus store backing `GET/PUT /api/webchat/v2/docus`.
     /// When unwired the trait defaults return 501.
     docus_store: Option<Arc<dyn DocusStore>>,
+    /// Orchestrator MCP Server service backing `/api/settings/mcp-server/*`.
+    /// When unwired the trait defaults return 501.
+    mcp_server_service: Option<Arc<dyn crate::settings::McpServerService>>,
 }
 
 impl RebornServices {
@@ -1637,6 +1704,7 @@ impl RebornServices {
             chat_preference_store: None,
             intent_inputs_store: None,
             docus_store: None,
+            mcp_server_service: None,
         }
     }
 
@@ -1903,6 +1971,15 @@ impl RebornServices {
     /// Wire the docus store backing `GET/PUT /api/webchat/v2/docus`.
     pub fn with_docus_store(mut self, store: Arc<dyn DocusStore>) -> Self {
         self.docus_store = Some(store);
+        self
+    }
+
+    /// Wire the MCP server service backing `/api/settings/mcp-server/*`.
+    pub fn with_mcp_server_service(
+        mut self,
+        service: Arc<dyn crate::settings::McpServerService>,
+    ) -> Self {
+        self.mcp_server_service = Some(service);
         self
     }
 
@@ -4113,6 +4190,60 @@ impl RebornServicesApi for RebornServices {
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
         })
     }
+
+    // ── Phase V — Orchestrator MCP Server ────────────────────────────────────
+
+    async fn get_mcp_server_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::McpServerSettingsResponse, RebornServicesError> {
+        let svc = self.mcp_server_service.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        svc.get_settings().await.map_err(map_mcp_server_error)
+    }
+
+    async fn update_mcp_server_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: crate::settings::UpdateMcpServerSettingsRequest,
+    ) -> Result<crate::settings::McpServerSettingsResponse, RebornServicesError> {
+        let svc = self.mcp_server_service.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        svc.update_settings(request).await.map_err(map_mcp_server_error)
+    }
+
+    async fn get_mcp_server_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::McpServerStatusResponse, RebornServicesError> {
+        let svc = self.mcp_server_service.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        svc.get_status().await.map_err(map_mcp_server_error)
+    }
+
+    async fn start_mcp_server(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: crate::settings::McpServerStartRequest,
+    ) -> Result<crate::settings::McpServerActionResponse, RebornServicesError> {
+        let svc = self.mcp_server_service.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        svc.start(request).await.map_err(map_mcp_server_error)
+    }
+
+    async fn stop_mcp_server(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::McpServerActionResponse, RebornServicesError> {
+        let svc = self.mcp_server_service.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        svc.stop().await.map_err(map_mcp_server_error)
+    }
 }
 
 /// Default error mapping for [`crate::recipes::RecipeStoreError`] →
@@ -4157,6 +4288,27 @@ fn recipe_store_unavailable() -> RebornServicesError {
 fn recipe_not_found(kind: &str, id: &str) -> RebornServicesError {
     tracing::debug!("recipe/skill lookup miss: {kind} '{id}'");
     RebornServicesError::from_status(RebornServicesErrorCode::NotFound, 404, false)
+}
+
+fn map_mcp_server_error(
+    error: crate::settings::McpServerServiceError,
+) -> RebornServicesError {
+    use crate::settings::McpServerServiceError;
+    match error {
+        McpServerServiceError::Invalid(_) => {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
+        }
+        McpServerServiceError::Unavailable(_) => RebornServicesError::from_status_kind(
+            RebornServicesErrorCode::Unavailable,
+            RebornServicesErrorKind::ServiceUnavailable,
+            503,
+            false,
+        ),
+        McpServerServiceError::Internal(reason) => {
+            tracing::debug!("mcp server service error: {reason}");
+            RebornServicesError::from_status(RebornServicesErrorCode::Internal, 500, false)
+        }
+    }
 }
 
 impl RebornServices {

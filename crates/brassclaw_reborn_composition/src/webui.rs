@@ -448,6 +448,34 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         tracing::debug!("DocusStore wired through PgDocusStore");
     }
 
+    // Wire the MCP server service (Phase V — Orchestrator MCP Server settings tab).
+    // Requires skills-db (for the projection layer) + postgres (for the pool).
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        use brassclaw_engine::memory::retrieval_source::ComponentScope;
+        let scope = ComponentScope {
+            tenant_id: runtime.webui_tenant_id().to_string(),
+            user_id: String::new(),
+            agent_id: runtime.webui_agent_id().to_string(),
+            project_id: String::new(),
+        };
+        // Build a dedicated PgCompositionPort for the MCP server's tools/list projection.
+        let comp_port = Arc::new(crate::pg_composition_port::PgCompositionPort::new(
+            Arc::clone(pool),
+            None,
+            None,
+        )) as Arc<dyn brassclaw_engine::executor::ComponentPort>;
+        let svc = crate::mcp_server_service::McpServerServiceImpl::new(
+            Arc::clone(pool),
+            comp_port,
+            scope,
+        );
+        api = api.with_mcp_server_service(
+            Arc::new(svc) as Arc<dyn brassclaw_product_workflow::McpServerService>
+        );
+        tracing::debug!("McpServerService wired through McpServerServiceImpl");
+    }
+
     Ok(RebornWebuiBundle {
         api: Arc::new(api),
         product_auth: services.product_auth.clone(),

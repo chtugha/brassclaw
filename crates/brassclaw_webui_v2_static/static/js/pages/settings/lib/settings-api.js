@@ -310,3 +310,29 @@ export function updateDocusContent(id, content) {
     body: JSON.stringify({ content }),
   });
 }
+
+// Phase V — Orchestrator MCP Server settings + lifecycle.
+export function fetchMcpServerSettings() {
+  return apiFetch("/api/settings/mcp-server");
+}
+export function updateMcpServerSettings(payload) {
+  return apiFetch("/api/settings/mcp-server", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+export function fetchMcpServerStatus() {
+  return apiFetch("/api/settings/mcp-server/status");
+}
+export function startMcpServer(payload = {}) {
+  return apiFetch("/api/settings/mcp-server/start", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export function stopMcpServer(payload = {}) {
+  return apiFetch("/api/settings/mcp-server/stop", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

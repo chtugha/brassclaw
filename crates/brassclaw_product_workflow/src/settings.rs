@@ -313,3 +313,121 @@ pub trait IntentInputsStore: Send + Sync {
         component_id: &str,
     ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>>;
 }
+
+// ── Orchestrator MCP Server settings ─────────────────────────────────────────
+
+/// Current state of the Orchestrator MCP Server.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum McpServerState {
+    /// Server is listening and accepting connections.
+    Running,
+    /// Server is stopped / not yet started.
+    Stopped,
+    /// Server failed to start or encountered a fatal error.
+    Error,
+}
+
+/// Persisted settings for the Orchestrator MCP Server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerSettings {
+    /// TCP port the MCP server listens on. Default: 9090.
+    pub port: u16,
+    /// Whether the server should auto-start on boot.
+    pub auto_start: bool,
+}
+
+impl Default for McpServerSettings {
+    fn default() -> Self {
+        Self {
+            port: 9090,
+            auto_start: false,
+        }
+    }
+}
+
+/// Request body for `PUT /api/settings/mcp-server`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMcpServerSettingsRequest {
+    /// New port (1024–65535). Ignored if already running; restart required
+    /// to apply.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    /// New auto-start value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_start: Option<bool>,
+}
+
+/// Response for `GET /api/settings/mcp-server` and `PUT /api/settings/mcp-server`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerSettingsResponse {
+    pub settings: McpServerSettings,
+}
+
+/// Response for `GET /api/settings/mcp-server/status`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerStatusResponse {
+    pub state: McpServerState,
+    /// Port currently being listened on. `None` when stopped.
+    pub port: Option<u16>,
+    /// Full endpoint URL when running, e.g. `http://0.0.0.0:9090/mcp`.
+    pub endpoint_url: Option<String>,
+    /// Human-readable error message when `state == "error"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Request body for `POST /api/settings/mcp-server/start`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpServerStartRequest {
+    /// Override port for this start only (does not persist settings).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+}
+
+/// Response for `POST /api/settings/mcp-server/start` and `.../stop`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerActionResponse {
+    pub state: McpServerState,
+    pub message: String,
+}
+
+/// Error type for MCP server service operations.
+#[derive(Debug, thiserror::Error)]
+pub enum McpServerServiceError {
+    #[error("service unavailable: {0}")]
+    Unavailable(String),
+    #[error("invalid request: {0}")]
+    Invalid(String),
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+
+/// Service port for managing the Orchestrator MCP Server lifecycle.
+///
+/// Backed by `McpServerServiceImpl` in `brassclaw_reborn_composition`.
+/// In DB-less / no-composition mode the default trait impl returns 501.
+#[async_trait]
+pub trait McpServerService: Send + Sync {
+    /// Get current settings and running state.
+    async fn get_settings(&self) -> Result<McpServerSettingsResponse, McpServerServiceError>;
+
+    /// Update settings (persisted in-memory; survives until process restart).
+    /// Port change requires a restart to take effect if server is running.
+    async fn update_settings(
+        &self,
+        req: UpdateMcpServerSettingsRequest,
+    ) -> Result<McpServerSettingsResponse, McpServerServiceError>;
+
+    /// Get the live status (running/stopped/error, port, endpoint URL).
+    async fn get_status(&self) -> Result<McpServerStatusResponse, McpServerServiceError>;
+
+    /// Start the MCP server. No-op if already running.
+    async fn start(
+        &self,
+        req: McpServerStartRequest,
+    ) -> Result<McpServerActionResponse, McpServerServiceError>;
+
+    /// Stop the MCP server. No-op if already stopped.
+    async fn stop(&self) -> Result<McpServerActionResponse, McpServerServiceError>;
+}

@@ -116,6 +116,20 @@ pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS: &str = "/api/settings/intent-
 pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE: &str =
     "/api/settings/intent-inputs/{class_code}/{component_id}";
 
+// Phase V — Orchestrator MCP Server settings tab.
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_MCP_SERVER: &str = "webui.v2.get_settings_mcp_server";
+pub const WEBUI_V2_ROUTE_PUT_SETTINGS_MCP_SERVER: &str = "webui.v2.put_settings_mcp_server";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_MCP_SERVER_STATUS: &str =
+    "webui.v2.get_settings_mcp_server_status";
+pub const WEBUI_V2_ROUTE_POST_SETTINGS_MCP_SERVER_START: &str =
+    "webui.v2.post_settings_mcp_server_start";
+pub const WEBUI_V2_ROUTE_POST_SETTINGS_MCP_SERVER_STOP: &str =
+    "webui.v2.post_settings_mcp_server_stop";
+pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER: &str = "/api/settings/mcp-server";
+pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STATUS: &str = "/api/settings/mcp-server/status";
+pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_START: &str = "/api/settings/mcp-server/start";
+pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STOP: &str = "/api/settings/mcp-server/stop";
+
 // Phase P Step 10 — Docs settings tab.
 pub const WEBUI_V2_ROUTE_LIST_DOCUS: &str = "webui.v2.list_docus";
 pub const WEBUI_V2_ROUTE_GET_DOCUS: &str = "webui.v2.get_docus";
@@ -275,6 +289,12 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         list_docus_descriptor(),
         get_docus_descriptor(),
         update_docus_descriptor(),
+        // Phase V — Orchestrator MCP Server settings tab.
+        get_settings_mcp_server_descriptor(),
+        put_settings_mcp_server_descriptor(),
+        get_settings_mcp_server_status_descriptor(),
+        post_settings_mcp_server_start_descriptor(),
+        post_settings_mcp_server_stop_descriptor(),
     ]
 }
 
@@ -1391,6 +1411,78 @@ fn update_docus_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_PATTERN_GET_DOCUS,
         mutation_policy(
             body_limit_kib(512),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+// ── Phase V — Orchestrator MCP Server descriptors ─────────────────────────────
+
+fn get_settings_mcp_server_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_MCP_SERVER,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn put_settings_mcp_server_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_PUT_SETTINGS_MCP_SERVER,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn get_settings_mcp_server_status_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_MCP_SERVER_STATUS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STATUS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn post_settings_mcp_server_start_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_POST_SETTINGS_MCP_SERVER_START,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_START,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn post_settings_mcp_server_stop_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_POST_SETTINGS_MCP_SERVER_STOP,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STOP,
+        mutation_policy(
+            body_limit_kib(4),
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,

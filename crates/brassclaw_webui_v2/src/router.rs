@@ -34,6 +34,8 @@ use crate::descriptors::{
     WEBUI_V2_PATTERN_SEND_MESSAGE, WEBUI_V2_PATTERN_SET_ACTIVE_LLM,
     WEBUI_V2_PATTERN_SETTINGS_ACTIONS, WEBUI_V2_PATTERN_SETTINGS_EXTENSIONS,
     WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS, WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE,
+    WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER, WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_START,
+    WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STATUS, WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STOP,
     WEBUI_V2_PATTERN_SETTINGS_MONTY_VM, WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART,
     WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS, WEBUI_V2_PATTERN_SETTINGS_ORCHESTRATORS,
     WEBUI_V2_PATTERN_SETTINGS_SCAFFOLDS, WEBUI_V2_PATTERN_SETTINGS_SECURITY,
@@ -358,6 +360,25 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         .route(
             WEBUI_V2_PATTERN_GET_DOCUS,
             get(handlers::get_docus).put(handlers::update_docus),
+        )
+        // Phase V — Orchestrator MCP Server settings tab.
+        // Sub-paths (/status, /start, /stop) MUST be mounted before the
+        // base /mcp-server path so axum resolves them first.
+        .route(
+            WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STATUS,
+            get(handlers::get_settings_mcp_server_status),
+        )
+        .route(
+            WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_START,
+            post(handlers::post_settings_mcp_server_start),
+        )
+        .route(
+            WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STOP,
+            post(handlers::post_settings_mcp_server_stop),
+        )
+        .route(
+            WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER,
+            get(handlers::get_settings_mcp_server).put(handlers::put_settings_mcp_server),
         );
     if options.mount_llm_config_routes {
         router = router

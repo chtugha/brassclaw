@@ -9,6 +9,7 @@ import { InferenceTab } from "./components/inference-tab.js";
 import { InterceptorTab } from "./components/interceptor-tab.js";
 import { PrefixTab } from "./components/prefix-tab.js";
 import { LanguageTab } from "./components/language-tab.js";
+import { McpServerTab } from "./components/mcp-server-tab.js";
 import { MontyVmTab } from "./components/monty-vm-tab.js";
 import { NetworkingTab } from "./components/networking-tab.js";
 import { OrchestratorTab } from "./components/orchestrator-tab.js";
@@ -83,6 +84,7 @@ export function SettingsPage() {
     orchestrator: html`<${OrchestratorTab} searchQuery=${searchQuery} />`,
     scaffold: html`<${ScaffoldTab} searchQuery=${searchQuery} />`,
     "monty-vm": html`<${MontyVmTab} searchQuery=${searchQuery} />`,
+    "mcp-server": html`<${McpServerTab} searchQuery=${searchQuery} />`,
     security: html`<${SecurityTab} searchQuery=${searchQuery} />`,
     "validation-queue": html`<${ValidationQueueTab} searchQuery=${searchQuery} />`,
     docs: html`<${DocsTab} searchQuery=${searchQuery} />`,

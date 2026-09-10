@@ -158,11 +158,13 @@ pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigReq
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore};
 pub use settings::{
     ChatPreferenceStore, IntentInputListResponse, IntentInputRow, IntentInputsStore,
+    McpServerActionResponse, McpServerService, McpServerServiceError, McpServerSettings,
+    McpServerSettingsResponse, McpServerStartRequest, McpServerState, McpServerStatusResponse,
     MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsError,
     MontyVmSettingsResponse, MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse,
     SecuritySettingsError, SecuritySettingsStore, SettingsComponentSummary,
-    SettingsListResponse, UpdateChatPreferenceRequest,
-    UpdateChatPreferenceResponse, UpdateMontyVmSettingsRequest, UpsertIntentInputRequest,
+    SettingsListResponse, UpdateChatPreferenceRequest, UpdateChatPreferenceResponse,
+    UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest, UpsertIntentInputRequest,
     default_monty_vm_settings,
 };
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};

@@ -22,7 +22,8 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use brassclaw_product_workflow::{
     CodexLoginStart, ComponentAuditStatus, DocusItem, DocusListResponse, InterceptorConfigSnapshot,
     LifecyclePackageKind, LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest,
-    LlmProbeResult, MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse,
+    LlmProbeResult, McpServerActionResponse, McpServerSettingsResponse, McpServerStartRequest,
+    McpServerStatusResponse, MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse,
     MontyVmStatusResponse, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
     NearAiWalletLoginResult, OutcomeKind, PrefixListResponse, PrefixRegenerateResponse,
     ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
@@ -38,7 +39,8 @@ use brassclaw_product_workflow::{
     RecordOutcomeResponse, SecurityModeConfig, SetActiveLlmRequest, SettingsListResponse,
     ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
     UpdateChatPreferenceResponse, UpdateDocusRequest, UpdateInterceptorConfigRequest,
-    UpdateMontyVmSettingsRequest, UpdateValidationStatusRequest, UpdateValidationStatusResponse,
+    UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest, UpdateValidationStatusRequest,
+    UpdateValidationStatusResponse,
     UpsertLlmProviderRequest, ValidationQueueCountResponse, ValidationQueueFilter,
     ValidationQueueListResponse, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
     WebUiCreateThreadRequest, WebUiInboundValidationCode, WebUiInboundValidationError,
@@ -1753,4 +1755,70 @@ pub async fn update_docus(
         .update_docus(caller, parsed_id, body.content)
         .await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+// ── Phase V — Orchestrator MCP Server handlers ────────────────────────────────
+
+/// `GET /api/settings/mcp-server`
+///
+/// Get current MCP server settings (port, auto_start).
+pub async fn get_settings_mcp_server(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<McpServerSettingsResponse>, WebUiV2HttpError> {
+    let response = state.services().get_mcp_server_settings(caller).await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/settings/mcp-server`
+///
+/// Update MCP server settings (port, auto_start).
+/// Port change requires a restart to take effect if the server is running.
+pub async fn put_settings_mcp_server(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(body): Json<UpdateMcpServerSettingsRequest>,
+) -> Result<Json<McpServerSettingsResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .update_mcp_server_settings(caller, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/mcp-server/status`
+///
+/// Get the live status of the Orchestrator MCP Server
+/// (running/stopped/error, port, endpoint URL).
+pub async fn get_settings_mcp_server_status(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<McpServerStatusResponse>, WebUiV2HttpError> {
+    let response = state.services().get_mcp_server_status(caller).await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/settings/mcp-server/start`
+///
+/// Start the Orchestrator MCP Server. No-op if already running.
+/// Optional body: `{ "port": 9090 }` overrides port for this session only.
+pub async fn post_settings_mcp_server_start(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    body: Option<Json<McpServerStartRequest>>,
+) -> Result<Json<McpServerActionResponse>, WebUiV2HttpError> {
+    let request = body.map(|b| b.0).unwrap_or_default();
+    let response = state.services().start_mcp_server(caller, request).await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/settings/mcp-server/stop`
+///
+/// Stop the Orchestrator MCP Server. No-op if already stopped.
+pub async fn post_settings_mcp_server_stop(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<McpServerActionResponse>, WebUiV2HttpError> {
+    let response = state.services().stop_mcp_server(caller).await?;
+    Ok(Json(response))
 }
