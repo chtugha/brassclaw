@@ -40,7 +40,7 @@ export function ValidationQueueTab({ searchQuery = "" }) {
 
   const items = query.data?.items ?? [];
   const filtered = items.filter((item) =>
-    matchesSearch(searchQuery, [item.name, item.description, item.class_label, item.validation_status])
+    matchesSearch(searchQuery, [item.name, item.description, item.class_label, item.validation_status, item.q2_actor])
   );
 
   const pendingCount =
@@ -125,6 +125,16 @@ function QueueRow({ item }) {
       ? "negative"
       : "neutral";
 
+  // Phase P.0 Step 5b: derive badge props for the q2_actor audit field.
+  // Only shown when q2_actor is set (i.e. item has been graduated by Q2).
+  // "human" = operator approved via WebUI (info tone).
+  // "builtin" = bootstrap seeder, builtin-exempt audit label (muted tone).
+  const actorBadge = item.q2_actor
+    ? item.q2_actor === "human"
+      ? { tone: "info", label: t("validationQueue.q2ActorHuman") }
+      : { tone: "muted", label: t("validationQueue.q2ActorBuiltin") }
+    : null;
+
   // The Validate button is only shown for Q2 (manual review) items.
   // For class 10 (Orchestrator) and 50 (Scaffold) it is additionally
   // disabled when the LLM audit is pending or has flagged issues — the
@@ -167,6 +177,13 @@ function QueueRow({ item }) {
           label=${item.validation_status ?? "unknown"}
           size="sm"
         />
+        ${actorBadge && html`<span title=${t("validationQueue.q2ActorLabel")} className="inline-flex">
+          <${Badge}
+            tone=${actorBadge.tone}
+            label=${actorBadge.label}
+            size="sm"
+          />
+        </span>`}
         ${isQ2 && html`
           <button
             onClick=${() => { setActionError(""); rejectMutation.mutate(); }}

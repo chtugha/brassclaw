@@ -9648,7 +9648,7 @@ change to time/USD budgets.
 
 ### Phase P.0 — Validation-system extension: builtin graduation audit trail (prerequisite for Phase P; Answer 2)
 
-**Status:** [x] Complete
+**Status:** [x] Complete — all steps including Step 5b done.
 
 > **§0.23.9 + §0.23.10 fold-in:** Phase P.0 adds the V078 `q2_actor` audit column
 > so that builtin graduations via the bootstrap seeder are recorded with actor
@@ -9700,9 +9700,15 @@ graduation and a human-reviewed graduation in the WebUI queue tab.
   `gate1_fail` based on the Monty `run_python_code_body` result. Graceful-defer
   paths preserved (no Recipe, no PC body, component not found). 6 new unit tests.
   The `// TODO(Phase P.0)` stub is fully replaced.
-- **Remaining:** WebUI queue-tab `q2_actor` surface (step 5b) — surface `q2_actor`
-  field on queue list rows so operators can see `'human'` vs `'builtin'` in the UI.
-  This is a UI-only change; the DB column + store method are already live.
+- **Step 5b done** (`q2_actor` surface in WebUI validation-queue tab):
+  - `validation-queue-tab.js` — `actorBadge` computed from `item.q2_actor`:
+    `"human"` → `info`-tone Badge; any other value → `muted`-tone Badge; `null/undefined` → hidden.
+    Badge wrapped in `<span title="Q2 approved by">` for tooltip (Badge component does not forward
+    arbitrary HTML attrs). `q2_actor` added to `matchesSearch` fields so operators can filter by
+    `"human"` or `"builtin"`.
+  - `en.js` — three new keys: `validationQueue.q2ActorHuman` (`"human"`),
+    `validationQueue.q2ActorBuiltin` (`"builtin"`), `validationQueue.q2ActorLabel` (`"Q2 approved by"`).
+    Other locale packs fall back to English for these keys (standard fallback pattern).
 
 **What changes (all done).**
 
@@ -9773,6 +9779,11 @@ Q1 infrastructure, `q1_orchestrator.rs` rewrite, `ComponentValidator` retired).
 - `brassclaw_product_workflow/src/recipes.rs` — `ValidationQueueItem::q2_actor: Option<String>` added.
 - `pg_recipe_store.rs` — `recipe_to_queue_item` extended with `q2_actor` param + field;
   SQL query extended to SELECT `q.q2_actor AS q_q2_actor` (index 33); row decode updated.
+- `crates/brassclaw_webui_v2_static/static/js/pages/settings/components/validation-queue-tab.js` —
+  Phase P.0 Step 5b: `actorBadge` derived from `item.q2_actor`; rendered as a `<Badge>` inside a
+  `<span title="...">` after the status Badge; `q2_actor` added to `matchesSearch` filter fields.
+- `crates/brassclaw_webui_v2_static/static/js/i18n/en.js` — three new keys added:
+  `validationQueue.q2ActorHuman`, `validationQueue.q2ActorBuiltin`, `validationQueue.q2ActorLabel`.
 
 **Tests:**
 - Unit: a builtin component submitted through the queue path → Q1 deferred → `approve`
@@ -9794,6 +9805,14 @@ Q1 infrastructure, `q1_orchestrator.rs` rewrite, `ComponentValidator` retired).
 removed from `management.rs`. Committed in two commits on main:
 `270da40b` (seed workflow skills passes 8–14) and `665f65ac` (Steps 3–6 cleanup).
 `web-browse` and `portfolio` remain deferred (no `builtin.browser` / `portfolio` Rust Tool).
+
+**Ground-truth verification (checked against live code):**
+- `bundled_skills.rs` — deleted; no `mod bundled_skills` or `ensure_bundled_reborn_skills_installed` in `lib.rs`. ✅
+- `build.rs` — stub only; emits empty `[]` JSON files; `embed_reborn_skills()` / `embed_migrated_skills_catalog()` gone. ✅
+- `management.rs` `SYSTEM_SKILLS_ROOT` disk-load — removed; `list_skills()` / `search_skills()` walk `USER_SKILLS_ROOT` only. Tests confirm (lines 17–20, 650–651). ✅
+- `skills-db` feature — in `brassclaw_reborn_cli` `default` features. ✅
+- `SkillSource::System` enum variant — still present in `management.rs` as a type (used by `ManagedSkillSource` / lifecycle mapping); this is **correct** — removing the disk-load path does not require deleting the enum variant used for source tagging. ✅
+- `SYSTEM_SKILLS_ROOT` in `brassclaw_first_party_extension_ports/src/skills.rs` — this is the **VFS** system-skills root for user-installed VFS skills, NOT the old management.rs disk-load. It is a separate mechanism and is intentionally still present. ✅
 
 **Goal:** Remove **both** pre-v3 filesystem-skill mechanisms (validation-bypass
 audit finding 1): on-disk `SKILL.md` system skills become `reborn_skills` DB
@@ -9922,7 +9941,7 @@ first-class DB skills.
 
 ### Phase P — Doc-Conversion Mechanism (§0.22; user repeat item 4)
 
-**Status:** [ ] Pending
+**Status:** [ ] Pending — all prerequisite migrations are **live**; outstanding work is Steps 1–11 (no Rust except step 1 + step 3).
 
 **Goal:** Implement the §0.22 mechanism — auto-convert each
 `docs/agents-v3/*.md` to an LLM-optimized form, store both versions in
@@ -9930,20 +9949,36 @@ first-class DB skills.
 base-prompt prefix + per-turn retrieval — **as v3 agent artifacts** (Recipe +
 Skills + Tools + PythonCode + Action), not Rust code.
 
-**Prerequisites:** V040 (live — Docu table); V051 (Phase A.5 — validation
-queue); V052/V053 (Phase B/C — `reborn_python_code` / `reborn_extension_catalogues`
-tables); V056 (Phase K.1 — `reborn_basic_prompt_store`); V057
-(`capability_id` for the `component_db` Tool); Phase K.1
-(`PgBasicPromptStore::mark_stale`); **Phase P.0** (no-bypass Q2); **Phase P.1**
-(system-skills DB migration).
+**Prerequisites — ground-truth status (all live):**
+
+| Prerequisite | Planned migration | Actual file | Status |
+|---|---|---|---|
+| `reborn_docus` Docu table | V040 | `V040__reborn_docus.sql` | ✅ live |
+| `reborn_validation_queue` | V051 | `V051__reborn_validation_queue.sql` | ✅ live |
+| `reborn_python_code` (class 22) | V052 | `V052__reborn_python_code.sql` | ✅ live |
+| `reborn_extension_catalogues` (class 23) | V053 | `V053__reborn_extension_catalogues.sql` | ✅ live |
+| `reborn_basic_prompt_store` | V056 (planned) | **`V063__reborn_basic_prompt_store.sql`** | ✅ live |
+| `capability_id` + `source='system'` on tools/skills | V057 (planned) | **`V066__allow_system_source_on_tools_and_skills.sql`** | ✅ live |
+| `PgBasicPromptStore::mark_stale` (Phase K.1) | — | `pg_basic_prompt_store.rs` | ✅ live |
+| Phase P.0 (`q2_actor` audit column + Q1 runner) | V078 | `V078__reborn_validation_queue_q2_actor.sql` | ✅ live (step 5b WebUI pending) |
+| Phase P.1 (skills DB migration, `bundled_skills` removed) | — | `builtin_bootstrap.rs` Passes 8–14 | ✅ done |
+
+> **Note on planned vs actual migration numbers:** V056 and V057 (as named in the plan)
+> were never written with those filenames. Their content landed as V063 and V066
+> respectively (with the full Phase N renumber). The plan's §2 migration table still
+> lists the original planned numbers — those rows can be read as "planned as VXxx,
+> actually landed as the file listed above". Phase P itself adds no migration.
 
 **Migration:** **none.** Phase P adds no migration of its own. It reuses
-`V040` (Docu table — **live today**) plus the migrations created by its
-not-yet-implemented prerequisite phases — `V051` (Phase A.5), `V052`/`V053`
-(Phase B/C), `V056` (Phase K.1), `V057` (Phase K.1) — none of which are live
-yet (see §2). The only host code is the step-1 composition const edit and the
-step-3 `component_db` Rust Tool (+ its ToolSkill DB row, seeded through Phase
-P.0); everything else is v3 artifacts authored as DB rows through Q1+Q2.
+the already-live tables above. The only host-Rust edits are the step-1 composition
+const edit (`COMPONENT_TABLES` + `class_label` in `interceptor_config_service.rs`)
+and the step-3 `component_db` Rust Tool (+ its ToolSkill DB row, seeded through
+Phase P.0 path); everything else is v3 artifacts authored as DB rows through Q1+Q2.
+
+> **Step 1 not yet done:** `("reborn_docus", 17)` is absent from `COMPONENT_TABLES`
+> and `17 => "Docu"` is absent from `class_label` in `interceptor_config_service.rs`.
+> This is the only blocking Rust change before the remaining steps can be authored as
+> DB components.
 
 **Steps (the §8 sequence; one at a time, commit + push after each):**
 
@@ -10039,29 +10074,28 @@ gates cover MCP-driven calls (verify-only).
 
 | Migration | Contents | Status |
 |-----------|----------|--------|
-| `V050__reborn_recipe_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB`, `variants JSONB`, `dependency_registry JSONB` to `reborn_recipes` (all three Phase A store columns — see VARPAT-COL-GAP / DEPREG-TIMING-GAP note in Phase A) | **Next** |
-| **`V051__reborn_validation_queue.sql`** | **NEW (Decision 2 / Phase A.5):** `CREATE TABLE reborn_validation_queue` + indexes only. No data migration. No column drops. This enables all component classes (including the new 22/23) to enter the queue from their very first WebUI-authored save. `ValidationQueueStore` application layer also lands in Phase A.5. **§0.23.5 addition:** the table also carries `proposed_payload JSONB` (nullable) — the upgrade-copy payload used when an edit to a validated component is pending (live row stays validated+served; Q2 approval applies the payload). | |
-| `V052__reborn_python_code.sql` | New table `reborn_python_code`, class 22 (**was V051** before Decision 2) | |
-| `V053__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 (**was V052** before Decision 2) | |
-| `V054__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` (**was V053** before Decision 2) | |
-| ~~`V055__reborn_skills_intent_examples.sql`~~ → **`V055__reborn_dependency_registry.sql`** | `ADD COLUMN dependency_registry JSONB` to all 13 component tables (**was V054** before Decision 2; see Phase J.2 — §0.19). The `intent_examples` ALTER is a **no-op** (V027 already has the column) and has been removed per FIND-12. The file must be named `V055__reborn_dependency_registry.sql`. **§0.23.4 addition:** this same all-tables migration also adds `formatted_content TEXT` (nullable) to all 13 component tables — the persisted LLM-formatted version computed at save time by the per-class formatter PythonCode (Phase J.2 builds the light in-process PythonCode executor; Phase L seeds the formatter components). | |
-| `V056__reborn_basic_prompt_store.sql` | **Phase K single migration (folded — was V055 before Decision 2).** Carries **all** Phase K additive DDL: (a) new table `reborn_basic_prompt_store` — one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT`; (b) **§0.23.7 fold-in:** component-UUID reference column(s) on the interceptor packet/segment store so prompts reassemble **by reference** (enables the idle self-improvement sweep, §0.23.8) — **confirm exact column shape against the live `PgInterceptorStore` schema at Phase K**; (c) **§0.23.8 fold-in:** `reborn_monty_vm_settings` validation-improve cols (`validation_idle_threshold_minutes INT NOT NULL DEFAULT 120`, `validation_improve_start_hour INT NOT NULL DEFAULT 15`, `validation_improve_enabled BOOLEAN NOT NULL DEFAULT true`). **Not split into `V062`/`V063`** — refinery applies migrations in strict ascending order and the embedded PG data dir is persistent across boots, so a `V062`/`V063` landing in Phase K (sort_order 12) before `V057`–`V061` (Phases L–P.0) would silently skip those later lower-numbered migrations. Folding into `V056` keeps numbers ascending with execution order. See §0.23.10 ordering note. | |
-| `V057__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills (**was V056** before Decision 2) | |
-| `V058__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (**was V057** before Decision 2; see §0.17.2) | |
-| `V059__reborn_validation_queue_populate.sql` | **Phase N only:** populate `reborn_validation_queue` from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop `queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/`validation_errors` from all 13 component tables. `CREATE TABLE` is in V051. (**was V058** before Decision 2) | |
-| `V060__reborn_monty_vm_settings_token_budgets_enabled.sql` | **Phase O (§0.21 — user item, Answer 5):** `ALTER TABLE reborn_monty_vm_settings ADD COLUMN token_budgets_enabled BOOLEAN NOT NULL DEFAULT true;` — the global token-budget kill switch. Additive only; existing rows backfill to `true` (today's behaviour). Independent of Phases A–N; shippable in any order after V034 exists (it already does, live). | |
-| ~~`V061__reborn_validation_queue_q2_actor.sql`~~ → **`V078__reborn_validation_queue_q2_actor.sql`** | **Phase P.0:** `ALTER TABLE reborn_validation_queue ADD COLUMN q2_actor TEXT;` — audit label: `'human'` (operator approved via WebUI) or `'builtin'` (bootstrap seeder, exempt from human-Q2). Q2 is manual and human-only for all non-builtin components — no automated Q2 graduation exists. **V061 is taken** (live as `V061__reborn_components_registry.sql`, Phase E). Phase P.0 uses **V078**. | |
+| `V050__reborn_recipe_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB`, `variants JSONB`, `dependency_registry JSONB` to `reborn_recipes` (all three Phase A store columns — see VARPAT-COL-GAP / DEPREG-TIMING-GAP note in Phase A) | ✅ live |
+| **`V051__reborn_validation_queue.sql`** | **NEW (Decision 2 / Phase A.5):** `CREATE TABLE reborn_validation_queue` + indexes only. No data migration. No column drops. This enables all component classes (including the new 22/23) to enter the queue from their very first WebUI-authored save. `ValidationQueueStore` application layer also lands in Phase A.5. **§0.23.5 addition:** the table also carries `proposed_payload JSONB` (nullable) — the upgrade-copy payload used when an edit to a validated component is pending (live row stays validated+served; Q2 approval applies the payload). | ✅ live |
+| `V052__reborn_python_code.sql` | New table `reborn_python_code`, class 22 (**was V051** before Decision 2) | ✅ live |
+| `V053__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 (**was V052** before Decision 2) | ✅ live |
+| `V054__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` (**was V053** before Decision 2) | ✅ live |
+| ~~`V055__reborn_skills_intent_examples.sql`~~ → **`V055__reborn_dependency_registry.sql`** | `ADD COLUMN dependency_registry JSONB` to all 13 component tables (**was V054** before Decision 2; see Phase J.2 — §0.19). The `intent_examples` ALTER is a **no-op** (V027 already has the column) and has been removed per FIND-12. The file must be named `V055__reborn_dependency_registry.sql`. **§0.23.4 addition:** this same all-tables migration also adds `formatted_content TEXT` (nullable) to all 13 component tables — the persisted LLM-formatted version computed at save time by the per-class formatter PythonCode (Phase J.2 builds the light in-process PythonCode executor; Phase L seeds the formatter components). | ✅ live |
+| ~~`V056__reborn_basic_prompt_store.sql`~~ → **`V063__reborn_basic_prompt_store.sql`** | **Phase K single migration (folded — was V055 before Decision 2).** Carries **all** Phase K additive DDL: (a) new table `reborn_basic_prompt_store`; (b) **§0.23.7 fold-in:** component-UUID reference column(s) on the interceptor packet/segment store; (c) **§0.23.8 fold-in:** `reborn_monty_vm_settings` validation-improve cols. **Landed as V063** due to Phase N renumber — not V056. | ✅ live as `V063` |
+| ~~`V057__reborn_tools_capability_id_and_system_source.sql`~~ → **`V066__allow_system_source_on_tools_and_skills.sql`** | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills (**was V056** before Decision 2). **Landed as V066** due to Phase N renumber. | ✅ live as `V066` |
+| ~~`V058__reborn_intent_inputs_template.sql`~~ → **`V076__reborn_intent_inputs_template.sql`** | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes (**was V057** before Decision 2; see §0.17.2). **Landed as V076.** | ✅ live as `V076` |
+| ~~`V059__reborn_validation_queue_populate.sql`~~ → **`V077__reborn_validation_queue_populate.sql`** | **Phase N only:** populate `reborn_validation_queue` from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop legacy columns from all 13 component tables. **Landed as V077.** | ✅ live as `V077` |
+| `V060__reborn_monty_vm_settings_token_budgets_enabled.sql` | **Phase O (§0.21 — user item, Answer 5):** `ALTER TABLE reborn_monty_vm_settings ADD COLUMN token_budgets_enabled BOOLEAN NOT NULL DEFAULT true;` — the global token-budget kill switch. Additive only; existing rows backfill to `true` (today's behaviour). Independent of Phases A–N; shippable in any order after V034 exists (it already does, live). | ✅ live |
+| ~~`V061__reborn_validation_queue_q2_actor.sql`~~ → **`V078__reborn_validation_queue_q2_actor.sql`** | **Phase P.0:** `ALTER TABLE reborn_validation_queue ADD COLUMN q2_actor TEXT;` — audit label: `'human'` (operator approved via WebUI) or `'builtin'` (bootstrap seeder, exempt from human-Q2). Q2 is manual and human-only for all non-builtin components — no automated Q2 graduation exists. **V061 is taken** (live as `V061__reborn_components_registry.sql`, Phase E). Phase P.0 uses **V078**. | ✅ live as `V078` |
 
-All additive-first. No DROP, no renames. No existing rows break. V077 is the only planned migration with DROP statements (legacy columns from `reborn_recipes`). All others (including V060, V078) are additive. (The §0.23.7/§0.23.8 Phase K additive DDL — interceptor packet component-UUID refs + `reborn_monty_vm_settings` validation-improve cols — is **folded into `V056`**, not separate `V062`/`V063` files; see the `V056` row above and §0.23.10 ordering note.) **Note:** the migration sequence in this table reflects the *original planned* ordering; actual live migration numbers are V000–V077 as of Phase N completion — see Phase N FIND-N-05 for the renumber history.
+All additive-first. No DROP, no renames. No existing rows break. V077 is the only planned migration with DROP statements (legacy columns from `reborn_recipes`). All others (including V060, V078) are additive. **Note:** the migration sequence in this table reflects the *original planned* ordering; actual live migration numbers are V000–V079 as of Phase P.0 completion — see Phase N FIND-N-05 for the renumber history. **V056–V059 as planned were never written with those file numbers; see the actual-file column above.**
 
 > **Phase P (§0.22 — doc-conversion) adds NO migration.** It reuses the
 > already-live `V040__reborn_docus` (Docu table — has `content_hash` + lineage
 > + SCH-02 + `validation_status`), plus `V051` (validation queue), `V052`/`V053`
 > (`reborn_python_code` / `reborn_extension_catalogues`), `V056`
-> (`reborn_basic_prompt_store`), and `V057` (`capability_id` for the
-> `component_db` Tool) — **of these, only `V040` is live today; `V051`–`V057`
-> are created by their own not-yet-implemented prerequisite phases
-> (A.5 / B / C / K.1).** The only host-Rust edits are the step-1
+> (`reborn_basic_prompt_store` — **live as `V063`**), and `V057` (`capability_id`
+> for the `component_db` Tool — **live as `V066`**) — **all of these are now live.**
+> The only host-Rust edits are the step-1
 > `COMPONENT_TABLES`/`class_label` const (no migration) and the step-3
 > `component_db` Tool. **Phase P.0** (validation-system extension) adds one
 > small additive column to `reborn_validation_queue` to record the Q2 actor type:

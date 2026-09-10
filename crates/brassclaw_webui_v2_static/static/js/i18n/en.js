@@ -1039,6 +1039,12 @@ registerPack("en", {
   "validationQueue.auditFlagged": "LLM audit flagged issues — resolve before validating",
   "validationQueue.validateError": "Validate failed: {message}",
   "validationQueue.rejectError": "Reject failed: {message}",
+  // Phase P.0 Step 5b — Q2 actor audit labels (who performed the graduation).
+  // Shown as a small badge next to the status badge on graduated queue rows.
+  // "human" = operator approved via WebUI. "builtin" = bootstrap seeder (exempt class).
+  "validationQueue.q2ActorHuman": "human",
+  "validationQueue.q2ActorBuiltin": "builtin",
+  "validationQueue.q2ActorLabel": "Q2 approved by",
 
   // Settings — Reliability tab (Phase 6).
   "reliability.title": "Reliability overview",
