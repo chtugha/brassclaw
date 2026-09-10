@@ -217,17 +217,6 @@ pub struct RebornRuntime {
     wake_sender: TurnRunnerWakeSender,
     send_locks: Mutex<HashMap<ConversationId, Arc<Mutex<()>>>>,
     skill_activation_source: Option<Arc<SelectableSkillContextSource>>,
-    /// Live projection observer for recipe/component/skill activations.
-    /// Populated unconditionally; `PgRetrievalLookup` uses it on the skills-db
-    /// path (Phase P.1 Step C). The field and accessor are intentionally kept
-    /// active in all feature configurations so adding non-skills-db callers
-    /// (e.g. ExplicitMention activation via WebUI) requires no structural change.
-    ///
-    /// Intentionally stored but not read: the field keeps the Arc alive for the
-    /// runtime lifetime and exposes it via `webui_skill_activation_observer`.
-    /// See `subplan_step8_wire_skill_activation_observer.md`.
-    #[allow(dead_code)]
-    skill_activation_observer: Arc<dyn brassclaw_first_party_extension_ports::SkillActivationObserver>,
     /// Plan library processor: active when `plan_library_enabled = true`.
     /// After each completed turn, scores the session and persists plan docs.
     plan_library: Option<Arc<crate::plan_library::PlanLibraryService<LocalDevRootFilesystem>>>,
@@ -814,20 +803,6 @@ impl RebornRuntime {
         &self,
     ) -> Option<Arc<SelectableSkillContextSource>> {
         self.skill_activation_source.clone()
-    }
-
-    /// Returns the live projection observer for skill/recipe/component
-    /// activations. The observer is pre-wired to the live WebUI projection
-    /// publisher so any caller can emit activation events without a feature gate.
-    ///
-    /// Production callers: `PgRetrievalLookup` (skills-db path, §H4) and
-    /// future ExplicitMention detection (WebUI path, non-skills-db).
-    /// See `subplan_step8_wire_skill_activation_observer.md`.
-    #[allow(dead_code)]
-    pub(crate) fn webui_skill_activation_observer(
-        &self,
-    ) -> Arc<dyn brassclaw_first_party_extension_ports::SkillActivationObserver> {
-        Arc::clone(&self.skill_activation_observer)
     }
 
     /// Test-only handle on the resource governor backing the budget
@@ -2291,11 +2266,10 @@ pub async fn build_reborn_runtime(
     );
     let live_projection_publisher =
         projection_services.live_projection_publisher(actor_user_id.clone());
-    // v3 Phase P.1 Step C: construct the skill-activation observer before the
-    // publisher Arc is moved into the milestone sink. The observer is stored in
-    // `RebornRuntime` (always, not feature-gated) and also wired into
-    // `PgRetrievalLookup` on the skills-db path so intent matches emit live
-    // WebUI projection events (§H4).
+    // v3 Phase P.1 Step C: snapshot a clone of the publisher before it is
+    // consumed by the milestone sink, so the skills-db block below can build the
+    // skill-activation observer and wire it into PgRetrievalLookup.
+    #[cfg(feature = "skills-db")]
     let skill_activation_observer_arc =
         projection_services.skill_activation_observer(Arc::clone(&live_projection_publisher));
     let milestone_sink = projection_services.with_live_progress_milestone_sink_for_publisher(
@@ -2454,12 +2428,11 @@ pub async fn build_reborn_runtime(
 
     // v3 Phase E.0 / plan §H4: wire PgRetrievalLookup (engine
     // `PostgresSource`-backed) when the `skills-db` feature is active and a
-    // Postgres pool is available. When the feature is off or PG is unavailable
-    // the slot stays `None` and `RecipeStage` falls through to Tier 2 (the
-    // correct explicit behaviour — no intent-driven retrieval).
-    // v3 Phase P.1 Step C: `skill_activation_observer_arc` (constructed above,
-    // unconditionally) is cloned into PgRetrievalLookup so intent matches emit
-    // live WebUI projection events via the same publisher as the milestone sink.
+    // Postgres pool is available. Postgres is mandatory at runtime; the
+    // `#[cfg(not(feature = "skills-db"))]` fallback below is for test builds
+    // that compile without the feature. v3 Phase P.1 Step C wires the
+    // skill-activation observer so intent matches emit live WebUI projection
+    // events via the same publisher as the milestone sink.
     #[cfg(feature = "skills-db")]
     let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> =
         services.pg_pool.as_ref().map(|pool| {
@@ -2989,7 +2962,6 @@ pub async fn build_reborn_runtime(
         wake_sender,
         send_locks: Mutex::new(HashMap::new()),
         skill_activation_source,
-        skill_activation_observer: skill_activation_observer_arc,
         plan_library,
         plan_state_slot,
         #[cfg(feature = "root-llm-provider")]

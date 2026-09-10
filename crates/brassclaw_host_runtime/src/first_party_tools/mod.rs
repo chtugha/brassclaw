@@ -5,6 +5,7 @@
 //! through `CapabilityHost`, trust policy, grants, resource accounting, and
 //! runtime dispatch before any handler runs.
 
+mod component_db;
 mod echo;
 mod http;
 mod http_output;
@@ -44,6 +45,11 @@ use crate::{
 
 pub(crate) use self::schemas::resolve_builtin_input_schema_ref;
 
+pub use component_db::{
+    COMPONENT_DB_CAPABILITY_ID, ComponentDbBackend, ComponentDbError, ComponentDbRow,
+    ComponentDbScope, ComponentDbState, ComponentDbUpsert, ComponentDbUpsertResult,
+    sha256_hex, extract_md_section,
+};
 pub use echo::ECHO_CAPABILITY_ID;
 pub use http::{HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID};
 pub use json::JSON_CAPABILITY_ID;
@@ -157,6 +163,7 @@ pub fn builtin_first_party_package() -> Result<ExtensionPackage, ExtensionError>
             host_apis: Vec::new(),
             capabilities: {
                 let mut capabilities = vec![
+                    component_db::manifest()?,
                     echo::manifest()?,
                     time::manifest()?,
                     json::manifest()?,
@@ -293,6 +300,10 @@ fn builtin_first_party_registry_from_tools(
         CapabilityId::new(SPAWN_SUBAGENT_CAPABILITY_ID)?,
         handler.clone(),
     );
+    registry.insert_handler(
+        CapabilityId::new(COMPONENT_DB_CAPABILITY_ID)?,
+        handler.clone(),
+    );
     skill_management::insert_handlers(&mut registry)?;
     Ok(registry)
 }
@@ -329,6 +340,7 @@ fn first_party_capability_manifest(
 pub struct BuiltinFirstPartyTools {
     coding_state: CodingCapabilityState,
     memory_state: memory::MemoryCapabilityState,
+    component_db_state: component_db::ComponentDbState,
 }
 
 impl BuiltinFirstPartyTools {
@@ -355,6 +367,19 @@ impl BuiltinFirstPartyTools {
         writer: Arc<dyn brassclaw_memory::ChatMemoryWriterPort>,
     ) -> Self {
         self.memory_state = self.memory_state.with_chat_memory_writer(writer);
+        self
+    }
+
+    /// Wire a `component_db` backend (Phase P §0.22 — doc-sync).
+    ///
+    /// Without this the `builtin.component_db` capability returns an error for
+    /// all ops that require DB access. `compute_hash` and `extract_section`
+    /// remain available without a wired backend (pure Rust, no DB).
+    pub fn with_component_db(
+        mut self,
+        backend: Arc<dyn component_db::ComponentDbBackend>,
+    ) -> Self {
+        self.component_db_state = component_db::ComponentDbState::with_backend(backend);
         self
     }
 }
@@ -411,6 +436,14 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
                 ));
             }
             SPAWN_SUBAGENT_CAPABILITY_ID => (spawn_subagent::dispatch(), None),
+            COMPONENT_DB_CAPABILITY_ID => {
+                let output = component_db::dispatch(
+                    &self.component_db_state,
+                    &request.input,
+                )
+                .await?;
+                (output, None)
+            }
             capability_id => {
                 let Some(metadata) = coding_capability_metadata(capability_id) else {
                     return Err(FirstPartyCapabilityError::new(

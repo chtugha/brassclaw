@@ -1,6 +1,6 @@
 # Subplan: factory.rs VFS filesystem field cleanup
 
-**Status:** [-] In progress
+**Status:** [x] COMPLETE
 **Parent:** `plan_skill_context_removal.md` / Step 8 of Phase P in `saved_plan_to_v3.md`
 **Triggered by:** `cargo clippy -p brassclaw_reborn_composition --all-targets -- -D warnings`
   firing dead_code errors on `skill_filesystem` and `workspace_filesystem` fields in

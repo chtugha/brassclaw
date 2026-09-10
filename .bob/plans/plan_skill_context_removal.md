@@ -1,6 +1,6 @@
 # Subplan: Remove v1 Skill-Context Injection Machinery
 
-> **Status:** Draft — not started.
+> **Status:** COMPLETE — all 11 steps done (committed 130664e0).
 > **Parent plan:** `saved_plan_to_v3.md` Phase P.1 (VFS skills removal continuation)
 > **Triggered by:** architectural audit — user confirmed v3 is fully orchestrator-based;
 > "use skill coding" → intent match → Recipe execution; there is no per-turn SKILL.md
@@ -60,8 +60,8 @@ goes away once the `load_skill_context_candidates` path is removed.
 
 ## Removal sequence (one commit per step)
 
-> **Progress as of 2025-07:** Steps 1–7 are done (committed `17d7aeaa` and `0175c0a6`).
-> Steps 8–11 are **BLOCKED** — see blocking dependency note below.
+> Steps 1–7 completed (committed `17d7aeaa` and `0175c0a6`).
+> Steps 8–11 completed (committed `130664e0`).
 
 ### Step 1 — [DONE] Remove `HostSkillContextSource` field from `ThreadBackedLoopContextPort`
 
@@ -188,7 +188,7 @@ This is the v1 LLM-callable tool that let the LLM activate skills by name. In v3
   skill-context-related tests — ~20 tests). Replace with simpler tests that validate the
   `messages_by_run` / `peek_message_text` path only.
 
-### Step 8 — Simplify `SelectableSkillContextSource` generic parameter
+### Step 8 — [DONE] Simplify `SelectableSkillContextSource` generic parameter
 
 Currently `SelectableSkillContextSource<S: SkillBundleSource>` is generic over `S` because
 `load_skill_context_candidates` needs to call `S::read_skill_bundle_file`. Once that method
@@ -198,7 +198,7 @@ is removed, the generic parameter can be dropped (or replaced with a concrete in
 
 This is the cleanest final state: `SelectableSkillContextSource` becomes a plain struct with no VFS dependency.
 
-### Step 9 — Remove `FilesystemSkillBundleSource` (VFS SKILL.md reader)
+### Step 9 — [DONE] Remove `FilesystemSkillBundleSource` (VFS SKILL.md reader)
 
 Once step 8 removes the generic dependency, `FilesystemSkillBundleSource` is unused.
 
@@ -206,7 +206,7 @@ Once step 8 removes the generic dependency, `FilesystemSkillBundleSource` is unu
 - `crates/brassclaw_loop_support/src/filesystem_skill_bundle_source.rs` — **DELETE FILE**
 - `crates/brassclaw_loop_support/src/lib.rs` — remove `pub use filesystem_skill_bundle_source::...`
 
-### Step 10 — Simplify `FirstPartySkillsExtension`
+### Step 10 — [DONE] Simplify `FirstPartySkillsExtension`
 
 `crates/brassclaw_first_party_extension_ports/src/skills.rs` currently has:
 - `host_skill_context_source()` → feeds the dead `HostSkillContextSource` path
@@ -217,7 +217,7 @@ Once step 8 removes the generic dependency, `FilesystemSkillBundleSource` is unu
 After step 8, the struct simplifies significantly. `host_skill_context_source()` method removed;
 `selectable_skill_runtime_with_setup_markers` still needed for `activation_source()`.
 
-### Step 11 — Remove `SkillBundleSource` trait (if orphaned)
+### Step 11 — [DONE] Remove `SkillBundleSource` trait (if orphaned)
 
 `crates/brassclaw_loop_support/src/skill_bundle_source.rs` defines the `SkillBundleSource` trait
 with two methods: `list_skill_bundles` and `read_skill_bundle_file`. Both are only called by
@@ -225,25 +225,13 @@ with two methods: `list_skill_bundles` and `read_skill_bundle_file`. Both are on
 
 ---
 
-## Blocking dependency for Steps 8–11
+## Blocking dependency for Steps 8–11 — RESOLVED
 
-**Steps 8–11 cannot proceed until `SkillExecutionAdapter` is removed or kept as a permanent
-first-class feature.** Current status (verified against live code after Step 7):
-
-`SelectableSkillContextSource<S>` STILL holds a `bundle_source: Arc<S>` field and calls
-`S::read_skill_bundle_file` inside `load_activation_candidates`. This is needed by:
-- `select_activation_plan` → `resolve_activation_plan_with_candidates` → `load_activation_candidates`
-- `SkillExecutionAdapter::prepare` calls `select_activation_plan` and `bundle_source()`
-- `runtime.execute_skill_message` (production, `runtime.rs:1134`) calls `SkillExecutionAdapter::prepare`
-
-So `FilesystemSkillBundleSource` is NOT orphaned — it is actively used by the skill execution path.
-Steps 8 (drop generic), 9 (delete `FilesystemSkillBundleSource`), and 11 (remove `SkillBundleSource`
-trait) cannot proceed until `SkillExecutionAdapter` / `execute_skill_message` is either:
-(a) removed (requires a deliberate architectural decision — the VFS-based skill execution path),
-(b) migrated to use a DB-backed source instead of `FilesystemSkillBundleSource`.
-
-Step 10 (`host_skill_context_source()` removal from `FirstPartySkillsExtension`) was already done
-as part of Step 7 prep.
+Steps 8–11 were unblocked and completed in commit `130664e0` as "Phase P.1 Step C:
+delete VFS-based skill execution path". The `SkillExecutionAdapter`, `execute_skill_message`,
+`FilesystemSkillBundleSource`, and `SkillBundleSource` were all removed. The upgrade also
+wired `LiveSkillActivationObserver` into `PgRetrievalLookup` for intent-driven activation
+projection events.
 
 ## Not removed
 

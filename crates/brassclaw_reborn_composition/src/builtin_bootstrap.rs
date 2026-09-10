@@ -15218,12 +15218,117 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
+    // 3. Tool: component_db (builtin.component_db)
+    //    The one generic DB Tool — read_hash | read_row | upsert | mark_stale |
+    //    compute_hash | extract_section.
+    let tool_component_db = stores
+        .upsert_tool(tool_component_db_row(&tenant), "component_db")
+        .await?;
+
+    // 4. ToolSkill: ts-component-db
+    //    Executor-facing param schema + preconditions for the uniform `op` surface.
+    let ts_component_db = stores
+        .upsert_tool_skill(ts_component_db_row(&tenant), "ts-component-db")
+        .await?;
+
+    // TODO Step 4-8: leaf Skills, domain Skill, Recipe, Action, ExtensionCatalogue
+    // will be added here as those steps are completed.
+    let _ = (tool_component_db, ts_component_db);
+
     tracing::debug!(
-        "seeded doc-sync group Pass 15: 2 PythonCode leaves (pc-hash-changed, \
-         pc-format-component-header)"
+        "seeded doc-sync group Pass 15: 2 PC + 1 Tool + 1 ToolSkill \
+         (pc-hash-changed, pc-format-component-header, component_db, ts-component-db)"
     );
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Pass 15 — doc-sync Tool / ToolSkill row constructors
+// ---------------------------------------------------------------------------
+
+fn tool_component_db_row(tenant: &str) -> NewPgTool {
+    NewPgTool {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "component_db".to_string(),
+        description: "Generic DB tool for component rows: compute_hash | read_hash | read_row | \
+                       upsert | mark_stale | extract_section. The single kernel-boundary DB \
+                       capability for doc-sync and future sync recipes. \
+                       upsert always sets validation_status='pending'."
+            .to_string(),
+        param_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "op": {"type": "string", "enum": ["compute_hash", "read_hash", "read_row", "upsert", "mark_stale", "extract_section"]},
+                "scope": {"type": "object", "properties": {"user_id": {"type": "string"}, "project_id": {"type": "string"}}, "required": ["user_id", "project_id"]},
+                "name": {"type": "string"},
+                "text": {"type": "string"},
+                "markdown": {"type": "string"},
+                "title": {"type": "string"},
+                "fields": {"type": "object"}
+            },
+            "required": ["op"]
+        })),
+        param_template: None,
+        effect_type: "write".to_string(),
+        preconditions: Some(
+            "Backend must be wired (Postgres pool available). compute_hash and \
+             extract_section work without a wired backend."
+                .into(),
+        ),
+        error_handling: Some(
+            "NotWired: backend not injected (no Postgres pool). Db: database error. \
+             Client: missing or invalid input fields."
+                .into(),
+        ),
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+        source: "system".into(),
+        validation_status: "validated".into(),
+        capability_id: brassclaw_host_runtime::COMPONENT_DB_CAPABILITY_ID.to_string(),
+    }
+}
+
+fn ts_component_db_row(tenant: &str) -> NewPgToolSkill {
+    NewPgToolSkill {
+        tenant_id: tenant.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "ts-component-db".to_string(),
+        description: "Executor binding for builtin.component_db. Provides uniform `op` dispatch \
+                       across: compute_hash, read_hash, read_row, upsert, mark_stale, \
+                       extract_section. Used by db-read-hash, db-upsert-docus, and \
+                       db-mark-prefix-stale leaf Skills."
+            .to_string(),
+        content: "Call `host.component_db(op=<op>, ...)` where op is one of: \
+                  compute_hash (text→hash), read_hash (scope+name→hash), \
+                  read_row (scope+name→row), upsert (scope+fields→id), \
+                  mark_stale (scope→ok), extract_section (markdown+title→section). \
+                  upsert always sets validation_status='pending'; never set 'validated' directly. \
+                  scope is {user_id, project_id}. Returns a JSON object."
+            .to_string(),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        tool_name: Some("component_db".to_string()),
+        param_schema: Some(json!([
+            {"name": "op", "param_type": "string", "required": true, "description": "Operation: compute_hash | read_hash | read_row | upsert | mark_stale | extract_section"},
+            {"name": "scope", "param_type": "object", "required": false, "description": "{user_id, project_id} — required for DB ops"},
+            {"name": "name", "param_type": "string", "required": false, "description": "Component name / slug — for read_hash, read_row, upsert"},
+            {"name": "text", "param_type": "string", "required": false, "description": "Input text for compute_hash"},
+            {"name": "markdown", "param_type": "string", "required": false, "description": "Markdown content for extract_section"},
+            {"name": "title", "param_type": "string", "required": false, "description": "Section title for extract_section"},
+            {"name": "fields", "param_type": "object", "required": false, "description": "Upsert payload: {name, description, content, content_hash, source, similarity_parent_id, replaces_id, consumer_tags}"}
+        ])),
+        param_template: None,
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        validation_status: "validated".into(),
+        includes: vec![],
+    }
 }
 
 // ---------------------------------------------------------------------------

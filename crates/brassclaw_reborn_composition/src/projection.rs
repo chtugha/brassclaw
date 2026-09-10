@@ -16,6 +16,7 @@ use brassclaw_event_streams::{
     ProjectionTarget, ProjectionViewClass, SubscriberCapabilities, ThreadLiveProjectionUpdate,
 };
 use brassclaw_events::{DurableEventLog, EventCursor, EventStreamKey, ReadScope};
+#[cfg(feature = "skills-db")]
 use brassclaw_first_party_extension_ports::SkillActivationObserver;
 use brassclaw_host_api::UserId;
 use brassclaw_outbound::OutboundStateStore;
@@ -42,10 +43,9 @@ use display_preview::{
     CapabilityDisplayPreviewResolution, CapabilityDisplayPreviewSource,
     NoopCapabilityDisplayPreviewSource,
 };
-use live_progress::{
-    LiveProgressMilestoneSink, LiveProjectionPublisher, LiveSkillActivationObserver,
-    product_items_for_live_update,
-};
+use live_progress::{LiveProgressMilestoneSink, LiveProjectionPublisher, product_items_for_live_update};
+#[cfg(feature = "skills-db")]
+use live_progress::LiveSkillActivationObserver;
 use runtime_replay::{
     DeliveredRuntimePayload, RuntimePayloadCandidate, RuntimePayloadResolution, RuntimePayloads,
     replay_payload_candidates, snapshot_payload_candidates,
@@ -147,7 +147,7 @@ impl RebornProjectionServices {
         ))
     }
 
-    #[cfg_attr(not(feature = "skills-db"), allow(dead_code))]
+    #[cfg(feature = "skills-db")]
     pub(crate) fn skill_activation_observer(
         &self,
         publisher: Arc<LiveProjectionPublisher>,

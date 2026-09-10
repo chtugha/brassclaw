@@ -1008,9 +1008,43 @@ async fn build_local_dev(
         });
     }
     let trigger_create_hook = local_dev_trigger_create_hook(&store_graph.local_runtime);
+    // Wire the component_db backend when a Postgres pool is available (the hybrid
+    // serve path). Without a pool (pure local-dev / unit tests) component_db ops
+    // that require DB access return an error, but compute_hash and extract_section
+    // still work (pure Rust — no DB needed).
+    let component_db_backend: Option<Arc<dyn brassclaw_host_runtime::ComponentDbBackend>> =
+        if let (Some(pool), Some(effective_tenant)) = (
+            pg_pool.as_ref(),
+            tenant_id.as_deref().or(Some("reborn-cli")),
+        ) {
+            #[cfg(feature = "postgres")]
+            {
+                let basic_prompt_store = crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+                    Arc::clone(pool),
+                    effective_tenant,
+                    "default",
+                );
+                let backend =
+                    crate::pg_component_db_backend::build_pg_component_db_backend(
+                        Arc::clone(pool),
+                        effective_tenant,
+                        basic_prompt_store,
+                    );
+                Some(Arc::new(backend) as Arc<dyn brassclaw_host_runtime::ComponentDbBackend>)
+            }
+            #[cfg(not(feature = "postgres"))]
+            {
+                let _ = pool;
+                let _ = effective_tenant;
+                None
+            }
+        } else {
+            None
+        };
     let mut first_party_registry = builtin_first_party_registry_with_trigger_create_hook(
         Arc::clone(&store_graph.trigger_repository),
         trigger_create_hook,
+        component_db_backend,
     )?;
     register_bundled_gsuite_first_party_handlers(
         &mut first_party_registry,
@@ -1696,11 +1730,24 @@ pub(crate) fn builtin_extension_registry() -> Result<ExtensionRegistry, RebornBu
 fn builtin_first_party_registry_with_trigger_create_hook(
     trigger_repository: Arc<dyn TriggerRepository>,
     trigger_create_hook: Arc<dyn TriggerCreateHook>,
+    component_db_backend: Option<Arc<dyn brassclaw_host_runtime::ComponentDbBackend>>,
 ) -> Result<FirstPartyCapabilityRegistry, RebornBuildError> {
-    builtin_first_party_handlers_with_trigger_create_hook(trigger_repository, trigger_create_hook)
-        .map_err(|error| RebornBuildError::InvalidConfig {
-            reason: format!("built-in first-party handlers are invalid: {error}"),
-        })
+    let map_err = |error: brassclaw_host_api::HostApiError| RebornBuildError::InvalidConfig {
+        reason: format!("built-in first-party handlers are invalid: {error}"),
+    };
+    if let Some(backend) = component_db_backend {
+        let tools = brassclaw_host_runtime::BuiltinFirstPartyTools::default()
+            .with_component_db(backend);
+        brassclaw_host_runtime::builtin_first_party_handlers_from_tools_with_trigger(
+            tools,
+            trigger_repository,
+            trigger_create_hook,
+        )
+        .map_err(map_err)
+    } else {
+        builtin_first_party_handlers_with_trigger_create_hook(trigger_repository, trigger_create_hook)
+            .map_err(map_err)
+    }
 }
 
 fn local_dev_builtin_extension_registry() -> Result<ExtensionRegistry, RebornBuildError> {

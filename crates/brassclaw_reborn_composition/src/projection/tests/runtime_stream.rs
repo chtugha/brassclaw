@@ -4,20 +4,27 @@ const TEST_MAX_BYTES: u32 = 4096;
 const TEST_CAPABILITY_OUTPUT_VALUE: u64 = 42;
 
 use super::*;
+#[cfg(feature = "skills-db")]
 use brassclaw_first_party_extension_ports::{
     SkillActivationMode, SkillActivationObservedEvent, SkillActivationRequest,
 };
+#[cfg(feature = "skills-db")]
 use brassclaw_product_adapters::{
     PROJECTION_SKILL_ACTIVATION_MAX_ITEMS, PROJECTION_SKILL_FEEDBACK_MAX_BYTES,
-    PROJECTION_SKILL_NAME_MAX_BYTES, ProductWorkSummaryPhase,
+    PROJECTION_SKILL_NAME_MAX_BYTES,
 };
+use brassclaw_product_adapters::ProductWorkSummaryPhase;
 use brassclaw_turns::{
     TurnId,
     run_profile::{
-        CapabilityInputRef, InMemoryLoopHostMilestoneSink, InMemoryRunProfileResolver,
-        LoopDriverId, LoopDriverNoteKind, LoopHostMilestone, LoopHostMilestoneKind, LoopRunContext,
-        LoopSafeSummary, RunProfileResolutionRequest, RunProfileResolver,
+        CapabilityInputRef, InMemoryLoopHostMilestoneSink,
+        LoopDriverId, LoopDriverNoteKind, LoopHostMilestone, LoopHostMilestoneKind,
+        LoopSafeSummary,
     },
+};
+#[cfg(feature = "skills-db")]
+use brassclaw_turns::run_profile::{
+    InMemoryRunProfileResolver, LoopRunContext, RunProfileResolutionRequest, RunProfileResolver,
 };
 
 fn preview_input_ref(label: &str) -> CapabilityInputRef {
@@ -564,6 +571,7 @@ async fn live_projection_is_keyed_to_run_actor_not_publisher_owner() {
     );
 }
 
+#[cfg(feature = "skills-db")]
 #[tokio::test]
 async fn webui_event_stream_drains_skill_activation_projection_from_observer() {
     let tenant_id = TenantId::new("webui-skill-activation-tenant").unwrap();
@@ -635,6 +643,7 @@ async fn webui_event_stream_drains_skill_activation_projection_from_observer() {
     }));
 }
 
+#[cfg(feature = "skills-db")]
 #[tokio::test]
 async fn webui_event_stream_bounds_skill_activation_projection_from_observer() {
     let tenant_id = TenantId::new("webui-skill-bounds-tenant").unwrap();

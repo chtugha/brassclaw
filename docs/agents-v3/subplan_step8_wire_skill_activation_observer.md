@@ -1,6 +1,6 @@
 # Subplan: Wire SkillActivationObserver into PgRetrievalLookup (v3 activation projection)
 
-**Status:** [ ] Pending
+**Status:** [x] COMPLETE
 **Parent:** `subplan_step8_of_plan_skill_context_removal.md` / Step 8 of Phase P
 **Triggered by:** dead_code errors on `LiveSkillActivationObserver`, `skill_activation_observer`,
   `skill_activation_id`, and `sanitize_bounded_model_visible_text` after the VFS-based

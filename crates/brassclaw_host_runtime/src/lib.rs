@@ -78,6 +78,8 @@ pub use first_party::{
 };
 pub use first_party_tools::{
     APPLY_PATCH_CAPABILITY_ID, BUILTIN_FIRST_PARTY_PROVIDER, BuiltinFirstPartyTools,
+    COMPONENT_DB_CAPABILITY_ID, ComponentDbBackend, ComponentDbError, ComponentDbRow,
+    ComponentDbScope, ComponentDbState, ComponentDbUpsert, ComponentDbUpsertResult,
     ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID,
     HTTP_SAVE_CAPABILITY_ID, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID,
     MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID,
@@ -87,6 +89,7 @@ pub use first_party_tools::{
     TRIGGER_REMOVE_CAPABILITY_ID, TriggerCreateHook, WRITE_FILE_CAPABILITY_ID,
     builtin_first_party_handlers, builtin_first_party_handlers_from_tools_with_trigger,
     builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
+    sha256_hex, extract_md_section,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use first_party_tools::{

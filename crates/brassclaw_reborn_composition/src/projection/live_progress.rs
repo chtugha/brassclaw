@@ -12,14 +12,19 @@ use brassclaw_event_streams::{
     ThreadLiveProjectionUpdate, ThreadLiveWorkSummaryPhase,
 };
 use brassclaw_events::{EventCursor, EventStreamKey, ReadScope};
+#[cfg(feature = "skills-db")]
 use brassclaw_first_party_extension_ports::{
     SkillActivationObservedEvent, SkillActivationObserver,
 };
 use brassclaw_host_api::{CapabilityId, InvocationId, UserId};
 use brassclaw_product_adapters::{
     CapabilityActivityStatusView, CapabilityActivityView, CapabilityActivityViewInput,
+    ProductProjectionItem, ProductWorkSummaryPhase,
+};
+#[cfg(feature = "skills-db")]
+use brassclaw_product_adapters::{
     PROJECTION_SKILL_ACTIVATION_MAX_ITEMS, PROJECTION_SKILL_FEEDBACK_MAX_BYTES,
-    PROJECTION_SKILL_NAME_MAX_BYTES, ProductProjectionItem, ProductWorkSummaryPhase,
+    PROJECTION_SKILL_NAME_MAX_BYTES,
 };
 use brassclaw_turns::{
     TurnRunId, TurnScope,
@@ -46,14 +51,7 @@ pub(super) struct LiveProgressMilestoneSink {
 ///
 /// Production caller: `PgRetrievalLookup` on the `skills-db` feature path
 /// (Phase P.1 Step C / §H4). Also used directly in projection tests.
-///
-/// The `cfg_attr` attribute below suppresses `dead_code` only when the
-/// `skills-db` feature is disabled — in that build, this struct is wired but
-/// has no production caller because `PgRetrievalLookup` is absent. The
-/// attribute is intentionally conditional so it becomes a compile error
-/// (unfulfilled lint expectation) if skills-db IS enabled and this struct
-/// somehow loses its production caller.
-#[cfg_attr(not(feature = "skills-db"), allow(dead_code))]
+#[cfg(feature = "skills-db")]
 #[derive(Debug)]
 pub(super) struct LiveSkillActivationObserver {
     publisher: Arc<LiveProjectionPublisher>,
@@ -83,8 +81,8 @@ impl LiveProgressMilestoneSink {
     }
 }
 
+#[cfg(feature = "skills-db")]
 impl LiveSkillActivationObserver {
-    #[cfg_attr(not(feature = "skills-db"), allow(dead_code))]
     pub(super) fn new(publisher: Arc<LiveProjectionPublisher>) -> Self {
         Self { publisher }
     }
@@ -314,6 +312,7 @@ impl LiveProgressMilestoneSink {
     }
 }
 
+#[cfg(feature = "skills-db")]
 impl SkillActivationObserver for LiveSkillActivationObserver {
     fn observe_skill_activation(&self, event: SkillActivationObservedEvent) {
         let skill_names = event
@@ -393,12 +392,12 @@ fn work_summary_id(run_id: TurnRunId, sequence: u64) -> String {
     format!("work-summary:{run_id}:{sequence}")
 }
 
-#[cfg_attr(not(feature = "skills-db"), allow(dead_code))]
+#[cfg(feature = "skills-db")]
 fn skill_activation_id(run_id: TurnRunId, sequence: u64) -> String {
     format!("skill-activation:{run_id}:{sequence}")
 }
 
-#[cfg_attr(not(feature = "skills-db"), allow(dead_code))]
+#[cfg(feature = "skills-db")]
 fn sanitize_bounded_model_visible_text(value: &str, max_bytes: usize) -> String {
     let sanitized = sanitize_model_visible_text(value);
     let trimmed = sanitized.trim();

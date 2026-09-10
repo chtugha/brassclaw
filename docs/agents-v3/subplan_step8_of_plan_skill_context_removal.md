@@ -1,6 +1,6 @@
 # Subplan: Steps 8–11 — Delete VFS-based skill execution path
 
-> **Status:** [-] In progress — Steps 8–11 of `plan_skill_context_removal.md`
+> **Status:** [x] COMPLETE — Steps 8–11 of `plan_skill_context_removal.md`
 > **Parent plan:** `.bob/plans/plan_skill_context_removal.md`
 > **Blocked unblocked:** Steps 1–7 done. The blocking dependency was
 > `SkillExecutionAdapter` / `execute_skill_message` / `bundle_source`. This subplan

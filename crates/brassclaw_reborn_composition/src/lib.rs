@@ -98,6 +98,8 @@ pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_basic_prompt_store;
 #[cfg(feature = "postgres")]
+pub(crate) mod pg_component_db_backend;
+#[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_extension_catalogue_store;
