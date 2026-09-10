@@ -60,7 +60,10 @@ goes away once the `load_skill_context_candidates` path is removed.
 
 ## Removal sequence (one commit per step)
 
-### Step 1 — Remove `HostSkillContextSource` field from `ThreadBackedLoopContextPort`
+> **Progress as of 2025-07:** Steps 1–7 are done (committed `17d7aeaa` and `0175c0a6`).
+> Steps 8–11 are **BLOCKED** — see blocking dependency note below.
+
+### Step 1 — [DONE] Remove `HostSkillContextSource` field from `ThreadBackedLoopContextPort`
 
 **Files:**
 - `crates/brassclaw_loop_support/src/lib.rs`
@@ -79,7 +82,7 @@ goes away once the `load_skill_context_candidates` path is removed.
 - Any test asserting `instruction_snippet_count > 0` for skill snippets must be updated
   (prefix bundle snippets still work; skill-specific snippet tests should be removed).
 
-### Step 2 — Remove `skill_context_source` from `ThreadBackedLoopModelPort`
+### Step 2 — [DONE] Remove `skill_context_source` from `ThreadBackedLoopModelPort`
 
 **Files:**
 - `crates/brassclaw_loop_support/src/lib.rs` lines 898-954
@@ -88,7 +91,7 @@ goes away once the `load_skill_context_candidates` path is removed.
   - Remove wiring at lines 1366-1378 (`build_skill_instruction_snippets` call in the
     model-port path — same dead path as step 1 but on the model side)
 
-### Step 3 — Remove `skill_context_source` from `RebornLoopDriverHost` and `RuntimeParts`
+### Step 3 — [DONE] Remove `skill_context_source` from `RebornLoopDriverHost` and `RuntimeParts`
 
 **Files:**
 - `crates/brassclaw_reborn/src/loop_driver_host.rs`
@@ -108,7 +111,7 @@ goes away once the `load_skill_context_candidates` path is removed.
 - `crates/brassclaw_reborn/tests/loop_driver_host.rs` — remove `HostSkillContextSource` import,
   remove `StaticSkillContextSource` mock, remove `with_skill_context_source` calls.
 
-### Step 4 — Remove `skill_context_source` from `RebornRuntimeInput`
+### Step 4 — [DONE] Remove `skill_context_source` from `RebornRuntimeInput`
 
 **Files:**
 - `crates/brassclaw_reborn_composition/src/runtime_input.rs`
@@ -119,7 +122,7 @@ goes away once the `load_skill_context_candidates` path is removed.
 **Impact:** `with_skill_context_source` was only used in the test at `runtime.rs:4776-4796`.
 That test (`send_user_message_uses_caller_supplied_skill_context_source`) must be removed.
 
-### Step 5 — Remove `LocalDevSkillContextSource.source` and the `configured_skill_context_source` path
+### Step 5 — [DONE] Remove `LocalDevSkillContextSource.source` and the `configured_skill_context_source` path
 
 **Files:**
 - `crates/brassclaw_reborn_composition/src/runtime.rs`
@@ -132,7 +135,7 @@ That test (`send_user_message_uses_caller_supplied_skill_context_source`) must b
     Only `skill_activation_source` and `skill_execution_adapter` remain from this match.
   - Remove the `HostSkillContextSource` import (line 47 area)
 
-### Step 6 — Remove `builtin.skill_activate` synthetic capability
+### Step 6 — [DONE] Remove `builtin.skill_activate` synthetic capability
 
 This is the v1 LLM-callable tool that let the LLM activate skills by name. In v3, the user says
 "use skill coding" → intent match → Recipe; the LLM never calls `skill_activate`.
@@ -153,7 +156,7 @@ This is the v1 LLM-callable tool that let the LLM activate skills by name. In v3
   the assertion at line 827, the capability-count check at line 624.
 - `factory.rs` tests that reference `SKILL_ACTIVATE_CAPABILITY_ID` (lines 2966, 2988).
 
-### Step 7 — Remove `HostSkillContextSource` trait and its implementations
+### Step 7 — [DONE] Remove `HostSkillContextSource` trait and its implementations
 
 **Files:**
 - `crates/brassclaw_loop_support/src/skill_context.rs`
@@ -222,11 +225,34 @@ with two methods: `list_skill_bundles` and `read_skill_bundle_file`. Both are on
 
 ---
 
+## Blocking dependency for Steps 8–11
+
+**Steps 8–11 cannot proceed until `SkillExecutionAdapter` is removed or kept as a permanent
+first-class feature.** Current status (verified against live code after Step 7):
+
+`SelectableSkillContextSource<S>` STILL holds a `bundle_source: Arc<S>` field and calls
+`S::read_skill_bundle_file` inside `load_activation_candidates`. This is needed by:
+- `select_activation_plan` → `resolve_activation_plan_with_candidates` → `load_activation_candidates`
+- `SkillExecutionAdapter::prepare` calls `select_activation_plan` and `bundle_source()`
+- `runtime.execute_skill_message` (production, `runtime.rs:1134`) calls `SkillExecutionAdapter::prepare`
+
+So `FilesystemSkillBundleSource` is NOT orphaned — it is actively used by the skill execution path.
+Steps 8 (drop generic), 9 (delete `FilesystemSkillBundleSource`), and 11 (remove `SkillBundleSource`
+trait) cannot proceed until `SkillExecutionAdapter` / `execute_skill_message` is either:
+(a) removed (requires a deliberate architectural decision — the VFS-based skill execution path),
+(b) migrated to use a DB-backed source instead of `FilesystemSkillBundleSource`.
+
+Step 10 (`host_skill_context_source()` removal from `FirstPartySkillsExtension`) was already done
+as part of Step 7 prep.
+
 ## Not removed
 
 - `SelectableSkillContextSource::record_user_message` / `peek_message_text` / `clear_accepted_message` → STAYS (feeds `SkillActivationMessageTextResolver`)
 - `SkillActivationMessageTextResolver` in `retrieval_lookup_impl.rs` → STAYS (feeds `InputStage`)
-- `SkillExecutionAdapter` / `execute_skill_message` → STAYS (test-only API for skill-aware CLI, not actively dead yet; mark as `#[cfg(any(test, feature = "test-support"))]` if appropriate)
+- `SkillExecutionAdapter` / `execute_skill_message` → LIVE PRODUCTION (called by `runtime.execute_skill_message`); NOT test-only as originally stated; the whole VFS skill execution path is active — blocks Steps 8–11
+- `bundle_source` field on `SelectableSkillContextSource` → LIVE (used by `SkillExecutionAdapter::prepare` → `load_activation_candidates`)
+- `activate_skills_for_run` on `SelectableSkillContextSource` → test-only now (confirmed: no production caller); marked `#[cfg(test)]` candidates
+- `select_activation_plan` → called by `SkillExecutionAdapter::prepare` (production path)
 - `builtin.skill_list` / `builtin.skill_install` / `builtin.skill_remove` → STAYS (DB-backed skill management tools; exposed to orchestrator as first-class callables; covered by builtin_bootstrap.rs step)
 - `handle_list_skills` in `orchestrator.rs` → STAYS (callable from custom orchestrators even though basic-mode no longer issues it)
 
