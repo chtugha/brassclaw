@@ -15306,7 +15306,7 @@ async fn seed_doc_sync_group(
     // 3. Tool: component_db (builtin.component_db)
     //    The one generic DB Tool — read_hash | read_row | upsert | mark_stale |
     //    compute_hash | extract_section.
-    let _tool_component_db = stores
+    let tool_component_db = stores
         .upsert_tool(tool_component_db_row(&tenant), "component_db")
         .await?;
 
@@ -15436,7 +15436,7 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    let _sk_db_mark_stale = stores
+    let sk_db_mark_stale = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15727,12 +15727,62 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
+    // Step 8 — ExtensionCatalogue (class 23): doc-sync.
+    //
+    // Groups the doc-specific component stack so the orchestrator can load the
+    // full domain at once. The catalogue owns:
+    //   - component_db Tool
+    //   - ts-component-db ToolSkill
+    //   - db-upsert-docus + db-mark-prefix-stale leaf Skills
+    //   - doc-convert-method domain Skill
+    //   - doc-convert Recipe
+    //   - doc-sync Action
+    //
+    // General-purpose leaves (file-list, file-read, hash-compute, hash-compare,
+    // db-read-hash, markdown-section, component-header-render, prompt-compress)
+    // live in their respective domain catalogues (filesystem, management) and
+    // are not duplicated here.
+    let cat_doc_sync = stores
+        .upsert_catalogue(
+            ext_catalogue_row(
+                &tenant,
+                "ext-doc-sync",
+                "Doc-sync domain: the component_db tool, doc-specific leaf Skills, \
+                 the doc-convert Recipe, and the doc-sync Action.",
+                CAT_DOC_SYNC_OVERVIEW,
+                json!([
+                    {"group_name": "doc-hash",     "description": "Hash-based change detection for docs/agents-v3/*.md"},
+                    {"group_name": "doc-convert",  "description": "Extract LLM-summary section + upsert reborn_docus rows"},
+                    {"group_name": "doc-sync",     "description": "Scan all docs and run doc-convert for changed files"},
+                    {"group_name": "prefix-stale", "description": "Mark base-prompt prefix stale after a doc update"}
+                ]),
+            ),
+            "ext-doc-sync",
+        )
+        .await?;
+
+    stores
+        .append_children(
+            cat_doc_sync,
+            &[
+                tool_component_db,
+                ts_component_db,
+                sk_db_upsert_docus,
+                sk_db_mark_stale,
+                sk_doc_convert_method,
+                recipe_id,
+                action_id,
+            ],
+        )
+        .await?;
+
     tracing::debug!(
         action_id = %action_id,
-        "seeded doc-sync group Pass 15+16: 2 PC + 1 Tool + 1 ToolSkill + 10 leaf Skills \
-         + 1 domain Skill + 1 Recipe + 1 Action \
+        cat_doc_sync = %cat_doc_sync,
+        "seeded doc-sync group Pass 15+16+17: 2 PC + 1 Tool + 1 ToolSkill + 10 leaf Skills \
+         + 1 domain Skill + 1 Recipe + 1 Action + 1 ExtensionCatalogue \
          (pc-hash-changed, pc-format-component-header, component_db, ts-component-db, \
-          file-list..db-mark-prefix-stale, doc-convert-method, doc-convert, doc-sync)"
+          file-list..db-mark-prefix-stale, doc-convert-method, doc-convert, doc-sync, ext-doc-sync)"
     );
 
     Ok(())
@@ -15825,6 +15875,41 @@ fn ts_component_db_row(tenant: &str) -> NewPgToolSkill {
         includes: vec![],
     }
 }
+
+// ---------------------------------------------------------------------------
+// Pass 15/17 — doc-sync catalogue overview constant
+// ---------------------------------------------------------------------------
+
+const CAT_DOC_SYNC_OVERVIEW: &str = r#"# ext-doc-sync — Doc-Sync Domain Capability Catalogue
+
+Owns the full component stack for the §0.22 doc-conversion mechanism:
+
+## component_db Tool
+A kernel-boundary DB capability with 6 ops: compute_hash, read_hash, read_row,
+upsert, mark_stale, extract_section. Used by doc-sync leaf Skills and by other
+domain sync recipes. `upsert` always writes `validation_status='pending'`.
+
+## ts-component-db ToolSkill
+Executor binding for builtin.component_db. Provides typed param schema for all
+6 ops. Used in the doc-convert Recipe rust steps.
+
+## doc-specific Leaf Skills
+- db-upsert-docus:       upsert a reborn_docus row (source or converted form)
+- db-mark-prefix-stale:  mark the base-prompt prefix stale after a doc update
+
+## doc-convert-method (Domain Skill)
+Prose orchestration overview of the doc-conversion pipeline: read → extract →
+optionally compress → render header → upsert reborn_docus.
+
+## doc-convert Recipe (Tier 0 + Tier 1 variants)
+- by-extract (Tier 0):      skip LLM compression; deterministic
+- by-llm-compress (Tier 1): include LLM compression step
+
+## doc-sync Action
+Scans docs/agents-v3/*.md, detects changes via SHA-256 comparison, runs
+doc-convert (by-extract) for each changed file, and marks the base-prompt
+prefix stale. Fully deterministic (no LLM calls).
+"#;
 
 // ---------------------------------------------------------------------------
 // Pass 15 — doc-sync PythonCode body constants
