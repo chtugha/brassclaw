@@ -3156,7 +3156,8 @@ day's eligible window). The sweep:
 | `V051__reborn_validation_queue.sql` | **+ `proposed_payload JSONB`** (upgrade copy payload; nullable) alongside the table+indexes already planned. | A.5 |
 | `V055__reborn_dependency_registry.sql` | **+ `formatted_content TEXT`** on all 13 component tables, alongside `dependency_registry JSONB`. File now carries two additive columns. | J.2 |
 | `V056__reborn_basic_prompt_store.sql` (Phase K **single** migration — **folded**) | Phase K's one migration carries **all** Phase K additive DDL: `CREATE TABLE reborn_basic_prompt_store`; **+ component-UUID reference column(s) on the interceptor packet/segment store** (§0.23.7, enables reference-based prompt reassembly — confirm exact shape vs the live `PgInterceptorStore` schema at Phase K); **+ `reborn_monty_vm_settings` validation-improve cols** (`validation_idle_threshold_minutes INT NOT NULL DEFAULT 120`, `validation_improve_start_hour INT NOT NULL DEFAULT 15`, `validation_improve_enabled BOOLEAN NOT NULL DEFAULT true`, §0.23.8). **Not split into `V062`/`V063`** — see the ordering note below. | K |
-| `V061__reborn_validation_queue_q2_actor.sql` (P.0, already noted) | `q2_actor` on the queue for automated-auditable Q2. | P.0 |
+| ~~`V061__reborn_validation_queue_q2_actor.sql`~~ → **`V078__reborn_validation_queue_q2_actor.sql`** (P.0) | `q2_actor TEXT` audit column on `reborn_validation_queue`. Values: `'human'` (Q2 reviewer) or `'builtin'` (bootstrap seeder, exempt from human-Q2 rule). **V061 is taken** — live as `V061__reborn_components_registry.sql` (Phase E). Phase P.0 uses next free number V078. ✅ **Done** — committed `abd69e4f`. | P.0 |
+| **`V079__reborn_recipes_validates_class_code.sql`** (P.0 FIND-P0-01 fix) | `validates_class_code SMALLINT` on `reborn_recipes`. NULL = general-purpose Recipe; non-NULL = validator Recipe for that component class. Fixes `find_validator_recipe` in `q1_orchestrator.rs` which was incorrectly filtering on `class_code` (always 21 by DDL CHECK) instead of this new column. Partial index on `(tenant_id, user_id, agent_id, project_id, validates_class_code) WHERE validates_class_code IS NOT NULL AND validation_status = 'validated'`. ✅ **Done** — committed `abd69e4f`. | P.0 |
 
 > **⚠️ Ordering note — why V062/V063 are folded into V056 (not separate files).**
 > Refinery (`refinery::embed_migrations!`, `runner().run_async()` in
@@ -3164,14 +3165,15 @@ day's eligible window). The sweep:
 > order**, and the embedded Postgres data dir is **persistent across boots**
 > (`brassclaw_embedded_postgres/src/initdb.rs` — `run_initdb` skips silently if the data
 > dir already exists and is non-empty). Phase K runs at sort_order 12, **before** Phases
-> L–P.0 (sort_order 13–17) which own `V057`–`V061`. A separate `V062`/`V063` landing in
-> Phase K would be applied before `V057`–`V061` even exist; when those lower-numbered
-> migrations are later added, refinery would silently skip them (its "apply everything
-> after the current max applied version" step sees `V062`/`V063` as the max, never
-> reaching `V057`–`V061`) — a silent data-loss hazard on every persistent DB. Folding
-> all Phase K additive DDL into the single `V056` keeps migration numbers strictly
-> ascending with phase execution order. `V061` (Phase P.0, sort_order 17) stays separate
-> — it is numerically after `V060` (Phase O, sort_order 16), so it is in order.
+> L–P.0 (sort_order 13–17) which **in the original plan** owned `V057`–`V061`. However,
+> migration numbers have diverged significantly from the original plan as phases were
+> implemented: **V055–V077 are all live on disk** today (V055 = dependency_registry,
+> V056 = (unused — V063 = basic_prompt_store was used), V060 = Phase O, V061 =
+> components_registry, V077 = validation_queue_populate). Phase K's single migration
+> landed as `V063__reborn_basic_prompt_store.sql`. The ordering rule still applies
+> forward: Phase P.0 uses **V078** (one after V077), and future phases use V079+.
+> The original folding rationale for V056 remains correct in principle; the concrete
+> migration numbers referenced in that rationale are now historically superseded.
 
 No new component class code is introduced (the validation-system components reuse
 existing classes: Extensions 4–9, Recipes 21, Skills 1–3, ToolSkills 13, Tools 0,
@@ -3187,9 +3189,9 @@ component references** (§0.23.7), not a new class.
 | Sempai auto-creates all types; `SempaiReviewOutcome` + `SempaiProposalSink` generalised; WebUI save → queue (no direct write) | **Phase K** (interceptor) | K: generalise the proposal sink + outcome to all classes; route WebUI saves to the queue (new components `'pending'`; edits → copy + `proposed_payload`). |
 | Kohai prompt store: component-UUID refs + 6-week retention | **Phase K** (interceptor) | K: extend `PgInterceptorStore`/`PromptSegment` with component UUIDs (additive ALTER folded into `V056`, not a separate `V062` — see §0.23.10 ordering note); add the 6-week retention sweep. |
 | Idle self-improvement sweep (≥2h idle + after 15:00, once/day) | **Phase K** (interceptor) | K: in-process background task + `reborn_monty_vm_settings` config cols; reassemble → Sempai → Q1. |
-| Trusted-root validation system (Extensions + Recipes + formatters per class) | **Phase L** (builtin seeder) | L: seeds the validation-system trusted root alongside the builtin-tool stack (all via automated-auditable Q2, no bypass). |
+| Trusted-root validation system (Extensions + Recipes + formatters per class) | **Phase L** (builtin seeder) | L: seeds the validation-system trusted root alongside the builtin-tool stack. These are builtin components — they insert as `validated` directly (exempt from human-Q2). Phase P.0 adds the `'builtin'` audit record to the queue alongside them. |
 | Orchestrated Q1 (`q1_orchestrator.rs`, sandboxed agent-loop run, state-2 invariant); retire `ComponentValidator` | **Phase N** (validation queue) | N: implements orchestrated Q1, removes `component_validator.rs`, wires graduation for new + upgrade-copy (§0.23.5). |
-| Automated-auditable Q2 actor recording | **Phase P.0** | P.0: V061 `q2_actor`; the seeder/automation is the recorded Q2 actor for builtins incl. validation-system trusted root. |
+| `q2_actor` audit column — `'human'` vs `'builtin'` | **Phase P.0** | P.0: **V078** `q2_actor TEXT` (V061 is live as `reborn_components_registry`; V078 is next free after V077/Phase N). Q2 is **manual, human-only** for non-builtins. Builtins are exempt; their graduation records `'builtin'` as audit label. No `'auto-system'` value exists. |
 
 > **Net effect on the phase list:** no new phases are appended. Phases A.5, J.2, K,
 > L, N, P.0 each absorb the items above. Phase A is unaffected except for the
@@ -7705,6 +7707,24 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 > `PgSempaiProposalSink` inserts into the correct class table (class→table dispatch);
 > route WebUI saves to the queue with **no direct production write** (new → `'pending'`
 > + queue row; edit of validated → copy + `proposed_payload`, live row stays validated).
+>
+> **⚠️ Phase K gap — RESOLVED (ahead of Phase K):** The two non-builtin save paths
+> that previously called bare `insert`/`upsert` without submitting to the queue have
+> been fixed:
+> - **`sempai_proposal_sink.rs`** now calls `PgRecipeStore::create_and_submit` and
+>   `PgPythonCodeStore::create_and_submit` — every Sempai proposal (class 21 and 22)
+>   gets a queue row at state 1 immediately on insert. `PgSempaiProposalSink` holds a
+>   `ValidationQueueStore` constructed from the same pool.
+> - **`docplan_dissector.rs`** now calls `PgRecipeStore::upsert_and_submit` — DocPlan
+>   dissector rows (class 21) are submitted to the queue (idempotent: `AlreadyQueued`
+>   is silently ignored). `DocPlanDissector::new` takes a `ValidationQueueStore` arg.
+> - **`PgRecipeStore`** gained `create_and_submit` (insert + submit) and
+>   `upsert_and_submit` (upsert + submit with AlreadyQueued tolerance) + a `Queue`
+>   error variant. `ComponentScope` and `ValidationQueueStore` imported.
+> - `boot_integrity.rs` continues to catch any row that still slips through (crash
+>   recovery etc.) and auto-submits it at state 1.
+> - The remaining WebUI manual-authoring routes for all classes land in Phase K as
+>   originally planned (§0.23.6) — no other non-builtin insert path exists today.
 > (2) **Kohai prompt store** — extend `PgInterceptorStore`/`PromptSegment` to capture
 > **component UUID references** (additive ALTER **folded into `V056`**, not a separate
 > `V062` — confirm vs live schema; see §0.23.10 ordering note for the refinery
@@ -8535,7 +8555,7 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 
 ### Phase L — Builtin Tool Bootstrap Seeder
 
-**Status:** [x] Complete — `builtin_bootstrap.rs` seeds all 5 domain groups (filesystem → network → memory → process → management): 378 components total (23 Tools, 30 ToolSkills, 83 PythonCode, 108 Skills [99 leaf + 9 domain], 110 Recipes, 24 ExtensionCatalogues) — the plan's 319 target plus variants/helpers/gap-fillers identified during transcription; L.1 via V066 + V071; wired into boot via `webui.rs`; integration test `tests/builtin_bootstrap_seed.rs` (row counts + idempotency + safety-content guards: `ts-spawn-subagent` "scope isolation" + `skill-shell-safe-check` "approval"). Seeder commits through `fe2c7a48`. The §0.23.3 trusted-root validation-system fold-in is deliberately deferred to land right before Phase N's orchestrated Q1 (§0.23.9) and is not part of L.0–L.3.
+**Status:** [x] Complete — `builtin_bootstrap.rs` seeds all 6 domain groups (filesystem → network → memory → process → management → host) + **Pass 7 validator trusted-root (Phase L §0.23.3 — done in Phase P.0 implementation)**: 396 components total (23 Tools, 30 ToolSkills, 92 PythonCode [84 tool executors + 8 validator PythonCodes], 108 Skills [99 leaf + 9 domain], 119 Recipes [111 domain + 8 validator], 24 ExtensionCatalogues) — the plan's 319 target plus variants/helpers/gap-fillers plus the §0.23.3 validator trusted-root. L.1 via V066 + V071; wired into boot via `webui.rs`; integration test `tests/builtin_bootstrap_seed.rs` (row counts + idempotency + safety-content guards). The §0.23.3 trusted-root validation-system fold-in **is now done** — `seed_validator_recipes()` (Pass 7) seeds one Tier-0 structural validator Recipe + PythonCode per class (0, 1, 2, 3, 13, 21, 22, 23) with `validates_class_code = Some(N)`, `consumer_tags = ["05:validator"]`, `validation_status = "validated"`, `tier = "mature"`, `wilson_lower = 1.0`. Committed `eb304bd1`.
 
 > **§0.23.3 + §0.23.9 fold-in:** Phase L also seeds the **trusted-root validation
 > system** alongside the builtin-tool stack: one pre-trusted Extension per class +
@@ -9626,52 +9646,141 @@ USD budgets remain enforced as backstops and are **not** affected by this
 switch (§0.21). The toggle is operator-only and logged. Out of scope: any
 change to time/USD budgets.
 
-### Phase P.0 — Validation-system extension: automated-but-auditable Q2 (prerequisite for Phase P; Answer 2)
+### Phase P.0 — Validation-system extension: builtin graduation audit trail (prerequisite for Phase P; Answer 2)
 
-**Status:** [ ] Pending
+**Status:** [x] Complete
 
-> **§0.23.9 + §0.23.10 fold-in:** Phase P.0's automated-but-auditable Q2 (V061
-> `q2_actor`) also graduates the **Phase-L validation-system trusted-root
-> components** — the seeder/automation is the recorded Q2 actor for every
-> `source='system'` component, whether a builtin tool or a validation-system
-> Extension/Recipe/formatter. No `source='system'` component bypasses Q1+Q2.
+> **§0.23.9 + §0.23.10 fold-in:** Phase P.0 adds the V078 `q2_actor` audit column
+> so that builtin graduations via the bootstrap seeder are recorded with actor
+> `'builtin'` — distinguishable from human Q2 approvals (`'human'`). The no-bypass
+> invariant for Q2 applies only to **non-builtin** components; builtins are exempt
+> (see §0.16 / FIND-N-02 / AGENTS.md Validation queue row).
+>
+> **⚠️ Migration-gap note:** V061 is taken (live as `V061__reborn_components_registry.sql`,
+> Phase E). The Phase N populate migration landed as **V077** (not V059 as the plan
+> originally said — see Phase N FIND-N-05). Phase P.0's `q2_actor` migration must
+> therefore be **V078** (the next free number after V077).
 
-**Goal:** So that system-authored/builtin components — including the
-doc-conversion mechanism's own artifacts (§0.22) and its converted docs —
-graduate through Q1+Q2 with **no silent bypass** (Answer 2: "Nothing ever
-bypasses the Q1+Q2 system"). This **revises §0.16 / Phase L**, which currently
-let builtins skip the queue (Open Question #8 — now superseded by Answer 2),
-and unblocks Phase P's no-bypass stance.
+**Goal:** Add an auditable record that distinguishes builtin-seeder graduations from
+human Q2 approvals in the queue lifecycle. Builtins (`source='system'`, seeded by
+`builtin_bootstrap.rs`) are **exempt from the Q2-is-human-only rule** — they are
+pre-trusted system components that insert as `validated` directly (FIND-N-02). Phase P.0
+does not remove that exemption. What it adds is: when a builtin goes through the
+queue path (which the seeder now does for auditing), the resulting queue row records
+`q2_actor = 'builtin'` so operators can tell the difference between a builtin-seeded
+graduation and a human-reviewed graduation in the WebUI queue tab.
 
-**What changes.** Every component — including `source='system'` builtin seeds
-— enters `reborn_validation_queue` at `validation_status='pending'`, runs Q1
-(Gate 1, `component_validator.rs`), and then a **recorded Q2 graduation**
-(automated for system-authored: the seeder/automation is the Q2 *actor*,
-recorded in the queue, never a silent skip). No code path writes `validated`
-without a queue graduation record. `source` is provenance only and never gates
-validation.
+> **⚠️ Design rule:** Q2 is **manual, human-only** for all non-builtin components.
+> `approve()` must never be called automatically for user-authored or Sempai-authored
+> components. Those components must sit at state 2 (Q1 passed) until a human clicks
+> approve in the WebUI. The `'builtin'` actor value is an **audit label for the exempt
+> class only** — it is not a generic mechanism for automated Q2 graduation.
 
-**Migration (TBD by subplan):** possibly one small additive column on
-`reborn_validation_queue` (V051) to record the Q2 actor type
-(`auto-system` vs `human`) so automated graduations are auditable/distinct.
-To be confirmed against V051's actual columns when the subplan is written —
-not invented here.
+**Current state (ground-truth against live code — Phase P.0 Steps 1–4 done):**
 
-**Files (indicative):** `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs`
-(the cross-crate Q1 orchestration — FIND-P9-01), the Phase L
-`builtin_bootstrap.rs` seeder (must enqueue + record Q2, **not** insert
-`validated` directly), `ValidationQueueStore` (the automated-Q2 graduation
-method), and the WebUI validation-queue tab (surface auto vs human Q2 actor).
+- `reborn_validation_queue` (V051) is **live**. The table is fully populated (V077/Phase N).
+  The `proposed_payload JSONB` column (§0.23.5) is present.
+- **V078 done** (`q2_actor TEXT` on `reborn_validation_queue`): `ValidationQueueStore::approve`
+  now takes `q2_actor: Option<&str>`, records it before deletion. `QueueRow`/`ValidationQueueItem`
+  carry `q2_actor: Option<String>`. Committed `abd69e4f`.
+- **V079 done** (`validates_class_code SMALLINT` on `reborn_recipes`): `PgRecipe`/`NewPgRecipe`
+  carry `validates_class_code: Option<i16>`. `RECIPE_SELECT` now 30 columns. `find_validator_recipe`
+  now filters `validates_class_code = $5` (FIND-P0-01 fix). Committed `abd69e4f`.
+- **Phase L §0.23.3 validator seeding done** (`seed_validator_recipes()`, Pass 7):
+  8 validator PythonCodes + 8 validator Recipes seeded (classes 0, 1, 2, 3, 13, 21, 22, 23),
+  each with `validates_class_code = Some(N)`, `consumer_tags = ["05:validator"]`,
+  `validation_status = "validated"`, `tier = "mature"`, `wilson_lower = 1.0`.
+  `find_validator_recipe` will now return a Recipe for all seeded classes. Committed `eb304bd1`.
+- `builtin_bootstrap.rs` inserts builtins with `source="system"` + `validation_status=
+  "validated"` directly. `audit_builtin_graduation()` records `q2_actor='builtin'` in the
+  queue for each new insert. Committed `abd69e4f`.
+- **Remaining:** Step 5 (sandboxed runner wiring in `run_q1_validation`) — the
+  `// TODO(Phase P.0)` stub is still present. When a Recipe IS found the function
+  still returns `Deferred` because the Monty executor is not yet called. Step 5 is
+  the next task. WebUI queue-tab `q2_actor` surface (step 5b) also pending.
 
-**Depends on:** V051 (Phase A.5 — queue table).
+**What changes.**
+
+1. **V078 migration** — add `q2_actor` column to `reborn_validation_queue`:
+   ```sql
+   ALTER TABLE reborn_validation_queue
+       ADD COLUMN IF NOT EXISTS q2_actor TEXT;
+   -- NULL = awaiting Q2. 'human' = approved by a human operator via the WebUI.
+   -- 'builtin' = graduation recorded by the bootstrap seeder (builtins are exempt
+   --             from human-Q2; this is an audit label only, not a policy bypass).
+   ```
+   Additive only. Existing rows have `q2_actor = NULL`.
+
+2. **`ValidationQueueStore::approve` upgrade** — extend the method signature to accept
+   `q2_actor: Option<&str>`. Record it in the queue row before deleting it so the audit
+   trail is committed atomically with the graduation transaction. The WebUI handler passes
+   `Some("human")`; the builtin seeder passes `Some("builtin")`. No other callers should
+   ever pass any other value — enforce this at the application layer, not the DB layer
+   (TEXT is flexible enough for future audit categories).
+
+3. **`builtin_bootstrap.rs` audit-path addition** — alongside the existing direct
+   `validation_status="validated"` insert, add the queue path for audit:
+   (a) call `ValidationQueueStore::submit` after insert,
+   (b) call `run_q1_validation` (graceful-defer is fine — builtins are pre-trusted),
+   (c) call `ValidationQueueStore::approve` with `q2_actor = Some("builtin")`.
+   The existing direct `validated` insert can remain as the primary path; the queue
+   path records the audit trail. For components that already exist as `validated`
+   in the DB (idempotent re-runs), skip the queue path entirely.
+
+4. **`q1_orchestrator.rs` sandboxed runner** — wire the `// TODO(Phase P.0)` stub.
+   The sandboxed orchestrator path using `sandbox_process` / `services/process_executor`
+   must be invoked. Until validation Recipes are seeded (Phase L), the graceful-defer
+   path is the correct runtime behaviour — this wiring is the prerequisite so the runner
+   is **ready** when Recipes appear. The `run_q1_validation` signature is already correct;
+   only step 4's body needs to be filled in.
+
+5. **WebUI validation-queue tab** — surface `q2_actor` on queue list rows so operators
+   can see `'human'` vs `'builtin'` in the queue history.
+
+**Migration:** `V078__reborn_validation_queue_q2_actor.sql` (next free after V077/Phase N).
+
+**Files (indicative):**
+- `crates/brassclaw_pg/migrations/V078__reborn_validation_queue_q2_actor.sql` — new file (additive ALTER).
+- `crates/brassclaw_reborn_composition/src/validation_queue.rs` — extend `QueueRow` with
+  `q2_actor: Option<String>`; extend `approve` to accept + record the actor before
+  deletion; update `list` SELECT to include `q2_actor`; update `decode_queue_row` index map.
+- `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` — add the queue audit
+  path alongside the existing direct insert: submit → Q1 (defer) → `approve("builtin")`.
+  The direct `validated` insert is not removed — builtins are exempt.
+- `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs` — fill in the
+  `// TODO(Phase P.0)` sandboxed runner invocation (step 4 in `run_q1_validation`).
+- `crates/brassclaw_webui_v2_static/` — surface `q2_actor` in the validation-queue UI tab.
+
+**Depends on:** V051 (Phase A.5 — queue table ✅ done), Phase N (✅ done — V077, orchestrated
+Q1 infrastructure, `q1_orchestrator.rs` rewrite, `ComponentValidator` retired).
+
+**Implemented:**
+- `crates/brassclaw_pg/migrations/V078__reborn_validation_queue_q2_actor.sql` — additive `ALTER TABLE`.
+- `validation_queue.rs` — `QueueRow::q2_actor: Option<String>` added; `approve()` signature
+  extended to `approve(scope, component_id, q2_actor: Option<&str>)`; `q2_actor` recorded in
+  the queue row before deletion; `list()` SELECT extended to include `q2_actor` (index 10);
+  `decode_queue_row` updated; all test callers updated to pass `Some("human")` or `None`.
+- `builtin_bootstrap.rs` — `BootstrapStores::queue: ValidationQueueStore` added;
+  `audit_builtin_graduation(component_id, class_code, name)` helper added (submit → gate1_pass
+  → approve("builtin"), all errors non-fatal debug-logged); called from every `upsert_*` method
+  on the new-insert path only (re-runs skip via early-return).
+- `q1_orchestrator.rs` — TODO comment cleaned up; deferred-return flow clarified.
+- `brassclaw_product_workflow/src/recipes.rs` — `ValidationQueueItem::q2_actor: Option<String>` added.
+- `pg_recipe_store.rs` — `recipe_to_queue_item` extended with `q2_actor` param + field;
+  SQL query extended to SELECT `q.q2_actor AS q_q2_actor` (index 33); row decode updated.
 
 **Tests:**
-- Unit: a system-authored component submitted → Q1 passes → automated Q2
-  graduation recorded (actor=`auto-system`) → row `validation_status='validated'`.
-- Unit/security: no code path inserts `validation_status='validated'` without a
-  queue graduation record (grep-enforced + a store-level guard).
-- Integration: the Phase L builtin bootstrap seeds a builtin Tool through the
-  queue and it graduates (no direct `validated` insert).
+- Unit: a builtin component submitted through the queue path → Q1 deferred → `approve`
+  called with `q2_actor="builtin"` → queue row deleted with `q2_actor='builtin'` recorded,
+  `validation_status='validated'`.
+- Unit: the WebUI `approve` call passes `q2_actor="human"` — confirmed at the call site.
+- Unit/security: `approve()` is **never** called automatically for non-builtin components
+  (grep-enforced: the only caller of `approve` with a non-human actor is `builtin_bootstrap.rs`).
+- Unit: `QueueRow.q2_actor` is `None` on submit; `Some("builtin")` after builtin graduation;
+  `Some("human")` after human Q2 approval.
+- Integration: the Phase L builtin bootstrap adds a queue audit row → `approve("builtin")`
+  → queue row deleted + `validation_status='validated'` on component row.
+- Integration: `list` returns `q2_actor` on queue rows (NULL while pending).
 
 ### Phase P.1 — Migrate on-disk system skills to DB rows through Q1+Q2 (prerequisite for Phase P; audit finding)
 
@@ -9694,15 +9803,27 @@ pre-v3 filesystem-skill paths that both need removal:
    `embedded_reborn_skill_bundles.json`). At runtime,
    `ensure_bundled_reborn_skills_installed()` installs those blobs onto the virtual
    filesystem under `/projects/system/skills/` with a content-hash marker file for
-   idempotent re-install and stale-removal. **This path is already inert:** the
-   `skills/` source tree was deleted in Phase 6 and `archive/skills-v1/` is absent,
-   so `build.rs` emits empty JSON arrays (`[]`) today. The entire path is also gated
-   by the `skills-db` Cargo feature (`brassclaw_reborn_composition/Cargo.toml`) —
-   when that feature is active the build emits empty arrays and the module is
-   cfg-gated out. Phase P.1 **deletes** `embed_reborn_skills()` from `build.rs`,
-   the two `include_str!()` blobs, and `ensure_bundled_reborn_skills_installed()` /
-   its callers (or reduces them to a no-op stub while unwinding call sites
-   separately). **Do this first** since it is already a no-op and removal is safe.
+   idempotent re-install and stale-removal. **This path is active:** the `skills/`
+   directory **still exists** (as of Phase 6 audit re-check) with 9 non-empty
+   `SKILL.md` files (`code-review`, `coding`, `commit`, `github`, `plan-mode`,
+   `portfolio`, `qa-review`, `security-review`, `web-browse`), so `embed_reborn_skills()`
+   compiles real content into the blobs today. The `skills-db` Cargo feature
+   (`brassclaw_reborn_composition/Cargo.toml`) gates the module out when active,
+   and the build then emits empty arrays — but `skills-db` is **not** in the default
+   feature set of `brassclaw_reborn_cli` or the workspace root binary, so
+   `bundled_skills` compiles and installs skills in a normal production build.
+   **Important:** these 9 skills are **domain/workflow skills**, not the same as the
+   407-component tool-capability stack in `builtin_stuff_v3.md` (Steps 1–27 cover
+   `builtin.shell`, `read_file`, `http`, etc. — first-party tool stacks only).
+   `code-review`, `plan-mode`, `portfolio`, `qa-review`, `security-review`, and
+   `web-browse` do not appear anywhere in `builtin_stuff_v3.md`. Several of these
+   `SKILL.md` files also reference v1 concepts (`MemoryDocs`, `Missions`, v1 skill
+   install/list APIs) that do not exist in v3 — they cannot be transplanted verbatim.
+   Phase P.1 must **first** re-author these 9 skills as v3 domain Skill rows
+   (class 2/3) that reference v3 tools/recipes and pass Q1+Q2 via Phase P.0
+   (so `bundled_skills.rs` becomes redundant), **then** delete `embed_reborn_skills()`
+   from `build.rs`, the two `include_str!()` blobs, and
+   `ensure_bundled_reborn_skills_installed()` / its callers.
 
 2. **`management.rs` `SkillSource::System`** (`crates/brassclaw_skills/src/management.rs`) —
    a *skills-subsystem* loader. `SYSTEM_SKILLS_ROOT="/system/skills"` (`:34`) is
@@ -9711,16 +9832,34 @@ pre-v3 filesystem-skill paths that both need removal:
    the **active** validation bypass. Remove this second, after the skills are
    migrated to DB rows via the Phase P.0 path.
 
-**Pre-flight check.** Before deleting `bundled_skills.rs`, confirm
-`embed_reborn_skills()` already emits `[]` (grep for `skills/` directory
-absence; run `cargo build -p brassclaw_reborn_composition` and inspect
-`$OUT_DIR/embedded_reborn_skill_bundles.json`). The `skills-db` feature can
-be used as an immediate kill-switch without code deletion if needed.
+**Pre-flight check.** Before deleting `bundled_skills.rs`, v3 replacements
+for the 9 domain/workflow skills must exist as validated `reborn_skills` DB
+rows so the bundle is redundant, not the sole source. Confirm by:
+(1) verifying that v3 Skill rows exist for `code-review`, `coding`, `commit`,
+`github`, `plan-mode`, `portfolio`, `qa-review`, `security-review`, `web-browse`
+in the `reborn_skills` table with `validation_status = 'validated'`; (2) these
+skill rows are seeded either through `builtin_bootstrap.rs` (for skills
+considered first-party system skills) or through Q1+Q2 (for user-authored or
+Sempai-authored skills); (3) build with `--features skills-db` and confirm
+`$OUT_DIR/embedded_reborn_skill_bundles.json` is `[]` before deletion; (4) once
+DB rows cover all 9, enabling `skills-db` in the CLI default features acts as an
+immediate kill-switch without code deletion. The `ibm_bob` and `sempai` entries
+have zero-byte `SKILL.md` files and are already a no-op.
 
 **What changes.**
 
-*Step A — `bundled_skills.rs` removal (already inert):*
-Remove `embed_reborn_skills()` and the `println!("cargo:rerun-if-changed=…")`
+*Step A — `bundled_skills.rs` removal (prerequisite: v3 DB rows cover all 9 skills):*
+Re-author the 9 domain/workflow skills as v3 Skill rows (class 2/3). These are
+**not tool-capability stacks** (those are in `builtin_stuff_v3.md` Steps 1–27).
+They are narrative domain skills describing workflows: `code-review` (diff analysis
++ PR comment pattern), `coding` (file-edit / search best practices), `commit`
+(git commit message generation), `github` (HTTP-based GitHub API integration),
+`plan-mode` (structured task planning using v3 memory tools), `portfolio`
+(DeFi discovery and rebalancing), `qa-review` (test-coverage analysis), `security-review`
+(OWASP/auth/secrets audit), `web-browse` (Playwright MCP browser interaction).
+Each must be rewritten from scratch to reference v3 tools and recipes (not v1
+`MemoryDocs`/`Missions` concepts). Once all 9 have `validation_status = 'validated'`
+rows in `reborn_skills`, remove `embed_reborn_skills()` and the `println!("cargo:rerun-if-changed=…")`
 for `skills_dir`/`archive_skills_dir` from `build.rs`. Delete
 `crates/brassclaw_reborn_composition/src/bundled_skills.rs` and its
 `mod bundled_skills` declaration in `lib.rs`. Remove all call sites of
@@ -9895,9 +10034,9 @@ gates cover MCP-driven calls (verify-only).
 | `V058__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (**was V057** before Decision 2; see §0.17.2) | |
 | `V059__reborn_validation_queue_populate.sql` | **Phase N only:** populate `reborn_validation_queue` from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop `queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/`validation_errors` from all 13 component tables. `CREATE TABLE` is in V051. (**was V058** before Decision 2) | |
 | `V060__reborn_monty_vm_settings_token_budgets_enabled.sql` | **Phase O (§0.21 — user item, Answer 5):** `ALTER TABLE reborn_monty_vm_settings ADD COLUMN token_budgets_enabled BOOLEAN NOT NULL DEFAULT true;` — the global token-budget kill switch. Additive only; existing rows backfill to `true` (today's behaviour). Independent of Phases A–N; shippable in any order after V034 exists (it already does, live). | |
-| `V061__reborn_validation_queue_q2_actor.sql` | **Phase P.0 (§0.23.10):** `ALTER TABLE reborn_validation_queue ADD COLUMN q2_actor TEXT;` — records the automated-but-auditable Q2 actor for `source='system'` graduation (builtins + validation-system trusted root). Additive, nullable. Already tentatively noted under Phase P.0. | |
+| ~~`V061__reborn_validation_queue_q2_actor.sql`~~ → **`V078__reborn_validation_queue_q2_actor.sql`** | **Phase P.0:** `ALTER TABLE reborn_validation_queue ADD COLUMN q2_actor TEXT;` — audit label: `'human'` (operator approved via WebUI) or `'builtin'` (bootstrap seeder, exempt from human-Q2). Q2 is manual and human-only for all non-builtin components — no automated Q2 graduation exists. **V061 is taken** (live as `V061__reborn_components_registry.sql`, Phase E). Phase P.0 uses **V078**. | |
 
-All additive-first. No DROP, no renames. No existing rows break. V059 is the only migration with DROP statements — all others (including V060–V061) are additive. (The §0.23.7/§0.23.8 Phase K additive DDL — interceptor packet component-UUID refs + `reborn_monty_vm_settings` validation-improve cols — is **folded into `V056`**, not separate `V062`/`V063` files; see the `V056` row above and §0.23.10 ordering note.)
+All additive-first. No DROP, no renames. No existing rows break. V077 is the only planned migration with DROP statements (legacy columns from `reborn_recipes`). All others (including V060, V078) are additive. (The §0.23.7/§0.23.8 Phase K additive DDL — interceptor packet component-UUID refs + `reborn_monty_vm_settings` validation-improve cols — is **folded into `V056`**, not separate `V062`/`V063` files; see the `V056` row above and §0.23.10 ordering note.) **Note:** the migration sequence in this table reflects the *original planned* ordering; actual live migration numbers are V000–V077 as of Phase N completion — see Phase N FIND-N-05 for the renumber history.
 
 > **Phase P (§0.22 — doc-conversion) adds NO migration.** It reuses the
 > already-live `V040__reborn_docus` (Docu table — has `content_hash` + lineage
@@ -9908,11 +10047,11 @@ All additive-first. No DROP, no renames. No existing rows break. V059 is the onl
 > are created by their own not-yet-implemented prerequisite phases
 > (A.5 / B / C / K.1).** The only host-Rust edits are the step-1
 > `COMPONENT_TABLES`/`class_label` const (no migration) and the step-3
-> `component_db` Tool. **Phase P.0** (validation-system extension) may add one
-> small additive column to `reborn_validation_queue` (V051) to record the Q2
-> actor type — to be confirmed by the P.0 subplan against V051's actual columns;
-> if needed it would be `V061__reborn_validation_queue_q2_actor.sql` (additive
-> only). **Phase P.1** (on-disk system-skills migration) adds no migration.
+> `component_db` Tool. **Phase P.0** (validation-system extension) adds one
+> small additive column to `reborn_validation_queue` to record the Q2 actor type:
+> **`V078__reborn_validation_queue_q2_actor.sql`** (additive only — V061 is taken
+> by `reborn_components_registry`; V078 is the next free number after V077/Phase N).
+> **Phase P.1** (on-disk system-skills migration) adds no migration.
 
 > **✅ Review note (pre-v3 audit) — §2 ordering hazard (validation queue vs. new classes
 > 22/23) — RESOLVED (Decision 2: queue table split into V051 + V059):** The original
