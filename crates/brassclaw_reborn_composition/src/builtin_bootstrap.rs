@@ -373,6 +373,91 @@ impl BootstrapStores {
             .map_err(map)
     }
 
+    /// Insert-or-recover an Action id (class 16). There is no `PgActionStore`,
+    /// so this method uses raw SQL against `self.pool`.  The Action row is
+    /// inserted with `source = 'system'` and `validation_status = 'validated'`
+    /// (builtins bypass Q1).  On conflict the existing `id` is returned via a
+    /// follow-up `SELECT`.
+    ///
+    /// # Parameters
+    ///
+    /// - `name`        — unique within the seed scope (must match the `name` CHECK)
+    /// - `description` — 1–1024 char description
+    /// - `steps`       — JSONB array of step descriptors (13 step types from V029)
+    /// - `allowed_tools` — list of tool names permitted in `tool_call` steps
+    /// - `intent_examples` — JSONB array of `{input, class}` objects
+    async fn upsert_action(
+        &self,
+        name: &str,
+        description: &str,
+        steps: &Value,
+        allowed_tools: &[&str],
+        intent_examples: &Value,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Pool { reason: e.to_string() })?;
+
+        let id = Uuid::new_v4();
+        let tools: Vec<String> = allowed_tools.iter().map(|s| s.to_string()).collect();
+
+        // Attempt insert. ON-CONFLICT DO NOTHING means `rows_modified = 0` on
+        // a duplicate — we then fall through to the SELECT.
+        let inserted = client
+            .execute(
+                "INSERT INTO reborn_actions \
+                     (id, tenant_id, user_id, agent_id, project_id, \
+                      name, description, steps, allowed_tools, \
+                      intent_examples, source, validation_status, \
+                      consumer_tags) \
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'system','validated', \
+                         ARRAY['02:orchestrator']::text[]) \
+                 ON CONFLICT (tenant_id, user_id, agent_id, project_id, name) \
+                 DO NOTHING",
+                &[
+                    &id,
+                    &self.tenant,
+                    &SEED_USER,
+                    &SEED_AGENT,
+                    &SEED_PROJECT,
+                    &name,
+                    &description,
+                    steps,
+                    &tools,
+                    intent_examples,
+                ],
+            )
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Db { reason: e.to_string() })?;
+
+        if inserted == 1 {
+            // New row — record builtin audit graduation.
+            self.audit_builtin_graduation(id, 16, name).await;
+            return Ok(id);
+        }
+
+        // Row already existed — recover the id.
+        let row = client
+            .query_one(
+                "SELECT id FROM reborn_actions \
+                 WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 \
+                 AND project_id=$4 AND name=$5",
+                &[
+                    &self.tenant,
+                    &SEED_USER,
+                    &SEED_AGENT,
+                    &SEED_PROJECT,
+                    &name,
+                ],
+            )
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Db { reason: e.to_string() })?;
+
+        Ok(row.get(0))
+    }
+
     /// Mark a seeded recipe row as Tier-0 eligible. `NewPgRecipe` cannot set
     /// `reborn_recipes.tier` / `wilson_lower`, so a freshly inserted builtin
     /// defaults to `seedling` / `0.0` and `compose_with_pool`'s gate
@@ -15531,11 +15616,123 @@ async fn seed_doc_sync_group(
     // insert defaults (seedling / wilson_lower=0.0 → llm_call_required=true).
     stores.mark_recipe_tier0(recipe_id).await?;
 
+    // Step 7 — Action (class 16): doc-sync.
+    //
+    // Deterministic orchestration loop:
+    //   Step 1  tool_call:    glob docs/agents-v3/*.md → file list
+    //   Step 2  loop over files:
+    //     Step 2a tool_call:  read_file path={{item}} → source text
+    //     Step 2b call_skill: hash-compute → content_hash
+    //     Step 2c call_skill: db-read-hash → stored_hash
+    //     Step 2d call_skill: hash-compare → changed?
+    //     Step 2e conditional: if changed → call_action doc-convert variant=by-extract
+    //     Step 2f conditional: if changed → call_skill db-mark-prefix-stale
+    //   Step 3  return {scanned, changed}
+    //
+    // The Action is Tier 0 (zero LLM calls) and seeded `validated` directly.
+    // `allowed_tools` covers the two first-party tools the loop dispatches.
+    let action_steps = json!([
+        {
+            "step_type": "tool_call",
+            "tool":      "builtin.glob",
+            "params":    {"pattern": "docs/agents-v3/*.md"},
+            "output_var": "file_list"
+        },
+        {
+            "step_type": "loop",
+            "over":      "{{file_list}}",
+            "item_var":  "item",
+            "steps": [
+                {
+                    "step_type":  "tool_call",
+                    "tool":       "builtin.read_file",
+                    "params":     {"path": "{{item}}"},
+                    "output_var": "source_text"
+                },
+                {
+                    "step_type":  "call_skill",
+                    "skill":      "hash-compute",
+                    "params":     {"text": "{{source_text}}"},
+                    "output_var": "new_hash"
+                },
+                {
+                    "step_type":  "call_skill",
+                    "skill":      "db-read-hash",
+                    "params":     {
+                        "op":    "read_hash",
+                        "scope": {"user_id": "{{scope.user_id}}", "project_id": "{{scope.project_id}}"},
+                        "name":  "agents-v3::{{item}}"
+                    },
+                    "output_var": "stored_hash"
+                },
+                {
+                    "step_type":  "call_skill",
+                    "skill":      "hash-compare",
+                    "params":     {"stored_hash": "{{stored_hash}}", "new_hash": "{{new_hash}}"},
+                    "output_var": "changed"
+                },
+                {
+                    "step_type": "conditional",
+                    "condition": "{{changed}}",
+                    "then": [
+                        {
+                            "step_type":  "call_action",
+                            "action":     "doc-convert",
+                            "variant":    "by-extract",
+                            "params":     {"path": "{{item}}", "source_text": "{{source_text}}"}
+                        }
+                    ]
+                },
+                {
+                    "step_type": "conditional",
+                    "condition": "{{changed}}",
+                    "then": [
+                        {
+                            "step_type": "call_skill",
+                            "skill":     "db-mark-prefix-stale",
+                            "params":    {}
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "step_type": "return",
+            "value":     {"scanned": "{{loop.iteration_count}}", "changed": "{{loop.match_count}}"}
+        }
+    ]);
+
+    let action_intent_examples = json!([
+        {"input": "sync all agent docs", "class": "16"},
+        {"input": "refresh docs/agents-v3 in reborn_docus", "class": "16"},
+        {"input": "check if agent docs have changed and update", "class": "16"},
+        {"input": "run doc-sync", "class": "16"},
+        {"input": "scan docs/agents-v3 for changes", "class": "16"},
+        {"input": "update base-prompt with latest agent docs", "class": "16"},
+        {"input": "doc sync action", "class": "16"},
+        {"input": "synchronize documentation store", "class": "16"},
+        {"input": "mark base-prompt stale after doc update", "class": "16"},
+        {"input": "rebuild reborn_docus from source files", "class": "16"}
+    ]);
+
+    let action_id = stores
+        .upsert_action(
+            "doc-sync",
+            "Scan docs/agents-v3/*.md for changes, convert modified docs via the \
+             doc-convert recipe (by-extract variant, Tier 0), upsert reborn_docus rows, \
+             and mark the base-prompt prefix stale. Fully deterministic — no LLM calls.",
+            &action_steps,
+            &["builtin.glob", "builtin.read_file"],
+            &action_intent_examples,
+        )
+        .await?;
+
     tracing::debug!(
-        "seeded doc-sync group Pass 15: 2 PC + 1 Tool + 1 ToolSkill + 10 leaf Skills \
-         + 1 domain Skill + 1 Recipe \
+        action_id = %action_id,
+        "seeded doc-sync group Pass 15+16: 2 PC + 1 Tool + 1 ToolSkill + 10 leaf Skills \
+         + 1 domain Skill + 1 Recipe + 1 Action \
          (pc-hash-changed, pc-format-component-header, component_db, ts-component-db, \
-          file-list..db-mark-prefix-stale, doc-convert-method, doc-convert)"
+          file-list..db-mark-prefix-stale, doc-convert-method, doc-convert, doc-sync)"
     );
 
     Ok(())
