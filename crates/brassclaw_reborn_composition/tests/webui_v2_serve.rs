@@ -1948,3 +1948,181 @@ async fn public_route_mount_is_merged_without_bearer_auth_and_keeps_descriptor_p
         .expect("oneshot");
     assert_eq!(protected.status(), StatusCode::UNAUTHORIZED);
 }
+
+// ─── Phase P Step 11 — docus endpoint route coverage ─────────────────────────
+//
+// These tests verify the docus route wiring (GET /docus, GET /docus/:id,
+// PUT /docus/:id) reaches the facade and that the handler enforces the
+// HTTP semantics described in the plan (malformed UUID → 400, unknown id
+// → 404 from the facade default, valid body → facade reached).
+//
+// The stub `RebornServicesApi` does not override the docus methods so
+// they fall through to the trait defaults, which return 501. The key
+// assertions are therefore:
+//   - Routes are mounted (not 404).
+//   - Auth is enforced (missing bearer → 401).
+//   - UUID parsing is enforced (bad UUID → 400 before reaching facade).
+//   - Valid requests reach the facade (501 from default impl, not 404/500).
+
+#[tokio::test]
+async fn list_docus_route_requires_bearer_auth() {
+    let (app, _) = build_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/webchat/v2/docus")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "GET /docus without bearer must return 401"
+    );
+}
+
+#[tokio::test]
+async fn list_docus_route_reaches_facade_with_bearer() {
+    // The stub returns 501 for list_docus (default trait impl).
+    // 501 means the route IS mounted and the bearer was accepted.
+    let (app, _) = build_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/webchat/v2/docus")
+                .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(
+        response.status().as_u16(),
+        501,
+        "GET /docus with valid bearer must reach facade (stub returns 501)"
+    );
+}
+
+#[tokio::test]
+async fn get_docus_route_rejects_malformed_uuid() {
+    let (app, _) = build_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/webchat/v2/docus/not-a-uuid")
+                .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "GET /docus/:id with malformed UUID must return 400"
+    );
+}
+
+#[tokio::test]
+async fn get_docus_route_reaches_facade_with_valid_uuid() {
+    // With a valid UUID the request reaches the facade. The stub default
+    // returns 501, proving the route is mounted and the UUID was parsed.
+    let (app, _) = build_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!(
+                    "/api/webchat/v2/docus/{}",
+                    uuid::Uuid::new_v4()
+                ))
+                .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(
+        response.status().as_u16(),
+        501,
+        "GET /docus/:valid-uuid must reach facade (stub returns 501)"
+    );
+}
+
+#[tokio::test]
+async fn update_docus_route_rejects_malformed_uuid() {
+    let (app, _) = build_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/webchat/v2/docus/not-a-uuid")
+                .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"content":"updated"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "PUT /docus/:id with malformed UUID must return 400"
+    );
+}
+
+#[tokio::test]
+async fn update_docus_route_reaches_facade_with_valid_payload() {
+    // Valid UUID + valid body → reaches the facade (stub returns 501).
+    // Proves the route is mounted, auth is enforced, and UUID + body parsing pass.
+    let (app, _) = build_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri(format!(
+                    "/api/webchat/v2/docus/{}",
+                    uuid::Uuid::new_v4()
+                ))
+                .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"content":"updated content"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(
+        response.status().as_u16(),
+        501,
+        "PUT /docus/:valid-uuid with valid body must reach facade (stub returns 501)"
+    );
+}
+
+#[tokio::test]
+async fn update_docus_route_requires_bearer_auth() {
+    let (app, _) = build_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri(format!(
+                    "/api/webchat/v2/docus/{}",
+                    uuid::Uuid::new_v4()
+                ))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"content":"updated"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "PUT /docus/:id without bearer must return 401"
+    );
+}

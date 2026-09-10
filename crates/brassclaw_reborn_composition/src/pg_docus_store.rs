@@ -303,3 +303,316 @@ fn docu_row_to_item(row: DocusRow) -> brassclaw_product_workflow::DocusItem {
         updated_at: row.updated_at.to_rfc3339(),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests (Phase P Step 11 — store-level security guard + pipeline)
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, feature = "postgres"))]
+mod tests {
+    use std::sync::Arc;
+
+    use deadpool_postgres::Manager;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::validation_queue::ValidationQueueStore;
+
+    // ── minimal Postgres test-rig ────────────────────────────────────────────
+
+    struct PgRig {
+        _container: testcontainers_modules::testcontainers::ContainerAsync<
+            testcontainers_modules::postgres::Postgres,
+        >,
+        pool: Arc<brassclaw_pg::PgPool>,
+    }
+
+    /// Start a Postgres-16 testcontainer and run migrations.
+    /// Returns `None` (skip) when docker / testcontainers is unavailable.
+    async fn pg_rig_or_skip() -> Option<PgRig> {
+        use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
+
+        let image = testcontainers_modules::postgres::Postgres::default()
+            .with_db_name("brassclaw_test")
+            .with_user("postgres")
+            .with_password("postgres")
+            .with_tag("16-alpine");
+        let container = match image.start().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("skipping pg_docus_store tests: docker unavailable ({e})");
+                return None;
+            }
+        };
+        let host = match container.get_host().await {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("skipping pg_docus_store tests: no host ({e})");
+                return None;
+            }
+        };
+        let port = match container.get_host_port_ipv4(5432).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skipping pg_docus_store tests: no port ({e})");
+                return None;
+            }
+        };
+        let url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
+        let cfg: tokio_postgres::Config = url.parse().expect("url parses");
+        let mgr = Manager::new(cfg, tokio_postgres::NoTls);
+        let pool = deadpool_postgres::Pool::builder(mgr)
+            .max_size(4)
+            .build()
+            .expect("pool builds");
+        brassclaw_pg::migrations::run_migrations(&pool)
+            .await
+            .expect("migrations must succeed");
+        Some(PgRig {
+            _container: container,
+            pool: Arc::new(pool),
+        })
+    }
+
+    /// Insert a minimal `reborn_docus` row and return its UUID.
+    async fn insert_docus_row(pool: &Arc<brassclaw_pg::PgPool>, tenant: &str) -> Uuid {
+        let client = pool.get().await.expect("pool client");
+        let name = format!("test-doc-{}", Uuid::new_v4());
+        let row = client
+            .query_one(
+                "INSERT INTO reborn_docus
+                     (tenant_id, user_id, agent_id, project_id, name, content,
+                      source, validation_status)
+                 VALUES ($1, 'u', 'a', 'p', $2, 'initial content',
+                         'system', 'validated')
+                 RETURNING id",
+                &[&tenant, &name],
+            )
+            .await
+            .expect("insert docus row");
+        row.get(0)
+    }
+
+    /// Read the current `validation_status` of a `reborn_docus` row by id.
+    async fn read_status(
+        pool: &Arc<brassclaw_pg::PgPool>,
+        tenant: &str,
+        id: Uuid,
+    ) -> String {
+        let client = pool.get().await.expect("pool client");
+        let row = client
+            .query_one(
+                "SELECT validation_status FROM reborn_docus
+                 WHERE tenant_id = $1 AND id = $2",
+                &[&tenant, &id],
+            )
+            .await
+            .expect("read status");
+        row.get(0)
+    }
+
+    // ── test: update_docus_content never writes 'validated' ─────────────────
+
+    /// **Security guard (Phase P §0.22 invariant):**
+    /// `update_docus_content` must always set `validation_status = 'pending'`
+    /// even when the row starts as `'validated'`. It must never write
+    /// `'validated'` directly (all edits go through Q1+Q2).
+    #[tokio::test]
+    async fn update_content_always_sets_pending_never_validated() {
+        let Some(rig) = pg_rig_or_skip().await else {
+            return;
+        };
+        let tenant = format!("t-{}", Uuid::new_v4());
+        let id = insert_docus_row(&rig.pool, &tenant).await;
+
+        // Precondition: row starts as 'validated'.
+        assert_eq!(read_status(&rig.pool, &tenant, id).await, "validated");
+
+        let queue = Arc::new(ValidationQueueStore::new(Arc::clone(&rig.pool)));
+        let store = PgDocusStore::new(Arc::clone(&rig.pool), queue, &tenant);
+
+        store
+            .update_docus_content(id, "updated content")
+            .await
+            .expect("update_docus_content must succeed");
+
+        // The row must now be 'pending' — never 'validated'.
+        let status = read_status(&rig.pool, &tenant, id).await;
+        assert_eq!(
+            status, "pending",
+            "update_docus_content must always set validation_status = 'pending', got: {status}"
+        );
+    }
+
+    // ── test: update_docus_content submits to validation queue ──────────────
+
+    /// After `update_docus_content`, the validation queue must contain a row
+    /// for the updated doc (state = 1 = Q1 pending). This proves the
+    /// Q1+Q2 pipeline is entered.
+    #[tokio::test]
+    async fn update_content_submits_to_validation_queue() {
+        let Some(rig) = pg_rig_or_skip().await else {
+            return;
+        };
+        let tenant = format!("t-{}", Uuid::new_v4());
+        let id = insert_docus_row(&rig.pool, &tenant).await;
+
+        let queue = Arc::new(ValidationQueueStore::new(Arc::clone(&rig.pool)));
+        let store = PgDocusStore::new(Arc::clone(&rig.pool), queue.clone(), &tenant);
+
+        store
+            .update_docus_content(id, "new content for queue test")
+            .await
+            .expect("update must succeed");
+
+        // Validation queue must contain an entry for this doc (class 17).
+        let scope = brassclaw_engine::memory::retrieval_source::ComponentScope {
+            tenant_id: tenant.clone(),
+            user_id: "u".to_string(),
+            agent_id: "a".to_string(),
+            project_id: "p".to_string(),
+        };
+        let rows = queue.list(&scope, None).await.expect("list queue");
+        let entry = rows.iter().find(|r| r.component_id == id);
+        assert!(
+            entry.is_some(),
+            "validation queue must contain an entry for the updated docus row"
+        );
+        let entry = entry.unwrap();
+        assert_eq!(
+            entry.component_class, 17,
+            "queue entry class_code must be 17 (Docu)"
+        );
+        assert_eq!(
+            entry.state, 1,
+            "queue entry state must be 1 (Q1 pending) after update"
+        );
+    }
+
+    // ── test: second save is idempotent (AlreadyQueued is swallowed) ────────
+
+    /// A second `update_docus_content` while a pending queue entry already
+    /// exists must not fail — `AlreadyQueued` is swallowed silently so the
+    /// operator can re-save without an error (the pending queue entry remains,
+    /// but the content is overwritten).
+    #[tokio::test]
+    async fn second_update_with_pending_queue_entry_is_idempotent() {
+        let Some(rig) = pg_rig_or_skip().await else {
+            return;
+        };
+        let tenant = format!("t-{}", Uuid::new_v4());
+        let id = insert_docus_row(&rig.pool, &tenant).await;
+
+        let queue = Arc::new(ValidationQueueStore::new(Arc::clone(&rig.pool)));
+        let store = PgDocusStore::new(Arc::clone(&rig.pool), queue.clone(), &tenant);
+
+        // First save — queues the row.
+        store
+            .update_docus_content(id, "first edit")
+            .await
+            .expect("first update must succeed");
+
+        // Second save — must not error even though a pending entry already exists.
+        store
+            .update_docus_content(id, "second edit — should be idempotent")
+            .await
+            .expect("second update must succeed (AlreadyQueued swallowed)");
+
+        // Content must reflect the latest write.
+        let row = store
+            .get_docus(id)
+            .await
+            .expect("get must succeed")
+            .expect("row must exist");
+        assert_eq!(
+            row.content, "second edit — should be idempotent",
+            "content must reflect the latest write"
+        );
+        assert_eq!(row.validation_status, "pending");
+    }
+
+    // ── test: content_hash is updated on each save ───────────────────────────
+
+    /// `update_docus_content` must recompute and persist a new `content_hash`
+    /// for the updated content. This proves the hash-change-detection path in
+    /// `doc-sync` will see a different stored hash after an edit.
+    #[tokio::test]
+    async fn update_content_recomputes_content_hash() {
+        let Some(rig) = pg_rig_or_skip().await else {
+            return;
+        };
+        let tenant = format!("t-{}", Uuid::new_v4());
+        let id = insert_docus_row(&rig.pool, &tenant).await;
+
+        let queue = Arc::new(ValidationQueueStore::new(Arc::clone(&rig.pool)));
+        let store = PgDocusStore::new(Arc::clone(&rig.pool), queue, &tenant);
+
+        // Capture the original hash (may be None since the row was inserted
+        // without one).
+        let original = store.get_docus(id).await.expect("get").expect("row");
+        let original_hash = original.content_hash.clone();
+
+        store
+            .update_docus_content(id, "hash-change-test content v2")
+            .await
+            .expect("update must succeed");
+
+        let updated = store.get_docus(id).await.expect("get").expect("row");
+        let new_hash = updated.content_hash.clone();
+
+        assert!(
+            new_hash.is_some(),
+            "content_hash must be set after update_docus_content"
+        );
+        assert_ne!(
+            original_hash, new_hash,
+            "content_hash must change when content changes"
+        );
+        // Verify the hash is a valid 64-char lowercase hex string (SHA-256).
+        let h = new_hash.unwrap();
+        assert_eq!(h.len(), 64, "SHA-256 hex digest must be 64 chars, got: {h}");
+        assert!(
+            h.chars().all(|c| c.is_ascii_hexdigit()),
+            "content_hash must be hex, got: {h}"
+        );
+    }
+
+    // ── test: get_docus returns None for unknown id ──────────────────────────
+
+    #[tokio::test]
+    async fn get_docus_returns_none_for_unknown_id() {
+        let Some(rig) = pg_rig_or_skip().await else {
+            return;
+        };
+        let tenant = format!("t-{}", Uuid::new_v4());
+        let queue = Arc::new(ValidationQueueStore::new(Arc::clone(&rig.pool)));
+        let store = PgDocusStore::new(Arc::clone(&rig.pool), queue, &tenant);
+
+        let result = store
+            .get_docus(Uuid::new_v4())
+            .await
+            .expect("get must not error on missing row");
+        assert!(result.is_none(), "get_docus must return None for an unknown id");
+    }
+
+    // ── test: update_docus_content fails with NotFound for unknown id ────────
+
+    #[tokio::test]
+    async fn update_content_fails_with_not_found_for_unknown_id() {
+        let Some(rig) = pg_rig_or_skip().await else {
+            return;
+        };
+        let tenant = format!("t-{}", Uuid::new_v4());
+        let queue = Arc::new(ValidationQueueStore::new(Arc::clone(&rig.pool)));
+        let store = PgDocusStore::new(Arc::clone(&rig.pool), queue, &tenant);
+
+        let err = store
+            .update_docus_content(Uuid::new_v4(), "content")
+            .await
+            .expect_err("update for unknown id must fail");
+        assert!(
+            matches!(err, PgDocusStoreError::NotFound { .. }),
+            "expected NotFound, got: {err:?}"
+        );
+    }
+}

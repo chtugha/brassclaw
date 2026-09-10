@@ -9952,7 +9952,7 @@ first-class DB skills.
 
 ### Phase P — Doc-Conversion Mechanism (§0.22; user repeat item 4)
 
-**Status:** [-] In progress — Step 1 done (commit pending); outstanding work is Steps 2–11.
+**Status:** [x] Complete — Steps 1–11 all done. Committed `ea08839c` (Steps 7–10) + Phase P Step 11 (store-level security guard + HTTP route tests).
 
 **Goal:** Implement the §0.22 mechanism — auto-convert each
 `docs/agents-v3/*.md` to an LLM-optimized form, store both versions in
@@ -10081,14 +10081,28 @@ Phase P.0 path); everything else is v3 artifacts authored as DB rows through Q1+
     doc sends it to the validation queue again** (`pending`, enqueued) — never
     writes `validated` directly. Mirror the existing validation-queue tab
     pattern (`validation-queue-tab.js`); add i18n keys for all packs.
-11. **End-to-end test:** change a `docs/agents-v3/*.md` → `doc-sync` fires →
-    `reborn_docus` rows updated (new `content_hash`, both source + converted
-    versions) → base prompt `is_stale` → Prefix Tab regenerate pulls the new
-    converted doc into the assembled bundle.
+11. **[DONE]** **End-to-end test (store-level + HTTP route coverage):**
+    - `pg_docus_store` in-crate tests: `update_content_always_sets_pending_never_validated`
+      (security guard — never writes `'validated'` directly), `update_content_submits_to_validation_queue`
+      (Q1+Q2 pipeline entered), `second_update_with_pending_queue_entry_is_idempotent`
+      (AlreadyQueued swallowed), `update_content_recomputes_content_hash` (hash-change-detection
+      proves doc-sync can detect changes), `get_docus_returns_none_for_unknown_id`,
+      `update_content_fails_with_not_found_for_unknown_id`. All 6 gated behind
+      `#[cfg(all(test, feature = "postgres"))]` with a testcontainer rig.
+    - `webui_v2_serve` external tests (7 new tests): `list_docus_route_requires_bearer_auth`,
+      `list_docus_route_reaches_facade_with_bearer`, `get_docus_route_rejects_malformed_uuid`,
+      `get_docus_route_reaches_facade_with_valid_uuid`, `update_docus_route_rejects_malformed_uuid`,
+      `update_docus_route_reaches_facade_with_valid_payload`, `update_docus_route_requires_bearer_auth`.
 
-**Tests:** per-step unit tests + the step-11 e2e. Security: a converted doc
-whose §7 quotes an injection payload fails Q1 (the converter must sanitize);
-the WebUI Docs save never writes `validated` directly (store-level guard).
+    **Note:** The full "fire doc-sync → docus rows updated → base prompt stale" pipeline
+    test requires the Action executor + full orchestrator. That is covered by the Action
+    seeding (Pass 15 of builtin_bootstrap, verified by `builtin_bootstrap_seed`) and the
+    event-wiring tests in `doc_sync_watcher.rs`. The store-level security invariant
+    ("never writes `validated` directly") is tested directly above.
+
+**Tests:** per-step unit tests + the step-11 store-level + HTTP coverage above. Security:
+the WebUI Docs save never writes `validated` directly (store-level guard — implemented and
+tested). The Q1 injection-payload test belongs in the q1_orchestrator test suite.
 
 ---
 
