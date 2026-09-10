@@ -148,6 +148,8 @@ mod runtime_input;
 pub mod seed_builtin_host;
 #[cfg(feature = "postgres")]
 pub mod builtin_bootstrap;
+/// Phase V: Orchestrator MCP Server — exposes orchestrator Skills as MCP tools.
+pub mod orchestrator_mcp_server;
 /// Phase P Step 9: doc-sync file-watcher + PG listener.
 pub(crate) mod doc_sync_watcher;
 #[cfg(feature = "postgres")]

@@ -14035,7 +14035,7 @@ const RECIPE_ECHO_PING_YAML: &str = r#"step_descriptions: [
 const PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT: &str = r#"# Pure-logic formatter (class 22). No I/O, no imports, no host calls.
 # Builds the no-prefix fallback prior-knowledge bundle (§27.10.1): a minimal
 # system-context preamble + the catalogue of deeper context the LLM can gather
-# over the Orchestrator MCP Server (Phase V). The caller (basic-mode
+# over the Orchestrator MCP Server (Phase V — live). The caller (basic-mode
 # _non_match_answer) injects this text into the Kohai-mediated prompt as the
 # `prior_knowledge` field. No retrieval verbs (retrieve_docs /
 # get_reduction_rules are dropped). The bundle is static — user_query is already
@@ -14043,7 +14043,11 @@ const PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT: &str = r#"# Pure-logic formatter
 _lines = []
 _lines.append("You are running inside BrassClaw's orchestrator. Answer the user's request directly.")
 _lines.append("")
-_lines.append("Deeper context is available over the orchestrator MCP server (ask the orchestrator):")
+_lines.append("Deeper context is available over the orchestrator MCP server:")
+_lines.append("  endpoint: http://<brassclaw-host>:<port>/mcp  (MCP JSON-RPC 2025-06-18)")
+_lines.append("  protocol: POST /mcp — JSON-RPC 2.0; methods: initialize, tools/list, tools/call")
+_lines.append("")
+_lines.append("Available tool categories (call tools/list for the full schema):")
 _lines.append("- component store: fetch a component by name or UUID")
 _lines.append("- intent history: prior disambiguation choices for this thread")
 _lines.append("- memory: persisted notes and decisions")

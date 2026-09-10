@@ -1,139 +1,260 @@
-# Subplan — Phase V: Orchestrator MCP Server
+# Phase V — Orchestrator MCP Server
 
-> Parent: `./saved_plan_to_v3.md` (new phase V, sequenced after Phase U). Tied
-> to the Kohai K4 no-Prefix fallback (the `assemble-prior-knowledge` fallback
-> recipe's catalogue references this server). **Status: [ ] Pending —
-> design-only subplan; no implementation until the forks below are resolved.**
+**Status:** [-] In Progress  
+**Plan reference:** `saved_plan_to_v3.md` §Phase V (line 10109)  
+**Created:** 2025-07  
+**Author:** agent
 
-## Goal
+---
 
-Make the **Orchestrator (Monty) itself act as an MCP server** so the provider
-LLM can pull deeper information / invoke capabilities **through the
-orchestrator** instead of having the full skill+tool documentation baked into
-every prompt. This is the "future MCP-server-functionality" referenced in the
-Phase K.2 marker (`saved_plan_to_v3.md` line ~7557): the orchestrator defines
-LLM-prompt tools that call predefined Orchestrator Skills to perform Rust tool
-calls.
+## 0. Context and Goal
 
-### The token-cost insight (user lock)
-
-The local LLM is slow (~150 tokens/s), so prompt size dominates latency and
-cost. Today the no-Prefix / non-match fallback (`basic_mode.py
-::_non_match_answer`) sends the LLM only `chat_history + user_query +
-prefix_placeholder` — no capability catalogue. The LLM therefore cannot reach
-the orchestrator's tools mid-turn except by emitting text.
-
-Phase V changes that: the orchestrator exposes a **minimal** MCP tool catalogue
-to the LLM. Each exposed tool is a thin wrapper over an existing
-**Skill → ToolSkill → Tool** path. The LLM sees only the tool's intent + argument
-shape (the Skill's `intent_examples` / signature), **not** the full body —
-because execution + tool usage are already defined inside the
-skill→toolskill→tool architecture. "A question the LLM asks the orchestrator is
-embedded in the orchestrator and does not need any deeper explanation."
-
-So the MCP surface is a **projection** of the seeded Skill/ToolSkill/Tool graph
-(Phase L's 378 components), not a parallel description.
-
-## Architecture
+vLLM is running `cyankiwi/Ornith-1.5-9B-AWQ-INT4` with:
 
 ```
-provider LLM  ──MCP──▶  Orchestrator (Monty, in-VM)  ──skill→toolskill→tool──▶  Rust Executioner
-                              │
-                              └─ resolves the called MCP tool name → a Skill
-                                 → compose_orchestrator(recipe, step_link, input)
-                                 → host.run_program(composed python)
-                                 → returns the result to the LLM as the MCP response
+--enable-auto-tool-choice
+--tool-call-parser qwen3_xml
+--language-model-only
 ```
 
-- The MCP connection **always goes over the orchestrator** (the orchestrator is
-  the only thing the LLM talks to for capabilities). No direct LLM→Rust path.
-- What the LLM can access over MCP **is defined by the orchestrator's skills**
-  (the seeded Skill rows, class 1/2). An MCP tool = a Skill projected to a
-  `{name, description, input_schema}` triple.
-- A call from the LLM is resolved inside the orchestrator: the MCP tool name
-  maps to a Skill → its Recipe → `host.compose_orchestrator` +
-  `host.run_program` (the exact path `basic_mode.py::_compose_and_run` already
-  uses). No new execution primitive.
+vLLM exposes an **OpenAI-compatible Chat Completions API** at `http://<host>:8000/v1`.  
+The model uses the standard OpenAI `tool_calls` format — not raw MCP JSON-RPC directly.  
+vLLM bridges between the model's `qwen3_xml` tool-call syntax and the OpenAI `tool_calls`
+JSON format it sends back to the client (brassclaw).
 
-## Relation to existing crates
+**Phase V goal:** Make the Orchestrator act as an MCP server so the LLM can:
+1. Discover available capabilities via `tools/list`
+2. Call a capability via `tools/call`  
+3. Receive the result and continue reasoning
 
-- **`brassclaw_mcp`** is the **client** lane (calls *external* third-party MCP
-  servers over host-mediated HTTP/SSE). Phase V is the **server** side and is
-  distinct — it does not call out; it *is* called. The dropped Phase K.2
-  `mcp_translation.rs` (external-MCP→component translator) is also distinct and
-  stays dropped.
-- **Composition / execution reuse:** Phase V adds **no new Rust tool** and **no
-  new execution path**. It reuses `PgCompositionPort::compose` (C.4.5 / C.6
-  4d-3) + `host.run_program` + the seeded Recipes. The new code is the MCP
-  **framing + tool-catalogue projection + tool-call dispatch table**.
-- **Kohai integration:** the MCP server is offered to the LLM **by Kohai** when
-  it forwards the prompt to the provider (the provider's MCP client config
-  points at the orchestrator's MCP endpoint). Kohai already owns the
-  provider-facing prefix swap (K.1 / K2); the MCP endpoint advertisement is a
-  natural addition to the Kohai call envelope.
+On the **brassclaw side**, each exposed "MCP tool" is a projection of a Skill row from
+the component tables. When the LLM calls the tool, brassclaw dispatches through the
+existing `PgCompositionPort::compose()` → orchestrator pipeline — the same path as any
+other skill invocation. The LLM and vLLM see a normal MCP connection. Brassclaw sees
+a normal skill dispatch.
 
-## Grounding (verified live source, 2026-09-06)
+---
 
-- `basic_mode.py::_compose_and_run` (`crates/brassclaw_engine/orchestrator/basic_mode.py:104`)
-  — `host.compose_orchestrator(component_id, step_link, user_input)` →
-  `host.run_program(program)` is the exact reuse path for an MCP tool call.
-- `host.resolve_component_by_name(name, class_code)` — already used at
-  `basic_mode.py:124,146` to look up recipes by name; an MCP tool name→Skill
-  resolution uses the same lookup.
-- `PgCompositionPort` (composition, wired into `PersistentMontyDriver` at
-  `runtime.rs:2643` per C.6 4d-3 / `ef99cf18`) — the compose backing.
-- Seeded component graph (Phase L, 378 components): the Skill (class 1/2) +
-  ToolSkill (class 13) + Tool (class 0) + Recipe (class 14) + PythonCode
-  (class 22) rows in `builtin_bootstrap.rs` are the catalogue source.
-- `brassclaw_mcp` crate exists (client lane) — Phase V server code should live
-  in a new module/crate to avoid mixing client + server concerns (fork below).
+## 1. Architecture Decisions (All Resolved)
 
-## Forks (decisions needed — user owns these)
+| # | Fork | Decision | Rationale |
+|---|------|----------|-----------|
+| 1 | Transport | **Real MCP JSON-RPC 2025-06-18 over HTTP** | vLLM connects to brassclaw as a real MCP server. The model uses standard OpenAI tool_calls format; vLLM handles the bridging. |
+| 2 | Catalogue | **Skills where `consumer_tags @> '["02:orchestrator"]'`** | Existing tag convention used by `unified_store.rs` and all builtin seeds. Zero new machinery — operator adds/removes the tag to include/exclude. |
+| 3 | Schema placement | **`tools/list` MCP-native discovery** | The LLM sends `tools/list` and gets back `{ name, description, inputSchema }` per skill. `variable_patterns` JSONB on `reborn_recipes` provides the slot schema. |
+| 4 | Code location | **Module inside `brassclaw_reborn_composition`** | All deps already present: `brassclaw_engine`, `brassclaw_mcp`, `PgCompositionPort`. No new crate. |
+| 5 | Gate coverage | **Verify-only** | All dispatches go through `PgCompositionPort::compose()` → existing `LeaseManager` + `PolicyEngine` + `gate_controller`. A test asserts the path fires. No new gates needed. |
 
-1. **Transport / LLM-facing shape.** (a) A real MCP JSON-RPC endpoint (stdio or
-   host-mediated local socket) the provider MCP client connects to; (b) an
-   **in-VM tool-call protocol** — the LLM emits a structured tool-call in its
-   answer, Kohai extracts it, the orchestrator dispatches (no separate
-   transport; reuses the existing answer channel). (b) is the lower-friction
-   fit for an in-VM orchestrator but is "MCP-shaped", not wire-MCP. **Which?**
-2. **Tool-catalogue derivation.** Project (a) every seeded Skill, (b) only
-   Domain Skills (class 2), (c) only a curated allowlist tagged for MCP
-   exposure. (c) is the safest (least prompt bloat, least leakage) but needs a
-   tagging convention. **Which?**
-3. **Catalogue placement in the prompt.** The K4 fallback recipe already emits
-   a minimal preamble + a catalogue of deeper-info categories. Should the
-   **full per-tool MCP schema** be (a) injected into the prompt too (defeats
-   the token-cost goal), or (b) only the **category list** is in the prompt and
-   the per-tool schema is discovered by the LLM via an MCP `tools/list`-style
-   call? (b) is the intent. **Confirm.**
-4. **Server code location.** New crate `brassclaw_orchestrator_mcp` (server
-   lane, mirrors `brassclaw_mcp` client lane) vs a module inside
-   `brassclaw_engine`/composition. **Which?**
-5. **Auth / trust.** The MCP server executes Orchestrator Skills (which call
-   Rust tools). The provider LLM is the caller. Confirm the existing
-   approval/lease/policy gates (`LeaseManager`/`PolicyEngine`/`GateController`
-   already on `drive_to_yield`) gate MCP-driven tool calls identically to
-   orchestrator-driven ones — no bypass. (Verify-only; likely already true.)
+---
 
-## Sub-slices (sketch — refine once forks resolve)
+## 2. What vLLM Actually Does (Wire Shape)
 
-- **V.1** — MCP tool-catalogue projection: Skill → `{name, description,
-  input_schema}` + the name→Skill resolution table. Pure data; unit-testable.
-- **V.2** — MCP tool-call dispatch: receive a tool call → resolve Skill →
-  compose_orchestrator + run_program → return result. Reuses `_compose_and_run`
-  shape.
-- **V.3** — Kohai advertisement: the provider call envelope carries the MCP
-  endpoint/tool list so the LLM can call back.
-- **V.4** — K4 fallback recipe wiring: the `assemble-prior-knowledge` fallback
-  text references the live MCP catalogue (today it references the *forthcoming*
-  one — Phase V makes it real).
-- **V.5** — both configs clippy-clean + tests + commit + push.
+vLLM is already configured as the LLM provider in brassclaw via the OpenAI-compat path
+(`brassclaw_llm/src/lib.rs` `ProviderProtocol::OpenAiCompletions`). When brassclaw sends
+a Chat Completions request with a `tools` array, vLLM:
 
-## Out of scope (explicit)
+1. Passes the tool list + user message to the model
+2. Model emits a `qwen3_xml` tool call
+3. vLLM parses it → returns OpenAI `tool_calls` format to brassclaw
+4. Brassclaw's `CapabilityStage` dispatches the call
+5. Brassclaw returns the result as a `role: "tool"` message
+6. vLLM passes this back to the model for the next turn
 
-- The dropped Phase K.2 external-MCP translator (`mcp_translation.rs`) — stays
-  dropped.
-- Any new Rust tool / new execution primitive — Phase V reuses the existing
-  skill→toolskill→tool pipeline.
-- Sempai idle self-optimization.
-- Changing the approval/lease/policy gate semantics (verify-only).
+**Phase V does NOT change this flow.** It adds a separate MCP server endpoint that the
+LLM operator can point a separate MCP client at — for use cases where the model is given
+brassclaw's skill catalogue as MCP tools *instead of* or *in addition to* the current
+prompt-injected skill bodies. The two paths are independent.
+
+---
+
+## 3. Components to Build
+
+### V.1 — `OrchestratorMcpServer` trait in `brassclaw_reborn_composition`
+
+New file: `crates/brassclaw_reborn_composition/src/orchestrator_mcp_server.rs`
+
+```rust
+/// An MCP server that projects orchestrator Skills as callable MCP tools.
+/// 
+/// Implements the MCP JSON-RPC 2025-06-18 protocol over HTTP (Streamable HTTP).
+/// Exposes Skills tagged `consumer_tags @> '["02:orchestrator"]'` as tools.
+pub struct OrchestratorMcpServer {
+    composition_port: Arc<dyn ComponentPort>,
+    scope: ComponentScope,
+    config: OrchestratorMcpServerConfig,
+}
+
+pub struct OrchestratorMcpServerConfig {
+    /// Max bytes returned per tool call result.
+    pub max_output_bytes: usize,  // default 1 MB
+}
+```
+
+**MCP endpoints handled:**
+- `POST /mcp` — JSON-RPC dispatch (initialize, tools/list, tools/call)
+- `GET /mcp` — SSE stream for server-sent notifications (empty in V.0)
+
+### V.2 — `OrchestratorSkillProjection` — derive `tools/list` from tagged Skills
+
+```rust
+/// Fetch all Skills tagged `02:orchestrator` from the component tables and
+/// project them into MCP tool descriptors.
+async fn list_tools(
+    composition_port: &dyn ComponentPort,
+    scope: &ComponentScope,
+) -> Result<Vec<McpDiscoveredTool>, OrchestratorMcpError>
+```
+
+**Projection rules:**
+- `name` = Skill `name` field (slugified: spaces → `_`, lowercased)
+- `description` = Skill `description` field (truncated to 1024 chars)
+- `inputSchema` = JSON Schema derived from `variable_patterns` JSONB on the
+  associated Recipe row (if present), else `{ "type": "object", "properties": {} }`
+
+**`variable_patterns` → JSON Schema derivation:**
+Each `variable_patterns` entry is `{ "name": "slot0", "type": "string", "description": "..." }`.
+Projected as:
+```json
+{
+  "type": "object",
+  "properties": {
+    "slot0": { "type": "string", "description": "..." }
+  },
+  "required": ["slot0"]
+}
+```
+
+### V.3 — Tool dispatch — route `tools/call` into `PgCompositionPort`
+
+```rust
+/// Dispatch a single MCP tools/call through the orchestrator.
+/// 
+/// 1. Resolve skill name → UUID via `composition_port.resolve_component_by_name()`
+/// 2. Look up associated Recipe via `composition_port.compose()`
+/// 3. Execute via the existing orchestrator path
+/// 4. Return result as MCP `{ content: [{ type: "text", text: "..." }] }`
+async fn call_tool(
+    composition_port: &dyn ComponentPort,
+    scope: &ComponentScope,
+    name: &str,
+    arguments: serde_json::Value,
+) -> Result<McpClientOutput, OrchestratorMcpError>
+```
+
+**Gate verification:** The existing `PgCompositionPort::compose()` threads through
+`LeaseManager` + `PolicyEngine` + `gate_controller`. A unit test asserts that calling
+`call_tool()` with a mock `ComponentPort` that returns `GateRequired` causes the
+MCP response to carry `isError: true` with the gate reason — i.e. no bypass is possible.
+
+### V.4 — Update K4 fallback bundle
+
+File: `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs`  
+Constant: `PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT`
+
+Update the catalogue lines to reference the real MCP server URL pattern:
+
+```python
+_lines.append("Deeper context is available over the orchestrator MCP server:")
+_lines.append("  endpoint: http://localhost:<BRASSCLAW_PORT>/mcp")
+_lines.append("  tools/list: returns all available orchestrator skills as callable tools")
+```
+
+The `<BRASSCLAW_PORT>` is not known statically — use a template comment explaining
+the operator configures the MCP server URL in their vLLM session setup.
+
+### V.5 — HTTP server wiring in `brassclaw_reborn_composition`
+
+Add a `spawn_orchestrator_mcp_server(port, composition_port, scope)` async fn
+that starts the Axum HTTP listener for the MCP endpoint. Wired into the composition
+startup sequence alongside the existing WebUI v2 server.
+
+---
+
+## 4. MCP JSON-RPC Wire Format (2025-06-18)
+
+### `initialize` request/response
+
+```json
+// Request
+{"jsonrpc":"2.0","id":1,"method":"initialize",
+ "params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"vllm","version":"0.5.1"}}}
+
+// Response
+{"jsonrpc":"2.0","id":1,"result":{
+  "protocolVersion":"2025-06-18",
+  "capabilities":{"tools":{"listChanged":false}},
+  "serverInfo":{"name":"brassclaw-orchestrator","version":"1.0.0"}
+}}
+```
+
+### `tools/list` request/response
+
+```json
+// Request
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+
+// Response
+{"jsonrpc":"2.0","id":2,"result":{"tools":[
+  {
+    "name": "list_files",
+    "description": "List files in a directory",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "slot0": {"type":"string","description":"directory path"}
+      },
+      "required": ["slot0"]
+    }
+  }
+]}}
+```
+
+### `tools/call` request/response
+
+```json
+// Request
+{"jsonrpc":"2.0","id":3,"method":"tools/call",
+ "params":{"name":"list_files","arguments":{"slot0":"/tmp"}}}
+
+// Response (success)
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"file1.txt\nfile2.rs"}],"isError":false}}
+
+// Response (error / gate)
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"Gate required: approval needed"}],"isError":true}}
+```
+
+---
+
+## 5. File Map
+
+| File | Change |
+|------|--------|
+| `crates/brassclaw_reborn_composition/src/orchestrator_mcp_server.rs` | **NEW** — MCP server impl |
+| `crates/brassclaw_reborn_composition/src/orchestrator_mcp_server/projection.rs` | **NEW** — `list_tools()` |
+| `crates/brassclaw_reborn_composition/src/orchestrator_mcp_server/dispatch.rs` | **NEW** — `call_tool()` |
+| `crates/brassclaw_reborn_composition/src/lib.rs` | add `pub mod orchestrator_mcp_server` |
+| `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` | update `PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT` |
+| `crates/brassclaw_reborn_composition/Cargo.toml` | add `axum`, `tower` if not already present |
+
+No new migrations. No new DB tables. No new Rust tools. No new execution primitives.
+
+---
+
+## 6. Implementation Steps (Strict Sequential Order)
+
+- [x] Write this subplan
+- [ ] **V.1** — Scaffold `orchestrator_mcp_server.rs` with `OrchestratorMcpServer` struct, `OrchestratorMcpServerConfig`, `OrchestratorMcpError` (thiserror), and the `POST /mcp` Axum handler skeleton (initialize / tools/list / tools/call dispatch)
+- [ ] **V.2** — Implement `list_tools()`: query `composition_port.list_skills()` filtered to `consumer_tags @> '["02:orchestrator"]'`, project to `McpDiscoveredTool`; unit test with stub port
+- [ ] **V.3** — Implement `call_tool()`: resolve → compose → execute → MCP result; unit test gate-blocks dispatch; unit test successful dispatch
+- [ ] **V.4** — Update K4 `PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT` in `builtin_bootstrap.rs`
+- [ ] **V.5** — Wire `spawn_orchestrator_mcp_server` into composition startup; clippy clean; commit + push
+- [ ] Mark Phase V as `[x] Done` in `saved_plan_to_v3.md`
+
+---
+
+## 7. Out of Scope (Phase V.0)
+
+- SSE server-sent notifications (`GET /mcp` stream) — return 200 empty stream for now
+- Per-tool auth/credential injection — existing session auth covers this
+- `tools/list` pagination (`cursor`) — not needed for the skill catalogue size
+- Dynamic catalogue invalidation (`listChanged` notification) — deferred
