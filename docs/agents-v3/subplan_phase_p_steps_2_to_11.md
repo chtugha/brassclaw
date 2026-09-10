@@ -1,7 +1,14 @@
 # Phase P Steps 2–11 Implementation Subplan
 
 > **Created:** Phase P continuation after Step 1 (COMPONENT_TABLES/class_label) is done.
-> **Status:** [ ] In progress — Step 2 up next.
+> **Status:** [x] DONE — All steps 1–11 confirmed implemented in live code
+> (verified in the subplan-audit session; Phase P top-level status "Complete —
+> Steps 1–11 all done" is accurate). Steps 7–10 had no [DONE] markers in this
+> file but are implemented: `doc-sync` Action + `ext-doc-sync` ExtensionCatalogue
+> in `builtin_bootstrap.rs`; event wiring in `doc_sync_watcher.rs` +
+> `V081__reborn_docus_notify.sql`; WebUI Docs section in `docs-tab.js` +
+> `pg_docus_store.rs` + handlers. This subplan is superseded by the completed
+> implementation.
 > **Master plan ref:** `saved_plan_to_v3.md` Phase P §8 steps 2–11.
 > **Design doc:** `docs/agents-v3/DOC_CONVERSION_MECHANISM_DESIGN.md`
 

@@ -138,9 +138,9 @@ other crates) + `tests/engine_v2_skill_codeact.rs` + one prompt file.
 
 ## 5. Status tracker
 
-- H8.4a — Pending. Execute D1–D15 + DC1–DC2; verify
-  `cargo check -p brassclaw_engine` (default + `--features skills-db`) +
-  `cargo clippy -p brassclaw_engine --all-targets -- -D warnings` (both) +
-  `cargo test -p brassclaw_engine` (both) GREEN; ships in the H8.4 commit (the active_skills
-  deletion is a direct consequence of H8.4 deleting the step-0 call site — both touch
-  `orchestrator.rs`, so they land in one GREEN commit).
+- H8.4a — **DONE.** D1–D15 + DC1–DC2 all verified absent from live codebase (cross-checked
+  against every target file during the K.3/subplan-audit session). `SkillActivated` in
+  `brassclaw_common/src/event.rs` intentionally retained (§4 deferred cascade — wire-format
+  breaking change, no emitter, no frontend handler; decided separately).
+  `tests/e2e/scenarios/test_skill_oauth_flow.py:458` latent break retained (§4 deferred cascade
+  — e2e-only, docker-gated, separate cleanup decision).

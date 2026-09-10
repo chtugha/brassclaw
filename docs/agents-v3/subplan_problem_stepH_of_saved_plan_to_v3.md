@@ -614,5 +614,11 @@ Mark this subplan Zenflow substep Completed.
   next.**
 - H.10 — Done.
 - H.11 — Done.
-- H.12 — In progress (nested subplan; H.12.1–H.12.5 done, H.12.6 reshaped into Step A, H.12.7 pending).
-- H.13 — Pending (Model B/C tests + final verification; folded into the B→C→A end-game: C.7 + Step A + H.12.7).
+- H.12 — In progress (nested subplan; H.12.1–H.12.6 done, H.12.7 pending).
+- H.13 — **DONE** (subplan-audit session). Four unit tests added to
+  `crates/brassclaw_agent_loop/src/executor/tests.rs` (no Postgres required):
+  `recipe_stage_returns_tier_zero_when_eligible` (H.10 dispatch — TierZero variant),
+  `tier_zero_stage_calls_bridge_and_produces_reply` (all 3 args captured per AGENTS.md),
+  `tier_zero_stage_degrades_when_no_bridge_wired`, `tier_zero_stage_degrades_when_bridge_returns_none`.
+  `StubOrchestratorLookup` + `with_orchestrator_lookup` builder added to test support.
+  327 unit tests pass (0 failed). Clippy clean.

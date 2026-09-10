@@ -12,9 +12,9 @@ use brassclaw_turns::{
         LoopContextCompactionKind, LoopContextCompactionMetadata, LoopContextPort, LoopInput,
         LoopInputAckToken, LoopInputBatch, LoopInputCursor, LoopInterruptKind, LoopProcessRef,
         LoopRunInfoPort, LoopSafeSummary, LoopSummaryArtifactId, ObservationTrust,
-        ParentLoopOutput, ProcessHandleSummary, ProviderToolCallReplay, RetrievalLookup,
-        RetrievalLookupError, RetrievalTurnResult, SameCallRetryConstraint, ToolObservationDetail,
-        ToolObservationStatus, VisibleCapabilityRequest,
+        OrchestratorLookup, ParentLoopOutput, ProcessHandleSummary, ProviderToolCallReplay,
+        RetrievalLookup, RetrievalLookupError, RetrievalTurnResult, SameCallRetryConstraint,
+        ToolObservationDetail, ToolObservationStatus, VisibleCapabilityRequest,
     },
 };
 
@@ -3007,5 +3007,179 @@ async fn recipe_stage_soft_fails_on_retrieval_error() {
         calls.lock().expect("lock").len(),
         1,
         "fetch_for_turn called"
+    );
+}
+
+// =========================================================================
+// TierZeroExecutionStage + RecipeStage H.10 dispatch — v3 Phase H.13
+// (plan subplan_problem_stepH_of_saved_plan_to_v3.md §H.13). Tests verify:
+//   1. RecipeStage returns TierZero when tier0_eligible && !llm_call_required.
+//   2. TierZeroExecutionStage calls the bridge with all three args + produces Reply.
+//   3. TierZeroExecutionStage degrades when no bridge is wired.
+//   4. TierZeroExecutionStage degrades when the bridge returns None.
+// All tests run without Postgres (stub lookups only).
+// =========================================================================
+
+#[tokio::test]
+async fn recipe_stage_returns_tier_zero_when_eligible() {
+    // Tier-0 hit: tier0_eligible=true, llm_call_required=false.
+    let hint = serde_json::json!([{ "id": "21-001", "channel": "orchestrator" }]);
+    let rust_ctx = serde_json::json!([{ "id": "13-001", "channel": "rust" }]);
+    let result = RetrievalTurnResult {
+        tier0_eligible: true,
+        llm_call_required: false,
+        orchestrator_items: hint.clone(),
+        rust_items: rust_ctx.clone(),
+        routing_meta: serde_json::json!({ "variant": "split_result" }),
+        instruction: serde_json::json!(null),
+    };
+    let stub = StubRetrievalLookup::returning(result);
+    let host =
+        MockHost::new(Vec::new()).with_retrieval_lookup(Arc::new(stub) as Arc<dyn RetrievalLookup>);
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.last_user_text = Some("sync all the docs".to_string());
+
+    let step = RecipeStage
+        .process(ctx, RecipeInput { state })
+        .await
+        .expect("recipe stage must not error");
+
+    // H.10: tier0_eligible && !llm_call_required → TierZero.
+    let boxed = match step {
+        RecipeStep::TierZero { state } => state,
+        RecipeStep::Continue { .. } => panic!("expected TierZero, got Continue"),
+    };
+    assert_eq!(
+        boxed.recipe_hint,
+        Some(hint),
+        "orchestrator_items stashed as recipe_hint"
+    );
+    assert_eq!(
+        boxed.recipe_rust_context,
+        rust_ctx.as_array().cloned().unwrap_or_default(),
+        "rust_items stashed as recipe_rust_context"
+    );
+}
+
+#[tokio::test]
+async fn tier_zero_stage_calls_bridge_and_produces_reply() {
+    // Pre-stash recipe_hint + rust_context as RecipeStage would have done.
+    let hint = serde_json::json!([{ "id": "21-001", "channel": "orchestrator" }]);
+    let rust_ctx_arr = vec![serde_json::json!({ "id": "13-001", "channel": "rust" })];
+    let expected_reply = "Files synced: 3 changed, 0 errors.".to_string();
+    let matched = vec!["21-001".to_string(), "22-002".to_string()];
+
+    let stub = StubOrchestratorLookup::returning(expected_reply.clone(), matched.clone());
+    let calls = stub.calls();
+    let host = MockHost::new(Vec::new())
+        .with_orchestrator_lookup(Arc::new(stub) as Arc<dyn OrchestratorLookup>);
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.recipe_hint = Some(hint.clone());
+    state.recipe_rust_context = rust_ctx_arr.clone();
+
+    let step = super::TierZeroExecutionStage
+        .process(ctx, super::TierZeroInput { state })
+        .await
+        .expect("tier-zero stage must not error");
+
+    // Bridge produced a reply → Reply variant.
+    let (reply, got_matched) = match step {
+        super::TierZeroStep::Reply {
+            reply,
+            matched_component_ids,
+            ..
+        } => (reply, matched_component_ids),
+        super::TierZeroStep::Degrade { .. } => panic!("expected Reply, got Degrade"),
+    };
+    assert_eq!(reply.content, expected_reply);
+    assert_eq!(got_matched, matched);
+
+    // Bridge called exactly once with all three args (AGENTS.md: capture every arg).
+    let recorded = calls.lock().expect("lock").clone();
+    assert_eq!(recorded.len(), 1, "run_tier_zero called exactly once");
+    assert_eq!(recorded[0].recipe_hint, hint, "recipe_hint forwarded verbatim");
+    assert_eq!(
+        recorded[0].recipe_rust_context,
+        serde_json::Value::Array(rust_ctx_arr),
+        "rust_items re-packaged as Array and forwarded"
+    );
+    assert_eq!(
+        recorded[0].context.scope,
+        host.run_context().scope,
+        "run_context forwarded from host"
+    );
+}
+
+#[tokio::test]
+async fn tier_zero_stage_degrades_when_no_bridge_wired() {
+    // No orchestrator_lookup installed — stage must degrade to Tier 2.
+    let host = MockHost::new(Vec::new()); // no with_orchestrator_lookup
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.recipe_hint = Some(serde_json::json!([{ "id": "21-001" }]));
+
+    let step = super::TierZeroExecutionStage
+        .process(ctx, super::TierZeroInput { state })
+        .await
+        .expect("tier-zero stage must not error");
+
+    match step {
+        super::TierZeroStep::Degrade { .. } => {}
+        super::TierZeroStep::Reply { .. } => {
+            panic!("expected Degrade (no bridge wired), got Reply")
+        }
+    }
+}
+
+#[tokio::test]
+async fn tier_zero_stage_degrades_when_bridge_returns_none() {
+    // Bridge is wired but returns None (channel error / no reply).
+    let stub = StubOrchestratorLookup::returning_none();
+    let calls = stub.calls();
+    let host = MockHost::new(Vec::new())
+        .with_orchestrator_lookup(Arc::new(stub) as Arc<dyn OrchestratorLookup>);
+    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.recipe_hint = Some(serde_json::json!([{ "id": "21-001" }]));
+
+    let step = super::TierZeroExecutionStage
+        .process(ctx, super::TierZeroInput { state })
+        .await
+        .expect("tier-zero stage must not error");
+
+    match step {
+        super::TierZeroStep::Degrade { .. } => {}
+        super::TierZeroStep::Reply { .. } => {
+            panic!("expected Degrade (bridge returned None), got Reply")
+        }
+    }
+    // Bridge was still called once — the degrade is from the None return, not
+    // from the bridge being absent.
+    assert_eq!(
+        calls.lock().expect("lock").len(),
+        1,
+        "run_tier_zero called even when it returns None"
     );
 }

@@ -1,5 +1,12 @@
 # Subplan — Problem at Phase A.5: 33 broken `runtime::tests` (postgres-mandatory fallout)
 
+> **Status: DONE** — Verified against live code (subplan-audit session). All 33
+> failing tests migrated to `pg_rig()` skip-if-no-docker pattern.
+> `crates/brassclaw_reborn_composition/src/runtime/test_pg.rs` provides the
+> shared `OnceCell<Arc<PgRig>>` testcontainer rig; 19+ tests in `runtime.rs`
+> + 2 in `runtime/tests/auth_interaction.rs` + 3 in
+> `runtime/tests/default_system_prompt.rs` all use `pg_rig().await else { return; }`.
+
 > Local working spec (gitignored by repo convention: `subplan_*.md`). The durable
 > step record lives in the Zenflow structured plan (substep of Phase A.5). This
 > file documents the approach for a complex pre-existing problem encountered

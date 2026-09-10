@@ -210,6 +210,18 @@ impl MockHost {
         self
     }
 
+    /// Install an `OrchestratorLookup` exposed via `LoopOrchestratorPort`
+    /// (v3 plan §H7/H.13) so `TierZeroExecutionStage::process` calls
+    /// `run_tier_zero` in tests. When unset, `orchestrator_lookup()` returns
+    /// `None` (Tier-2 fall-through / degrade).
+    pub(super) fn with_orchestrator_lookup(
+        mut self,
+        lookup: Arc<dyn OrchestratorLookup>,
+    ) -> Self {
+        self.orchestrator_lookup = Some(lookup);
+        self
+    }
+
     pub(super) fn with_input_batches(self, batches: Vec<LoopInputBatch>) -> Self {
         *self.input_batches.lock().expect("lock") = batches.into();
         self
@@ -1342,5 +1354,80 @@ impl RetrievalLookup for StubRetrievalLookup {
             return Err(error);
         }
         Ok(self.result.clone())
+    }
+}
+
+// =========================================================================
+// StubOrchestratorLookup — test double for `OrchestratorLookup` (v3 H.13).
+// Captures every argument `TierZeroExecutionStage::process` passes to
+// `run_tier_zero` (AGENTS.md: mocks must capture every arg) and returns a
+// scripted `Some(TierZeroReply)` or `None` so Tier-0 / degrade paths can be
+// exercised without the full composition + engine stack.
+// =========================================================================
+
+#[derive(Clone)]
+pub(super) struct TierZeroCall {
+    pub(super) context: LoopRunContext,
+    pub(super) recipe_hint: serde_json::Value,
+    pub(super) recipe_rust_context: serde_json::Value,
+}
+
+pub(super) struct StubOrchestratorLookup {
+    calls: Arc<Mutex<Vec<TierZeroCall>>>,
+    reply: Option<brassclaw_turns::run_profile::TierZeroReply>,
+}
+
+impl StubOrchestratorLookup {
+    /// Return `Some(TierZeroReply { text, matched_component_ids })` from
+    /// `run_tier_zero`.
+    pub(super) fn returning(
+        text: impl Into<String>,
+        matched: Vec<String>,
+    ) -> Self {
+        Self {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            reply: Some(brassclaw_turns::run_profile::TierZeroReply {
+                text: text.into(),
+                matched_component_ids: matched,
+            }),
+        }
+    }
+
+    /// Return `None` from `run_tier_zero` (bridge degrade path).
+    pub(super) fn returning_none() -> Self {
+        Self {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            reply: None,
+        }
+    }
+
+    /// Shared handle to the captured calls — clone BEFORE wiring behind `Arc`.
+    pub(super) fn calls(&self) -> Arc<Mutex<Vec<TierZeroCall>>> {
+        Arc::clone(&self.calls)
+    }
+}
+
+#[async_trait]
+impl OrchestratorLookup for StubOrchestratorLookup {
+    async fn run_step_zero(
+        &self,
+        _context: &LoopRunContext,
+        _recipe_hint: Option<&serde_json::Value>,
+    ) -> Option<brassclaw_turns::run_profile::PriorKnowledgeBundle> {
+        None
+    }
+
+    async fn run_tier_zero(
+        &self,
+        context: &LoopRunContext,
+        recipe_hint: &serde_json::Value,
+        recipe_rust_context: &serde_json::Value,
+    ) -> Option<brassclaw_turns::run_profile::TierZeroReply> {
+        self.calls.lock().expect("lock").push(TierZeroCall {
+            context: context.clone(),
+            recipe_hint: recipe_hint.clone(),
+            recipe_rust_context: recipe_rust_context.clone(),
+        });
+        self.reply.clone()
     }
 }

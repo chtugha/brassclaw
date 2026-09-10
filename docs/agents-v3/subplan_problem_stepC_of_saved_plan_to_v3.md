@@ -1,5 +1,12 @@
 # Subplan — Problem at Phase C: 29 broken `tests/`-tier E2E `build_reborn_runtime` tests (postgres-mandatory fallout)
 
+> **Status: DONE** — Verified against live code (subplan-audit session). All 5
+> test binaries (`budget_approval_e2e.rs`, `budget_e2e.rs`, `trigger_poller_e2e.rs`,
+> `webui_v2_e2e.rs`, `runtime.rs`) migrated to `pg_rig()` skip-if-no-docker
+> pattern. `tests/common/mod.rs` provides the shared `OnceCell` testcontainer rig.
+> `auth_callbacks.rs`, `auth_lifecycle.rs`, `manual_tokens.rs` were never broken
+> (they don't call `build_reborn_runtime`).
+
 > Local working spec (gitignored by repo convention: `subplan_*.md` — see
 > `.gitignore:92-94`, same as `subplan_problem_stepa5_of_saved_plan_to_v3.md`).
 > The durable step record lives in the Zenflow structured plan (substep of

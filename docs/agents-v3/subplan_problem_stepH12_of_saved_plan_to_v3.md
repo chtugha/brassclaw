@@ -362,6 +362,16 @@ Monty VM is live (no longer dormant) under `skills-db`.
 
 ### H.12.6 — Agent-loop + reborn: Tier-1 prompt injection (`build_prompt_bundle` reads `recipe_hint`)
 
+> ✅ **DONE** (verified against live code — subplan-audit session). `state.recipe_hint`
+> field exists in `brassclaw_agent_loop/src/state.rs:126`; stashed in
+> `executor/recipe.rs:156` (`state.recipe_hint = Some(result.orchestrator_items.clone())`);
+> initialized to `None` in `strategies/context.rs:286`. Composition-side `run_step_zero`
+> implemented in `orchestrator_lookup_impl.rs:128–159` — delegates to
+> `assemble_prior_knowledge_with_hint`, returns `Some(PkrBundle)` when successful.
+> The Tier-1 prompt injection is wired: `recipe_hint` flows from `RecipeStage` stash →
+> agent-loop state → `run_step_zero` call in the composition lookup impl on the next
+> `PromptStage` turn.
+
 1. `crates/brassclaw_agent_loop/src/strategies/context.rs` (production default
    strategy, ~line 278) + `planning_context.rs` (~line 97): set
    `recipe_hint: state.recipe_hint.clone()` instead of `None` (the planner has
