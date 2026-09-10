@@ -12,6 +12,7 @@ export const SETTINGS_TABS = [
   { id: "monty-vm", labelKey: "settings.montyVm", icon: "pulse" },
   { id: "security", labelKey: "settings.security", icon: "shield" },
   { id: "validation-queue", labelKey: "settings.validationQueue", icon: "shield" },
+  { id: "docs", labelKey: "settings.docs", icon: "file" },
   { id: "reliability", labelKey: "settings.reliability", icon: "pulse" },
   { id: "interceptor", labelKey: "settings.interceptor", icon: "shield" },
   { id: "prefix", labelKey: "settings.prefix", icon: "layers" },

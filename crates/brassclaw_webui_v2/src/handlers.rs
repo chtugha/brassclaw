@@ -20,31 +20,30 @@ use axum::extract::{Extension, Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use brassclaw_product_workflow::{
-    CodexLoginStart, ComponentAuditStatus, InterceptorConfigSnapshot, LifecyclePackageKind,
-    LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
-    MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse, MontyVmStatusResponse,
-    NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult,
-    OutcomeKind, PrefixListResponse, PrefixRegenerateResponse, ProductWorkflowError,
-    ProjectionCursor, RebornCancelRunResponse, RebornConnectableChannelListResponse,
-    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
-    RebornExtensionActionResponse, RebornExtensionListResponse, RebornExtensionRegistryResponse,
-    RebornInstallSkillRequest, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
-    RebornListSkillsResponse, RebornListThreadsResponse, RebornResolveGateResponse,
-    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
-    RebornSetupExtensionResponse, RebornSkillInstallResult, RebornSkillRemoveResult,
-    RebornStreamEventsRequest, RebornSubmitTurnResponse, RebornTimelineRequest,
-    RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
-    RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
-    RecordOutcomeRequest, RecordOutcomeResponse, SecurityModeConfig, SetActiveLlmRequest,
-    SettingsListResponse,
+    CodexLoginStart, ComponentAuditStatus, DocusItem, DocusListResponse, InterceptorConfigSnapshot,
+    LifecyclePackageKind, LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest,
+    LlmProbeResult, MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse,
+    MontyVmStatusResponse, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
+    NearAiWalletLoginResult, OutcomeKind, PrefixListResponse, PrefixRegenerateResponse,
+    ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
+    RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
+    RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
+    RebornExtensionRegistryResponse, RebornInstallSkillRequest, RebornListAutomationsResponse,
+    RebornListCapabilitiesResponse, RebornListSkillsResponse, RebornListThreadsResponse,
+    RebornResolveGateResponse, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
+    RebornServicesErrorKind, RebornSetupExtensionResponse, RebornSkillInstallResult,
+    RebornSkillRemoveResult, RebornStreamEventsRequest, RebornSubmitTurnResponse,
+    RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
+    RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse, RecordOutcomeRequest,
+    RecordOutcomeResponse, SecurityModeConfig, SetActiveLlmRequest, SettingsListResponse,
     ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
-    UpdateChatPreferenceResponse, UpdateInterceptorConfigRequest, UpdateMontyVmSettingsRequest,
-    UpdateValidationStatusRequest, UpdateValidationStatusResponse, UpsertLlmProviderRequest,
-    ValidationQueueCountResponse, ValidationQueueFilter, ValidationQueueListResponse,
-    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
-    WebUiInboundValidationCode, WebUiInboundValidationError, WebUiListAutomationsRequest,
-    WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
-    WebUiSetupExtensionRequest,
+    UpdateChatPreferenceResponse, UpdateDocusRequest, UpdateInterceptorConfigRequest,
+    UpdateMontyVmSettingsRequest, UpdateValidationStatusRequest, UpdateValidationStatusResponse,
+    UpsertLlmProviderRequest, ValidationQueueCountResponse, ValidationQueueFilter,
+    ValidationQueueListResponse, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
+    WebUiCreateThreadRequest, WebUiInboundValidationCode, WebUiInboundValidationError,
+    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
+    WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use futures::SinkExt;
 use futures::stream::Stream;
@@ -1679,4 +1678,79 @@ pub async fn delete_intent_inputs(
         .delete_intent_inputs_for_component(caller, query.project_id, class_code, component_id)
         .await?;
     Ok(Json(serde_json::json!({ "deleted": count })))
+}
+
+// ── Phase P Step 10 — Docs settings tab ──────────────────────────────────────
+
+/// Path params for `GET /api/webchat/v2/docus/:id` and `PUT /api/webchat/v2/docus/:id`.
+#[derive(Debug, Deserialize)]
+pub struct DocusIdPath {
+    pub id: String,
+}
+
+/// `GET /api/webchat/v2/docus`
+///
+/// List all `reborn_docus` rows for the tenant. Used by the Docs settings tab.
+pub async fn list_docus(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<DocusListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_docus(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/webchat/v2/docus/:id`
+///
+/// Fetch one `reborn_docus` row by UUID. Returns 404 when the id is unknown.
+pub async fn get_docus(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(DocusIdPath { id }): Path<DocusIdPath>,
+) -> Result<Json<DocusItem>, WebUiV2HttpError> {
+    let parsed_id: uuid::Uuid = id.parse().map_err(|_| {
+        WebUiV2HttpError::from(RebornServicesError::from(
+            brassclaw_product_workflow::WebUiInboundValidationError::new(
+                "id",
+                brassclaw_product_workflow::WebUiInboundValidationCode::InvalidId,
+            ),
+        ))
+    })?;
+    let item = state
+        .services()
+        .get_docus(caller, parsed_id)
+        .await?
+        .ok_or_else(|| {
+            WebUiV2HttpError::from(RebornServicesError::from_status(
+                RebornServicesErrorCode::NotFound,
+                404,
+                false,
+            ))
+        })?;
+    Ok(Json(item))
+}
+
+/// `PUT /api/webchat/v2/docus/:id`
+///
+/// Update the content of a `reborn_docus` row. Submits the updated row to
+/// the validation queue (`validation_status = 'pending'`). Never writes
+/// `'validated'` directly.
+pub async fn update_docus(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(DocusIdPath { id }): Path<DocusIdPath>,
+    Json(body): Json<UpdateDocusRequest>,
+) -> Result<axum::http::StatusCode, WebUiV2HttpError> {
+    let parsed_id: uuid::Uuid = id.parse().map_err(|_| {
+        WebUiV2HttpError::from(RebornServicesError::from(
+            brassclaw_product_workflow::WebUiInboundValidationError::new(
+                "id",
+                brassclaw_product_workflow::WebUiInboundValidationCode::InvalidId,
+            ),
+        ))
+    })?;
+    state
+        .services()
+        .update_docus(caller, parsed_id, body.content)
+        .await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }

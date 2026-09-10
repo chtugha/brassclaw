@@ -277,6 +277,52 @@ impl SkillsProductFacade for UnsupportedSkillsProductFacade {
     }
 }
 
+// ── Docus facade ─────────────────────────────────────────────────────────────
+
+/// A single `reborn_docus` row projected for the WebUI Docs settings tab.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DocusItem {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub content_hash: Option<String>,
+    pub source: String,
+    pub validation_status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Response for `GET /api/webchat/v2/docus`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DocusListResponse {
+    pub items: Vec<DocusItem>,
+}
+
+/// Request body for `PUT /api/webchat/v2/docus/:id`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UpdateDocusRequest {
+    pub content: String,
+}
+
+/// Port trait for `reborn_docus` reads/writes from the WebUI API layer.
+///
+/// The concrete implementation lives in
+/// `brassclaw_reborn_composition::pg_docus_store::PgDocusStore`.
+#[async_trait]
+pub trait DocusStore: Send + Sync {
+    async fn list_docus(&self) -> Result<DocusListResponse, Box<dyn std::error::Error + Send + Sync>>;
+    async fn get_docus(
+        &self,
+        id: uuid::Uuid,
+    ) -> Result<Option<DocusItem>, Box<dyn std::error::Error + Send + Sync>>;
+    async fn update_docus_content(
+        &self,
+        id: uuid::Uuid,
+        content: String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+}
+
 #[async_trait]
 pub trait OutboundPreferencesProductFacade: Send + Sync {
     /// Return the authenticated caller's scoped outbound preferences.
@@ -1438,6 +1484,47 @@ pub trait RebornServicesApi: Send + Sync {
             false,
         ))
     }
+
+    // ── Phase P Step 10 — Docs settings tab ──────────────────────────────────
+
+    /// List all `reborn_docus` rows for the tenant (Docs settings tab).
+    async fn list_docus(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<DocusListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Fetch one `reborn_docus` row by id.
+    async fn get_docus(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _id: uuid::Uuid,
+    ) -> Result<Option<DocusItem>, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Update the content of a `reborn_docus` row (submits to validation queue).
+    async fn update_docus(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _id: uuid::Uuid,
+        _content: String,
+    ) -> Result<(), RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -1503,6 +1590,9 @@ pub struct RebornServices {
     /// Intent inputs store backing `GET/PUT/DELETE /api/settings/intent-inputs`.
     /// When unwired the trait default returns 501.
     intent_inputs_store: Option<Arc<dyn crate::settings::IntentInputsStore>>,
+    /// Docus store backing `GET/PUT /api/webchat/v2/docus`.
+    /// When unwired the trait defaults return 501.
+    docus_store: Option<Arc<dyn DocusStore>>,
 }
 
 impl RebornServices {
@@ -1546,6 +1636,7 @@ impl RebornServices {
             security_settings: None,
             chat_preference_store: None,
             intent_inputs_store: None,
+            docus_store: None,
         }
     }
 
@@ -1806,6 +1897,12 @@ impl RebornServices {
         store: Arc<dyn crate::settings::IntentInputsStore>,
     ) -> Self {
         self.intent_inputs_store = Some(store);
+        self
+    }
+
+    /// Wire the docus store backing `GET/PUT /api/webchat/v2/docus`.
+    pub fn with_docus_store(mut self, store: Arc<dyn DocusStore>) -> Self {
+        self.docus_store = Some(store);
         self
     }
 
@@ -3971,6 +4068,50 @@ impl RebornServicesApi for RebornServices {
                 )
             })?;
         Ok(count)
+    }
+
+    // ── Phase P Step 10 — Docs settings tab ──────────────────────────────────
+
+    async fn list_docus(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<DocusListResponse, RebornServicesError> {
+        let store = self.docus_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        store.list_docus().await.map_err(|e| {
+            tracing::debug!("docus list error: {e}");
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+        })
+    }
+
+    async fn get_docus(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        id: uuid::Uuid,
+    ) -> Result<Option<DocusItem>, RebornServicesError> {
+        let store = self.docus_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        store.get_docus(id).await.map_err(|e| {
+            tracing::debug!("docus get error: {e}");
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+        })
+    }
+
+    async fn update_docus(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        id: uuid::Uuid,
+        content: String,
+    ) -> Result<(), RebornServicesError> {
+        let store = self.docus_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        store.update_docus_content(id, content).await.map_err(|e| {
+            tracing::debug!("docus update error: {e}");
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+        })
     }
 }
 

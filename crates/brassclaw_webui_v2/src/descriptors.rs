@@ -116,6 +116,13 @@ pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS: &str = "/api/settings/intent-
 pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE: &str =
     "/api/settings/intent-inputs/{class_code}/{component_id}";
 
+// Phase P Step 10 — Docs settings tab.
+pub const WEBUI_V2_ROUTE_LIST_DOCUS: &str = "webui.v2.list_docus";
+pub const WEBUI_V2_ROUTE_GET_DOCUS: &str = "webui.v2.get_docus";
+pub const WEBUI_V2_ROUTE_UPDATE_DOCUS: &str = "webui.v2.update_docus";
+pub const WEBUI_V2_PATTERN_LIST_DOCUS: &str = "/api/webchat/v2/docus";
+pub const WEBUI_V2_PATTERN_GET_DOCUS: &str = "/api/webchat/v2/docus/{id}";
+
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_DELETE_THREAD: &str = "/api/webchat/v2/threads/{thread_id}";
@@ -264,6 +271,10 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         list_intent_inputs_descriptor(),
         upsert_intent_input_descriptor(),
         delete_intent_inputs_descriptor(),
+        // Phase P Step 10 — Docs settings tab.
+        list_docus_descriptor(),
+        get_docus_descriptor(),
+        update_docus_descriptor(),
     ]
 }
 
@@ -1336,6 +1347,50 @@ fn delete_intent_inputs_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE,
         mutation_policy(
             BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+// Phase P Step 10 — Docs settings tab descriptor builder functions.
+
+fn list_docus_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_LIST_DOCUS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_LIST_DOCUS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_docus_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_DOCUS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_GET_DOCUS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn update_docus_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_UPDATE_DOCUS,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_GET_DOCUS,
+        mutation_policy(
+            body_limit_kib(512),
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,

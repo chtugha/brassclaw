@@ -296,3 +296,17 @@ export function deleteIntentInputs({ projectId, classCode, componentId }) {
     { method: "DELETE" }
   );
 }
+
+// Phase P Step 10 — Docs settings tab (reborn_docus).
+export function fetchDocus() {
+  return apiFetch("/api/webchat/v2/docus");
+}
+export function fetchDocusItem(id) {
+  return apiFetch(`/api/webchat/v2/docus/${encodeURIComponent(id)}`);
+}
+export function updateDocusContent(id, content) {
+  return apiFetch(`/api/webchat/v2/docus/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  });
+}

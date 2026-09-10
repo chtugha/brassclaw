@@ -4,6 +4,7 @@ import { useT } from "../../lib/i18n.js";
 import { ActionsTab } from "./components/actions-tab.js";
 import { AgentTab } from "./components/agent-tab.js";
 import { ChannelsTab } from "./components/channels-tab.js";
+import { DocsTab } from "./components/docs-tab.js";
 import { InferenceTab } from "./components/inference-tab.js";
 import { InterceptorTab } from "./components/interceptor-tab.js";
 import { PrefixTab } from "./components/prefix-tab.js";
@@ -84,6 +85,7 @@ export function SettingsPage() {
     "monty-vm": html`<${MontyVmTab} searchQuery=${searchQuery} />`,
     security: html`<${SecurityTab} searchQuery=${searchQuery} />`,
     "validation-queue": html`<${ValidationQueueTab} searchQuery=${searchQuery} />`,
+    docs: html`<${DocsTab} searchQuery=${searchQuery} />`,
     reliability: html`<${ReliabilityTab} />`,
     interceptor: html`<${InterceptorTab} searchQuery=${searchQuery} />`,
     prefix: html`<${PrefixTab} />`,

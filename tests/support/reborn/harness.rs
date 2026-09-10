@@ -885,7 +885,6 @@ impl RebornBinaryE2EHarness {
             },
             model_route_resolver: None,
             cancellation_factory: None,
-            skill_context_source: None,
             system_bundle_source: None,
             input_queue: None,
             identity_context_source,
@@ -907,6 +906,7 @@ impl RebornBinaryE2EHarness {
             sempai_gateway: None,
             interceptor_mode: None,
             proposal_sink: None,
+            monty_driver: None,
         })?;
         let binding_service: Arc<dyn ConversationBindingService> =
             Arc::new(product_harness.binding_service()?);

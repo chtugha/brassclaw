@@ -14,6 +14,7 @@ publish = false
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
 
 brassclaw_host_api = { path = "../brassclaw_host_api", version = "0.1.0" }
 # Deliberately no direct dependency on `brassclaw_product_adapters`. Handlers

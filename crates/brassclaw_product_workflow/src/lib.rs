@@ -207,6 +207,7 @@ pub use reborn_services::{
     RebornOutboundDeliveryTargetId, RebornOutboundDeliveryTargetListResponse,
     RebornOutboundDeliveryTargetOption, RebornOutboundDeliveryTargetSummary,
     RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
+    DocusItem, DocusListResponse, DocusStore, UpdateDocusRequest,
     RebornServices, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
     RebornServicesErrorKind, RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse,
     RebornSkillInfo, RebornSkillInstallResult, RebornSkillRemoveResult, RebornStreamEventsRequest,

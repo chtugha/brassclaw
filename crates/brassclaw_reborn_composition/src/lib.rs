@@ -109,6 +109,8 @@ pub(crate) mod pg_intent_inputs_store;
 pub(crate) mod pg_memory_doc_store;
 pub(crate) mod pg_monty_vm_settings;
 #[cfg(feature = "postgres")]
+pub(crate) mod pg_docus_store;
+#[cfg(feature = "postgres")]
 pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;

@@ -429,6 +429,25 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         tracing::debug!("IntentInputsStore wired through PgIntentInputsStore");
     }
 
+    // Wire the docus store (Phase P Step 10 — Docs settings tab).
+    // When the pool is available, GET/PUT /api/webchat/v2/docus persists to DB.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let tenant_id = runtime.webui_tenant_id().to_string();
+        let queue = Arc::new(crate::validation_queue::ValidationQueueStore::new(
+            Arc::clone(pool),
+        ));
+        let docus_store = crate::pg_docus_store::PgDocusStore::new(
+            Arc::clone(pool),
+            queue,
+            tenant_id,
+        );
+        api = api.with_docus_store(
+            Arc::new(docus_store) as Arc<dyn brassclaw_product_workflow::DocusStore>
+        );
+        tracing::debug!("DocusStore wired through PgDocusStore");
+    }
+
     Ok(RebornWebuiBundle {
         api: Arc::new(api),
         product_auth: services.product_auth.clone(),

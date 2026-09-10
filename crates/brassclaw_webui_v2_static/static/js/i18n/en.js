@@ -191,6 +191,21 @@ registerPack("en", {
   "settings.montyVm": "Monty VM",
   "settings.security": "Security",
   "settings.validationQueue": "Validation Queue",
+  "settings.docs": "Agent Docs",
+
+  // Settings — Docs tab (Phase P Step 10).
+  "settings.docs.title": "Agent Documentation",
+  "settings.docs.empty": "No docs",
+  "settings.docs.save": "Save",
+  "settings.docs.source_label": "source",
+  "settings.docs.converted_label": "converted",
+  "settings.docs.failedLoad": "Failed to load docs: {message}",
+  "settings.docs.saveError": "Save failed: {message}",
+  "settings.docs.status.pending": "Pending",
+  "settings.docs.status.validated": "Validated",
+  "settings.docs.status.rejected": "Rejected",
+  "settings.docs.status.auto_passed": "Auto passed",
+
   "settings.reliability": "Reliability",
 
   // Settings — toolbar
