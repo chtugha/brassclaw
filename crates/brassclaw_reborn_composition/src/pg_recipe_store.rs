@@ -976,6 +976,9 @@ pub(crate) struct PgRecipeStoreFacade {
     inner: PgRecipeStore,
     tenant_id: String,
     agent_id: String,
+    /// Used by `update_recipe_validation_status` to call `approve()` when the
+    /// operator approves from the WebUI (Q2 human graduation — Phase P.0).
+    queue_store: ValidationQueueStore,
 }
 
 #[cfg(feature = "postgres")]
@@ -986,10 +989,12 @@ impl PgRecipeStoreFacade {
         tenant_id: impl Into<String>,
         agent_id: impl Into<String>,
     ) -> Self {
+        let queue_store = ValidationQueueStore::new(Arc::clone(&pool));
         Self {
             inner: PgRecipeStore::new(pool),
             tenant_id: tenant_id.into(),
             agent_id: agent_id.into(),
+            queue_store,
         }
     }
 
@@ -1378,26 +1383,95 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 brassclaw_product_workflow::RecipeStoreError::NotFound(recipe_id.to_string())
             })?;
         let previous_status = current.validation_status.clone();
-        self.inner
-            .update_validation_status(
-                &self.tenant_id,
-                user_id,
-                &self.agent_id,
-                project_id,
-                uuid,
-                RecipeValidationStatusUpdate {
-                    validation_status: new_status,
-                },
-            )
-            .await
-            .map_err(map_pg_recipe_error)?;
-        // Pop validator tag when moving to validated.
+
         if new_status == "validated" {
-            let _ = self
-                .inner
-                .pop_validator_tag(&self.tenant_id, user_id, &self.agent_id, project_id, uuid)
-                .await;
+            // Q2 human graduation path (Phase P.0): `approve()` atomically
+            // updates `validation_status = 'validated'` on the component row
+            // AND deletes the queue row in one transaction, recording
+            // `q2_actor = 'human'` before deletion.
+            //
+            // Fall back to the direct `update_validation_status` path when:
+            //   - the queue row does not exist (component was never submitted),
+            //   - the queue row is not in state 2 (Q1 not yet passed),
+            //   - any other `ValidationQueueError` occurs.
+            // These are soft-error cases — operators should be able to manually
+            // flip status even when the queue flow is not complete (e.g.,
+            // builtins or components restored from backup).
+            let scope = ComponentScope {
+                tenant_id: self.tenant_id.clone(),
+                user_id: user_id.to_string(),
+                agent_id: self.agent_id.clone(),
+                project_id: project_id.to_string(),
+            };
+            match self.queue_store.approve(&scope, uuid, Some("human")).await {
+                Ok(_) => {
+                    // Atomic approve succeeded: validation_status is already
+                    // 'validated' on the component row and the queue row is
+                    // deleted. Pop the validator consumer-tag (best-effort).
+                    let _ = self
+                        .inner
+                        .pop_validator_tag(
+                            &self.tenant_id,
+                            user_id,
+                            &self.agent_id,
+                            project_id,
+                            uuid,
+                        )
+                        .await;
+                }
+                Err(e) => {
+                    // Queue row absent or not yet Q1-passed — fall through to
+                    // the direct status update so the operator's manual action
+                    // is not blocked by the queue state.
+                    debug!(
+                        component_id = %uuid,
+                        error = %e,
+                        "update_recipe_validation_status: queue approve failed, \
+                         falling back to direct status update"
+                    );
+                    self.inner
+                        .update_validation_status(
+                            &self.tenant_id,
+                            user_id,
+                            &self.agent_id,
+                            project_id,
+                            uuid,
+                            RecipeValidationStatusUpdate {
+                                validation_status: new_status,
+                            },
+                        )
+                        .await
+                        .map_err(map_pg_recipe_error)?;
+                    let _ = self
+                        .inner
+                        .pop_validator_tag(
+                            &self.tenant_id,
+                            user_id,
+                            &self.agent_id,
+                            project_id,
+                            uuid,
+                        )
+                        .await;
+                }
+            }
+        } else {
+            // Non-validated status transitions (rejected, pending, etc.) use
+            // the direct update path — these are not Q2 graduation events.
+            self.inner
+                .update_validation_status(
+                    &self.tenant_id,
+                    user_id,
+                    &self.agent_id,
+                    project_id,
+                    uuid,
+                    RecipeValidationStatusUpdate {
+                        validation_status: new_status,
+                    },
+                )
+                .await
+                .map_err(map_pg_recipe_error)?;
         }
+
         Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
             id: recipe_id.to_string(),
             item_type: brassclaw_product_workflow::RecipeKind::Recipe,
