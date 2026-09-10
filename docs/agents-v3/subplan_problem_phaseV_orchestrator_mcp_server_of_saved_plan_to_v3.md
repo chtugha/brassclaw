@@ -1,8 +1,8 @@
 # Phase V — Orchestrator MCP Server
 
-**Status:** [-] In Progress  
-**Plan reference:** `saved_plan_to_v3.md` §Phase V (line 10109)  
-**Created:** 2025-07  
+**Status:** [x] DONE — commit `a72ced60` (full stack: Rust backend + WebUI v2 routes + frontend tab).
+**Plan reference:** `saved_plan_to_v3.md` §Phase V (line 10109)
+**Created:** 2025-07
 **Author:** agent
 
 ---

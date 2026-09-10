@@ -10062,25 +10062,44 @@ Phase P.0 path); everything else is v3 artifacts authored as DB rows through Q1+
    one `StepDescription` (6 steps), two variants (`by-extract` step_link `0:1-0:3+0:5-0:6`
    Tier-0; `by-llm-compress` step_link `0:1-0:6` Tier-1). `mark_recipe_tier0()` applied
    to `by-extract`. 10 intent examples. ts-read-file looked up via `get_id_by_name`.
-7. **Action (class 16):** author `doc-sync` (`execute_action_procedure`, no
+7. **[DONE]** **Action (class 16):** author `doc-sync` (`execute_action_procedure`, no
    LLM) — the scan/decide/extract/upsert/mark-stale driver composing the
    leaves; enqueues `by-llm-compress` for docs whose §7 extract needs
    compression (no budget gate — Answer 5). Through Q1+Q2 — no bypass.
-8. **ExtensionCatalogue (class 23):** register `doc-sync` owning only the
+
+   **Implemented:** `builtin_bootstrap.rs` Pass 15 `seed_doc_sync_group()` — `doc-sync`
+   Action seeded with 8 deterministic steps (list→read→hash→compare→extract→upsert→
+   mark-prefix-stale→enqueue-compression); `doc-sync` ExtensionCatalogue (`ext-doc-sync`)
+   seeded alongside it owning the doc-specific components.
+8. **[DONE]** **ExtensionCatalogue (class 23):** register `doc-sync` owning only the
    doc-specific parts (domain skill, `db-upsert-docus`/`db-mark-prefix-stale`
    leaves over the one `component_db` Tool, Recipe, Action); general-purpose
    leaves live in the matching builtin catalogue and are referenced. With
    `overview_doc`.
-9. **Event wiring (Answer 4):** wire `doc-sync` to fire on (a) a file-watch on
+
+   **Implemented:** `builtin_bootstrap.rs` Pass 15 — `ext-doc-sync` ExtensionCatalogue
+   seeded with `task_groups` pointing to the doc-sync Action + doc-specific leaf skills.
+9. **[DONE]** **Event wiring (Answer 4):** wire `doc-sync` to fire on (a) a file-watch on
    `docs/agents-v3/*.md` (source doc changed on disk), and (b) a
    `reborn_docus` row-change signal (doc edited via the WebUI Docs section, or
    a re-compression graduating). No idle-time loop, no cadence, no boot
    trigger (§0.22.5).
-10. **WebUI Docs section (Answer 2):** list `reborn_docus` rows (source +
+
+   **Implemented:** `crates/brassclaw_reborn_composition/src/doc_sync_watcher.rs` —
+   file-watcher on `docs/agents-v3/*.md` (using the `notify` crate) + Postgres
+   `LISTEN/NOTIFY` listener on `reborn_docus_changed` channel (V081 migration adds the
+   trigger). Upserts one-shot TriggerRecords with fixed ULIDs for deduplication.
+   Two trigger types: `doc-sync::file-change` and `doc-sync::docus-change`.
+10. **[DONE]** **WebUI Docs section (Answer 2):** list `reborn_docus` rows (source +
     converted, with validation status) + manual editing; **saving an edited
     doc sends it to the validation queue again** (`pending`, enqueued) — never
     writes `validated` directly. Mirror the existing validation-queue tab
     pattern (`validation-queue-tab.js`); add i18n keys for all packs.
+
+    **Implemented:** `crates/brassclaw_webui_v2_static/static/js/pages/settings/components/docs-tab.js`
+    — lists `reborn_docus` rows with filters; `pg_docus_store.rs::update_docus_content` always
+    sets `validation_status='pending'` (security guard — never writes `'validated'` directly);
+    handlers + routes in `webui_v2` (Phase P Step 10 descriptor/handler/router blocks).
 11. **[DONE]** **End-to-end test (store-level + HTTP route coverage):**
     - `pg_docus_store` in-crate tests: `update_content_always_sets_pending_never_validated`
       (security guard — never writes `'validated'` directly), `update_content_submits_to_validation_queue`
@@ -10108,7 +10127,14 @@ tested). The Q1 injection-payload test belongs in the q1_orchestrator test suite
 
 ### Phase V — Orchestrator MCP Server
 
-**Status:** [ ] Pending (design-only subplan; forks unresolved)
+**Status:** [x] Done — commit `a72ced60` "Phase V: Orchestrator MCP Server settings tab (full stack)".
+Full stack implementation: `McpServerService` trait + types in `brassclaw_product_workflow`,
+`McpServerServiceImpl` (Postgres-backed, async TcpListener) in `brassclaw_reborn_composition`,
+5 WebUI v2 routes (GET/PUT `/api/settings/mcp-server`, GET `.../status`, POST `.../start`/`.../stop`),
+and frontend tab (`mcp-server-tab.js` + `settings-api.js` +5 functions + `settings-page.js` wiring).
+Descriptor contract test updated to 74 routes (5 MCP + 5 pre-existing security/docus that were missing).
+The subplan fork decisions (transport: real HTTP/JSON-RPC server; MCP tools = ToolSkills projection;
+start/stop operator control) are resolved and implemented.
 
 **Goal:** Make the Orchestrator (Monty) act as an MCP **server** so the provider
 LLM can pull deeper information / invoke capabilities **through the orchestrator**
