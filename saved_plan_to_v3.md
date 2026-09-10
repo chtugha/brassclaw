@@ -9805,6 +9805,13 @@ Q1 infrastructure, `q1_orchestrator.rs` rewrite, `ComponentValidator` retired).
 removed from `management.rs`. Committed in two commits on main:
 `270da40b` (seed workflow skills passes 8–14) and `665f65ac` (Steps 3–6 cleanup).
 `web-browse` and `portfolio` remain deferred (no `builtin.browser` / `portfolio` Rust Tool).
+**Step C (VFS layer cleanup) complete** — `SkillExecutionAdapter`, `FilesystemSkillBundleSource`,
+and `bundle_source` on `SelectableSkillContextSource` deleted; `execution.rs`, `assets.rs`,
+`setup_markers.rs`, `filesystem_skill_bundle_source.rs`, `skill_bundle_source.rs`,
+`runtime/skills.rs` removed; `PgRetrievalLookup` observer wired; dead VFS imports/fields
+pruned from `runtime.rs`, `factory.rs`, `local_dev_mounts.rs`. Committed `130664e0`.
+Subplans: `docs/agents-v3/subplan_step8_of_plan_skill_context_removal.md`,
+`subplan_step8_factory_fs_cleanup.md`, `subplan_step8_wire_skill_activation_observer.md`.
 
 **Ground-truth verification (checked against live code):**
 - `bundled_skills.rs` — deleted; no `mod bundled_skills` or `ensure_bundled_reborn_skills_installed` in `lib.rs`. ✅
@@ -9812,7 +9819,11 @@ removed from `management.rs`. Committed in two commits on main:
 - `management.rs` `SYSTEM_SKILLS_ROOT` disk-load — removed; `list_skills()` / `search_skills()` walk `USER_SKILLS_ROOT` only. Tests confirm (lines 17–20, 650–651). ✅
 - `skills-db` feature — in `brassclaw_reborn_cli` `default` features. ✅
 - `SkillSource::System` enum variant — still present in `management.rs` as a type (used by `ManagedSkillSource` / lifecycle mapping); this is **correct** — removing the disk-load path does not require deleting the enum variant used for source tagging. ✅
-- `SYSTEM_SKILLS_ROOT` in `brassclaw_first_party_extension_ports/src/skills.rs` — this is the **VFS** system-skills root for user-installed VFS skills, NOT the old management.rs disk-load. It is a separate mechanism and is intentionally still present. ✅
+- `SYSTEM_SKILLS_ROOT` in `brassclaw_first_party_extension_ports/src/skills.rs` — the VFS
+  SKILL.md loading path was removed in Step C (`130664e0`). The constant and
+  `FirstPartySkillsExtensionHandles` remain as a **path-validation utility only** — no VFS
+  loading happens through them. The comment at the top of `skills.rs` (line 14) documents
+  this. ✅
 
 **Goal:** Remove **both** pre-v3 filesystem-skill mechanisms (validation-bypass
 audit finding 1): on-disk `SKILL.md` system skills become `reborn_skills` DB
