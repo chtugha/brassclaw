@@ -10053,10 +10053,15 @@ Phase P.0 path); everything else is v3 artifacts authored as DB rows through Q1+
    **Implemented:** `builtin_bootstrap.rs` Pass 15 — class-2 skill `doc-convert-method`
    seeded with `SKILL_DOC_CONVERT_METHOD_BODY` (pipeline, staleness check, extract-vs-compress
    rule, conversion invariants). Uses `concat!()` to avoid raw-string quoting issues.
-6. **Recipe (class 21):** author `doc-convert` (variants `by-extract` Tier 0,
+6. **[DONE]** **Recipe (class 21):** author `doc-convert` (variants `by-extract` Tier 0,
    `by-llm-compress` Tier 1) with `step_descriptions` JSONB; steps `include`
    the step-4 leaf UUIDs + the step-5 domain skill + the step-3 `component_db`
    ToolSkill UUID. Through Q1+Q2 — no bypass.
+
+   **Implemented:** `builtin_bootstrap.rs` Pass 15 — Recipe `doc-convert` seeded with
+   one `StepDescription` (6 steps), two variants (`by-extract` step_link `0:1-0:3+0:5-0:6`
+   Tier-0; `by-llm-compress` step_link `0:1-0:6` Tier-1). `mark_recipe_tier0()` applied
+   to `by-extract`. 10 intent examples. ts-read-file looked up via `get_id_by_name`.
 7. **Action (class 16):** author `doc-sync` (`execute_action_procedure`, no
    LLM) — the scan/decide/extract/upsert/mark-stale driver composing the
    leaves; enqueues `by-llm-compress` for docs whose §7 extract needs

@@ -15221,7 +15221,7 @@ async fn seed_doc_sync_group(
     // 3. Tool: component_db (builtin.component_db)
     //    The one generic DB Tool — read_hash | read_row | upsert | mark_stale |
     //    compute_hash | extract_section.
-    let tool_component_db = stores
+    let _tool_component_db = stores
         .upsert_tool(tool_component_db_row(&tenant), "component_db")
         .await?;
 
@@ -15231,14 +15231,10 @@ async fn seed_doc_sync_group(
         .upsert_tool_skill(ts_component_db_row(&tenant), "ts-component-db")
         .await?;
 
-    // Step 4 — 10 leaf Orchestrator Skills (class 1).
-    // Each describes ONE tool/PythonCode usage; reusable by future recipes.
-    // General-purpose leaves (file-list, file-read, hash-compute, hash-compare,
-    // db-read-hash, markdown-section, component-header-render, prompt-compress)
-    // and mechanism-specific leaves (db-upsert-docus, db-mark-prefix-stale).
-    let _ = (tool_component_db, ts_component_db); // kept alive for future Recipe steps
+    // Step 4 — 10 leaf Orchestrator Skills (class 1). Capture UUIDs for the
+    // Recipe steps below. (tool_component_db + ts_component_db used in Recipe rust steps.)
 
-    stores
+    let _sk_file_list = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15250,7 +15246,7 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    stores
+    let sk_file_read = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15262,7 +15258,7 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    stores
+    let _sk_hash_compute = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15275,7 +15271,7 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    stores
+    let _sk_hash_compare = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15288,7 +15284,7 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    stores
+    let _sk_db_read_hash = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15301,12 +15297,12 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    stores
+    let sk_markdown_section = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
                 "markdown-section",
-                "Leaf skill: extract a named `## N. title` section from a markdown document \
+                "Leaf skill: extract a named section from a markdown document \
                  using `builtin.component_db` op=extract_section.",
                 SKILL_MARKDOWN_SECTION_BODY,
             ),
@@ -15314,20 +15310,20 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    stores
+    let sk_header_render = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
                 "component-header-render",
-                "Leaf skill: render the `## CC:UID  LABEL  \"name\"` base-prompt header \
-                 line using `pc-format-component-header`.",
+                "Leaf skill: render the base-prompt component header line \
+                 using `pc-format-component-header`.",
                 SKILL_COMPONENT_HEADER_RENDER_BODY,
             ),
             "component-header-render",
         )
         .await?;
 
-    stores
+    let sk_prompt_compress = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15341,7 +15337,7 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    stores
+    let sk_db_upsert_docus = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15355,7 +15351,7 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
-    stores
+    let _sk_db_mark_stale = stores
         .upsert_skill(
             leaf_skill(
                 &tenant,
@@ -15372,7 +15368,7 @@ async fn seed_doc_sync_group(
     // Step 5 — Domain Orchestrator Skill (class 2): doc-convert-method.
     // Prose overview of the full doc-conversion pipeline; references the ten
     // leaf skills by name. Doc-specific — not a general-purpose leaf.
-    stores
+    let sk_doc_convert_method = stores
         .upsert_skill(
             skill_row(
                 &tenant,
@@ -15388,10 +15384,158 @@ async fn seed_doc_sync_group(
         )
         .await?;
 
+    // Step 6 — Recipe (class 21): doc-convert (two variants).
+    //
+    // All 6 steps live in StepDescription 0 (desc_idx=0):
+    //   Step 1 (orchestrator): include doc-convert-method domain skill
+    //   Step 2 (rust):         include ts-read-file ToolSkill binding
+    //   Step 3 (orchestrator): include file-read skill + markdown-section skill
+    //   Step 4 (orchestrator): include prompt-compress skill (LLM; by-llm-compress only)
+    //   Step 5 (orchestrator): include component-header-render skill
+    //   Step 6 (rust):         include ts-component-db ToolSkill binding + db-upsert-docus skill
+    //
+    // Variant step_links:
+    //   by-extract      (Tier 0): "0:1-0:3+0:5-0:6"  (steps 1-3 and 5-6; skip step 4)
+    //   by-llm-compress (Tier 1): "0:1-0:6"           (steps 1-6; all)
+    //
+    // Look up the already-seeded ts-read-file and ts-glob ToolSkill UUIDs.
+    let ts_read_file = stores
+        .tool_skill
+        .get_id_by_name(&tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, "ts-read-file")
+        .await
+        .map_err(|e| SeedBuiltinBootstrapError::Db { reason: e.to_string() })?
+        .unwrap_or_else(Uuid::new_v4); // fallback: won't match at runtime but won't panic
+
+    let recipe_steps = vec![
+        step_entry(
+            1,
+            "orchestrator",
+            "Load the doc-convert-method domain skill (pipeline overview)",
+            "component",
+            &[sk_doc_convert_method],
+        ),
+        step_entry(
+            2,
+            "rust",
+            "Pre-load ts-read-file ToolSkill binding",
+            "component",
+            &[ts_read_file],
+        ),
+        step_entry(
+            3,
+            "orchestrator",
+            "Read source file + extract LLM-summary section",
+            "component",
+            &[sk_file_read, sk_markdown_section],
+        ),
+        step_entry(
+            4,
+            "orchestrator",
+            "Compress extracted section for LLM-safety (by-llm-compress only)",
+            "component",
+            &[sk_prompt_compress],
+        ),
+        step_entry(
+            5,
+            "orchestrator",
+            "Render the base-prompt component header line",
+            "component",
+            &[sk_header_render],
+        ),
+        step_entry(
+            6,
+            "rust",
+            "Pre-load ts-component-db ToolSkill binding + upsert both reborn_docus rows",
+            "component",
+            &[ts_component_db, sk_db_upsert_docus],
+        ),
+    ];
+
+    let recipe_intent_examples: Vec<Value> = vec![
+        json!({"input": "convert doc to LLM format", "class": "21"}),
+        json!({"input": "sync docs/agents-v3 documentation", "class": "21"}),
+        json!({"input": "extract and store LLM-summary section", "class": "21"}),
+        json!({"input": "compress agent doc for base prompt", "class": "21"}),
+        json!({"input": "update reborn_docus with converted doc", "class": "21"}),
+        json!({"input": "run doc-convert by-extract", "class": "21"}),
+        json!({"input": "run doc-convert by-llm-compress", "class": "21"}),
+        json!({"input": "doc conversion without LLM", "class": "21"}),
+        json!({"input": "doc conversion with LLM compression", "class": "21"}),
+        json!({"input": "convert documentation file", "class": "21"}),
+    ];
+
+    // Build multi-variant NewPgRecipe directly (recipe_row helper only
+    // supports single-variant).
+    let by_extract_examples: Vec<String> = recipe_intent_examples
+        .iter()
+        .filter(|e| {
+            e.get("input")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.contains("llm") && !s.contains("compress"))
+                .unwrap_or(true)
+        })
+        .filter_map(|e| e.get("input").and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+    let by_llm_examples: Vec<String> = recipe_intent_examples
+        .iter()
+        .filter_map(|e| e.get("input").and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+
+    let recipe_row_val = NewPgRecipe {
+        tenant_id: tenant.clone(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: "doc-convert".to_string(),
+        description: "Per-doc converter: read a docs/agents-v3/*.md, extract its \
+                       LLM-summary section, optionally compress it (Tier 1 variant), \
+                       render the header, and upsert both source + converted rows \
+                       into reborn_docus. Variants: by-extract (Tier 0) and \
+                       by-llm-compress (Tier 1)."
+            .to_string(),
+        trigger: None,
+        steps: json!([]),
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        consumer_tags: vec!["02:orchestrator".into(), "05:validator".into()],
+        intent_examples: Some(json!(recipe_intent_examples)),
+        source: "system".into(),
+        step_descriptions: Some(json!([{
+            "desc_idx": 0,
+            "label": "doc-convert steps (6 steps; by-extract skips step 4)",
+            "yaml_source": "",
+            "steps": recipe_steps,
+        }])),
+        variants: Some(json!([
+            {
+                "variant_key": "by-extract",
+                "step_link": "0:1-0:3+0:5-0:6",
+                "description": "Tier-0 variant: no LLM. Steps 1-3 + 5-6 (skip step 4).",
+                "intent_examples": by_extract_examples,
+                "variable_patterns": [],
+            },
+            {
+                "variant_key": "by-llm-compress",
+                "step_link": "0:1-0:6",
+                "description": "Tier-1 variant: includes LLM compression step (step 4).",
+                "intent_examples": by_llm_examples,
+                "variable_patterns": [],
+            }
+        ])),
+        dependency_registry: None,
+        validates_class_code: None,
+    };
+
+    let recipe_id = stores.upsert_recipe(recipe_row_val, "doc-convert").await?;
+    // by-extract variant is Tier 0 (no LLM call). by-llm-compress stays at
+    // insert defaults (seedling / wilson_lower=0.0 → llm_call_required=true).
+    stores.mark_recipe_tier0(recipe_id).await?;
+
     tracing::debug!(
-        "seeded doc-sync group Pass 15: 2 PC + 1 Tool + 1 ToolSkill + 10 leaf Skills + 1 domain Skill \
+        "seeded doc-sync group Pass 15: 2 PC + 1 Tool + 1 ToolSkill + 10 leaf Skills \
+         + 1 domain Skill + 1 Recipe \
          (pc-hash-changed, pc-format-component-header, component_db, ts-component-db, \
-          file-list..db-mark-prefix-stale, doc-convert-method)"
+          file-list..db-mark-prefix-stale, doc-convert-method, doc-convert)"
     );
 
     Ok(())
