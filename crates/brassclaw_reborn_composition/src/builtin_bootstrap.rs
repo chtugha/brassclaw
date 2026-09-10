@@ -489,6 +489,13 @@ pub async fn seed_builtin_components(
     // Recipes, and ExtensionCatalogues.
     seed_workflow_skills(&stores).await?;
 
+    // Pass 15 — doc-sync group (Phase P Steps 2–8): the two pure-logic
+    // PythonCode leaves (hash_changed, format_component_header).
+    // The component_db Tool + ToolSkill are seeded here once Step 3 is complete.
+    // Leaf Skills, Domain Skill, Recipe, Action, and ExtensionCatalogue follow
+    // in Steps 4–8.
+    seed_doc_sync_group(&stores).await?;
+
     Ok(())
 }
 
@@ -15147,6 +15154,105 @@ async fn seed_workflow_skills(
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Pass 15 — doc-sync group (Phase P Step 2)
+// ---------------------------------------------------------------------------
+//
+// Seeds the reusable PythonCode leaves for the doc-conversion mechanism
+// (§0.22 / Phase P). Two pure-logic helpers with no I/O, no imports, and
+// no `__execute_action__` calls:
+//
+//   pc-hash-changed       — compare two hash strings; returns bool
+//   pc-format-component-header — render the `## CC:UID  LABEL  "name"` header
+//
+// SHA-256 computation and markdown-section extraction are handled by the
+// component_db Rust Tool (Step 3) — the Monty VM has no hashlib and cannot
+// safely inject large multi-line strings via {{vars.slotN}} substitution.
+//
+// The component_db Tool + ToolSkill rows (Step 3), leaf Skills (Step 4),
+// domain Skill (Step 5), Recipe (Step 6), Action (Step 7), and
+// ExtensionCatalogue (Step 8) will be added to this function as those
+// steps are completed. The function is idempotent: safe to call on every boot.
+
+/// Seed the doc-sync PythonCode leaves for `tenant_id`.
+async fn seed_doc_sync_group(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+
+    // 1. PythonCode: pc-hash-changed
+    //    Pure comparison — no I/O, no imports. IBS bakes stored_hash as
+    //    {{vars.slot0}} and new_hash as {{vars.slot1}}.
+    let _pc_hash_changed = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-hash-changed",
+                "Pure-logic helper: compare two SHA-256 hex strings and return whether they \
+                 differ. Input: vars.slot0 = stored hash (str), vars.slot1 = new hash (str). \
+                 Output: {changed: bool}.",
+                PC_HASH_CHANGED_CONTENT,
+            ),
+            "pc-hash-changed",
+        )
+        .await?;
+
+    // 2. PythonCode: pc-format-component-header
+    //    Renders the do_reassemble header line. IBS bakes:
+    //    slot0 = class_code (int as str), slot1 = prompt_uid (int as str),
+    //    slot2 = label (str), slot3 = name (str).
+    let _pc_format_component_header = stores
+        .upsert_python_code(
+            pc_row(
+                &tenant,
+                "pc-format-component-header",
+                "Pure-logic helper: render the base-prompt component header line \
+                 `## CC:UID  LABEL  \"name\"` as used by do_reassemble. \
+                 Input: vars.slot0 = class_code (str), vars.slot1 = prompt_uid (str), \
+                 vars.slot2 = label (str), vars.slot3 = name (str). \
+                 Output: {header: str}.",
+                PC_FORMAT_COMPONENT_HEADER_CONTENT,
+            ),
+            "pc-format-component-header",
+        )
+        .await?;
+
+    tracing::debug!(
+        "seeded doc-sync group Pass 15: 2 PythonCode leaves (pc-hash-changed, \
+         pc-format-component-header)"
+    );
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Pass 15 — doc-sync PythonCode body constants
+// ---------------------------------------------------------------------------
+
+/// Compare two hash strings; return {changed: bool}.
+/// No imports needed — pure Python string comparison.
+/// IBS substitutes stored_hash as {{vars.slot0}}, new_hash as {{vars.slot1}}.
+const PC_HASH_CHANGED_CONTENT: &str = r#"# Pure-logic hash comparison. No I/O, no imports.
+# IBS bakes {{vars.slot0}} = stored hash, {{vars.slot1}} = new hash before execution.
+_stored = "{{vars.slot0}}"
+_new    = "{{vars.slot1}}"
+result = {"changed": _stored != _new}
+"#;
+
+/// Render the `## CC:UID  LABEL  "name"` base-prompt header line.
+/// Matches do_reassemble's format exactly.
+/// IBS substitutes: slot0=class_code, slot1=prompt_uid, slot2=label, slot3=name.
+const PC_FORMAT_COMPONENT_HEADER_CONTENT: &str = r#"# Pure-logic header renderer. No I/O, no imports.
+# IBS bakes slot0=class_code, slot1=prompt_uid, slot2=label, slot3=name.
+_class_code = "{{vars.slot0}}"
+_prompt_uid = "{{vars.slot1}}"
+_label      = "{{vars.slot2}}"
+_name       = "{{vars.slot3}}"
+result = {"header": '## ' + _class_code + ':' + _prompt_uid + '  ' + _label + '  "' + _name + '"'}
+"#;
+
+
 
 // ---------------------------------------------------------------------------
 // Pass 9 — commit workflow domain skill + recipe
