@@ -10,6 +10,7 @@
 /// Decode a little-endian `f32` blob written by an `IndexValue::Bytes`
 /// projection. Returns `None` if the blob is empty or has a length that
 /// isn't a multiple of `f32`'s byte size.
+#[allow(clippy::chunks_exact_to_as_chunks)] // as_chunks / array_chunks are not yet stable
 pub(crate) fn decode_embedding_blob(bytes: &[u8]) -> Option<Vec<f32>> {
     if bytes.is_empty() || !bytes.len().is_multiple_of(std::mem::size_of::<f32>()) {
         return None;
