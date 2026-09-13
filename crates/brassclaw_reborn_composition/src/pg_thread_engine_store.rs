@@ -41,11 +41,8 @@ use brassclaw_engine::types::step::Step;
 use brassclaw_engine::types::thread::{
     Thread, ThreadConfig, ThreadId as EngineThreadId, ThreadState, ThreadType,
 };
-use brassclaw_host_api::{AgentId, SYSTEM_RESERVED_ID, TenantId, ThreadId as HostThreadId};
-use brassclaw_threads::{
-    SessionThreadError, SessionThreadRecord, SessionThreadService, ThreadHistoryRequest,
-    ThreadScope,
-};
+use brassclaw_host_api::{SYSTEM_RESERVED_ID, ThreadId as HostThreadId};
+use brassclaw_threads::{SessionThreadError, SessionThreadRecord, SessionThreadService};
 use chrono::Utc;
 use uuid::Uuid;
 
@@ -146,26 +143,21 @@ impl PgThreadEngineStore {
 #[async_trait]
 impl Store for PgThreadEngineStore {
     async fn load_thread(&self, id: EngineThreadId) -> Result<Option<Thread>, EngineError> {
-        // Engine `ThreadId(pub Uuid)` -> loop/threads `ThreadId(String)`. Loop
-        // thread ids are stored as raw Uuid strings, so `from_trusted` round
-        // trips the canonical textual form.
+        // Engine `ThreadId(pub Uuid)` -> loop/threads `ThreadId(String)`.
         let host_thread_id = HostThreadId::from_trusted(id.0.to_string());
-        let scope = ThreadScope {
-            tenant_id: TenantId::from_trusted(self.tenant_id.clone()),
-            agent_id: AgentId::from_trusted("default".to_string()),
-            project_id: None,
-            owner_user_id: None,
-        };
-        let request = ThreadHistoryRequest {
-            scope,
-            thread_id: host_thread_id,
-        };
-        match self.thread_service.read_thread(request).await {
-            Ok(record) => Ok(Some(Self::map_record(&record))),
-            // `read_thread` returns `UnknownThread` for both "does not exist"
-            // and "exists but owned by a different scope" (ownership-probe
-            // semantics) — both map to `Ok(None)` so the caller degrades
-            // gracefully rather than aborting the turn.
+        // Use `read_thread_by_id` rather than `read_thread`: the latter performs
+        // an exact scope comparison including agent_id, which always returns
+        // UnknownThread when the stored agent_id differs from the "default"
+        // sentinel we would fabricate — causing every driver turn to fail with
+        // "thread not found". After loading, verify tenant_id ourselves so
+        // cross-tenant reads still degrade to Ok(None).
+        match self.thread_service.read_thread_by_id(host_thread_id).await {
+            Ok(record) => {
+                if record.scope.tenant_id.as_str() != self.tenant_id {
+                    return Ok(None);
+                }
+                Ok(Some(Self::map_record(&record)))
+            }
             Err(SessionThreadError::UnknownThread { .. }) => Ok(None),
             Err(error) => Err(EngineError::Store {
                 reason: error.to_string(),
@@ -326,15 +318,14 @@ mod tests {
         let store = PgThreadEngineStore::new(Arc::clone(&service), "tenant-acme");
 
         let thread_id = HostThreadId::from_trusted(Uuid::new_v4().to_string());
-        // The in-memory backend enforces exact-scope ownership on `read_thread`
-        // (production PG keys on id+tenant_id only), so ensure the thread under
-        // the SAME scope shape `load_thread` will issue: tenant + "default"
-        // agent, no project/owner. The creating actor becomes the user fallback.
+        // Use a realistic agent_id (not "default") to verify that load_thread
+        // no longer requires an exact scope match — it now calls read_thread_by_id
+        // which keys on id + tenant_id only.
         let ensure_scope = ThreadScope {
             tenant_id: HostTenantId::from_trusted("tenant-acme".to_string()),
-            agent_id: HostAgentId::from_trusted("default".to_string()),
+            agent_id: HostAgentId::from_trusted("reborn-cli-agent".to_string()),
             project_id: None,
-            owner_user_id: None,
+            owner_user_id: Some(HostUserId::from_trusted("user-7".to_string())),
         };
         let ensured = service
             .ensure_thread(EnsureThreadRequest {
@@ -354,7 +345,7 @@ mod tests {
         let thread = loaded.expect("thread present");
         assert_eq!(thread.id.0, Uuid::parse_str(thread_id.as_str()).unwrap());
         assert_eq!(thread.tenant_id, "tenant-acme");
-        assert_eq!(thread.agent_id, "default");
+        assert_eq!(thread.agent_id, "reborn-cli-agent");
         assert_eq!(thread.user_id, "user-7");
         assert_eq!(thread.title.as_deref(), Some("research task"));
         assert_eq!(thread.metadata["conversation_scope"], "abc");
