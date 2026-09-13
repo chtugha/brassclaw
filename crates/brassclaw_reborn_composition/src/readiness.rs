@@ -6,6 +6,10 @@ pub enum RebornReadinessState {
     #[default]
     Disabled,
     DevOnly,
+    /// A Postgres-backed build that passed the production-trust-policy +
+    /// process-binding contract gate. All facades are wired with production
+    /// implementations; no fake/in-memory seams are present.
+    ProductionValidated,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

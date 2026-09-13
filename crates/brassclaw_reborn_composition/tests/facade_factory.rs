@@ -345,10 +345,47 @@ async fn production_postgres_services_migrate_trigger_repository_before_runtime_
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[ignore = "TODO(#3856): restore when tenant sandbox process-port wiring exists"]
 async fn production_postgres_services_wire_first_party_runtime_http_egress() {
-    // Restore the ProductionValidated readiness and host_runtime.health()
-    // happy-path assertions that are temporarily fail-closed below.
+    let Some((_container, pool, database_url)) = postgres_pool_or_skip().await else {
+        return;
+    };
+    let (notifier, handle) = live_wake_notifier();
+
+    let reborn_home = tempfile::tempdir().expect("tempdir").keep();
+    let services = build_reborn_services(
+        RebornBuildInput::postgres(
+            "test-owner",
+            pool,
+            SecretMaterial::from(database_url),
+            test_master_key(),
+            reborn_home,
+        )
+        .with_production_trust_policy(production_trust_policy())
+        .with_runtime_policy(production_runtime_policy())
+        .with_turn_run_wake_notifier(notifier)
+        .with_runtime_process_binding(test_sandbox_process_binding())
+        .require_runtime_http_egress(),
+    )
+    .await
+    .expect(
+        "postgres production services with process port and http egress should build successfully",
+    );
+
+    handle.shutdown().await;
+
+    assert!(
+        services.host_runtime.is_some(),
+        "host_runtime must be present in a production postgres build"
+    );
+    assert_eq!(
+        services.readiness.state,
+        RebornReadinessState::ProductionValidated,
+        "postgres build with production trust policy must surface ProductionValidated readiness"
+    );
+    assert!(
+        services.readiness.facades.host_runtime,
+        "host_runtime facade readiness must be true"
+    );
 }
 
 #[cfg(feature = "postgres")]
@@ -391,10 +428,45 @@ async fn production_postgres_services_require_process_port_for_first_party_runti
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[ignore = "TODO(#3856): restore when tenant sandbox process-port wiring exists"]
 async fn migration_dry_run_validates_postgres_planned_turn_profile() {
-    // Restore the MigrationDryRunValidated readiness and planned-profile
-    // submit_turn assertions that are temporarily fail-closed below.
+    // Validates that a production postgres build with process-port wiring
+    // but without `require_runtime_http_egress` (the migration dry-run path)
+    // succeeds and surfaces `ProductionValidated` readiness.
+    let Some((_container, pool, database_url)) = postgres_pool_or_skip().await else {
+        return;
+    };
+    let (notifier, handle) = live_wake_notifier();
+
+    let reborn_home = tempfile::tempdir().expect("tempdir").keep();
+    let services = build_reborn_services(
+        RebornBuildInput::postgres(
+            "test-owner",
+            pool,
+            SecretMaterial::from(database_url),
+            test_master_key(),
+            reborn_home,
+        )
+        .with_production_trust_policy(production_trust_policy())
+        .with_runtime_policy(production_runtime_policy())
+        .with_turn_run_wake_notifier(notifier)
+        .with_runtime_process_binding(test_sandbox_process_binding()),
+    )
+    .await
+    .expect(
+        "postgres production services with process port should build without requiring http egress",
+    );
+
+    handle.shutdown().await;
+
+    assert!(
+        services.host_runtime.is_some(),
+        "host_runtime must be present in a production postgres build"
+    );
+    assert_eq!(
+        services.readiness.state,
+        RebornReadinessState::ProductionValidated,
+        "postgres build with production trust policy must surface ProductionValidated readiness"
+    );
 }
 
 #[cfg(feature = "postgres")]

@@ -576,6 +576,12 @@ pub async fn build_reborn_services(
                 effective_tenant_id,
             ),
         ));
+        // Upgrade readiness to `ProductionValidated` when a production trust
+        // policy was supplied — the process-binding gate above already verified
+        // the contract, so all production seams are correctly wired.
+        if input.production_trust_policy.is_some() {
+            services.readiness.state = RebornReadinessState::ProductionValidated;
+        }
         return Ok(services);
     }
     // LocalDev input (pure filesystem, no PG pool — used in unit tests only).

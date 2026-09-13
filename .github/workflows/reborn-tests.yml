@@ -118,6 +118,33 @@ jobs:
             echo "has_engine_replay_risk=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # Architecture boundary tests run first in their own job so a violation
+  # surfaces immediately with a clear error rather than as one entry in an
+  # 18-package parallel matrix that fail-fast cancels with opaque annotations.
+  boundary-tests:
+    name: Architecture boundary tests
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          shared-key: boundary-tests
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: Run architecture boundary tests
+        run: cargo test -p brassclaw_architecture --all-targets -- --nocapture
+
   package-matrix:
     name: Discover Reborn package crates
     needs: changes
@@ -146,7 +173,6 @@ jobs:
                     | select(
                         (.name | startswith("brassclaw_reborn"))
                         or (.name | startswith("brassclaw_product"))
-                        or (.name == "brassclaw_architecture")
                         or (.name == "brassclaw_slack_v2_adapter")
                         or (.name == "brassclaw_telegram_v2_adapter")
                         or (.name | startswith("brassclaw_webui_v2"))
@@ -192,7 +218,7 @@ jobs:
 
   crate-tests:
     name: Test ${{ matrix.package }}
-    needs: [changes, package-matrix]
+    needs: [changes, package-matrix, boundary-tests]
     if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -454,6 +480,7 @@ jobs:
     if: always()
     needs:
       - changes
+      - boundary-tests
       - package-matrix
       - matrix-config
       - crate-tests
@@ -493,6 +520,7 @@ jobs:
             exit 0
           fi
 
+          require_success "boundary-tests" "${{ needs.boundary-tests.result }}"
           require_success "package-matrix" "${{ needs.package-matrix.result }}"
           require_success "crate-tests" "${{ needs.crate-tests.result }}"
           require_success "root-reborn-parity-tests" "${{ needs.root-reborn-parity-tests.result }}"

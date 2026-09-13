@@ -171,13 +171,11 @@ pub trait SelfAuthoredHookSink: Send {
 /// `pub(crate)` so the dispatcher slice that wires self-authored hooks
 /// into the gate composer can construct it directly without rebuilding
 /// the GateSinkState mapping. Tests construct it via the same path.
-#[allow(dead_code)] // dispatcher wiring lands alongside #3564
 pub(crate) struct RecordingSelfAuthoredSink {
     pub(crate) state: GateSinkState,
 }
 
 impl RecordingSelfAuthoredSink {
-    #[allow(dead_code)] // see struct-level note
     pub(crate) fn new() -> Self {
         Self {
             state: GateSinkState::Unset,
@@ -249,11 +247,16 @@ fn predicate_matches(predicate: &CapabilityPredicate, ctx: &BeforeCapabilityHook
 /// Always [`HookTrustClass::SelfAuthored`](crate::trust::HookTrustClass::SelfAuthored)
 /// at the binding level; the impl here is run-scoped.
 pub struct SelfAuthoredBeforeCapabilityHook {
-    #[allow(dead_code)] // surfaced via provenance once binding wiring lands
+    /// Carried for audit-log attribution; the dispatcher binding also tracks
+    /// the id independently, but the hook struct owns it so the audit slice
+    /// can surface it without a round-trip through the registry.
+    #[allow(dead_code)] // consumed by the audit attribution slice
     hook_id: HookId,
     spec: SelfAuthoredHookSpec,
     evaluator: SelfAuthoredEvaluator,
-    #[allow(dead_code)] // serialized into audit by a follow-up slice
+    /// Authorship chain captured at hook creation; forwarded to the audit log
+    /// when the audit-attribution slice lands.
+    #[allow(dead_code)] // consumed by the audit attribution slice
     provenance: SelfAuthorshipProvenance,
 }
 

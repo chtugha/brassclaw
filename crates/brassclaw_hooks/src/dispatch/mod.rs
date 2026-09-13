@@ -46,6 +46,7 @@ use crate::points::{
     ObserverHookContext,
 };
 use crate::registry::{HookBinding, HookBindingScope, HookPointSpec, HookRegistry};
+use crate::self_authored::{RecordingSelfAuthoredSink, SelfAuthoredBeforeCapabilityHook};
 use crate::sink::EventTriggeredHook;
 use crate::sink::{
     GateSinkState, ObserverHook, PrivilegedBeforeCapabilityHook, PrivilegedBeforePromptHook,
@@ -77,6 +78,8 @@ pub const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_millis(50);
 pub(crate) enum BeforeCapabilityHookImpl {
     Privileged(Box<dyn PrivilegedBeforeCapabilityHook>),
     Restricted(Box<dyn RestrictedBeforeCapabilityHook>),
+    /// Run-scoped self-authored hook. Never carries `allow` authority.
+    SelfAuthored(SelfAuthoredBeforeCapabilityHook),
 }
 
 impl BeforeCapabilityHookImpl {
@@ -87,6 +90,9 @@ impl BeforeCapabilityHookImpl {
         match self {
             BeforeCapabilityHookImpl::Privileged(h) => h.needs_input(),
             BeforeCapabilityHookImpl::Restricted(h) => h.needs_input(),
+            // Self-authored hooks match on capability_name only — they never
+            // inspect arguments, so input resolution can be skipped.
+            BeforeCapabilityHookImpl::SelfAuthored(_) => false,
         }
     }
 }
@@ -522,6 +528,40 @@ impl HookDispatcher {
         };
         self.insert_binding(binding)?;
         self.install_before_capability(hook_id, BeforeCapabilityHookImpl::Restricted(hook));
+        Ok(())
+    }
+
+    /// Install a `SelfAuthored`-tier `before_capability` hook for the current
+    /// run scope. Like `Installed`, self-authored hooks cannot mint `allow`;
+    /// the `SelfAuthoredBeforeCapabilityHook` only dispatches through
+    /// [`RecordingSelfAuthoredSink`], which routes to `deny`, `pause_approval`,
+    /// `pause_auth`, or `pass` — never `allow`.
+    ///
+    /// Self-authored hooks are always `HookBindingScope::Global` and have no
+    /// owning extension — they are anonymous run-scoped gate entries. Run scope
+    /// is the caller's responsibility: the dispatcher has no lifecycle for
+    /// removing self-authored hooks mid-run; callers should construct a fresh
+    /// dispatcher per run.
+    pub(crate) fn install_self_authored_before_capability(
+        &mut self,
+        hook_id: HookId,
+        phase: HookPhase,
+        hook: SelfAuthoredBeforeCapabilityHook,
+    ) -> Result<(), crate::error::HookError> {
+        let binding = HookBinding {
+            hook_id,
+            hook_version: HookVersion::ONE,
+            trust_class: HookTrustClass::SelfAuthored,
+            phase,
+            priority: HookPriority::DEFAULT,
+            point: HookPointSpec::BeforeCapability,
+            event_kind_filter: None,
+            owning_extension: None,
+            scope: HookBindingScope::Global,
+            poisoned: false,
+        };
+        self.insert_binding(binding)?;
+        self.install_before_capability(hook_id, BeforeCapabilityHookImpl::SelfAuthored(hook));
         Ok(())
     }
 
@@ -1331,6 +1371,21 @@ impl HookDispatcher {
                         .map_err(|_| ())
                         .map(|()| (sink.state, sink.audit_reason))
                 }
+                BeforeCapabilityHookImpl::SelfAuthored(h) => {
+                    let mut sink = RecordingSelfAuthoredSink::new();
+                    // SelfAuthoredBeforeCapabilityHook::evaluate is sync;
+                    // wrap in an async block so the future can be
+                    // catch_unwind'd on the same executor path.
+                    AssertUnwindSafe(async { h.evaluate(ctx, &mut sink) })
+                        .catch_unwind()
+                        .await
+                        .map_err(|_| ())
+                        // SelfAuthoredHookSink has no audit_reason surface;
+                        // forward None so the milestone annotation remains
+                        // absent, which is the correct behaviour (closed-
+                        // vocabulary reasons are captured in the decision).
+                        .map(|()| (sink.state, None::<String>))
+                }
             }
         };
 
@@ -1823,6 +1878,20 @@ impl HookDispatcherBuilder {
             scope,
             hook,
         )?;
+        Ok(self)
+    }
+
+    /// Install a `SelfAuthored`-tier `before_capability` hook into this builder.
+    /// See [`HookDispatcher::install_self_authored_before_capability`] for
+    /// the full contract.
+    pub fn install_self_authored_before_capability(
+        mut self,
+        hook_id: HookId,
+        phase: HookPhase,
+        hook: SelfAuthoredBeforeCapabilityHook,
+    ) -> Result<Self, crate::error::HookError> {
+        self.dispatcher
+            .install_self_authored_before_capability(hook_id, phase, hook)?;
         Ok(self)
     }
 
@@ -4593,6 +4662,128 @@ mod tests {
             observed,
             vec![false, true],
             "is_replay must be false on live dispatch, true on replay"
+        );
+    }
+
+    /// End-to-end dispatch test for the SelfAuthored capability hook path.
+    ///
+    /// Confirms that:
+    /// 1. A `SelfAuthoredBeforeCapabilityHook` installed via
+    ///    `install_self_authored_before_capability` wires into the dispatcher.
+    /// 2. A matching capability name results in a non-permitting (deny) decision.
+    /// 3. A non-matching capability name results in a pass (composed allow).
+    /// 4. `needs_input` returns `false` for the self-authored variant.
+    #[tokio::test]
+    async fn self_authored_hook_denies_on_matching_capability() {
+        use crate::self_authored::{
+            GenerationTraceRef, SelfAuthorshipProvenance, SelfAuthoredHookSpec,
+            SelfAuthoredReason,
+        };
+        use chrono::Utc;
+        use brassclaw_turns::{TurnId, TurnRunId};
+
+        let hook_id = HookId::for_builtin("self::near-miss-deny", HookVersion::ONE);
+        let spec = SelfAuthoredHookSpec::DenyCapability {
+            when: crate::predicate::CapabilityPredicate::NameEquals {
+                name: "shell.exec".to_string(),
+            },
+            reason: SelfAuthoredReason::AgentObservedNearMiss,
+        };
+        let provenance = SelfAuthorshipProvenance {
+            authored_by_run: TurnRunId::new(),
+            authored_by_turn: TurnId::new(),
+            authored_at: Utc::now(),
+            spec_digest: spec.digest(),
+            user_ratification: None,
+            generation_trace_ref: GenerationTraceRef::new("trace://run/turn/1".to_string()),
+        };
+        let hook = crate::self_authored::SelfAuthoredBeforeCapabilityHook::new(
+            hook_id, spec, provenance,
+        );
+
+        let mut dispatcher = HookDispatcher::new(HookRegistry::new());
+        dispatcher
+            .install_self_authored_before_capability(hook_id, HookPhase::Policy, hook)
+            .expect("self-authored install succeeds");
+
+        // `needs_input` must be false for self-authored hooks (name-only matching).
+        assert!(
+            !dispatcher.before_capability_needs_input(None),
+            "self-authored hooks should not request input resolution"
+        );
+
+        // Matching capability → deny.
+        let matching_ctx = BeforeCapabilityHookContext::new_unresolved(
+            tenant(),
+            "shell.exec".to_string(),
+            [0u8; 32],
+        );
+        let outcome = dispatcher.dispatch_before_capability(&matching_ctx).await;
+        assert!(
+            !outcome.decision.permits(),
+            "self-authored deny must block matching capability"
+        );
+        assert!(outcome.failures.is_empty(), "deny is not a failure");
+
+        // Non-matching capability → passes through to composed allow.
+        let other_ctx = BeforeCapabilityHookContext::new_unresolved(
+            tenant(),
+            "memory.read".to_string(),
+            [0u8; 32],
+        );
+        let outcome = dispatcher.dispatch_before_capability(&other_ctx).await;
+        assert!(
+            outcome.decision.permits(),
+            "self-authored hook must pass for non-matching capability"
+        );
+    }
+
+    /// Confirms the builder's `install_self_authored_before_capability` path works
+    /// end-to-end, wrapping in Arc as the production composition does.
+    #[tokio::test]
+    async fn self_authored_builder_path_wires_through_arc() {
+        use crate::self_authored::{
+            GenerationTraceRef, SelfAuthorshipProvenance, SelfAuthoredHookSpec,
+            SelfAuthoredReason,
+        };
+        use chrono::Utc;
+        use brassclaw_turns::{TurnId, TurnRunId};
+
+        let hook_id = HookId::for_builtin("self::scope-drift", HookVersion::ONE);
+        let spec = SelfAuthoredHookSpec::PauseApproval {
+            when: crate::predicate::CapabilityPredicate::NameStartsWith {
+                prefix: "external.".to_string(),
+            },
+            reason: SelfAuthoredReason::AgentObservedScopeDrift,
+        };
+        let provenance = SelfAuthorshipProvenance {
+            authored_by_run: TurnRunId::new(),
+            authored_by_turn: TurnId::new(),
+            authored_at: Utc::now(),
+            spec_digest: spec.digest(),
+            user_ratification: None,
+            generation_trace_ref: GenerationTraceRef::new("trace://run/turn/2".to_string()),
+        };
+        let hook = crate::self_authored::SelfAuthoredBeforeCapabilityHook::new(
+            hook_id, spec, provenance,
+        );
+
+        let dispatcher: Arc<HookDispatcher> =
+            HookDispatcherBuilder::new(HookRegistry::new())
+                .install_self_authored_before_capability(hook_id, HookPhase::Policy, hook)
+                .expect("builder install succeeds")
+                .build_arc();
+
+        // Matching prefix → pause approval (non-permitting).
+        let ctx = BeforeCapabilityHookContext::new_unresolved(
+            tenant(),
+            "external.api.call".to_string(),
+            [0u8; 32],
+        );
+        let outcome = dispatcher.dispatch_before_capability(&ctx).await;
+        assert!(
+            !outcome.decision.permits(),
+            "pause-approval hook must block matching capability"
         );
     }
 }
