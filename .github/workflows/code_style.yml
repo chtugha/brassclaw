@@ -145,7 +145,7 @@ jobs:
           shared-key: clippy
           save-if: ${{ matrix.name == 'all-features' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - name: Check lints
-        run: cargo clippy --all --tests --examples ${{ matrix.flags }} -- -D warnings
+        run: cargo clippy --all --benches --tests --examples ${{ matrix.flags }} -- -D warnings
 
   clippy-windows:
     name: Clippy Windows (${{ matrix.name }})
@@ -170,7 +170,7 @@ jobs:
           key: windows-${{ matrix.name }}
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - name: Check lints
-        run: cargo clippy --all --tests --examples ${{ matrix.flags }} -- -D warnings
+        run: cargo clippy --all --benches --tests --examples ${{ matrix.flags }} -- -D warnings
 
   reborn-cli-smoke:
     name: Reborn CLI smoke tests

@@ -173,7 +173,6 @@ jobs:
                     | select(
                         (.name | startswith("brassclaw_reborn"))
                         or (.name | startswith("brassclaw_product"))
-                        or (.name == "brassclaw_slack_v2_adapter")
                         or (.name == "brassclaw_telegram_v2_adapter")
                         or (.name | startswith("brassclaw_webui_v2"))
                         or (.name == "brassclaw_memory")

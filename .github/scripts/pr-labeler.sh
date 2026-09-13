@@ -84,18 +84,21 @@ classify_risk() {
     [[ -z "$file" ]] && continue
 
     case "$file" in
-      # High risk: safety, secrets, auth, crypto, setup, orchestrator auth
-      src/safety/*|src/secrets/*|src/llm/session.rs|src/orchestrator/auth.rs|\
-      src/channels/web/auth.rs|src/setup/*)
+      # High risk: safety, secrets, auth, crypto, trust, authorization
+      crates/brassclaw_safety/src/*|crates/brassclaw_secrets/src/*|\
+      crates/brassclaw_auth/src/*|crates/brassclaw_trust/src/*|\
+      crates/brassclaw_authorization/src/*|crates/brassclaw_runtime_policy/src/*)
         risk="high"
         break  # can't go higher
         ;;
 
-      # Medium risk: agent core, config, database, worker, tools, channels
-      src/agent/*|src/config.rs|src/settings.rs|src/db/*|src/worker/*|\
-      src/tools/*|src/channels/*|src/orchestrator/*|src/context/*|\
-      src/hooks/*|src/sandbox/*|src/extensions/*|Cargo.toml|\
-      .github/workflows/*)
+      # Medium risk: agent core, config, database, dispatcher, host runtime,
+      # hooks, sandbox, extensions, MCP, build config, workflows
+      crates/brassclaw_agent_loop/src/*|crates/brassclaw_reborn_config/src/*|\
+      crates/brassclaw_pg/src/*|crates/brassclaw_dispatcher/src/*|\
+      crates/brassclaw_host_runtime/src/*|crates/brassclaw_hooks/src/*|\
+      crates/brassclaw_process_sandbox/src/*|crates/brassclaw_extensions/src/*|\
+      crates/brassclaw_mcp/src/*|Cargo.toml|.github/workflows/*)
         # Only upgrade, never downgrade
         [[ "$risk" != "high" ]] && risk="medium"
         ;;

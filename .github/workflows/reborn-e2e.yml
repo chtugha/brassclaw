@@ -62,7 +62,7 @@ jobs:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: Build brassclaw
-        run: cargo build --features libsql
+        run: cargo build --bin brassclaw --features libsql
 
       - name: Upload binary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
