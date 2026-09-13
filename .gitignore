@@ -101,3 +101,4 @@ final_gaps_pre-v3.md
 last_cleanup_pre-v3.md
 Recipe_System_Finalisation.md
 checkup.md
+.cargo/config.local.toml

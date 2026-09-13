@@ -1,0 +1,13 @@
+# Local developer override — copy to ~/.cargo/config.toml or to
+# .cargo/config.local.toml (gitignored) to use the faster ld64.lld linker
+# on Apple Silicon. Requires: brew install llvm
+#
+# This is intentionally NOT committed to .cargo/config.toml because
+# /opt/homebrew/bin/ld64.lld is a Homebrew path that doesn't exist on
+# GitHub Actions macOS runners and causes CI link failures.
+
+[target.aarch64-apple-darwin]
+linker = "/usr/bin/clang"
+rustflags = [
+    "-C", "link-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld",
+]
