@@ -998,6 +998,16 @@ impl PgRecipeStoreFacade {
         }
     }
 
+    /// Attach a [`PgBasicPromptStore`] so that `approve()` calls `mark_stale`
+    /// after each Q2 graduation (§12 of prefix_V3.md — side-effect 4).
+    pub(crate) fn with_basic_prompt_store(
+        mut self,
+        store: Arc<crate::pg_basic_prompt_store::PgBasicPromptStore>,
+    ) -> Self {
+        self.queue_store = self.queue_store.with_basic_prompt_store(store);
+        self
+    }
+
     /// Convenience constructor matching the local-dev defaults used by
     /// `PgRecipeLibrary::local_dev`.
     pub(crate) fn local_dev(pool: Arc<PgPool>) -> Self {

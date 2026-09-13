@@ -334,11 +334,20 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     #[cfg(feature = "postgres")]
     if let Some(pool) = services.pg_pool.as_ref() {
         let tenant_id = runtime.webui_tenant_id();
-        let facade = crate::pg_recipe_store::PgRecipeStoreFacade::new(
+        let mut facade = crate::pg_recipe_store::PgRecipeStoreFacade::new(
             Arc::clone(pool),
             tenant_id,
             "default",
         );
+        // §12 (prefix_V3.md): attach PgBasicPromptStore so that approve() calls
+        // mark_stale after each Q2 graduation, signalling the Prefix Tab to
+        // show the Regenerate button.
+        let basic_prompt = Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+            Arc::clone(pool),
+            runtime.webui_tenant_id(),
+            "", // agent_id: empty string matches the default scope
+        ));
+        facade = facade.with_basic_prompt_store(basic_prompt);
         api =
             api.with_recipe_store(
                 Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
