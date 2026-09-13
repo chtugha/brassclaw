@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-13
+
+### Fixed
+
+- *(prefix-cache / Phase K.1)* **`POST /api/webchat/v2/prefixes/base-prompt/regenerate` always returned `invalid_request`** (`crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`): the optional Sempai gateway prewarm call (`gateway.stream_model(...)`) propagated its error with `?`, aborting the entire operation before the bundle was stored or the response returned. Prewarm is an optional vLLM KV-cache hint; failure must be non-fatal. Changed to a `match` that logs at `debug!` on failure and sets `with_prewarm = false`, consistent with the re-store step that follows.
+- *(prefix-cache / Phase K.1)* **Bundle always assembled empty — wrong content column for most tables** (`crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`): `COMPONENT_TABLES` used `COALESCE(content, '') AS content` for every table, but `reborn_skills` uses the `body` column, and `reborn_tools`, `reborn_actions`, `reborn_recipes`, `reborn_extensions_unified` have no `content` column at all. Every affected table query failed silently (caught at `debug!` and skipped), so the assembled bundle was always empty. Fixed: `COMPONENT_TABLES` now carries a `content_expr` per entry matching the canonical mapping in `retrieval_source::class_code_to_table`.
+- *(prefix-cache / Phase K.1 §12)* **`mark_stale` never called after Q2 graduation** (`crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`, `crates/brassclaw_reborn_composition/src/webui.rs`): `PgRecipeStoreFacade` constructed its internal `ValidationQueueStore` without a `PgBasicPromptStore`, so `queue_store.approve()` never reached the `mark_stale` branch. The bundle stayed permanently fresh after the operator validated a component, and the Prefix Tab never showed the Regenerate prompt. Fixed by adding `PgRecipeStoreFacade::with_basic_prompt_store()` and calling it in `webui.rs` during facade construction.
+
 ## [0.9.2] - 2026-09-13
 
 ### Fixed
