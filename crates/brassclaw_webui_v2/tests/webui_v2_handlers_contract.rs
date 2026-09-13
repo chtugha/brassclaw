@@ -1111,6 +1111,8 @@ fn automation_info(automation_id: &str, name: &str, cron: &str) -> RebornAutomat
         last_status: None,
         is_active: true,
         created_at: None,
+        prompt: None,
+        completion_policy: None,
     }
 }
 

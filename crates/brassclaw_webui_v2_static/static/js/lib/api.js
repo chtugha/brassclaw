@@ -140,6 +140,66 @@ export function listAutomations({ limit } = {}) {
   return apiFetch(`${V2_BASE}/automations${query ? `?${query}` : ""}`);
 }
 
+export function createAutomation({ name, cron, prompt, completionPolicy }) {
+  return apiFetch(`${V2_BASE}/automations`, {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      cron,
+      prompt,
+      completion_policy: completionPolicy,
+    }),
+  });
+}
+
+export function getAutomation(automationId) {
+  return apiFetch(`${V2_BASE}/automations/${encodeURIComponent(automationId)}`);
+}
+
+export function updateAutomation(automationId, patch) {
+  const body = {};
+  if (patch.name != null)             body.name = patch.name;
+  if (patch.cron != null)             body.cron = patch.cron;
+  if (patch.prompt != null)           body.prompt = patch.prompt;
+  if (patch.completionPolicy != null) body.completion_policy = patch.completionPolicy;
+  return apiFetch(
+    `${V2_BASE}/automations/${encodeURIComponent(automationId)}`,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
+}
+
+export function setAutomationState(automationId, action) {
+  return apiFetch(
+    `${V2_BASE}/automations/${encodeURIComponent(automationId)}/state`,
+    { method: "POST", body: JSON.stringify({ action }) },
+  );
+}
+
+export function deleteAutomation(automationId) {
+  return apiFetch(
+    `${V2_BASE}/automations/${encodeURIComponent(automationId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function fireAutomationNow(automationId) {
+  return apiFetch(
+    `${V2_BASE}/automations/${encodeURIComponent(automationId)}/fire`,
+    { method: "POST" },
+  );
+}
+
+export function getAutomationRunHistory(automationId, { limit } = {}) {
+  const params = new URLSearchParams();
+  if (limit != null) params.set("limit", String(limit));
+  const query = params.toString();
+  return apiFetch(
+    `${V2_BASE}/automations/${encodeURIComponent(automationId)}/runs${
+      query ? `?${query}` : ""
+    }`,
+  );
+}
+
 // --- Messages ---
 
 export function sendMessage({ threadId, content, clientActionId: clientId }) {

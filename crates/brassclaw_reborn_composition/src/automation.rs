@@ -7,12 +7,24 @@ use brassclaw_host_api::{
 };
 use brassclaw_host_runtime::{
     HostRuntime, HostRuntimeError, RuntimeCapabilityFailure, RuntimeCapabilityOutcome,
-    RuntimeCapabilityRequest, RuntimeFailureKind, TRIGGER_LIST_CAPABILITY_ID,
+    RuntimeCapabilityRequest, RuntimeFailureKind, TRIGGER_CREATE_CAPABILITY_ID,
+    TRIGGER_GET_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID,
+    TRIGGER_RUN_HISTORY_CAPABILITY_ID, TRIGGER_SET_STATE_CAPABILITY_ID,
+    TRIGGER_UPDATE_CAPABILITY_ID,
 };
 use brassclaw_product_workflow::{
-    AutomationProductFacade, ProductAgentBoundCaller, RebornAutomationInfo,
-    RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState, RebornServicesError,
-    RebornServicesErrorCode, RebornServicesErrorKind,
+    AutomationProductFacade, AutomationStateAction, ProductAgentBoundCaller,
+    RebornAutomationInfo, RebornAutomationRunHistoryResponse, RebornAutomationRunRecord,
+    RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
+    RebornCreateAutomationResponse, RebornDeleteAutomationResponse,
+    RebornFireAutomationNowResponse, RebornGetAutomationResponse, RebornServicesError,
+    RebornServicesErrorCode, RebornServicesErrorKind, RebornUpdateAutomationResponse,
+    WebUiCreateAutomationRequest, WebUiSetAutomationStateRequest, WebUiUpdateAutomationRequest,
+};
+use brassclaw_triggers::{
+    TriggerFire, TriggerFireIdentity, TriggerId, TriggerPromptMaterializer, TriggerRepository,
+    TriggerState, TrustedTriggerFireSubmitOutcome, TrustedTriggerFireSubmitter,
+    TrustedTriggerSubmitRequest,
 };
 use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
 use chrono::{DateTime, Utc};
@@ -24,6 +36,9 @@ const AUTOMATION_BACKEND_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone)]
 pub struct RebornWebuiAutomationFacade {
     host_runtime: Arc<dyn HostRuntime>,
+    trigger_repository: Option<Arc<dyn TriggerRepository>>,
+    trusted_submitter: Option<Arc<dyn TrustedTriggerFireSubmitter>>,
+    materializer: Option<Arc<dyn TriggerPromptMaterializer>>,
     backend_timeout: Duration,
 }
 
@@ -32,6 +47,7 @@ impl std::fmt::Debug for RebornWebuiAutomationFacade {
         formatter
             .debug_struct("RebornWebuiAutomationFacade")
             .field("host_runtime", &"Arc<dyn HostRuntime>")
+            .field("has_fire_deps", &self.trigger_repository.is_some())
             .finish()
     }
 }
@@ -40,14 +56,32 @@ impl RebornWebuiAutomationFacade {
     pub(crate) fn new(host_runtime: Arc<dyn HostRuntime>) -> Self {
         Self {
             host_runtime,
+            trigger_repository: None,
+            trusted_submitter: None,
+            materializer: None,
             backend_timeout: AUTOMATION_BACKEND_TIMEOUT,
         }
+    }
+
+    pub(crate) fn with_fire_deps(
+        mut self,
+        trigger_repository: Arc<dyn TriggerRepository>,
+        trusted_submitter: Arc<dyn TrustedTriggerFireSubmitter>,
+        materializer: Arc<dyn TriggerPromptMaterializer>,
+    ) -> Self {
+        self.trigger_repository = Some(trigger_repository);
+        self.trusted_submitter = Some(trusted_submitter);
+        self.materializer = Some(materializer);
+        self
     }
 
     #[cfg(test)]
     fn with_backend_timeout(host_runtime: Arc<dyn HostRuntime>, backend_timeout: Duration) -> Self {
         Self {
             host_runtime,
+            trigger_repository: None,
+            trusted_submitter: None,
+            materializer: None,
             backend_timeout,
         }
     }
@@ -134,6 +168,250 @@ impl AutomationProductFacade for RebornWebuiAutomationFacade {
             .await?;
         parse_list_automations_output(output)
     }
+
+    async fn create_automation(
+        &self,
+        caller: ProductAgentBoundCaller,
+        request: WebUiCreateAutomationRequest,
+    ) -> Result<RebornCreateAutomationResponse, RebornServicesError> {
+        let output = self
+            .invoke_trigger(
+                caller,
+                TRIGGER_CREATE_CAPABILITY_ID,
+                json!({
+                    "name": request.name,
+                    "cron": request.cron,
+                    "prompt": request.prompt,
+                    "completion_policy": request.completion_policy.unwrap_or_else(|| "recurring".to_string()),
+                }),
+            )
+            .await?;
+        let info = parse_single_automation_output(output)?;
+        Ok(RebornCreateAutomationResponse { automation: info })
+    }
+
+    async fn get_automation(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+    ) -> Result<RebornGetAutomationResponse, RebornServicesError> {
+        let output = self
+            .invoke_trigger(
+                caller,
+                TRIGGER_GET_CAPABILITY_ID,
+                json!({ "trigger_id": automation_id }),
+            )
+            .await;
+        match output {
+            Ok(v) => {
+                let info = parse_single_automation_output(v)?;
+                Ok(RebornGetAutomationResponse {
+                    automation: Some(info),
+                })
+            }
+            Err(e) if e.status_code == 404 => Ok(RebornGetAutomationResponse { automation: None }),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn update_automation(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+        request: WebUiUpdateAutomationRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        let mut body = serde_json::Map::new();
+        body.insert("trigger_id".to_string(), json!(automation_id));
+        if let Some(name) = request.name {
+            body.insert("name".to_string(), json!(name));
+        }
+        if let Some(cron) = request.cron {
+            body.insert("cron".to_string(), json!(cron));
+        }
+        if let Some(prompt) = request.prompt {
+            body.insert("prompt".to_string(), json!(prompt));
+        }
+        if let Some(policy) = request.completion_policy {
+            body.insert("completion_policy".to_string(), json!(policy));
+        }
+        let output = self
+            .invoke_trigger(caller, TRIGGER_UPDATE_CAPABILITY_ID, Value::Object(body))
+            .await;
+        match output {
+            Ok(v) => {
+                let info = parse_single_automation_output(v)?;
+                Ok(RebornUpdateAutomationResponse {
+                    automation: Some(info),
+                })
+            }
+            Err(e) if e.status_code == 404 => {
+                Ok(RebornUpdateAutomationResponse { automation: None })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn set_automation_state(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+        request: WebUiSetAutomationStateRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        let state_str = match request.action {
+            AutomationStateAction::Pause => "paused",
+            AutomationStateAction::Resume => "scheduled",
+        };
+        let output = self
+            .invoke_trigger(
+                caller,
+                TRIGGER_SET_STATE_CAPABILITY_ID,
+                json!({
+                    "trigger_id": automation_id,
+                    "state": state_str,
+                }),
+            )
+            .await;
+        match output {
+            Ok(v) => {
+                let info = parse_single_automation_output(v)?;
+                Ok(RebornUpdateAutomationResponse {
+                    automation: Some(info),
+                })
+            }
+            Err(e) if e.status_code == 404 => {
+                Ok(RebornUpdateAutomationResponse { automation: None })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn delete_automation(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+    ) -> Result<RebornDeleteAutomationResponse, RebornServicesError> {
+        let output = self
+            .invoke_trigger(
+                caller,
+                TRIGGER_REMOVE_CAPABILITY_ID,
+                json!({ "trigger_id": automation_id }),
+            )
+            .await;
+        match output {
+            Ok(_) => Ok(RebornDeleteAutomationResponse { deleted: true }),
+            Err(e) if e.status_code == 404 => Ok(RebornDeleteAutomationResponse { deleted: false }),
+            // 409 from has_active_fire propagates as-is
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn fire_automation_now(
+        &self,
+        caller: ProductAgentBoundCaller,
+        trigger_id_str: String,
+    ) -> Result<RebornFireAutomationNowResponse, RebornServicesError> {
+        let (repo, submitter, materializer) = match (
+            &self.trigger_repository,
+            &self.trusted_submitter,
+            &self.materializer,
+        ) {
+            (Some(r), Some(s), Some(m)) => (r, s, m),
+            _ => {
+                return Err(services_error(
+                    RebornServicesErrorCode::Unavailable,
+                    RebornServicesErrorKind::ServiceUnavailable,
+                    503,
+                    true,
+                ));
+            }
+        };
+        let trigger_id = TriggerId::parse(&trigger_id_str).map_err(|_| {
+            services_error(
+                RebornServicesErrorCode::NotFound,
+                RebornServicesErrorKind::NotFound,
+                404,
+                false,
+            )
+        })?;
+        let record = repo
+            .get_trigger(caller.tenant_id.clone(), trigger_id)
+            .await
+            .map_err(map_trigger_error)?
+            .ok_or_else(|| {
+                services_error(
+                    RebornServicesErrorCode::NotFound,
+                    RebornServicesErrorKind::NotFound,
+                    404,
+                    false,
+                )
+            })?;
+
+        if record.state != TriggerState::Scheduled {
+            return Err(services_error(
+                RebornServicesErrorCode::Conflict,
+                RebornServicesErrorKind::Conflict,
+                409,
+                false,
+            ));
+        }
+        if record.has_active_fire() {
+            return Err(services_error(
+                RebornServicesErrorCode::Conflict,
+                RebornServicesErrorKind::Conflict,
+                409,
+                false,
+            ));
+        }
+
+        let fire_slot = Utc::now();
+        let identity =
+            TriggerFireIdentity::new(caller.tenant_id.clone(), trigger_id, fire_slot);
+        let fire = TriggerFire {
+            identity,
+            creator_user_id: caller.user_id.clone(),
+            agent_id: Some(caller.agent_id.clone()),
+            project_id: caller.project_id.clone(),
+            prompt: record.prompt.clone(),
+        };
+        let materialized = materializer
+            .materialize_prompt(fire.clone())
+            .await
+            .map_err(map_trigger_error)?;
+
+        let request = TrustedTriggerSubmitRequest::new(fire, materialized, fire_slot);
+        let outcome = submitter
+            .submit_trusted_trigger_fire(request)
+            .await
+            .map_err(map_trigger_error)?;
+
+        let run_ref = match outcome {
+            TrustedTriggerFireSubmitOutcome::Accepted { run_id, .. } => run_id.to_string(),
+            TrustedTriggerFireSubmitOutcome::Replayed {
+                original_run_id, ..
+            } => original_run_id.to_string(),
+        };
+        Ok(RebornFireAutomationNowResponse { run_ref })
+    }
+
+    async fn get_automation_run_history(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+        limit: Option<u32>,
+    ) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError> {
+        let effective_limit = limit.unwrap_or(20).min(100) as usize;
+        let output = self
+            .invoke_trigger(
+                caller,
+                TRIGGER_RUN_HISTORY_CAPABILITY_ID,
+                json!({
+                    "trigger_id": automation_id,
+                    "limit": effective_limit,
+                }),
+            )
+            .await?;
+        parse_run_history_output(output)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,6 +435,10 @@ struct RawAutomationRecord {
     is_active: bool,
     #[serde(default)]
     created_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default)]
+    completion_policy: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,6 +480,8 @@ fn automation_info(record: RawAutomationRecord) -> Option<RebornAutomationInfo> 
         last_status: record.last_status,
         is_active: record.is_active,
         created_at: record.created_at,
+        prompt: record.prompt,
+        completion_policy: record.completion_policy,
     })
 }
 
@@ -229,6 +513,99 @@ fn sanitize_automation_list_output(output: &mut Value) {
         };
         trigger_object.insert("last_status".to_string(), status);
         trigger_object.insert("state".to_string(), state);
+    }
+}
+
+fn parse_single_automation_output(
+    mut output: Value,
+) -> Result<RebornAutomationInfo, RebornServicesError> {
+    // Sanitize state/last_status the same way as the list output.
+    if let Some(obj) = output.as_object_mut() {
+        let status = match obj.get("last_status").and_then(Value::as_str) {
+            Some("ok") => Value::String("ok".to_string()),
+            Some("error") => Value::String("error".to_string()),
+            _ => Value::Null,
+        };
+        let state = match obj.get("state").and_then(Value::as_str) {
+            Some(state) => Value::String(state.to_string()),
+            None => Value::String("unknown".to_string()),
+        };
+        obj.insert("last_status".to_string(), status);
+        obj.insert("state".to_string(), state);
+    }
+    let record: RawAutomationRecord = serde_json::from_value(output).map_err(|error| {
+        tracing::debug!(
+            error = %error,
+            "malformed single automation output from host runtime"
+        );
+        internal_invariant()
+    })?;
+    automation_info(record).ok_or_else(internal_invariant)
+}
+
+/// Parses the run history output from `triggers.run_history` capability.
+fn parse_run_history_output(
+    output: Value,
+) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError> {
+    #[derive(Debug, serde::Deserialize)]
+    struct RawRunHistoryEnvelope {
+        runs: Vec<RawRunRecord>,
+    }
+    #[derive(Debug, serde::Deserialize)]
+    struct RawRunRecord {
+        run_id: String,
+        #[serde(default)]
+        fire_slot: Option<String>,
+        started_at: String,
+        #[serde(default)]
+        finished_at: Option<String>,
+        status: RebornAutomationRunStatus,
+    }
+    let envelope: RawRunHistoryEnvelope =
+        serde_json::from_value(output).map_err(|error| {
+            tracing::debug!(
+                error = %error,
+                "malformed run history output from host runtime"
+            );
+            internal_invariant()
+        })?;
+    let runs = envelope
+        .runs
+        .into_iter()
+        .map(|r| RebornAutomationRunRecord {
+            run_id: r.run_id,
+            fire_slot: r.fire_slot,
+            started_at: r.started_at,
+            finished_at: r.finished_at,
+            status: r.status,
+        })
+        .collect();
+    Ok(RebornAutomationRunHistoryResponse { runs })
+}
+
+fn map_trigger_error(error: brassclaw_triggers::TriggerError) -> RebornServicesError {
+    use brassclaw_triggers::TriggerError;
+    match error {
+        TriggerError::NotFound => services_error(
+            RebornServicesErrorCode::NotFound,
+            RebornServicesErrorKind::NotFound,
+            404,
+            false,
+        ),
+        TriggerError::InvalidRecord { .. }
+        | TriggerError::InvalidTriggerId { .. }
+        | TriggerError::InvalidSchedule { .. } => services_error(
+            RebornServicesErrorCode::InvalidRequest,
+            RebornServicesErrorKind::Validation,
+            400,
+            false,
+        ),
+        _ => services_error(
+            RebornServicesErrorCode::Unavailable,
+            RebornServicesErrorKind::ServiceUnavailable,
+            503,
+            true,
+        ),
     }
 }
 

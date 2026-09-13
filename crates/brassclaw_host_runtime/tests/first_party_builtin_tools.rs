@@ -6238,6 +6238,33 @@ impl TriggerRepository for RemoveFailingTriggerRepository {
     ) -> Result<Option<brassclaw_triggers::TriggerRecord>, brassclaw_triggers::TriggerError> {
         self.inner.clear_active_fire(request).await
     }
+
+    async fn update_trigger(
+        &self,
+        tenant_id: brassclaw_host_api::TenantId,
+        trigger_id: brassclaw_triggers::TriggerId,
+        patch: brassclaw_triggers::TriggerUpdatePatch,
+    ) -> Result<Option<brassclaw_triggers::TriggerRecord>, brassclaw_triggers::TriggerError> {
+        self.inner.update_trigger(tenant_id, trigger_id, patch).await
+    }
+
+    async fn set_trigger_state(
+        &self,
+        tenant_id: brassclaw_host_api::TenantId,
+        trigger_id: brassclaw_triggers::TriggerId,
+        state: brassclaw_triggers::TriggerState,
+    ) -> Result<Option<brassclaw_triggers::TriggerRecord>, brassclaw_triggers::TriggerError> {
+        self.inner.set_trigger_state(tenant_id, trigger_id, state).await
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        tenant_id: brassclaw_host_api::TenantId,
+        trigger_id: brassclaw_triggers::TriggerId,
+        limit: usize,
+    ) -> Result<Vec<brassclaw_triggers::TriggerRunRecord>, brassclaw_triggers::TriggerError> {
+        self.inner.list_trigger_runs(tenant_id, trigger_id, limit).await
+    }
 }
 
 #[async_trait]
@@ -6364,6 +6391,39 @@ impl TriggerRepository for FailingTriggerRepository {
         _request: brassclaw_triggers::ClearActiveFireRequest,
     ) -> Result<Option<brassclaw_triggers::TriggerRecord>, brassclaw_triggers::TriggerError> {
         unreachable!("failing test repository does not clear active fires")
+    }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: brassclaw_host_api::TenantId,
+        _trigger_id: brassclaw_triggers::TriggerId,
+        _patch: brassclaw_triggers::TriggerUpdatePatch,
+    ) -> Result<Option<brassclaw_triggers::TriggerRecord>, brassclaw_triggers::TriggerError> {
+        Err(brassclaw_triggers::TriggerError::Backend {
+            reason: "failing test repository".to_string(),
+        })
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: brassclaw_host_api::TenantId,
+        _trigger_id: brassclaw_triggers::TriggerId,
+        _state: brassclaw_triggers::TriggerState,
+    ) -> Result<Option<brassclaw_triggers::TriggerRecord>, brassclaw_triggers::TriggerError> {
+        Err(brassclaw_triggers::TriggerError::Backend {
+            reason: "failing test repository".to_string(),
+        })
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: brassclaw_host_api::TenantId,
+        _trigger_id: brassclaw_triggers::TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<brassclaw_triggers::TriggerRunRecord>, brassclaw_triggers::TriggerError> {
+        Err(brassclaw_triggers::TriggerError::Backend {
+            reason: "failing test repository".to_string(),
+        })
     }
 }
 

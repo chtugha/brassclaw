@@ -223,26 +223,25 @@ impl RebornInterceptorConfigService {
         project_id: &str,
         with_prewarm: bool,
     ) -> Result<(String, String), InterceptorConfigServiceError> {
-        let client =
-            self.pool
-                .get()
-                .await
-                .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
-                    reason: format!("db pool: {e}"),
-                })?;
+        let client = self.pool.get().await.map_err(|e| {
+            tracing::debug!(error = %e, "do_assemble_bundle: db pool unavailable");
+            InterceptorConfigServiceError::Unavailable
+        })?;
 
         // Discover which component tables actually exist.
+        let table_names: Vec<&str> = COMPONENT_TABLES.iter().map(|(t, _, _)| *t).collect();
         let table_rows = client
             .query(
                 "SELECT table_name FROM information_schema.tables \
                  WHERE table_schema = 'public' \
                    AND table_type = 'BASE TABLE' \
                    AND table_name = ANY($1)",
-                &[&COMPONENT_TABLES.iter().map(|(t, _, _)| *t).collect::<Vec<_>>()],
+                &[&table_names],
             )
             .await
-            .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
-                reason: format!("information_schema query: {e}"),
+            .map_err(|e| {
+                tracing::debug!(error = %e, "do_assemble_bundle: information_schema query failed");
+                InterceptorConfigServiceError::Unavailable
             })?;
 
         let existing_tables: std::collections::HashSet<String> = table_rows
@@ -414,8 +413,9 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                 ConfigWriteContext::Operator,
             )
             .await
-            .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
-                reason: format!("persona save: {e}"),
+            .map_err(|e| {
+                tracing::debug!(error = %e, "interceptor update: persona save failed");
+                InterceptorConfigServiceError::Unavailable
             })?;
         }
         self.snapshot(caller).await
@@ -433,8 +433,9 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                 store
                     .get_for_scope(user_id, project_id)
                     .await
-                    .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
-                        reason: format!("list_prefix_entries db: {e}"),
+                    .map_err(|e| {
+                        tracing::debug!(error = %e, "list_prefix_entries: db error");
+                        InterceptorConfigServiceError::Unavailable
                     })?
             } else {
                 None

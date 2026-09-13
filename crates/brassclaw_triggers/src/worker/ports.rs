@@ -18,7 +18,7 @@ impl TrustedTriggerSubmitRequest {
     /// supplied here. The worker is the only crate allowed to pair those values,
     /// so downstream trusted submitters cannot forge or mix prompt content and
     /// trigger identity.
-    pub(crate) fn new(
+    pub fn new(
         fire: TriggerFire,
         materialized_prompt: TriggerMaterializedPrompt,
         received_at: Timestamp,

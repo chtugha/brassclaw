@@ -58,10 +58,22 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     connectable_channels: Option<Arc<dyn ConnectableChannelsProductFacade>>,
 ) -> Result<RebornWebuiBundle, RebornBuildError> {
     let services = runtime.services();
-    let automation_facade = services
-        .host_runtime
-        .as_ref()
-        .map(|host_runtime| Arc::new(RebornWebuiAutomationFacade::new(Arc::clone(host_runtime))));
+    let automation_facade = services.host_runtime.as_ref().map(|host_runtime| {
+        let facade = RebornWebuiAutomationFacade::new(Arc::clone(host_runtime));
+        let facade = match (
+            services.trigger_repository.as_ref(),
+            services.trusted_submitter.as_ref(),
+            services.trigger_materializer.as_ref(),
+        ) {
+            (Some(repo), Some(submitter), Some(materializer)) => facade.with_fire_deps(
+                Arc::clone(repo),
+                Arc::clone(submitter),
+                Arc::clone(materializer),
+            ),
+            _ => facade,
+        };
+        Arc::new(facade)
+    });
 
     let mut api = ProductRebornServices::new(
         runtime.webui_thread_service(),
@@ -111,9 +123,30 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                 lifecycle_facade.with_runtime_http_egress(runtime_http_egress.clone());
         }
         api = api.with_lifecycle_product_facade(Arc::new(lifecycle_facade));
-        api = api.with_skills_facade(Arc::new(RebornLocalSkillsProductFacade::new(
-            local_runtime.skill_management.clone(),
-        )));
+
+        // Prefer the Postgres-backed facade when a pool is available so that
+        // the Skills tab shows DB-seeded (builtin bootstrap) skills too.
+        // Fall back to the filesystem-only facade when postgres is absent.
+        #[cfg(feature = "postgres")]
+        let skills_facade: Arc<dyn brassclaw_product_workflow::SkillsProductFacade> =
+            if let Some(pool) = services.pg_pool.as_ref() {
+                Arc::new(crate::pg_skills_facade::PgSkillsProductFacade::new(
+                    Arc::clone(pool),
+                    runtime.webui_tenant_id(),
+                    local_runtime.skill_management.clone(),
+                ))
+            } else {
+                Arc::new(RebornLocalSkillsProductFacade::new(
+                    local_runtime.skill_management.clone(),
+                ))
+            };
+        #[cfg(not(feature = "postgres"))]
+        let skills_facade: Arc<dyn brassclaw_product_workflow::SkillsProductFacade> =
+            Arc::new(RebornLocalSkillsProductFacade::new(
+                local_runtime.skill_management.clone(),
+            ));
+
+        api = api.with_skills_facade(skills_facade);
     }
     if let Some(product_auth) = &services.product_auth {
         api = api.with_extension_credentials(Arc::new(ProductAuthExtensionCredentialSetup::new(
@@ -491,6 +524,36 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             Arc::new(svc) as Arc<dyn brassclaw_product_workflow::McpServerService>
         );
         tracing::debug!("McpServerService wired through McpServerServiceImpl");
+    }
+
+    // Wire the settings listing service (Skills, Tools, Actions, Extensions,
+    // Orchestrators, Scaffolds tabs).  Reads from the reborn_* component tables
+    // and returns a flat `SettingsListResponse`.  Future-phase tables that do
+    // not yet exist are detected gracefully and return empty lists.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let tenant_id = runtime.webui_tenant_id();
+        let listing_svc = crate::pg_settings_listing::PgSettingsListingService::new(
+            Arc::clone(pool),
+            tenant_id,
+        );
+        api = api.with_settings_listing_service(
+            Arc::new(listing_svc) as Arc<dyn brassclaw_product_workflow::SettingsListingService>,
+        );
+        tracing::debug!("SettingsListingService wired through PgSettingsListingService");
+    }
+
+    // Wire the config store (Agent + Networking settings tabs).
+    // Reads/writes `brassclaw_config` for allowed key prefixes.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let tenant_id = runtime.webui_tenant_id();
+        let config_store =
+            crate::pg_config_store::PgConfigStore::new(Arc::clone(pool), tenant_id);
+        api = api.with_config_store(
+            Arc::new(config_store) as Arc<dyn brassclaw_product_workflow::ConfigStore>,
+        );
+        tracing::debug!("ConfigStore wired through PgConfigStore");
     }
 
     Ok(RebornWebuiBundle {

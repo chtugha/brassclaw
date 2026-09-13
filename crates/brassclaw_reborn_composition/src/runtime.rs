@@ -2841,16 +2841,15 @@ pub async fn build_reborn_runtime(
 
     // Both `trigger_poller_handle` and the test-support
     // `trigger_conversation_pairing_value` are produced atomically inside
-    // a single `if trigger_poller.enabled` expression. Avoid a
-    // `let mut … = None` sentinel pattern flagged by code review
-    // (review f-ptr-3): the `let X;` deferred-init form is single-assign
-    // per branch and Rust's borrow checker prevents reads before init.
-    let trigger_poller_handle: Option<TriggerPollerRuntimeHandle>;
+    // a single `if trigger_poller.enabled` expression.
     #[cfg(any(test, feature = "test-support"))]
+    // Safety: assigned in every branch below; clippy's needless_late_init does not
+    // support #[cfg]-gated assignments so the late-init form is necessary here.
+    #[allow(clippy::needless_late_init)]
     let trigger_conversation_pairing_value: Option<
         Arc<dyn brassclaw_conversations::ConversationActorPairingService>,
     >;
-    if trigger_poller.enabled {
+    let trigger_poller_handle: Option<TriggerPollerRuntimeHandle> = if trigger_poller.enabled {
         validate_trigger_poller_authorization(
             &trigger_poller,
             trigger_fire_access_checker.as_ref(),
@@ -2868,12 +2867,17 @@ pub async fn build_reborn_runtime(
         )
         .await?;
         let active_run_lookup = build_trigger_active_run_lookup(local_dev_turn_state.clone());
+        // Stash clones for the automation facade (fire_now path) before the
+        // services are moved into TriggerPollerCompositionDeps.
+        services.trigger_repository = Some(Arc::clone(&substrate_trigger_repository));
+        services.trusted_submitter = Some(Arc::clone(&trigger_poller_services.trusted_submitter));
+        services.trigger_materializer = Some(Arc::clone(&trigger_poller_services.materializer));
         #[cfg(any(test, feature = "test-support"))]
         {
             trigger_conversation_pairing_value =
                 Some(Arc::clone(&trigger_poller_services.pairing_service));
         }
-        trigger_poller_handle = spawn_trigger_poller(
+        spawn_trigger_poller(
             trigger_poller,
             TriggerPollerCompositionDeps {
                 repository: Arc::clone(&substrate_trigger_repository),
@@ -2884,14 +2888,14 @@ pub async fn build_reborn_runtime(
         )
         .map_err(|error| RebornRuntimeError::InvalidArgument {
             reason: format!("trigger poller could not be started: {error}"),
-        })?;
+        })?
     } else {
-        trigger_poller_handle = None;
         #[cfg(any(test, feature = "test-support"))]
         {
             trigger_conversation_pairing_value = None;
         }
-    }
+        None
+    };
     let worker_cancel = CancellationToken::new();
     let worker = Arc::clone(&composition.worker);
     let worker_cancel_clone = worker_cancel.clone();

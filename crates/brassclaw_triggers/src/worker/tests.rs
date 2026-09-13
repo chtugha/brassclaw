@@ -16,8 +16,8 @@ use crate::{
     TRIGGER_TRUSTED_ADAPTER_INSTALLATION_ID, TRIGGER_TRUSTED_ADAPTER_KIND,
     TRIGGER_TRUSTED_EXTERNAL_ACTOR_NAMESPACE, TriggerCompletionPolicy, TriggerError, TriggerFire,
     TriggerId, TriggerInboundContentRef, TriggerMaterializedPrompt, TriggerPromptMaterializer,
-    TriggerRecord, TriggerRepository, TriggerRunStatus, TriggerSchedule, TriggerSourceKind,
-    TriggerSourceProvider, TriggerState,
+    TriggerRecord, TriggerRepository, TriggerRunRecord, TriggerRunStatus, TriggerSchedule,
+    TriggerSourceKind, TriggerSourceProvider, TriggerState, TriggerUpdatePatch,
 };
 
 fn ts(seconds: i64) -> Timestamp {
@@ -2138,6 +2138,33 @@ impl TriggerRepository for TickConcurrencyRepository {
     ) -> Result<Option<TriggerRecord>, TriggerError> {
         unreachable!("tick-concurrency repository should not clear active fires")
     }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
+    }
 }
 
 struct ActiveListErrorRepository;
@@ -2262,6 +2289,33 @@ impl TriggerRepository for ActiveListErrorRepository {
         _request: ClearActiveFireRequest,
     ) -> Result<Option<TriggerRecord>, TriggerError> {
         unreachable!("active-list-error repository should not clear active fires")
+    }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
     }
 }
 
@@ -2417,6 +2471,33 @@ impl TriggerRepository for ActiveWrapRefetchErrorRepository {
     ) -> Result<Option<TriggerRecord>, TriggerError> {
         unreachable!("active-wrap-refetch-error repository should not clear active fires")
     }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
+    }
 }
 
 struct ActiveClearRaceRepository {
@@ -2544,6 +2625,33 @@ impl TriggerRepository for ActiveClearRaceRepository {
         _request: ClearActiveFireRequest,
     ) -> Result<Option<TriggerRecord>, TriggerError> {
         Ok(None)
+    }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
     }
 }
 
@@ -2749,6 +2857,33 @@ impl TriggerRepository for ActiveClearFailsOnceRepository {
         record.active_run_ref = None;
         Ok(Some(updated))
     }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
+    }
 }
 
 struct AcceptedMissingRepository {
@@ -2878,6 +3013,33 @@ impl TriggerRepository for AcceptedMissingRepository {
     ) -> Result<Option<TriggerRecord>, TriggerError> {
         unreachable!("accepted-missing repository should not clear active fires")
     }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
+    }
 }
 
 struct ReplayedMissingRepository {
@@ -3006,6 +3168,33 @@ impl TriggerRepository for ReplayedMissingRepository {
         _request: ClearActiveFireRequest,
     ) -> Result<Option<TriggerRecord>, TriggerError> {
         unreachable!("replayed-missing repository should not clear active fires")
+    }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
     }
 }
 
@@ -3144,6 +3333,33 @@ impl TriggerRepository for DueErrorThenSuccessRepository {
         _request: ClearActiveFireRequest,
     ) -> Result<Option<TriggerRecord>, TriggerError> {
         unreachable!("due-error repository should not clear active fires")
+    }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
     }
 }
 
@@ -3284,5 +3500,32 @@ impl TriggerRepository for ClaimRaceRepository {
         _request: ClearActiveFireRequest,
     ) -> Result<Option<TriggerRecord>, TriggerError> {
         unreachable!("claim-race repository should not clear active fires")
+    }
+
+    async fn update_trigger(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support update_trigger")
+    }
+
+    async fn set_trigger_state(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        unreachable!("test repository does not support set_trigger_state")
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        unreachable!("test repository does not support list_trigger_runs")
     }
 }

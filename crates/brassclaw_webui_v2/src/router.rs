@@ -13,7 +13,9 @@ use axum::routing::{delete, get, post, put};
 use brassclaw_product_workflow::RebornServicesApi;
 
 use crate::descriptors::{
-    WEBUI_V2_PATTERN_ACTIVATE_EXTENSION, WEBUI_V2_PATTERN_CANCEL_RUN,
+    WEBUI_V2_PATTERN_ACTIVATE_EXTENSION, WEBUI_V2_PATTERN_AUTOMATION_FIRE,
+    WEBUI_V2_PATTERN_AUTOMATION_ID, WEBUI_V2_PATTERN_AUTOMATION_RUNS,
+    WEBUI_V2_PATTERN_AUTOMATION_STATE, WEBUI_V2_PATTERN_CANCEL_RUN,
     WEBUI_V2_PATTERN_CHAT_PREFERENCE, WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN,
     WEBUI_V2_PATTERN_CREATE_THREAD, WEBUI_V2_PATTERN_DELETE_COMPONENT,
     WEBUI_V2_PATTERN_DELETE_LLM_PROVIDER, WEBUI_V2_PATTERN_DELETE_THREAD,
@@ -32,6 +34,7 @@ use crate::descriptors::{
     WEBUI_V2_PATTERN_REMOVE_SKILL, WEBUI_V2_PATTERN_RESOLVE_GATE,
     WEBUI_V2_PATTERN_SEND_COMPONENT_TO_REVISION, WEBUI_V2_PATTERN_SEND_MESSAGE,
     WEBUI_V2_PATTERN_SET_ACTIVE_LLM, WEBUI_V2_PATTERN_SETTINGS_ACTIONS,
+    WEBUI_V2_PATTERN_SETTINGS_CONFIG, WEBUI_V2_PATTERN_SETTINGS_CONFIG_KEY,
     WEBUI_V2_PATTERN_SETTINGS_EXTENSIONS, WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS,
     WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE, WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER,
     WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_START, WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STATUS,
@@ -143,7 +146,27 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         .route(WEBUI_V2_PATTERN_RESOLVE_GATE, post(handlers::resolve_gate))
         .route(
             WEBUI_V2_PATTERN_LIST_AUTOMATIONS,
-            get(handlers::list_automations),
+            get(handlers::list_automations).post(handlers::create_automation),
+        )
+        // Sub-paths must be mounted before the base `automation_id` path so axum
+        // resolves the more specific patterns first.
+        .route(
+            WEBUI_V2_PATTERN_AUTOMATION_STATE,
+            post(handlers::set_automation_state),
+        )
+        .route(
+            WEBUI_V2_PATTERN_AUTOMATION_FIRE,
+            post(handlers::fire_automation_now),
+        )
+        .route(
+            WEBUI_V2_PATTERN_AUTOMATION_RUNS,
+            get(handlers::get_automation_run_history),
+        )
+        .route(
+            WEBUI_V2_PATTERN_AUTOMATION_ID,
+            get(handlers::get_automation)
+                .patch(handlers::update_automation)
+                .delete(handlers::delete_automation),
         )
         .route(
             WEBUI_V2_PATTERN_LIST_CONNECTABLE_CHANNELS,
@@ -373,6 +396,17 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         .route(
             WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER,
             get(handlers::get_settings_mcp_server).put(handlers::put_settings_mcp_server),
+        )
+        // Config persistence (Agent + Networking tabs).
+        // GET /api/settings/config must be mounted BEFORE PUT /api/settings/config/{key}
+        // so axum resolves the exact path first.
+        .route(
+            WEBUI_V2_PATTERN_SETTINGS_CONFIG,
+            get(handlers::get_settings_config),
+        )
+        .route(
+            WEBUI_V2_PATTERN_SETTINGS_CONFIG_KEY,
+            put(handlers::put_settings_config_key),
         );
     if options.mount_llm_config_routes {
         router = router

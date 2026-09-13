@@ -8,7 +8,7 @@ use brassclaw_host_api::{
 };
 use brassclaw_triggers::{
     TriggerCompletionPolicy, TriggerError, TriggerId, TriggerRecord, TriggerRepository,
-    TriggerSchedule, TriggerSourceKind, TriggerState,
+    TriggerRunRecord, TriggerSchedule, TriggerSourceKind, TriggerState, TriggerUpdatePatch,
 };
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -29,6 +29,10 @@ const TRIGGER_LIST_LIMIT: usize = 100;
 pub const TRIGGER_CREATE_CAPABILITY_ID: &str = "builtin.trigger_create";
 pub const TRIGGER_LIST_CAPABILITY_ID: &str = "builtin.trigger_list";
 pub const TRIGGER_REMOVE_CAPABILITY_ID: &str = "builtin.trigger_remove";
+pub const TRIGGER_GET_CAPABILITY_ID: &str = "builtin.trigger_get";
+pub const TRIGGER_UPDATE_CAPABILITY_ID: &str = "builtin.trigger_update";
+pub const TRIGGER_SET_STATE_CAPABILITY_ID: &str = "builtin.trigger_set_state";
+pub const TRIGGER_RUN_HISTORY_CAPABILITY_ID: &str = "builtin.trigger_run_history";
 
 pub(super) fn manifests() -> Result<Vec<CapabilityManifest>, ExtensionError> {
     Ok(vec![
@@ -51,6 +55,34 @@ pub(super) fn manifests() -> Result<Vec<CapabilityManifest>, ExtensionError> {
             "Remove a caller-scoped scheduled trigger",
             vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
             PermissionMode::Ask,
+            resource_profile(),
+        )?,
+        first_party_capability_manifest(
+            TRIGGER_GET_CAPABILITY_ID,
+            "Get a caller-scoped scheduled trigger by ID",
+            vec![EffectKind::DispatchCapability],
+            PermissionMode::Allow,
+            resource_profile(),
+        )?,
+        first_party_capability_manifest(
+            TRIGGER_UPDATE_CAPABILITY_ID,
+            "Update a caller-scoped scheduled trigger",
+            vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
+            PermissionMode::Ask,
+            resource_profile(),
+        )?,
+        first_party_capability_manifest(
+            TRIGGER_SET_STATE_CAPABILITY_ID,
+            "Pause or resume a caller-scoped scheduled trigger",
+            vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
+            PermissionMode::Ask,
+            resource_profile(),
+        )?,
+        first_party_capability_manifest(
+            TRIGGER_RUN_HISTORY_CAPABILITY_ID,
+            "Get run history for a caller-scoped scheduled trigger",
+            vec![EffectKind::DispatchCapability],
+            PermissionMode::Allow,
             resource_profile(),
         )?,
     ])
@@ -106,7 +138,26 @@ fn insert_trigger_handlers(
         CapabilityId::new(TRIGGER_LIST_CAPABILITY_ID)?,
         handler.clone(),
     );
-    registry.insert_handler(CapabilityId::new(TRIGGER_REMOVE_CAPABILITY_ID)?, handler);
+    registry.insert_handler(
+        CapabilityId::new(TRIGGER_REMOVE_CAPABILITY_ID)?,
+        handler.clone(),
+    );
+    registry.insert_handler(
+        CapabilityId::new(TRIGGER_GET_CAPABILITY_ID)?,
+        handler.clone(),
+    );
+    registry.insert_handler(
+        CapabilityId::new(TRIGGER_UPDATE_CAPABILITY_ID)?,
+        handler.clone(),
+    );
+    registry.insert_handler(
+        CapabilityId::new(TRIGGER_SET_STATE_CAPABILITY_ID)?,
+        handler.clone(),
+    );
+    registry.insert_handler(
+        CapabilityId::new(TRIGGER_RUN_HISTORY_CAPABILITY_ID)?,
+        handler,
+    );
     Ok(())
 }
 
@@ -176,6 +227,19 @@ impl FirstPartyCapabilityHandler for TriggerManagementToolHandler {
             TRIGGER_REMOVE_CAPABILITY_ID => {
                 remove_trigger(&*self.repository, &request.scope, request.input).await?
             }
+            TRIGGER_GET_CAPABILITY_ID => {
+                get_trigger(&*self.repository, &request.scope, request.input).await?
+            }
+            TRIGGER_UPDATE_CAPABILITY_ID => {
+                update_trigger(&*self.repository, &request.scope, request.input, self.clock.now())
+                    .await?
+            }
+            TRIGGER_SET_STATE_CAPABILITY_ID => {
+                set_trigger_state(&*self.repository, &request.scope, request.input).await?
+            }
+            TRIGGER_RUN_HISTORY_CAPABILITY_ID => {
+                run_history(&*self.repository, &request.scope, request.input).await?
+            }
             _ => {
                 return Err(FirstPartyCapabilityError::new(
                     RuntimeDispatchErrorKind::UndeclaredCapability,
@@ -195,6 +259,39 @@ struct TriggerCreateInput {
     name: String,
     prompt: String,
     cron: String,
+    #[serde(default)]
+    completion_policy: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct TriggerGetInput {
+    trigger_id: String,
+}
+
+#[derive(Deserialize)]
+struct TriggerUpdateInput {
+    trigger_id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    cron: Option<String>,
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default)]
+    completion_policy: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct TriggerSetStateInput {
+    trigger_id: String,
+    state: String,
+}
+
+#[derive(Deserialize)]
+struct TriggerRunHistoryInput {
+    trigger_id: String,
+    #[serde(default)]
+    limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -217,6 +314,10 @@ async fn create_trigger(
     let input: TriggerCreateInput = serde_json::from_value(input).map_err(|_| input_error())?;
     let schedule = TriggerSchedule::cron(input.cron).map_err(trigger_input_error)?;
     let next_run_at = next_run_at_for_schedule(&schedule, now)?;
+    let completion_policy = match input.completion_policy.as_deref() {
+        Some("complete_after_first_fire") => TriggerCompletionPolicy::CompleteAfterFirstFire,
+        _ => TriggerCompletionPolicy::Recurring,
+    };
     let record = TriggerRecord {
         trigger_id: TriggerId::new(),
         tenant_id: scope.tenant_id.clone(),
@@ -226,7 +327,7 @@ async fn create_trigger(
         name: input.name,
         source: TriggerSourceKind::Schedule,
         schedule,
-        completion_policy: TriggerCompletionPolicy::Recurring,
+        completion_policy,
         prompt: input.prompt,
         state: TriggerState::Scheduled,
         next_run_at,
@@ -315,6 +416,7 @@ fn trigger_output(record: &TriggerRecord) -> Value {
         "agent_id": record.agent_id.as_ref().map(|id| id.as_str()),
         "project_id": record.project_id.as_ref().map(|id| id.as_str()),
         "name": record.name,
+        "prompt": record.prompt,
         "source": record.source,
         "schedule": record.schedule,
         "completion_policy": record.completion_policy,
@@ -324,6 +426,117 @@ fn trigger_output(record: &TriggerRecord) -> Value {
         "last_status": record.last_status,
         "is_active": record.has_active_fire(),
         "created_at": record.created_at,
+    })
+}
+
+async fn get_trigger(
+    repository: &dyn TriggerRepository,
+    scope: &ResourceScope,
+    input: Value,
+) -> Result<Value, FirstPartyCapabilityError> {
+    let input: TriggerGetInput = serde_json::from_value(input).map_err(|_| input_error())?;
+    let trigger_id = TriggerId::parse(&input.trigger_id).map_err(trigger_input_error)?;
+    let record = repository
+        .get_trigger(scope.tenant_id.clone(), trigger_id)
+        .await
+        .map_err(|error| trigger_repository_error("get_trigger", error))?;
+    match record {
+        Some(record) => Ok(json!({ "trigger": trigger_output(&record) })),
+        None => Ok(json!({ "trigger": null })),
+    }
+}
+
+async fn update_trigger(
+    repository: &dyn TriggerRepository,
+    scope: &ResourceScope,
+    input: Value,
+    _now: DateTime<Utc>,
+) -> Result<Value, FirstPartyCapabilityError> {
+    let input: TriggerUpdateInput = serde_json::from_value(input).map_err(|_| input_error())?;
+    let trigger_id = TriggerId::parse(&input.trigger_id).map_err(trigger_input_error)?;
+
+    let schedule = input
+        .cron
+        .map(TriggerSchedule::cron)
+        .transpose()
+        .map_err(trigger_input_error)?;
+
+    let completion_policy = input.completion_policy.as_deref().map(|s| match s {
+        "complete_after_first_fire" => TriggerCompletionPolicy::CompleteAfterFirstFire,
+        _ => TriggerCompletionPolicy::Recurring,
+    });
+
+    let patch = TriggerUpdatePatch {
+        name: input.name,
+        schedule,
+        prompt: input.prompt,
+        completion_policy,
+    };
+    patch.validate().map_err(trigger_input_error)?;
+
+    match repository
+        .update_trigger(scope.tenant_id.clone(), trigger_id, patch)
+        .await
+        .map_err(|error| trigger_repository_error("update_trigger", error))?
+    {
+        Some(record) => Ok(json!({ "found": true, "trigger": trigger_output(&record) })),
+        None => Ok(json!({ "found": false })),
+    }
+}
+
+async fn set_trigger_state(
+    repository: &dyn TriggerRepository,
+    scope: &ResourceScope,
+    input: Value,
+) -> Result<Value, FirstPartyCapabilityError> {
+    let input: TriggerSetStateInput = serde_json::from_value(input).map_err(|_| input_error())?;
+    let trigger_id = TriggerId::parse(&input.trigger_id).map_err(trigger_input_error)?;
+    let state = match input.state.as_str() {
+        "paused" => TriggerState::Paused,
+        "scheduled" => TriggerState::Scheduled,
+        _ => return Err(input_error()),
+    };
+
+    match repository
+        .set_trigger_state(scope.tenant_id.clone(), trigger_id, state)
+        .await
+        .map_err(|error| trigger_repository_error("set_trigger_state", error))?
+    {
+        Some(record) => Ok(json!({ "found": true, "trigger": trigger_output(&record) })),
+        None => Ok(json!({ "found": false })),
+    }
+}
+
+async fn run_history(
+    repository: &dyn TriggerRepository,
+    scope: &ResourceScope,
+    input: Value,
+) -> Result<Value, FirstPartyCapabilityError> {
+    const MAX_RUN_HISTORY_LIMIT: usize = 50;
+    let input: TriggerRunHistoryInput =
+        serde_json::from_value(input).map_err(|_| input_error())?;
+    let trigger_id = TriggerId::parse(&input.trigger_id).map_err(trigger_input_error)?;
+    let limit = input
+        .limit
+        .unwrap_or(20)
+        .min(MAX_RUN_HISTORY_LIMIT);
+    let runs: Vec<Value> = repository
+        .list_trigger_runs(scope.tenant_id.clone(), trigger_id, limit)
+        .await
+        .map_err(|error| trigger_repository_error("list_trigger_runs", error))?
+        .into_iter()
+        .map(run_record_output)
+        .collect();
+    Ok(json!({ "runs": runs }))
+}
+
+fn run_record_output(record: TriggerRunRecord) -> Value {
+    json!({
+        "run_id": record.run_id,
+        "fire_slot": record.fire_slot,
+        "started_at": record.started_at,
+        "finished_at": record.finished_at,
+        "status": record.status,
     })
 }
 

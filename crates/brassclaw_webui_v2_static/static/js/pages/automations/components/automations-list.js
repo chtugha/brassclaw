@@ -10,6 +10,7 @@ const AUTOMATION_FILTERS = [
   { value: "all", labelKey: "automations.filter.all" },
   { value: "active", labelKey: "automations.filter.active" },
   { value: "paused", labelKey: "automations.filter.paused" },
+  { value: "completed", labelKey: "automations.filter.completed" },
 ];
 
 export function AutomationsList({
@@ -18,6 +19,12 @@ export function AutomationsList({
   onFilterChange,
   onRefresh,
   isRefreshing,
+  selectedId,
+  onSelect,
+  onPause,
+  onResume,
+  onFire,
+  onDelete,
 }) {
   const t = useT();
   const filtered = filterAutomations(automations, filter);
@@ -89,7 +96,7 @@ export function AutomationsList({
         : html`
             <${Panel} className="overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[820px] border-collapse">
+                <table className="w-full min-w-[900px] border-collapse">
                   <thead>
                     <tr className="border-b border-[var(--v2-panel-border)] text-left">
                       <th className="px-5 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-iron-300">
@@ -107,15 +114,24 @@ export function AutomationsList({
                       <th className="px-5 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-iron-300">
                         ${t("automations.table.status")}
                       </th>
+                      <th className="px-5 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-iron-300">
+                        ${t("automations.table.actions")}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     ${filtered.map((automation) => html`
                       <tr
                         key=${automation.automation_id}
-                        className="border-b border-[var(--v2-panel-border)] last:border-0"
+                        className=${cn(
+                          "border-b border-[var(--v2-panel-border)] last:border-0 cursor-pointer",
+                          selectedId === automation.automation_id
+                            ? "bg-[var(--v2-accent-soft)]"
+                            : "hover:bg-[var(--v2-surface-muted)]"
+                        )}
+                        onClick=${() => onSelect?.(automation.automation_id)}
                       >
-                        <td className="max-w-[280px] px-5 py-4 align-top">
+                        <td className="max-w-[240px] px-5 py-4 align-top">
                           <div className="truncate text-sm font-semibold text-iron-100">
                             ${automation.display_name}
                           </div>
@@ -145,6 +161,40 @@ export function AutomationsList({
                             tone=${automation.state_tone}
                             label=${automation.state_label}
                           />
+                        </td>
+                        <td
+                          className="px-5 py-4 align-top"
+                          onClick=${(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center gap-2">
+                            ${automation.is_active
+                              ? html`
+                                  <${Button}
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick=${() => onPause?.(automation.automation_id)}
+                                  >
+                                    ${t("automations.action.pause")}
+                                  <//>
+                                `
+                              : automation.state !== "completed" && html`
+                                  <${Button}
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick=${() => onResume?.(automation.automation_id)}
+                                  >
+                                    ${t("automations.action.resume")}
+                                  <//>
+                                `}
+                            <${Button}
+                              variant="secondary"
+                              size="sm"
+                              disabled=${automation.is_active || automation.state === "paused" || automation.state === "completed"}
+                              onClick=${() => onFire?.(automation.automation_id)}
+                            >
+                              ${t("automations.action.fire")}
+                            <//>
+                          </div>
                         </td>
                       </tr>
                     `)}

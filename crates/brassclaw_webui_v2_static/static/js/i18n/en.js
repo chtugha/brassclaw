@@ -758,6 +758,71 @@ registerPack("en", {
   "automations.table.nextRun": "Next run",
   "automations.table.lastRun": "Last run",
   "automations.table.status": "Status",
+  "automations.table.actions": "Actions",
+  "automations.filter.completed": "Completed",
+  "automations.new": "New automation",
+
+  // Automation action buttons
+  "automations.action.pause": "Pause",
+  "automations.action.resume": "Resume",
+  "automations.action.fire": "Run now",
+  "automations.action_fire": "Run now",
+  "automations.action_save": "Save changes",
+  "automations.action_discard": "Discard",
+  "automations.action_pause": "Pause",
+  "automations.action_resume": "Resume",
+  "automations.action_delete": "Delete",
+
+  // Automation create modal
+  "automations.create_title": "New automation",
+  "automations.create_name_label": "Name",
+  "automations.create_name_hint": "Daily report, Weekly sync…",
+  "automations.create_cron_label": "Schedule (cron)",
+  "automations.create_cron_preview": "next:",
+  "automations.create_prompt_label": "Prompt",
+  "automations.create_prompt_hint": "What should the agent do when this runs?",
+  "automations.create_policy_label": "Completion policy",
+  "automations.create_button": "Create",
+
+  // Automation completion policies
+  "automations.policy_recurring": "Recurring",
+  "automations.policy_complete_after_first": "Complete after first fire",
+
+  // Automation delete confirm
+  "automations.delete_title": "Delete automation",
+  "automations.delete_body": "Are you sure you want to delete \"{name}\"? This cannot be undone.",
+  "automations.delete_active_warning": "This automation is currently active and may still fire.",
+  "automations.delete_cancel": "Cancel",
+  "automations.delete_confirm": "Delete",
+
+  // Automation detail panel tabs
+  "automations.tab_overview": "Overview",
+  "automations.tab_runs": "Runs",
+  "automations.tab_raw": "Raw",
+
+  // Automation detail panel fields
+  "automations.field_name": "Name",
+  "automations.field_schedule": "Schedule",
+  "automations.field_next_fire": "Next fire",
+  "automations.field_last_run": "Last run",
+  "automations.field_prompt": "Prompt",
+  "automations.field_policy": "Completion policy",
+
+  // Automation run history
+  "automations.runs_empty": "No runs recorded yet.",
+  "automations.run_started": "Started",
+  "automations.run_finished": "Finished",
+
+  // Automation errors
+  "automations.error_not_found": "Automation not found.",
+  "automations.error.name_required": "Name is required.",
+  "automations.error.invalid_cron": "Invalid cron expression.",
+  "automations.error.prompt_required": "Prompt is required.",
+
+  // Automation state labels
+  "automations.state_active": "Active",
+  "automations.state_paused": "Paused",
+  "automations.state_completed": "Completed",
 
   // Routines page
   "routines.explorer": "Tasks",

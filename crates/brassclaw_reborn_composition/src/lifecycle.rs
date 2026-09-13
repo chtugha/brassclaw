@@ -103,7 +103,7 @@ impl RebornLocalSkillManagementPort {
         .await?)
     }
 
-    async fn remove(
+    pub(crate) async fn remove(
         &self,
         name: &str,
     ) -> Result<brassclaw_skills::SkillRemoveResult, RebornLocalSkillManagementError> {

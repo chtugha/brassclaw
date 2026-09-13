@@ -52,10 +52,14 @@ use brassclaw_product_workflow::{
     RebornSetOutboundPreferencesRequest, RebornStreamEventsRequest, RebornSubmitTurnResponse,
     RebornTimelineRequest, ResolveApprovalInteractionRequest, ResolveApprovalInteractionResponse,
     ResolveAuthInteractionRequest, ResolveAuthInteractionResponse,
-    StaticConnectableChannelsProductFacade, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
+    RebornAutomationRunHistoryResponse, RebornCreateAutomationResponse,
+    RebornDeleteAutomationResponse, RebornFireAutomationNowResponse, RebornGetAutomationResponse,
+    RebornUpdateAutomationResponse, StaticConnectableChannelsProductFacade,
+    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateAutomationRequest,
     WebUiCreateThreadRequest, WebUiInboundValidationCode, WebUiListAutomationsRequest,
     WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
-    WebUiSetupExtensionRequest, approval_gate_ref,
+    WebUiSetAutomationStateRequest, WebUiSetupExtensionRequest, WebUiUpdateAutomationRequest,
+    approval_gate_ref,
 };
 use brassclaw_threads::{
     AcceptInboundMessageRequest, AcceptedInboundMessage, AcceptedInboundMessageReplay,
@@ -789,6 +793,69 @@ impl AutomationProductFacade for RecordingAutomationFacade {
             Some(RebornAutomationRunStatus::Ok),
         )])
     }
+
+    async fn create_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _request: WebUiCreateAutomationRequest,
+    ) -> Result<RebornCreateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn get_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornGetAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn update_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _request: WebUiUpdateAutomationRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn set_automation_state(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _request: WebUiSetAutomationStateRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn delete_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornDeleteAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn fire_automation_now(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornFireAutomationNowResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn get_automation_run_history(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _limit: Option<u32>,
+    ) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+}
+
+fn automation_unavailable() -> RebornServicesError {
+    RebornServicesError::from_status(RebornServicesErrorCode::Unavailable, 503, true)
 }
 
 #[derive(Clone)]
@@ -804,6 +871,65 @@ impl AutomationProductFacade for StaticAutomationFacade {
         _limit: usize,
     ) -> Result<Vec<RebornAutomationInfo>, RebornServicesError> {
         Ok(self.output.clone())
+    }
+
+    async fn create_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _request: WebUiCreateAutomationRequest,
+    ) -> Result<RebornCreateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn get_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornGetAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn update_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _request: WebUiUpdateAutomationRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn set_automation_state(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _request: WebUiSetAutomationStateRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn delete_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornDeleteAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn fire_automation_now(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornFireAutomationNowResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn get_automation_run_history(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _limit: Option<u32>,
+    ) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError> {
+        Err(automation_unavailable())
     }
 }
 
@@ -911,6 +1037,8 @@ fn automation_info(
         last_status,
         is_active: true,
         created_at: Some("2026-06-02T18:00:00Z".parse().expect("created at")),
+        prompt: None,
+        completion_policy: None,
     }
 }
 

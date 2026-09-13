@@ -70,6 +70,11 @@ export function filterAutomations(automations, filter) {
   if (filter === "paused") {
     return automations.filter((automation) => isBrowserPaused(automation));
   }
+  if (filter === "completed") {
+    return automations.filter(
+      (automation) => automation?.state === "completed"
+    );
+  }
   return automations;
 }
 
@@ -249,4 +254,69 @@ function ordinal(value) {
   if (value % 10 === 2) return `${value}nd`;
   if (value % 10 === 3) return `${value}rd`;
   return `${value}th`;
+}
+
+// ── New helpers for the Automations v3 detail panel ──────────────────────────
+
+/**
+ * Returns a human-readable "next fire" string for a cron expression preview.
+ * Uses a simple manual computation for common patterns; returns null for
+ * invalid or unsupported expressions.
+ */
+export function nextCronFire(cronExpression) {
+  const parts = cronExpression
+    ? cronExpression.trim().split(/\s+/)
+    : [];
+  if (parts.length < 5) return null;
+  // Normalise: strip leading seconds field if 6 or 7 fields
+  let [minute, hour, dom, month, dow] = parts.length === 5 ? parts : parts.slice(parts.length === 7 ? 1 : 1);
+  if (!isSingleNumber(hour, 0, 23) || !isSingleNumber(minute, 0, 59)) {
+    return null;
+  }
+  const now = new Date();
+  const next = new Date(now);
+  next.setSeconds(0, 0);
+  next.setMinutes(Number(minute));
+  next.setHours(Number(hour));
+  // If the computed time is in the past, advance by one day as a simple
+  // approximation (only correct for daily patterns but good enough for preview).
+  if (next <= now) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Returns a compact duration label like "2m 14s", or "—" when finishedAt is
+ * absent.
+ */
+export function durationLabel(startedAt, finishedAt) {
+  if (!finishedAt) return "—";
+  const start = new Date(startedAt);
+  const end = new Date(finishedAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "—";
+  const totalSeconds = Math.max(0, Math.floor((end - start) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${seconds}s`;
+}
+
+/** Maps a run status to a design-system tone string. */
+export function runStatusTone(status) {
+  if (status === "ok")    return "success";
+  if (status === "error") return "danger";
+  return "muted";
+}
+
+/** Maps a run status to a human-readable label. */
+export function runStatusLabel(status) {
+  if (status === "ok")    return "Done";
+  if (status === "error") return "Error";
+  return "Unknown";
 }

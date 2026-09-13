@@ -29,22 +29,26 @@ use brassclaw_product_workflow::{
     PrefixRegenerateResponse, ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
     RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
     RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
-    RebornExtensionRegistryResponse, RebornInstallSkillRequest, RebornListAutomationsResponse,
+    RebornAutomationRunHistoryResponse, RebornCreateAutomationResponse,
+    RebornDeleteAutomationResponse, RebornExtensionRegistryResponse, RebornFireAutomationNowResponse,
+    RebornGetAutomationResponse, RebornInstallSkillRequest, RebornListAutomationsResponse,
     RebornListCapabilitiesResponse, RebornListSkillsResponse, RebornListThreadsResponse,
     RebornResolveGateResponse, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
     RebornServicesErrorKind, RebornSetupExtensionResponse, RebornSkillInstallResult,
     RebornSkillRemoveResult, RebornStreamEventsRequest, RebornSubmitTurnResponse,
-    RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
-    RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
-    RecordOutcomeRequest, RecordOutcomeResponse, SecurityModeConfig, SetActiveLlmRequest,
-    SettingsListResponse, ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
-    UpdateChatPreferenceResponse, UpdateDocusRequest, UpdateInterceptorConfigRequest,
-    UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest, UpdateValidationStatusRequest,
-    UpdateValidationStatusResponse, UpsertLlmProviderRequest, ValidationQueueCountResponse,
-    ValidationQueueFilter, ValidationQueueListResponse, WebUiAuthenticatedCaller,
-    WebUiCancelRunRequest, WebUiCreateThreadRequest, WebUiInboundValidationCode,
-    WebUiInboundValidationError, WebUiListAutomationsRequest, WebUiListThreadsRequest,
-    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    RebornTimelineRequest, RebornTimelineResponse, RebornUpdateAutomationResponse,
+    RebornUpdateCapabilityPermissionRequest, RebornUpdateCapabilityPermissionResponse, RecipeDetail,
+    RecipeListResponse, RecordOutcomeRequest, RecordOutcomeResponse, SecurityModeConfig,
+    SetActiveLlmRequest, SettingsListResponse, ToolSkillDetail, ToolSkillListResponse,
+    UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateDocusRequest,
+    UpdateInterceptorConfigRequest, UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest,
+    UpdateValidationStatusRequest, UpdateValidationStatusResponse, UpsertLlmProviderRequest,
+    ValidationQueueCountResponse, ValidationQueueFilter, ValidationQueueListResponse,
+    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateAutomationRequest,
+    WebUiCreateThreadRequest, WebUiInboundValidationCode, WebUiInboundValidationError,
+    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
+    WebUiSendMessageRequest, WebUiSetAutomationStateRequest, WebUiSetupExtensionRequest,
+    WebUiUpdateAutomationRequest,
 };
 use futures::SinkExt;
 use futures::stream::Stream;
@@ -439,6 +443,103 @@ pub async fn list_automations(
 #[derive(Debug, Default, Deserialize)]
 pub struct ListAutomationsQuery {
     /// Optional maximum number of schedule automations to return.
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// `POST /api/webchat/v2/automations`
+pub async fn create_automation(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(body): Json<WebUiCreateAutomationRequest>,
+) -> Result<(axum::http::StatusCode, Json<RebornCreateAutomationResponse>), WebUiV2HttpError> {
+    let response = state.services().create_automation(caller, body).await?;
+    Ok((axum::http::StatusCode::CREATED, Json(response)))
+}
+
+/// `GET /api/webchat/v2/automations/{automation_id}`
+pub async fn get_automation(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(automation_id): Path<String>,
+) -> Result<Json<RebornGetAutomationResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .get_automation(caller, automation_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PATCH /api/webchat/v2/automations/{automation_id}`
+pub async fn update_automation(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(automation_id): Path<String>,
+    Json(body): Json<WebUiUpdateAutomationRequest>,
+) -> Result<Json<RebornUpdateAutomationResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .update_automation(caller, automation_id, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/webchat/v2/automations/{automation_id}/state`
+pub async fn set_automation_state(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(automation_id): Path<String>,
+    Json(body): Json<WebUiSetAutomationStateRequest>,
+) -> Result<Json<RebornUpdateAutomationResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .set_automation_state(caller, automation_id, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `DELETE /api/webchat/v2/automations/{automation_id}`
+pub async fn delete_automation(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(automation_id): Path<String>,
+) -> Result<Json<RebornDeleteAutomationResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .delete_automation(caller, automation_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/webchat/v2/automations/{automation_id}/fire`
+pub async fn fire_automation_now(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(automation_id): Path<String>,
+) -> Result<Json<RebornFireAutomationNowResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .fire_automation_now(caller, automation_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/webchat/v2/automations/{automation_id}/runs`
+pub async fn get_automation_run_history(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(automation_id): Path<String>,
+    Query(query): Query<AutomationRunsQuery>,
+) -> Result<Json<RebornAutomationRunHistoryResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .get_automation_run_history(caller, automation_id, query.limit)
+        .await?;
+    Ok(Json(response))
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct AutomationRunsQuery {
     #[serde(default)]
     pub limit: Option<u32>,
 }
@@ -1505,6 +1606,33 @@ pub async fn get_settings_scaffolds(
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
     let response = state.services().list_settings_scaffolds(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/config`
+///
+/// Return all allowed config keys (agent.*, heartbeat.*, sandbox.*, routines.*,
+/// safety.*, skills.*, search.*, channels.*, tunnel.*) for the Agent and
+/// Networking settings tabs.
+pub async fn get_settings_config(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<brassclaw_product_workflow::SettingsConfigResponse>, WebUiV2HttpError> {
+    let response = state.services().get_settings_config(caller).await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/settings/config/{key}`
+///
+/// Write (or delete when value is empty) a single allowed config key.
+/// Returns 400 when the key prefix is not in the allowed list.
+pub async fn put_settings_config_key(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    axum::extract::Path(key): axum::extract::Path<String>,
+    Json(body): Json<brassclaw_product_workflow::UpdateSettingRequest>,
+) -> Result<Json<brassclaw_product_workflow::UpdateSettingResponse>, WebUiV2HttpError> {
+    let response = state.services().update_setting(caller, key, body).await?;
     Ok(Json(response))
 }
 

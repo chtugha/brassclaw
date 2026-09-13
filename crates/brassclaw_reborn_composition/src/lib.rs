@@ -107,6 +107,8 @@ pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_basic_prompt_store;
 #[cfg(feature = "postgres")]
+pub(crate) mod pg_config_store;
+#[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_component_db_backend;
@@ -126,6 +128,10 @@ pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
 pub(crate) mod pg_security_settings_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_settings_listing;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_skills_facade;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_skill_store;
 pub(crate) mod pg_thread_engine_store;

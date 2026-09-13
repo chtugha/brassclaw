@@ -604,6 +604,59 @@ impl TriggerSourceProvider for ScheduleTriggerSourceProvider {
     }
 }
 
+/// Partial update applied to an existing trigger record.
+/// Only `Some` fields are written; `None` fields are left unchanged.
+#[derive(Debug, Clone, Default)]
+pub struct TriggerUpdatePatch {
+    pub name: Option<String>,
+    pub schedule: Option<TriggerSchedule>,
+    pub prompt: Option<String>,
+    pub completion_policy: Option<TriggerCompletionPolicy>,
+}
+
+impl TriggerUpdatePatch {
+    pub fn validate(&self) -> Result<(), TriggerError> {
+        if let Some(schedule) = &self.schedule {
+            schedule.validate()?;
+        }
+        if let Some(name) = &self.name {
+            if name.trim().is_empty() {
+                return Err(TriggerError::InvalidRecord {
+                    reason: "name must not be empty".into(),
+                });
+            }
+            if name.len() > MAX_TRIGGER_NAME_BYTES {
+                return Err(TriggerError::InvalidRecord {
+                    reason: format!("name must be at most {MAX_TRIGGER_NAME_BYTES} bytes"),
+                });
+            }
+        }
+        if let Some(prompt) = &self.prompt {
+            if prompt.trim().is_empty() {
+                return Err(TriggerError::InvalidRecord {
+                    reason: "prompt must not be empty".into(),
+                });
+            }
+            if prompt.len() > MAX_TRIGGER_PROMPT_BYTES {
+                return Err(TriggerError::InvalidRecord {
+                    reason: format!("prompt must be at most {MAX_TRIGGER_PROMPT_BYTES} bytes"),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A single run entry derived from the brassclaw_runs table for a trigger.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerRunRecord {
+    pub run_id: String,
+    pub fire_slot: Option<Timestamp>,
+    pub started_at: Timestamp,
+    pub finished_at: Option<Timestamp>,
+    pub status: TriggerRunStatus,
+}
+
 #[async_trait]
 pub trait TriggerRepository: Send + Sync {
     async fn upsert_trigger(&self, record: TriggerRecord) -> Result<(), TriggerError>;
@@ -729,6 +782,30 @@ pub trait TriggerRepository: Send + Sync {
         &self,
         request: ClearActiveFireRequest,
     ) -> Result<Option<TriggerRecord>, TriggerError>;
+
+    /// Partial update: only `Some` fields in the patch are written.
+    async fn update_trigger(
+        &self,
+        tenant_id: TenantId,
+        trigger_id: TriggerId,
+        patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError>;
+
+    /// Atomic state-only update for pause/resume transitions.
+    async fn set_trigger_state(
+        &self,
+        tenant_id: TenantId,
+        trigger_id: TriggerId,
+        state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError>;
+
+    /// Run history for a trigger derived from the brassclaw_runs table.
+    async fn list_trigger_runs(
+        &self,
+        tenant_id: TenantId,
+        trigger_id: TriggerId,
+        limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError>;
 }
 
 /// Durable PostgreSQL repository type for composition/test wiring.
@@ -1122,6 +1199,66 @@ impl TriggerRepository for InMemoryTriggerRepository {
         record.active_fire_slot = None;
         record.active_run_ref = None;
         Ok(Some(record.clone()))
+    }
+
+    async fn update_trigger(
+        &self,
+        tenant_id: TenantId,
+        trigger_id: TriggerId,
+        patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        let mut state = self.lock_state()?;
+        let key = TriggerRepositoryKey::new(&tenant_id, trigger_id);
+        let Some(record) = state.get_mut(&key) else {
+            return Ok(None);
+        };
+        if let Some(name) = patch.name {
+            record.name = name;
+        }
+        if let Some(schedule) = patch.schedule {
+            let next = schedule
+                .next_slot_after(Utc::now())
+                .map_err(|e| TriggerError::InvalidSchedule {
+                    reason: e.to_string(),
+                })?
+                .ok_or_else(|| TriggerError::InvalidSchedule {
+                    reason: "no future slot".into(),
+                })?;
+            record.schedule = schedule;
+            record.next_run_at = next;
+        }
+        if let Some(prompt) = patch.prompt {
+            record.prompt = prompt;
+        }
+        if let Some(policy) = patch.completion_policy {
+            record.completion_policy = policy;
+        }
+        Ok(Some(record.clone()))
+    }
+
+    async fn set_trigger_state(
+        &self,
+        tenant_id: TenantId,
+        trigger_id: TriggerId,
+        state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        let mut store = self.lock_state()?;
+        let key = TriggerRepositoryKey::new(&tenant_id, trigger_id);
+        let Some(record) = store.get_mut(&key) else {
+            return Ok(None);
+        };
+        record.state = state;
+        Ok(Some(record.clone()))
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        _tenant_id: TenantId,
+        _trigger_id: TriggerId,
+        _limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        // In-memory repository has no run table — always return empty.
+        Ok(Vec::new())
     }
 }
 

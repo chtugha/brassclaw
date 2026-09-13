@@ -47,6 +47,15 @@ pub const WEBUI_V2_ROUTE_LIST_SKILLS: &str = "webui.v2.list_skills";
 pub const WEBUI_V2_ROUTE_INSTALL_SKILL: &str = "webui.v2.install_skill";
 pub const WEBUI_V2_ROUTE_REMOVE_SKILL: &str = "webui.v2.remove_skill";
 
+// Automations CRUD routes.
+pub const WEBUI_V2_ROUTE_CREATE_AUTOMATION: &str = "webui.v2.create_automation";
+pub const WEBUI_V2_ROUTE_GET_AUTOMATION: &str = "webui.v2.get_automation";
+pub const WEBUI_V2_ROUTE_UPDATE_AUTOMATION: &str = "webui.v2.update_automation";
+pub const WEBUI_V2_ROUTE_SET_AUTOMATION_STATE: &str = "webui.v2.set_automation_state";
+pub const WEBUI_V2_ROUTE_DELETE_AUTOMATION: &str = "webui.v2.delete_automation";
+pub const WEBUI_V2_ROUTE_FIRE_AUTOMATION_NOW: &str = "webui.v2.fire_automation_now";
+pub const WEBUI_V2_ROUTE_GET_AUTOMATION_RUNS: &str = "webui.v2.get_automation_run_history";
+
 // Phase 7 — Recipe-Skill-Tool library. Each mutating route is a
 // state-machine transition on a `MemoryDoc.metadata.validation_status`
 // field; review endpoints that fail the agent's structured JSON
@@ -76,6 +85,17 @@ pub const WEBUI_V2_ROUTE_REGENERATE_PREFIX: &str = "webui.v2.regenerate_prefix";
 // Phase K.1.7 — SKILL.md on-demand export.
 pub const WEBUI_V2_ROUTE_EXPORT_SKILL: &str = "webui.v2.export_skill";
 pub const WEBUI_V2_PATTERN_EXPORT_SKILL: &str = "/api/webchat/v2/skills/{id}/export";
+
+// Automation sub-resource URL patterns.
+// Note: WEBUI_V2_PATTERN_LIST_AUTOMATIONS ("/api/webchat/v2/automations") is reused for GET + POST.
+pub const WEBUI_V2_PATTERN_AUTOMATION_ID: &str =
+    "/api/webchat/v2/automations/{automation_id}";
+pub const WEBUI_V2_PATTERN_AUTOMATION_STATE: &str =
+    "/api/webchat/v2/automations/{automation_id}/state";
+pub const WEBUI_V2_PATTERN_AUTOMATION_FIRE: &str =
+    "/api/webchat/v2/automations/{automation_id}/fire";
+pub const WEBUI_V2_PATTERN_AUTOMATION_RUNS: &str =
+    "/api/webchat/v2/automations/{automation_id}/runs";
 
 pub const WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG: &str = "/api/webchat/v2/interceptor/config";
 pub const WEBUI_V2_PATTERN_LIST_PREFIXES: &str = "/api/webchat/v2/prefixes";
@@ -129,6 +149,12 @@ pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER: &str = "/api/settings/mcp-server
 pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STATUS: &str = "/api/settings/mcp-server/status";
 pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_START: &str = "/api/settings/mcp-server/start";
 pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STOP: &str = "/api/settings/mcp-server/stop";
+
+// Agent + Networking config persistence.
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_CONFIG: &str = "webui.v2.get_settings_config";
+pub const WEBUI_V2_ROUTE_PUT_SETTINGS_CONFIG_KEY: &str = "webui.v2.put_settings_config_key";
+pub const WEBUI_V2_PATTERN_SETTINGS_CONFIG: &str = "/api/settings/config";
+pub const WEBUI_V2_PATTERN_SETTINGS_CONFIG_KEY: &str = "/api/settings/config/{key}";
 
 // Phase P Step 10 — Docs settings tab.
 pub const WEBUI_V2_ROUTE_LIST_DOCUS: &str = "webui.v2.list_docus";
@@ -295,6 +321,17 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         get_settings_mcp_server_status_descriptor(),
         post_settings_mcp_server_start_descriptor(),
         post_settings_mcp_server_stop_descriptor(),
+        // Config persistence (Agent + Networking tabs).
+        get_settings_config_descriptor(),
+        put_settings_config_key_descriptor(),
+        // Automations CRUD routes.
+        create_automation_descriptor(),
+        get_automation_descriptor(),
+        update_automation_descriptor(),
+        set_automation_state_descriptor(),
+        delete_automation_descriptor(),
+        fire_automation_now_descriptor(),
+        get_automation_run_history_descriptor(),
     ]
 }
 
@@ -1486,6 +1523,137 @@ fn post_settings_mcp_server_stop_descriptor() -> IngressRouteDescriptor {
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+// ── Config persistence descriptors (Agent + Networking tabs) ─────────────────
+
+fn get_settings_config_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_CONFIG,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_CONFIG,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn put_settings_config_key_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_PUT_SETTINGS_CONFIG_KEY,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_SETTINGS_CONFIG_KEY,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+// ── Automations CRUD descriptors ────────────────────────────────────────────
+
+fn create_automation_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_CREATE_AUTOMATION,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_LIST_AUTOMATIONS,
+        mutation_policy(
+            body_limit_kib(32),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn get_automation_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_AUTOMATION,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_AUTOMATION_ID,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn update_automation_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_UPDATE_AUTOMATION,
+        NetworkMethod::Patch,
+        WEBUI_V2_PATTERN_AUTOMATION_ID,
+        mutation_policy(
+            body_limit_kib(32),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn set_automation_state_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_SET_AUTOMATION_STATE,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_AUTOMATION_STATE,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn delete_automation_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_DELETE_AUTOMATION,
+        NetworkMethod::Delete,
+        WEBUI_V2_PATTERN_AUTOMATION_ID,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn fire_automation_now_descriptor() -> IngressRouteDescriptor {
+    // Tighter rate limit (10/min) for manual fire to prevent abuse.
+    descriptor(
+        WEBUI_V2_ROUTE_FIRE_AUTOMATION_NOW,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_AUTOMATION_FIRE,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
+            rate_limit_per_caller(10, 60),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn get_automation_run_history_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_AUTOMATION_RUNS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_AUTOMATION_RUNS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+            StreamingMode::None,
         ),
     )
 }

@@ -66,8 +66,9 @@ pub use time::TIME_CAPABILITY_ID;
 #[cfg(any(test, feature = "test-support"))]
 pub use trigger_management::TriggerManagementClock;
 pub use trigger_management::{
-    TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID,
-    TriggerCreateHook,
+    TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_GET_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID,
+    TRIGGER_REMOVE_CAPABILITY_ID, TRIGGER_RUN_HISTORY_CAPABILITY_ID,
+    TRIGGER_SET_STATE_CAPABILITY_ID, TRIGGER_UPDATE_CAPABILITY_ID, TriggerCreateHook,
 };
 
 pub const BUILTIN_FIRST_PARTY_PROVIDER: &str = "builtin";

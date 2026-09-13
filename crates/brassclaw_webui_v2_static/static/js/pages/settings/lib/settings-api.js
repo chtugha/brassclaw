@@ -4,14 +4,22 @@ import { apiFetch } from "../../../lib/api.js";
 // `/api/tools/*`, `/api/skills/*`, etc. Extension reads use the v2
 // registry/list endpoints; the remaining settings APIs are known tech-debt stubs.
 
+// Agent / Networking config — v2 native endpoints (Phase 6).
+// GET /api/settings/config returns { settings: { key: value, … } }.
 export function fetchSettingsExport() {
-  return Promise.resolve({ settings: {}, todo: true });
+  return apiFetch("/api/settings/config");
 }
-export function fetchSetting(_key) {
-  return Promise.resolve(null);
+export function fetchSetting(key) {
+  return apiFetch("/api/settings/config").then((r) => {
+    const val = r?.settings?.[key];
+    return val !== undefined ? val : null;
+  });
 }
-export function updateSetting(_key, _value) {
-  return Promise.resolve({ success: false, message: "TODO: requires v2 settings endpoint" });
+export function updateSetting(key, value) {
+  return apiFetch(`/api/settings/config/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    body: JSON.stringify({ value }),
+  });
 }
 export function importSettings(_payload) {
   return Promise.resolve({ success: false, message: "TODO: requires v2 settings endpoint" });

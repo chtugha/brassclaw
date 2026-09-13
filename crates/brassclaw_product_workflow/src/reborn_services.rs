@@ -115,7 +115,11 @@ pub use llm_config::{
     UpsertLlmProviderRequest,
 };
 pub use types::{
-    RebornAutomationInfo, RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
+    AutomationStateAction, RebornAutomationInfo, RebornAutomationRunHistoryResponse,
+    RebornAutomationRunRecord, RebornAutomationRunStatus, RebornAutomationSource,
+    RebornAutomationState, RebornCreateAutomationResponse, RebornDeleteAutomationResponse,
+    RebornFireAutomationNowResponse, RebornGetAutomationResponse, RebornUpdateAutomationResponse,
+    WebUiCreateAutomationRequest, WebUiSetAutomationStateRequest, WebUiUpdateAutomationRequest,
     RebornCancelRunResponse, RebornCapabilityInfo, RebornChannelConnectAction,
     RebornChannelConnectStrategy, RebornConnectableChannelInfo,
     RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
@@ -460,6 +464,51 @@ pub trait AutomationProductFacade: Send + Sync {
         caller: ProductAgentBoundCaller,
         limit: usize,
     ) -> Result<Vec<RebornAutomationInfo>, RebornServicesError>;
+
+    async fn create_automation(
+        &self,
+        caller: ProductAgentBoundCaller,
+        request: WebUiCreateAutomationRequest,
+    ) -> Result<RebornCreateAutomationResponse, RebornServicesError>;
+
+    async fn get_automation(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+    ) -> Result<RebornGetAutomationResponse, RebornServicesError>;
+
+    async fn update_automation(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+        request: WebUiUpdateAutomationRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError>;
+
+    async fn set_automation_state(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+        request: WebUiSetAutomationStateRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError>;
+
+    async fn delete_automation(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+    ) -> Result<RebornDeleteAutomationResponse, RebornServicesError>;
+
+    async fn fire_automation_now(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+    ) -> Result<RebornFireAutomationNowResponse, RebornServicesError>;
+
+    async fn get_automation_run_history(
+        &self,
+        caller: ProductAgentBoundCaller,
+        automation_id: String,
+        limit: Option<u32>,
+    ) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError>;
 }
 
 #[derive(Debug)]
@@ -478,6 +527,65 @@ impl AutomationProductFacade for UnsupportedAutomationProductFacade {
         _caller: ProductAgentBoundCaller,
         _limit: usize,
     ) -> Result<Vec<RebornAutomationInfo>, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn create_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _request: WebUiCreateAutomationRequest,
+    ) -> Result<RebornCreateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn get_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornGetAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn update_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _request: WebUiUpdateAutomationRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn set_automation_state(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _request: WebUiSetAutomationStateRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn delete_automation(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornDeleteAutomationResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn fire_automation_now(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+    ) -> Result<RebornFireAutomationNowResponse, RebornServicesError> {
+        Err(automation_unavailable())
+    }
+
+    async fn get_automation_run_history(
+        &self,
+        _caller: ProductAgentBoundCaller,
+        _automation_id: String,
+        _limit: Option<u32>,
+    ) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError> {
         Err(automation_unavailable())
     }
 }
@@ -604,6 +712,100 @@ pub trait RebornServicesApi: Send + Sync {
         caller: WebUiAuthenticatedCaller,
         request: WebUiListAutomationsRequest,
     ) -> Result<RebornListAutomationsResponse, RebornServicesError>;
+
+    async fn create_automation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: WebUiCreateAutomationRequest,
+    ) -> Result<RebornCreateAutomationResponse, RebornServicesError> {
+        let _ = (caller, request);
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn get_automation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+    ) -> Result<RebornGetAutomationResponse, RebornServicesError> {
+        let _ = (caller, automation_id);
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn update_automation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+        request: WebUiUpdateAutomationRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        let _ = (caller, automation_id, request);
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn set_automation_state(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+        request: WebUiSetAutomationStateRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        let _ = (caller, automation_id, request);
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn delete_automation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+    ) -> Result<RebornDeleteAutomationResponse, RebornServicesError> {
+        let _ = (caller, automation_id);
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn fire_automation_now(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+    ) -> Result<RebornFireAutomationNowResponse, RebornServicesError> {
+        let _ = (caller, automation_id);
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn get_automation_run_history(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+        limit: Option<u32>,
+    ) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError> {
+        let _ = (caller, automation_id, limit);
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
 
     async fn list_connectable_channels(
         &self,
@@ -1276,8 +1478,36 @@ pub trait RebornServicesApi: Send + Sync {
 
     // ── Phase 6: Settings UI ───────────────────────────────────────────────
     //
-    // All settings routes default to 501 so facades that don't wire the
-    // settings service inherit a safe surface.
+    // All settings routes default to 501 (or 503 for DB endpoints) so facades
+    // that don't wire the service inherit a safe surface.
+
+    /// `GET /api/settings/config` — return allowed agent/networking config keys.
+    async fn get_settings_config(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsConfigResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status_kind(
+            RebornServicesErrorCode::Unavailable,
+            RebornServicesErrorKind::ServiceUnavailable,
+            503,
+            false,
+        ))
+    }
+
+    /// `PUT /api/settings/config/{key}` — write a single allowed config key.
+    async fn update_setting(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _key: String,
+        _request: crate::settings::UpdateSettingRequest,
+    ) -> Result<crate::settings::UpdateSettingResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status_kind(
+            RebornServicesErrorCode::Unavailable,
+            RebornServicesErrorKind::ServiceUnavailable,
+            503,
+            false,
+        ))
+    }
 
     /// List skills for the Settings UI.
     async fn list_settings_skills(
@@ -1662,6 +1892,14 @@ pub struct RebornServices {
     /// Orchestrator MCP Server service backing `/api/settings/mcp-server/*`.
     /// When unwired the trait defaults return 501.
     mcp_server_service: Option<Arc<dyn crate::settings::McpServerService>>,
+    /// Settings listing service backing the six `GET /api/settings/*` listing
+    /// endpoints (Skills, Tools, Actions, Extensions, Orchestrators, Scaffolds).
+    /// When unwired the trait defaults return 501.
+    settings_listing: Option<Arc<dyn crate::settings::SettingsListingService>>,
+    /// Config store backing `GET /api/settings/config` and
+    /// `PUT /api/settings/config/{key}` (Agent + Networking tabs).
+    /// When unwired the trait defaults return 503.
+    config_store: Option<Arc<dyn crate::settings::ConfigStore>>,
 }
 
 impl RebornServices {
@@ -1707,6 +1945,8 @@ impl RebornServices {
             intent_inputs_store: None,
             docus_store: None,
             mcp_server_service: None,
+            settings_listing: None,
+            config_store: None,
         }
     }
 
@@ -1982,6 +2222,27 @@ impl RebornServices {
         service: Arc<dyn crate::settings::McpServerService>,
     ) -> Self {
         self.mcp_server_service = Some(service);
+        self
+    }
+
+    /// Wire the settings listing service backing the six `GET /api/settings/*`
+    /// listing endpoints (Skills, Tools, Actions, Extensions, Orchestrators,
+    /// Scaffolds).
+    pub fn with_settings_listing_service(
+        mut self,
+        service: Arc<dyn crate::settings::SettingsListingService>,
+    ) -> Self {
+        self.settings_listing = Some(service);
+        self
+    }
+
+    /// Wire the config store backing `GET /api/settings/config` and
+    /// `PUT /api/settings/config/{key}`.
+    pub fn with_config_store(
+        mut self,
+        store: Arc<dyn crate::settings::ConfigStore>,
+    ) -> Self {
+        self.config_store = Some(store);
         self
     }
 
@@ -2487,6 +2748,158 @@ impl RebornServicesApi for RebornServices {
             .list_automations(caller, limit)
             .await?;
         Ok(RebornListAutomationsResponse { automations })
+    }
+
+    async fn create_automation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: WebUiCreateAutomationRequest,
+    ) -> Result<RebornCreateAutomationResponse, RebornServicesError> {
+        let Some(bound_caller) = product_agent_bound_caller_from_webui(caller) else {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        };
+        // Server-side validation mirrors the client-side rules from the plan.
+        if request.name.trim().is_empty() || request.name.len() > 200 {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                422,
+                false,
+            ));
+        }
+        if request.prompt.trim().is_empty() || request.prompt.len() > 8_000 {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                422,
+                false,
+            ));
+        }
+        self.automation_facade
+            .create_automation(bound_caller, request)
+            .await
+    }
+
+    async fn get_automation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+    ) -> Result<RebornGetAutomationResponse, RebornServicesError> {
+        let Some(bound_caller) = product_agent_bound_caller_from_webui(caller) else {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        };
+        self.automation_facade
+            .get_automation(bound_caller, automation_id)
+            .await
+    }
+
+    async fn update_automation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+        request: WebUiUpdateAutomationRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        let Some(bound_caller) = product_agent_bound_caller_from_webui(caller) else {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        };
+        // Validate any non-null fields.
+        if matches!(&request.name, Some(n) if n.trim().is_empty() || n.len() > 200) {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                422,
+                false,
+            ));
+        }
+        if matches!(&request.prompt, Some(p) if p.trim().is_empty() || p.len() > 8_000) {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                422,
+                false,
+            ));
+        }
+        self.automation_facade
+            .update_automation(bound_caller, automation_id, request)
+            .await
+    }
+
+    async fn set_automation_state(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+        request: WebUiSetAutomationStateRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        let Some(bound_caller) = product_agent_bound_caller_from_webui(caller) else {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        };
+        self.automation_facade
+            .set_automation_state(bound_caller, automation_id, request)
+            .await
+    }
+
+    async fn delete_automation(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+    ) -> Result<RebornDeleteAutomationResponse, RebornServicesError> {
+        let Some(bound_caller) = product_agent_bound_caller_from_webui(caller) else {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        };
+        self.automation_facade
+            .delete_automation(bound_caller, automation_id)
+            .await
+    }
+
+    async fn fire_automation_now(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+    ) -> Result<RebornFireAutomationNowResponse, RebornServicesError> {
+        let Some(bound_caller) = product_agent_bound_caller_from_webui(caller) else {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        };
+        self.automation_facade
+            .fire_automation_now(bound_caller, automation_id)
+            .await
+    }
+
+    async fn get_automation_run_history(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        automation_id: String,
+        limit: Option<u32>,
+    ) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError> {
+        let Some(bound_caller) = product_agent_bound_caller_from_webui(caller) else {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        };
+        self.automation_facade
+            .get_automation_run_history(bound_caller, automation_id, limit)
+            .await
     }
 
     async fn list_connectable_channels(
@@ -4248,6 +4661,72 @@ impl RebornServicesApi for RebornServices {
         })?;
         svc.stop().await.map_err(map_mcp_server_error)
     }
+
+    async fn list_settings_skills(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        svc.list_skills().await.map_err(map_settings_listing_error)
+    }
+
+    async fn list_settings_tools(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        svc.list_tools().await.map_err(map_settings_listing_error)
+    }
+
+    async fn list_settings_extensions(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        svc.list_extensions().await.map_err(map_settings_listing_error)
+    }
+
+    async fn list_settings_actions(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        svc.list_actions().await.map_err(map_settings_listing_error)
+    }
+
+    async fn list_settings_orchestrators(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        svc.list_orchestrators().await.map_err(map_settings_listing_error)
+    }
+
+    async fn list_settings_scaffolds(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        svc.list_scaffolds().await.map_err(map_settings_listing_error)
+    }
+
+    async fn get_settings_config(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsConfigResponse, RebornServicesError> {
+        let store = self.config_store.as_ref().ok_or_else(config_store_unavailable)?;
+        store.get_all().await.map_err(map_config_store_error)
+    }
+
+    async fn update_setting(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        key: String,
+        request: crate::settings::UpdateSettingRequest,
+    ) -> Result<crate::settings::UpdateSettingResponse, RebornServicesError> {
+        let store = self.config_store.as_ref().ok_or_else(config_store_unavailable)?;
+        store.set_key(&key, &request.value).await.map_err(map_config_store_error)
+    }
 }
 
 /// Default error mapping for [`crate::recipes::RecipeStoreError`] →
@@ -5508,6 +5987,68 @@ fn map_security_error(error: crate::settings::SecuritySettingsError) -> RebornSe
                 500,
                 false,
             )
+        }
+    }
+}
+
+/// Error mapper for [`crate::settings::SettingsListingError`] → [`RebornServicesError`].
+fn map_settings_listing_error(
+    error: crate::settings::SettingsListingError,
+) -> RebornServicesError {
+    match error {
+        crate::settings::SettingsListingError::Unavailable(_) => {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        }
+        crate::settings::SettingsListingError::QueryFailed(_) => {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        }
+    }
+}
+
+/// Returns the 503 `RebornServicesError` used when `settings_listing` is `None`.
+fn settings_listing_unavailable() -> RebornServicesError {
+    RebornServicesError::from_status_kind(
+        RebornServicesErrorCode::Unavailable,
+        RebornServicesErrorKind::ServiceUnavailable,
+        503,
+        false,
+    )
+}
+
+/// Returns the 503 error when `config_store` is `None`.
+fn config_store_unavailable() -> RebornServicesError {
+    RebornServicesError::from_status_kind(
+        RebornServicesErrorCode::Unavailable,
+        RebornServicesErrorKind::ServiceUnavailable,
+        503,
+        false,
+    )
+}
+
+/// Error mapper for [`crate::settings::ConfigStoreError`] → [`RebornServicesError`].
+fn map_config_store_error(error: crate::settings::ConfigStoreError) -> RebornServicesError {
+    match error {
+        crate::settings::ConfigStoreError::Unavailable(_)
+        | crate::settings::ConfigStoreError::QueryFailed(_) => {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        }
+        crate::settings::ConfigStoreError::KeyNotAllowed { .. } => {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
         }
     }
 }

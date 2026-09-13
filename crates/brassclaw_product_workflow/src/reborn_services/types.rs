@@ -718,6 +718,94 @@ pub struct RebornAutomationInfo {
     pub is_active: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_policy: Option<String>,
+}
+
+/// POST /automations request body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebUiCreateAutomationRequest {
+    pub name: String,
+    pub cron: String,
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_policy: Option<String>,
+}
+
+/// PATCH /automations/:id body.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebUiUpdateAutomationRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_policy: Option<String>,
+}
+
+/// POST /automations/:id/state body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebUiSetAutomationStateRequest {
+    pub action: AutomationStateAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationStateAction {
+    Pause,
+    Resume,
+}
+
+/// GET /automations/:id response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebornGetAutomationResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub automation: Option<RebornAutomationInfo>,
+}
+
+/// POST /automations response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebornCreateAutomationResponse {
+    pub automation: RebornAutomationInfo,
+}
+
+/// PATCH /automations/:id response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebornUpdateAutomationResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub automation: Option<RebornAutomationInfo>,
+}
+
+/// DELETE /automations/:id response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebornDeleteAutomationResponse {
+    pub deleted: bool,
+}
+
+/// POST /automations/:id/fire response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebornFireAutomationNowResponse {
+    pub run_ref: String,
+}
+
+/// GET /automations/:id/runs response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebornAutomationRunHistoryResponse {
+    pub runs: Vec<RebornAutomationRunRecord>,
+}
+
+/// A single run entry in the run history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebornAutomationRunRecord {
+    pub run_id: String,
+    pub fire_slot: Option<String>,   // RFC-3339 or null
+    pub started_at: String,          // RFC-3339
+    pub finished_at: Option<String>, // RFC-3339 or null
+    pub status: RebornAutomationRunStatus,
 }
 
 /// Source discriminator for automation rows.

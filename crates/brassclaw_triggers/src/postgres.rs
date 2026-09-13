@@ -8,9 +8,9 @@ use crate::{
     ActiveTriggerScanCursor, ClaimDueFireOutcome, ClaimDueFireRequest, ClaimedTriggerFire,
     ClearActiveFireRequest, FireAcceptedRequest, FirePermanentFailedRequest, FireReplayedRequest,
     FireRetryableFailedRequest, FireTerminalFailedRequest, TriggerCompletionPolicy, TriggerError,
-    TriggerId, TriggerRecord, TriggerRepository, TriggerRunStatus, TriggerSchedule,
-    TriggerSourceKind, TriggerState, reject_failed_result_after_active_run,
-    reject_non_future_next_run_at, reject_run_ref_rewrite,
+    TriggerId, TriggerRecord, TriggerRepository, TriggerRunRecord, TriggerRunStatus,
+    TriggerSchedule, TriggerSourceKind, TriggerState, TriggerUpdatePatch,
+    reject_failed_result_after_active_run, reject_non_future_next_run_at, reject_run_ref_rewrite,
 };
 
 const TRIGGER_TABLE: &str = "brassclaw_triggers";
@@ -714,6 +714,172 @@ impl TriggerRepository for PostgresTriggerRepository {
             None => Ok(None),
         }
     }
+
+    async fn update_trigger(
+        &self,
+        tenant_id: TenantId,
+        trigger_id: TriggerId,
+        patch: TriggerUpdatePatch,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        patch.validate().map_err(|e| TriggerError::InvalidRecord {
+            reason: e.to_string(),
+        })?;
+        let client = self.connect().await?;
+        let trigger_id_str = trigger_id.to_string();
+
+        // Compute new next_run_at if schedule is being patched.
+        let new_next_run_at = patch
+            .schedule
+            .as_ref()
+            .map(|s| {
+                s.next_slot_after(chrono::Utc::now())
+                    .map_err(|e| TriggerError::InvalidSchedule {
+                        reason: e.to_string(),
+                    })?
+                    .ok_or_else(|| TriggerError::InvalidSchedule {
+                        reason: "no future slot for patched schedule".into(),
+                    })
+            })
+            .transpose()?;
+
+        let name = patch.name.as_deref();
+        let schedule_expression = patch
+            .schedule
+            .as_ref()
+            .map(schedule_expression_text_ref);
+        let prompt = patch.prompt.as_deref();
+        let completion_policy = patch.completion_policy.map(completion_policy_text);
+        let next_run_at = new_next_run_at.as_ref().map(fmt_ts);
+
+        let row = client
+            .query_opt(
+                &format!(
+                    "UPDATE {TRIGGER_TABLE}
+                     SET
+                         name              = COALESCE($3, name),
+                         schedule_expression = COALESCE($4, schedule_expression),
+                         prompt            = COALESCE($5, prompt),
+                         completion_policy = COALESCE($6, completion_policy),
+                         next_run_at       = COALESCE($7, next_run_at)
+                     WHERE tenant_id = $1 AND trigger_id = $2
+                     RETURNING {TRIGGER_COLUMNS}"
+                ),
+                &[
+                    &tenant_id.as_str(),
+                    &trigger_id_str,
+                    &name,
+                    &schedule_expression,
+                    &prompt,
+                    &completion_policy,
+                    &next_run_at,
+                ],
+            )
+            .await
+            .map_err(|error| backend_error("update trigger record", error))?;
+        match row {
+            Some(row) => Ok(Some(row_to_record(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn set_trigger_state(
+        &self,
+        tenant_id: TenantId,
+        trigger_id: TriggerId,
+        state: TriggerState,
+    ) -> Result<Option<TriggerRecord>, TriggerError> {
+        let client = self.connect().await?;
+        let trigger_id_str = trigger_id.to_string();
+        let state_str = state_text(state);
+        let row = client
+            .query_opt(
+                &format!(
+                    "UPDATE {TRIGGER_TABLE}
+                     SET state = $3
+                     WHERE tenant_id = $1 AND trigger_id = $2
+                     RETURNING {TRIGGER_COLUMNS}"
+                ),
+                &[&tenant_id.as_str(), &trigger_id_str, &state_str],
+            )
+            .await
+            .map_err(|error| backend_error("set trigger state", error))?;
+        match row {
+            Some(row) => Ok(Some(row_to_record(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn list_trigger_runs(
+        &self,
+        tenant_id: TenantId,
+        trigger_id: TriggerId,
+        limit: usize,
+    ) -> Result<Vec<TriggerRunRecord>, TriggerError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let limit = limit.min(50) as i64;
+        let client = self.connect().await?;
+        let trigger_id_str = trigger_id.to_string();
+        // Query brassclaw_runs for rows whose metadata contains the trigger_id.
+        // Falls back gracefully to an empty list when the runs table is absent
+        // or trigger_id is not stored in metadata (pre-tagging deployments).
+        let rows = client
+            .query(
+                r#"SELECT run_id,
+                          started_at,
+                          finished_at,
+                          CASE WHEN error IS NOT NULL THEN 'error' ELSE 'ok' END AS run_status,
+                          metadata->>'fire_slot' AS fire_slot_raw
+                   FROM brassclaw_runs
+                   WHERE tenant_id = $1
+                     AND metadata->>'trigger_id' = $2
+                   ORDER BY started_at DESC
+                   LIMIT $3"#,
+                &[&tenant_id.as_str(), &trigger_id_str, &limit],
+            )
+            .await
+            .map_err(|error| backend_error("list trigger runs", error))?;
+
+        let mut records = Vec::with_capacity(rows.len());
+        for row in rows {
+            let run_id: String = row
+                .try_get("run_id")
+                .map_err(|e| backend_error("list trigger runs run_id", e))?;
+            let started_at_str: String = row
+                .try_get("started_at")
+                .map_err(|e| backend_error("list trigger runs started_at", e))?;
+            let finished_at_str: Option<String> = row
+                .try_get("finished_at")
+                .map_err(|e| backend_error("list trigger runs finished_at", e))?;
+            let run_status_str: String = row
+                .try_get("run_status")
+                .map_err(|e| backend_error("list trigger runs run_status", e))?;
+            let fire_slot_raw: Option<String> = row
+                .try_get("fire_slot_raw")
+                .map_err(|e| backend_error("list trigger runs fire_slot", e))?;
+
+            let started_at = parse_timestamp(&started_at_str, "started_at")?;
+            let finished_at = finished_at_str
+                .as_deref()
+                .map(|v| parse_timestamp(v, "finished_at"))
+                .transpose()?;
+            let status = parse_run_status(&run_status_str)?;
+            let fire_slot = fire_slot_raw
+                .as_deref()
+                .map(|v| parse_timestamp(v, "fire_slot"))
+                .transpose()?;
+
+            records.push(TriggerRunRecord {
+                run_id,
+                fire_slot,
+                started_at,
+                finished_at,
+                status,
+            });
+        }
+        Ok(records)
+    }
 }
 
 async fn locked_record(
@@ -942,6 +1108,12 @@ fn parse_run_status(value: &str) -> Result<TriggerRunStatus, TriggerError> {
 fn schedule_expression_text(schedule: &TriggerSchedule) -> String {
     match schedule {
         TriggerSchedule::Cron { expression } => expression.clone(),
+    }
+}
+
+fn schedule_expression_text_ref(schedule: &TriggerSchedule) -> &str {
+    match schedule {
+        TriggerSchedule::Cron { expression } => expression.as_str(),
     }
 }
 

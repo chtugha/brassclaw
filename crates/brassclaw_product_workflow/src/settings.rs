@@ -431,3 +431,99 @@ pub trait McpServerService: Send + Sync {
     /// Stop the MCP server. No-op if already stopped.
     async fn stop(&self) -> Result<McpServerActionResponse, McpServerServiceError>;
 }
+
+// ── ConfigStore (Agent / Networking settings) ─────────────────────────────────
+
+/// Key prefixes that are safe to expose via `GET /api/settings/config`.
+///
+/// Any key not matching one of these prefixes is silently excluded from reads
+/// and rejected on writes, preventing exposure of internal secrets.
+pub const CONFIG_ALLOWED_PREFIXES: &[&str] = &[
+    "agent.",
+    "heartbeat.",
+    "sandbox.",
+    "routines.",
+    "safety.",
+    "skills.",
+    "search.",
+    "channels.",
+    "tunnel.",
+];
+
+/// Response body for `GET /api/settings/config`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SettingsConfigResponse {
+    pub settings: std::collections::HashMap<String, String>,
+}
+
+/// Request body for `PUT /api/settings/config/{key}`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UpdateSettingRequest {
+    /// New value.  Pass an empty string to delete the key.
+    pub value: String,
+}
+
+/// Response body for `PUT /api/settings/config/{key}`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UpdateSettingResponse {
+    pub key: String,
+    pub value: Option<String>,
+    pub success: bool,
+}
+
+/// Error type returned by [`ConfigStore`] methods.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigStoreError {
+    #[error("config store DB unavailable: {0}")]
+    Unavailable(String),
+    #[error("config store query failed: {0}")]
+    QueryFailed(String),
+    #[error("config key not allowed: {key}")]
+    KeyNotAllowed { key: String },
+}
+
+/// Port backing `GET /api/settings/config` and `PUT /api/settings/config/{key}`.
+///
+/// Reads and writes the `brassclaw_config` table (same backing store used by
+/// the interceptor persona and LLM config).  Only keys matching
+/// [`CONFIG_ALLOWED_PREFIXES`] are exposed.
+///
+/// Default implementations return 503 so DB-less builds fail visibly.
+#[async_trait]
+pub trait ConfigStore: Send + Sync {
+    /// Read all allowed config keys for this tenant.
+    async fn get_all(&self) -> Result<SettingsConfigResponse, ConfigStoreError>;
+    /// Write (or delete when `value` is empty) a single allowed key.
+    async fn set_key(&self, key: &str, value: &str) -> Result<UpdateSettingResponse, ConfigStoreError>;
+}
+
+
+
+// ── SettingsListingService ────────────────────────────────────────────────────
+
+/// Trait that backs the six `GET /api/settings/{type}` listing endpoints.
+///
+/// Each method corresponds to one Settings UI tab that shows a flat list of
+/// component rows from a Postgres table.  Default implementations return
+/// `501 Not Implemented` so DB-less builds fail visibly rather than silently.
+///
+/// The Postgres-backed implementation lives in
+/// `brassclaw_reborn_composition::pg_settings_listing`.
+#[async_trait]
+pub trait SettingsListingService: Send + Sync {
+    async fn list_skills(&self) -> Result<SettingsListResponse, SettingsListingError>;
+    async fn list_tools(&self) -> Result<SettingsListResponse, SettingsListingError>;
+    async fn list_actions(&self) -> Result<SettingsListResponse, SettingsListingError>;
+    async fn list_extensions(&self) -> Result<SettingsListResponse, SettingsListingError>;
+    async fn list_orchestrators(&self) -> Result<SettingsListResponse, SettingsListingError>;
+    async fn list_scaffolds(&self) -> Result<SettingsListResponse, SettingsListingError>;
+}
+
+/// Error type returned by [`SettingsListingService`] methods.
+#[derive(Debug, thiserror::Error)]
+pub enum SettingsListingError {
+    #[error("settings listing DB unavailable: {0}")]
+    Unavailable(String),
+    #[error("settings listing query failed: {0}")]
+    QueryFailed(String),
+}
