@@ -4676,11 +4676,10 @@ mod tests {
     #[tokio::test]
     async fn self_authored_hook_denies_on_matching_capability() {
         use crate::self_authored::{
-            GenerationTraceRef, SelfAuthorshipProvenance, SelfAuthoredHookSpec,
-            SelfAuthoredReason,
+            GenerationTraceRef, SelfAuthoredHookSpec, SelfAuthoredReason, SelfAuthorshipProvenance,
         };
-        use chrono::Utc;
         use brassclaw_turns::{TurnId, TurnRunId};
+        use chrono::Utc;
 
         let hook_id = HookId::for_builtin("self::near-miss-deny", HookVersion::ONE);
         let spec = SelfAuthoredHookSpec::DenyCapability {
@@ -4697,9 +4696,8 @@ mod tests {
             user_ratification: None,
             generation_trace_ref: GenerationTraceRef::new("trace://run/turn/1".to_string()),
         };
-        let hook = crate::self_authored::SelfAuthoredBeforeCapabilityHook::new(
-            hook_id, spec, provenance,
-        );
+        let hook =
+            crate::self_authored::SelfAuthoredBeforeCapabilityHook::new(hook_id, spec, provenance);
 
         let mut dispatcher = HookDispatcher::new(HookRegistry::new());
         dispatcher
@@ -4743,11 +4741,10 @@ mod tests {
     #[tokio::test]
     async fn self_authored_builder_path_wires_through_arc() {
         use crate::self_authored::{
-            GenerationTraceRef, SelfAuthorshipProvenance, SelfAuthoredHookSpec,
-            SelfAuthoredReason,
+            GenerationTraceRef, SelfAuthoredHookSpec, SelfAuthoredReason, SelfAuthorshipProvenance,
         };
-        use chrono::Utc;
         use brassclaw_turns::{TurnId, TurnRunId};
+        use chrono::Utc;
 
         let hook_id = HookId::for_builtin("self::scope-drift", HookVersion::ONE);
         let spec = SelfAuthoredHookSpec::PauseApproval {
@@ -4764,15 +4761,13 @@ mod tests {
             user_ratification: None,
             generation_trace_ref: GenerationTraceRef::new("trace://run/turn/2".to_string()),
         };
-        let hook = crate::self_authored::SelfAuthoredBeforeCapabilityHook::new(
-            hook_id, spec, provenance,
-        );
+        let hook =
+            crate::self_authored::SelfAuthoredBeforeCapabilityHook::new(hook_id, spec, provenance);
 
-        let dispatcher: Arc<HookDispatcher> =
-            HookDispatcherBuilder::new(HookRegistry::new())
-                .install_self_authored_before_capability(hook_id, HookPhase::Policy, hook)
-                .expect("builder install succeeds")
-                .build_arc();
+        let dispatcher: Arc<HookDispatcher> = HookDispatcherBuilder::new(HookRegistry::new())
+            .install_self_authored_before_capability(hook_id, HookPhase::Policy, hook)
+            .expect("builder install succeeds")
+            .build_arc();
 
         // Matching prefix → pause approval (non-permitting).
         let ctx = BeforeCapabilityHookContext::new_unresolved(
