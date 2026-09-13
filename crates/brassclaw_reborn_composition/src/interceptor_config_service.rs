@@ -50,25 +50,40 @@ const KEY_PERSONA: &str = "interceptor.sempai_persona";
 const PREFIX_NAME_BASE_PROMPT: &str = "base-prompt";
 
 /// Component tables that may hold `Validated` rows for bundle assembly.
-/// Each entry is `(table_name, class_code)`.
-const COMPONENT_TABLES: &[(&str, u16)] = &[
-    ("reborn_skills", 1),
-    ("reborn_tools", 0),
-    ("reborn_actions", 16),
-    ("reborn_specs", 12),
-    ("reborn_summaries", 15),
-    ("reborn_lessons", 18),
-    ("reborn_issues", 19),
-    ("reborn_notes", 20),
-    ("reborn_recipes", 21),
-    ("reborn_tool_skills", 13),
-    ("reborn_plans", 14),
-    ("reborn_extensions_unified", 9),
-    ("reborn_docus", 17),       // Phase P Step 1 — doc-conversion artifacts
-    ("reborn_python_code", 22), // Phase B — executor PythonCode components
-    ("reborn_extension_catalogues", 23), // Phase C — domain catalogue overviews
-    ("reborn_orchestrators", 10), // future migration; skipped when absent
-    ("reborn_scaffolds", 50),   // future migration; skipped when absent
+/// Each entry is `(table_name, class_code, content_expr)`.
+///
+/// `content_expr` is a **static SQL expression** selecting the effective
+/// prompt text for a row.  It mirrors `class_code_to_table` in
+/// `brassclaw_engine::memory::retrieval_source` — keep both in sync.
+///
+/// SECURITY: `table_name` and `content_expr` must always be `&'static str`
+/// literals — never user input.  They are interpolated into SQL via `format!()`.
+const COMPONENT_TABLES: &[(&str, u16, &str)] = &[
+    // skills / scaffolds use the `body` column
+    ("reborn_skills",              1,  "COALESCE(NULLIF(prior_knowledge_content,''), body)"),
+    // tools have no prose body — use description
+    ("reborn_tools",               0,  "COALESCE(prior_knowledge_content, description)"),
+    // actions — description-only (steps are JSONB, not human-readable prose)
+    ("reborn_actions",             16, "COALESCE(prior_knowledge_content, description)"),
+    // memory-class tables all use the `content` column
+    ("reborn_specs",               12, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
+    ("reborn_summaries",           15, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
+    ("reborn_lessons",             18, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
+    ("reborn_issues",              19, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
+    ("reborn_notes",               20, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
+    ("reborn_tool_skills",         13, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
+    ("reborn_plans",               14, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
+    ("reborn_docus",               17, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),  // Phase P
+    ("reborn_python_code",         22, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),  // Phase B
+    // recipes have no plain-text body; prior_knowledge_content or empty
+    ("reborn_recipes",             21, "COALESCE(NULLIF(prior_knowledge_content,''), '')"),
+    // extensions use description
+    ("reborn_extensions_unified",  9,  "COALESCE(prior_knowledge_content, description)"),
+    // extension catalogues use the overview_doc column
+    ("reborn_extension_catalogues", 23, "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)"),  // Phase C
+    // future-phase tables; skipped when absent
+    ("reborn_orchestrators",       10, "COALESCE(NULLIF(prior_knowledge_content,''), body)"),
+    ("reborn_scaffolds",           50, "COALESCE(NULLIF(prior_knowledge_content,''), body)"),
 ];
 
 /// Class code → human-readable type label for bundle headers.
@@ -223,7 +238,7 @@ impl RebornInterceptorConfigService {
                  WHERE table_schema = 'public' \
                    AND table_type = 'BASE TABLE' \
                    AND table_name = ANY($1)",
-                &[&COMPONENT_TABLES.iter().map(|(t, _)| *t).collect::<Vec<_>>()],
+                &[&COMPONENT_TABLES.iter().map(|(t, _, _)| *t).collect::<Vec<_>>()],
             )
             .await
             .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
@@ -237,7 +252,7 @@ impl RebornInterceptorConfigService {
 
         let mut parts: Vec<(u16, u32, String, String)> = Vec::new(); // (class_code, prompt_uid, name, content)
 
-        for &(table, class_code) in COMPONENT_TABLES {
+        for &(table, class_code, content_expr) in COMPONENT_TABLES {
             if !existing_tables.contains(table) {
                 continue;
             }
@@ -245,7 +260,7 @@ impl RebornInterceptorConfigService {
                 .query(
                     &format!(
                         "SELECT prompt_uid, name, \
-                                COALESCE(content, '') AS content \
+                                ({content_expr}) AS content \
                          FROM {table} \
                          WHERE validation_status = 'validated' \
                            AND NOT ('05:validator' = ANY(COALESCE(consumer_tags, ARRAY[]::text[]))) \
@@ -503,12 +518,17 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                 turn_id: TurnId::new(),
             };
 
-            gateway.stream_model(request).await.map_err(|e| {
-                InterceptorConfigServiceError::InvalidRequest {
-                    reason: format!("regenerate_prefix gateway call: {e}"),
+            match gateway.stream_model(request).await {
+                Ok(_) => {
+                    with_prewarm = true;
                 }
-            })?;
-            with_prewarm = true;
+                Err(e) => {
+                    tracing::debug!(
+                        error = %e,
+                        "regenerate_prefix: gateway prewarm failed (non-fatal)"
+                    );
+                }
+            }
 
             // Re-store with prewarm=true to update prewarm_last_at.
             #[cfg(feature = "postgres")]
@@ -594,7 +614,7 @@ mod tests {
         assert!(
             COMPONENT_TABLES
                 .iter()
-                .any(|(t, c)| *t == "reborn_docus" && *c == 17),
+                .any(|(t, c, _)| *t == "reborn_docus" && *c == 17),
             "COMPONENT_TABLES must contain (\"reborn_docus\", 17) for Phase P doc-conversion"
         );
     }
@@ -604,7 +624,7 @@ mod tests {
         assert!(
             COMPONENT_TABLES
                 .iter()
-                .any(|(t, c)| *t == "reborn_python_code" && *c == 22),
+                .any(|(t, c, _)| *t == "reborn_python_code" && *c == 22),
             "COMPONENT_TABLES must contain (\"reborn_python_code\", 22)"
         );
     }
@@ -614,7 +634,7 @@ mod tests {
         assert!(
             COMPONENT_TABLES
                 .iter()
-                .any(|(t, c)| *t == "reborn_extension_catalogues" && *c == 23),
+                .any(|(t, c, _)| *t == "reborn_extension_catalogues" && *c == 23),
             "COMPONENT_TABLES must contain (\"reborn_extension_catalogues\", 23)"
         );
     }
