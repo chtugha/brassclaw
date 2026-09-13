@@ -150,8 +150,18 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         let mut llm_config =
             crate::RebornLlmConfigService::new(keys, pool.clone(), pg_repo, tenant_id);
         if let Some(adapter) = runtime.webui_llm_reload_adapter() {
-            llm_config = llm_config
-                .with_reload_trigger(Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>);
+            let trigger = Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>;
+            // Boot-time DB reload: if the operator already configured an LLM
+            // via the DB (e.g. direct DB write or a previous WebUI session),
+            // hot-swap it into the running gateway immediately so the runtime
+            // does not start with the placeholder provider.
+            if let Err(e) = trigger.reload().await {
+                tracing::warn!(
+                    error = %e,
+                    "boot-time LLM reload from DB failed; starting with placeholder provider"
+                );
+            }
+            llm_config = llm_config.with_reload_trigger(trigger);
         }
         if let Some(session) = runtime.webui_llm_session() {
             llm_config = llm_config.with_nearai_session(session);
