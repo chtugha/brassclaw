@@ -1,1 +1,2069 @@
-import b from"react";var me=e=>e.type==="checkbox",le=e=>e instanceof Date,K=e=>e==null,je=e=>typeof e=="object",P=e=>!K(e)&&!Array.isArray(e)&&je(e)&&!le(e),mt=e=>P(e)&&e.target?me(e.target)?e.target.checked:e.target.value:e,It=e=>e.substring(0,e.search(/\.\d+(\.|$)/))||e,ht=(e,r)=>e.has(It(r)),Pt=e=>{let r=e.constructor&&e.constructor.prototype;return P(r)&&r.hasOwnProperty("isPrototypeOf")},Ke=typeof window<"u"&&typeof window.HTMLElement<"u"&&typeof document<"u";function T(e){let r,t=Array.isArray(e),i=typeof FileList<"u"?e instanceof FileList:!1;if(e instanceof Date)r=new Date(e);else if(!(Ke&&(e instanceof Blob||i))&&(t||P(e)))if(r=t?[]:Object.create(Object.getPrototypeOf(e)),!t&&!Pt(e))r=e;else for(let n in e)e.hasOwnProperty(n)&&(r[n]=T(e[n]));else return e;return r}var we=e=>/^\w*$/.test(e),U=e=>e===void 0,ke=e=>Array.isArray(e)?e.filter(Boolean):[],Je=e=>ke(e.replace(/["|']|\]/g,"").split(/\.|\[/)),f=(e,r,t)=>{if(!r||!P(e))return t;let i=(we(r)?[r]:Je(r)).reduce((n,u)=>K(n)?n:n[u],e);return U(i)||i===e?U(e[r])?t:e[r]:i},Q=e=>typeof e=="boolean",O=(e,r,t)=>{let i=-1,n=we(r)?[r]:Je(r),u=n.length,d=u-1;for(;++i<u;){let o=n[i],S=t;if(i!==d){let x=e[o];S=P(x)||Array.isArray(x)?x:isNaN(+n[i+1])?{}:[]}if(o==="__proto__"||o==="constructor"||o==="prototype")return;e[o]=S,e=e[o]}},Fe={BLUR:"blur",FOCUS_OUT:"focusout",CHANGE:"change"},X={onBlur:"onBlur",onChange:"onChange",onSubmit:"onSubmit",onTouched:"onTouched",all:"all"},ie={max:"max",min:"min",maxLength:"maxLength",minLength:"minLength",pattern:"pattern",required:"required",validate:"validate"},ze=b.createContext(null);ze.displayName="HookFormContext";var he=()=>b.useContext(ze),nr=e=>{let{children:r,...t}=e;return b.createElement(ze.Provider,{value:t},r)},bt=(e,r,t,i=!0)=>{let n={defaultValues:r._defaultValues};for(let u in e)Object.defineProperty(n,u,{get:()=>{let d=u;return r._proxyFormState[d]!==X.all&&(r._proxyFormState[d]=!i||X.all),t&&(t[d]=!0),e[d]}});return n},De=typeof window<"u"?b.useLayoutEffect:b.useEffect;function Bt(e){let r=he(),{control:t=r.control,disabled:i,name:n,exact:u}=e||{},[d,o]=b.useState(t._formState),S=b.useRef({isDirty:!1,isLoading:!1,dirtyFields:!1,touchedFields:!1,validatingFields:!1,isValidating:!1,isValid:!1,errors:!1});return De(()=>t._subscribe({name:n,formState:S.current,exact:u,callback:x=>{!i&&o({...t._formState,...x})}}),[n,i,u]),b.useEffect(()=>{S.current.isValid&&t._setValid(!0)},[t]),b.useMemo(()=>bt(d,t,S.current,!1),[d,t])}var se=e=>typeof e=="string",vt=(e,r,t,i,n)=>se(e)?(i&&r.watch.add(e),f(t,e,n)):Array.isArray(e)?e.map(u=>(i&&r.watch.add(u),f(t,u))):(i&&(r.watchAll=!0),t),qe=e=>K(e)||!je(e);function ae(e,r,t=new WeakSet){if(qe(e)||qe(r))return e===r;if(le(e)&&le(r))return e.getTime()===r.getTime();let i=Object.keys(e),n=Object.keys(r);if(i.length!==n.length)return!1;if(t.has(e)||t.has(r))return!0;t.add(e),t.add(r);for(let u of i){let d=e[u];if(!n.includes(u))return!1;if(u!=="ref"){let o=r[u];if(le(d)&&le(o)||P(d)&&P(o)||Array.isArray(d)&&Array.isArray(o)?!ae(d,o,t):d!==o)return!1}}return!0}function Wt(e){let r=he(),{control:t=r.control,name:i,defaultValue:n,disabled:u,exact:d,compute:o}=e||{},S=b.useRef(n),x=b.useRef(o),F=b.useRef(void 0);x.current=o;let w=b.useMemo(()=>t._getWatch(i,S.current),[t,i]),[m,H]=b.useState(x.current?x.current(w):w);return De(()=>t._subscribe({name:i,formState:{values:!0},exact:d,callback:q=>{if(!u){let E=vt(i,t._names,q.values||t._formValues,!1,S.current);if(x.current){let B=x.current(E);ae(B,F.current)||(H(B),F.current=B)}else H(E)}}}),[t,u,i,d]),b.useEffect(()=>t._removeUnmounted()),m}function qt(e){let r=he(),{name:t,disabled:i,control:n=r.control,shouldUnregister:u,defaultValue:d}=e,o=ht(n._names.array,t),S=b.useMemo(()=>f(n._formValues,t,f(n._defaultValues,t,d)),[n,t,d]),x=Wt({control:n,name:t,defaultValue:S,exact:!0}),F=Bt({control:n,name:t,exact:!0}),w=b.useRef(e),m=b.useRef(n.register(t,{...e.rules,value:x,...Q(e.disabled)?{disabled:e.disabled}:{}}));w.current=e;let H=b.useMemo(()=>Object.defineProperties({},{invalid:{enumerable:!0,get:()=>!!f(F.errors,t)},isDirty:{enumerable:!0,get:()=>!!f(F.dirtyFields,t)},isTouched:{enumerable:!0,get:()=>!!f(F.touchedFields,t)},isValidating:{enumerable:!0,get:()=>!!f(F.validatingFields,t)},error:{enumerable:!0,get:()=>f(F.errors,t)}}),[F,t]),q=b.useCallback(V=>m.current.onChange({target:{value:mt(V),name:t},type:Fe.CHANGE}),[t]),E=b.useCallback(()=>m.current.onBlur({target:{value:f(n._formValues,t),name:t},type:Fe.BLUR}),[t,n._formValues]),B=b.useCallback(V=>{let W=f(n._fields,t);W&&V&&(W._f.ref={focus:()=>V.focus&&V.focus(),select:()=>V.select&&V.select(),setCustomValidity:L=>V.setCustomValidity(L),reportValidity:()=>V.reportValidity()})},[n._fields,t]),Z=b.useMemo(()=>({name:t,value:x,...Q(i)||F.disabled?{disabled:F.disabled||i}:{},onChange:q,onBlur:E,ref:B}),[t,i,F.disabled,q,E,B,x]);return b.useEffect(()=>{let V=n._options.shouldUnregister||u;n.register(t,{...w.current.rules,...Q(w.current.disabled)?{disabled:w.current.disabled}:{}});let W=(L,g)=>{let h=f(n._fields,L);h&&h._f&&(h._f.mount=g)};if(W(t,!0),V){let L=T(f(n._options.defaultValues,t));O(n._defaultValues,t,L),U(f(n._formValues,t))&&O(n._formValues,t,L)}return!o&&n.register(t),()=>{(o?V&&!n._state.action:V)?n.unregister(t):W(t,!1)}},[t,n,o,u]),b.useEffect(()=>{n._setDisabledField({disabled:i,name:t})},[i,t,n]),b.useMemo(()=>({field:Z,formState:F,fieldState:H}),[Z,F,H])}var ur=e=>e.render(qt(e)),Vt=e=>{let r={};for(let t of Object.keys(e))if(je(e[t])&&e[t]!==null){let i=Vt(e[t]);for(let n of Object.keys(i))r[`${t}.${n}`]=i[n]}else r[t]=e[t];return r},Ht="post";function lr(e){let r=he(),[t,i]=b.useState(!1),{control:n=r.control,onSubmit:u,children:d,action:o,method:S=Ht,headers:x,encType:F,onError:w,render:m,onSuccess:H,validateStatus:q,...E}=e,B=async Z=>{let V=!1,W="";await n.handleSubmit(async L=>{let g=new FormData,h="";try{h=JSON.stringify(L)}catch{}let A=Vt(n._formValues);for(let k in A)g.append(k,A[k]);if(u&&await u({data:L,event:Z,method:S,formData:g,formDataJson:h}),o)try{let k=[x&&x["Content-Type"],F].some(G=>G&&G.includes("json")),R=await fetch(String(o),{method:S,headers:{...x,...F&&F!=="multipart/form-data"?{"Content-Type":F}:{}},body:k?h:g});R&&(q?!q(R.status):R.status<200||R.status>=300)?(V=!0,w&&w({response:R}),W=String(R.status)):H&&H({response:R})}catch(k){V=!0,w&&w({error:k})}})(Z),V&&e.control&&(e.control._subjects.state.next({isSubmitSuccessful:!1}),e.control.setError("root.server",{type:W}))};return b.useEffect(()=>{i(!0)},[]),m?b.createElement(b.Fragment,null,m({submit:B})):b.createElement("form",{noValidate:t,action:o,method:S,encType:F,onSubmit:B,...E},d)}var $t=(e,r,t,i,n)=>r?{...t[e],types:{...t[e]&&t[e].types?t[e].types:{},[i]:n||!0}}:{},z=e=>Array.isArray(e)?e:[e],ut=()=>{let e=[];return{get observers(){return e},next:n=>{for(let u of e)u.next&&u.next(n)},subscribe:n=>(e.push(n),{unsubscribe:()=>{e=e.filter(u=>u!==n)}}),unsubscribe:()=>{e=[]}}},j=e=>P(e)&&!Object.keys(e).length,Ge=e=>e.type==="file",ee=e=>typeof e=="function",Ae=e=>{if(!Ke)return!1;let r=e?e.ownerDocument:0;return e instanceof(r&&r.defaultView?r.defaultView.HTMLElement:HTMLElement)},Ft=e=>e.type==="select-multiple",Qe=e=>e.type==="radio",jt=e=>Qe(e)||me(e),Re=e=>Ae(e)&&e.isConnected;function Kt(e,r){let t=r.slice(0,-1).length,i=0;for(;i<t;)e=U(e)?i++:e[r[i++]];return e}function Jt(e){for(let r in e)if(e.hasOwnProperty(r)&&!U(e[r]))return!1;return!0}function I(e,r){let t=Array.isArray(r)?r:we(r)?[r]:Je(r),i=t.length===1?e:Kt(e,t),n=t.length-1,u=t[n];return i&&delete i[u],n!==0&&(P(i)&&j(i)||Array.isArray(i)&&Jt(i))&&I(e,t.slice(0,-1)),e}var At=e=>{for(let r in e)if(ee(e[r]))return!0;return!1};function xe(e,r={}){let t=Array.isArray(e);if(P(e)||t)for(let i in e)Array.isArray(e[i])||P(e[i])&&!At(e[i])?(r[i]=Array.isArray(e[i])?[]:{},xe(e[i],r[i])):K(e[i])||(r[i]=!0);return r}function xt(e,r,t){let i=Array.isArray(e);if(P(e)||i)for(let n in e)Array.isArray(e[n])||P(e[n])&&!At(e[n])?U(r)||qe(t[n])?t[n]=Array.isArray(e[n])?xe(e[n],[]):{...xe(e[n])}:xt(e[n],K(r)?{}:r[n],t[n]):t[n]=!ae(e[n],r[n]);return t}var ge=(e,r)=>xt(e,r,xe(r)),lt={value:!1,isValid:!1},ot={value:!0,isValid:!0},St=e=>{if(Array.isArray(e)){if(e.length>1){let r=e.filter(t=>t&&t.checked&&!t.disabled).map(t=>t.value);return{value:r,isValid:!!r.length}}return e[0].checked&&!e[0].disabled?e[0].attributes&&!U(e[0].attributes.value)?U(e[0].value)||e[0].value===""?ot:{value:e[0].value,isValid:!0}:ot:lt}return lt},wt=(e,{valueAsNumber:r,valueAsDate:t,setValueAs:i})=>U(e)?e:r?e===""?NaN:e&&+e:t&&se(e)?new Date(e):i?i(e):e,ct={isValid:!1,value:null},kt=e=>Array.isArray(e)?e.reduce((r,t)=>t&&t.checked&&!t.disabled?{isValid:!0,value:t.value}:r,ct):ct;function dt(e){let r=e.ref;return Ge(r)?r.files:Qe(r)?kt(e.refs).value:Ft(r)?[...r.selectedOptions].map(({value:t})=>t):me(r)?St(e.refs).value:wt(U(r.value)?e.ref.value:r.value,e)}var zt=(e,r,t,i)=>{let n={};for(let u of e){let d=f(r,u);d&&O(n,u,d._f)}return{criteriaMode:t,names:[...e],fields:n,shouldUseNativeValidation:i}},Se=e=>e instanceof RegExp,_e=e=>U(e)?e:Se(e)?e.source:P(e)?Se(e.value)?e.value.source:e.value:e,de=e=>({isOnSubmit:!e||e===X.onSubmit,isOnBlur:e===X.onBlur,isOnChange:e===X.onChange,isOnAll:e===X.all,isOnTouch:e===X.onTouched}),ft="AsyncFunction",Gt=e=>!!e&&!!e.validate&&!!(ee(e.validate)&&e.validate.constructor.name===ft||P(e.validate)&&Object.values(e.validate).find(r=>r.constructor.name===ft)),Qt=e=>e.mount&&(e.required||e.min||e.max||e.maxLength||e.minLength||e.pattern||e.validate),He=(e,r,t)=>!t&&(r.watchAll||r.watch.has(e)||[...r.watch].some(i=>e.startsWith(i)&&/^\.\w+/.test(e.slice(i.length)))),fe=(e,r,t,i)=>{for(let n of t||Object.keys(e)){let u=f(e,n);if(u){let{_f:d,...o}=u;if(d){if(d.refs&&d.refs[0]&&r(d.refs[0],n)&&!i)return!0;if(d.ref&&r(d.ref,d.name)&&!i)return!0;if(fe(o,r))break}else if(P(o)&&fe(o,r))break}}};function yt(e,r,t){let i=f(e,t);if(i||we(t))return{error:i,name:t};let n=t.split(".");for(;n.length;){let u=n.join("."),d=f(r,u),o=f(e,u);if(d&&!Array.isArray(d)&&t!==u)return{name:t};if(o&&o.type)return{name:u,error:o};if(o&&o.root&&o.root.type)return{name:`${u}.root`,error:o.root};n.pop()}return{name:t}}var Yt=(e,r,t,i)=>{t(e);let{name:n,...u}=e;return j(u)||Object.keys(u).length>=Object.keys(r).length||Object.keys(u).find(d=>r[d]===(!i||X.all))},Xt=(e,r,t)=>!e||!r||e===r||z(e).some(i=>i&&(t?i===r:i.startsWith(r)||r.startsWith(i))),Zt=(e,r,t,i,n)=>n.isOnAll?!1:!t&&n.isOnTouch?!(r||e):(t?i.isOnBlur:n.isOnBlur)?!e:(t?i.isOnChange:n.isOnChange)?e:!0,er=(e,r)=>!ke(f(e,r)).length&&I(e,r),Dt=(e,r,t)=>{let i=z(f(e,t));return O(i,"root",r[t]),O(e,t,i),e},Ve=e=>se(e);function gt(e,r,t="validate"){if(Ve(e)||Array.isArray(e)&&e.every(Ve)||Q(e)&&!e)return{type:t,message:Ve(e)?e:"",ref:r}}var ce=e=>P(e)&&!Se(e)?e:{value:e,message:""},$e=async(e,r,t,i,n,u)=>{let{ref:d,refs:o,required:S,maxLength:x,minLength:F,min:w,max:m,pattern:H,validate:q,name:E,valueAsNumber:B,mount:Z}=e._f,V=f(t,E);if(!Z||r.has(E))return{};let W=o?o[0]:d,L=D=>{n&&W.reportValidity&&(W.setCustomValidity(Q(D)?"":D||""),W.reportValidity())},g={},h=Qe(d),A=me(d),k=h||A,R=(B||Ge(d))&&U(d.value)&&U(V)||Ae(d)&&d.value===""||V===""||Array.isArray(V)&&!V.length,G=$t.bind(null,E,i,g),te=(D,C,N,$=ie.maxLength,J=ie.minLength)=>{let re=D?C:N;g[E]={type:D?$:J,message:re,ref:d,...G(D?$:J,re)}};if(u?!Array.isArray(V)||!V.length:S&&(!k&&(R||K(V))||Q(V)&&!V||A&&!St(o).isValid||h&&!kt(o).isValid)){let{value:D,message:C}=Ve(S)?{value:!!S,message:S}:ce(S);if(D&&(g[E]={type:ie.required,message:C,ref:W,...G(ie.required,C)},!i))return L(C),g}if(!R&&(!K(w)||!K(m))){let D,C,N=ce(m),$=ce(w);if(!K(V)&&!isNaN(V)){let J=d.valueAsNumber||V&&+V;K(N.value)||(D=J>N.value),K($.value)||(C=J<$.value)}else{let J=d.valueAsDate||new Date(V),re=be=>new Date(new Date().toDateString()+" "+be),ye=d.type=="time",oe=d.type=="week";se(N.value)&&V&&(D=ye?re(V)>re(N.value):oe?V>N.value:J>new Date(N.value)),se($.value)&&V&&(C=ye?re(V)<re($.value):oe?V<$.value:J<new Date($.value))}if((D||C)&&(te(!!D,N.message,$.message,ie.max,ie.min),!i))return L(g[E].message),g}if((x||F)&&!R&&(se(V)||u&&Array.isArray(V))){let D=ce(x),C=ce(F),N=!K(D.value)&&V.length>+D.value,$=!K(C.value)&&V.length<+C.value;if((N||$)&&(te(N,D.message,C.message),!i))return L(g[E].message),g}if(H&&!R&&se(V)){let{value:D,message:C}=ce(H);if(Se(D)&&!V.match(D)&&(g[E]={type:ie.pattern,message:C,ref:d,...G(ie.pattern,C)},!i))return L(C),g}if(q){if(ee(q)){let D=await q(V,t),C=gt(D,W);if(C&&(g[E]={...C,...G(ie.validate,C.message)},!i))return L(C.message),g}else if(P(q)){let D={};for(let C in q){if(!j(D)&&!i)break;let N=gt(await q[C](V,t),W,C);N&&(D={...N,...G(C,N.message)},L(N.message),i&&(g[E]=D))}if(!j(D)&&(g[E]={ref:W,...D},!i))return g}}return L(!0),g},tr={mode:X.onSubmit,reValidateMode:X.onChange,shouldFocusError:!0};function rr(e={}){let r={...tr,...e},t={submitCount:0,isDirty:!1,isReady:!1,isLoading:ee(r.defaultValues),isValidating:!1,isSubmitted:!1,isSubmitting:!1,isSubmitSuccessful:!1,isValid:!1,touchedFields:{},dirtyFields:{},validatingFields:{},errors:r.errors||{},disabled:r.disabled||!1},i={},n=P(r.defaultValues)||P(r.values)?T(r.defaultValues||r.values)||{}:{},u=r.shouldUnregister?{}:T(n),d={action:!1,mount:!1,watch:!1},o={mount:new Set,disabled:new Set,unMount:new Set,array:new Set,watch:new Set},S,x=0,F={isDirty:!1,dirtyFields:!1,validatingFields:!1,touchedFields:!1,isValidating:!1,isValid:!1,errors:!1},w={...F},m={array:ut(),state:ut()},H=r.criteriaMode===X.all,q=s=>a=>{clearTimeout(x),x=setTimeout(s,a)},E=async s=>{if(!r.disabled&&(F.isValid||w.isValid||s)){let a=r.resolver?j((await A()).errors):await R(i,!0);a!==t.isValid&&m.state.next({isValid:a})}},B=(s,a)=>{!r.disabled&&(F.isValidating||F.validatingFields||w.isValidating||w.validatingFields)&&((s||Array.from(o.mount)).forEach(l=>{l&&(a?O(t.validatingFields,l,a):I(t.validatingFields,l))}),m.state.next({validatingFields:t.validatingFields,isValidating:!j(t.validatingFields)}))},Z=(s,a=[],l,_,y=!0,c=!0)=>{if(_&&l&&!r.disabled){if(d.action=!0,c&&Array.isArray(f(i,s))){let v=l(f(i,s),_.argA,_.argB);y&&O(i,s,v)}if(c&&Array.isArray(f(t.errors,s))){let v=l(f(t.errors,s),_.argA,_.argB);y&&O(t.errors,s,v),er(t.errors,s)}if((F.touchedFields||w.touchedFields)&&c&&Array.isArray(f(t.touchedFields,s))){let v=l(f(t.touchedFields,s),_.argA,_.argB);y&&O(t.touchedFields,s,v)}(F.dirtyFields||w.dirtyFields)&&(t.dirtyFields=ge(n,u)),m.state.next({name:s,isDirty:te(s,a),dirtyFields:t.dirtyFields,errors:t.errors,isValid:t.isValid})}else O(u,s,a)},V=(s,a)=>{O(t.errors,s,a),m.state.next({errors:t.errors})},W=s=>{t.errors=s,m.state.next({errors:t.errors,isValid:!1})},L=(s,a,l,_)=>{let y=f(i,s);if(y){let c=f(u,s,U(l)?f(n,s):l);U(c)||_&&_.defaultChecked||a?O(u,s,a?c:dt(y._f)):N(s,c),d.mount&&E()}},g=(s,a,l,_,y)=>{let c=!1,v=!1,p={name:s};if(!r.disabled){if(!l||_){(F.isDirty||w.isDirty)&&(v=t.isDirty,t.isDirty=p.isDirty=te(),c=v!==p.isDirty);let M=ae(f(n,s),a);v=!!f(t.dirtyFields,s),M?I(t.dirtyFields,s):O(t.dirtyFields,s,!0),p.dirtyFields=t.dirtyFields,c=c||(F.dirtyFields||w.dirtyFields)&&v!==!M}if(l){let M=f(t.touchedFields,s);M||(O(t.touchedFields,s,l),p.touchedFields=t.touchedFields,c=c||(F.touchedFields||w.touchedFields)&&M!==l)}c&&y&&m.state.next(p)}return c?p:{}},h=(s,a,l,_)=>{let y=f(t.errors,s),c=(F.isValid||w.isValid)&&Q(a)&&t.isValid!==a;if(r.delayError&&l?(S=q(()=>V(s,l)),S(r.delayError)):(clearTimeout(x),S=null,l?O(t.errors,s,l):I(t.errors,s)),(l?!ae(y,l):y)||!j(_)||c){let v={..._,...c&&Q(a)?{isValid:a}:{},errors:t.errors,name:s};t={...t,...v},m.state.next(v)}},A=async s=>{B(s,!0);let a=await r.resolver(u,r.context,zt(s||o.mount,i,r.criteriaMode,r.shouldUseNativeValidation));return B(s),a},k=async s=>{let{errors:a}=await A(s);if(s)for(let l of s){let _=f(a,l);_?O(t.errors,l,_):I(t.errors,l)}else t.errors=a;return a},R=async(s,a,l={valid:!0})=>{for(let _ in s){let y=s[_];if(y){let{_f:c,...v}=y;if(c){let p=o.array.has(c.name),M=y._f&&Gt(y._f);M&&F.validatingFields&&B([_],!0);let Y=await $e(y,o.disabled,u,H,r.shouldUseNativeValidation&&!a,p);if(M&&F.validatingFields&&B([_]),Y[c.name]&&(l.valid=!1,a))break;!a&&(f(Y,c.name)?p?Dt(t.errors,Y,c.name):O(t.errors,c.name,Y[c.name]):I(t.errors,c.name))}!j(v)&&await R(v,a,l)}}return l.valid},G=()=>{for(let s of o.unMount){let a=f(i,s);a&&(a._f.refs?a._f.refs.every(l=>!Re(l)):!Re(a._f.ref))&&Ee(s)}o.unMount=new Set},te=(s,a)=>!r.disabled&&(s&&a&&O(u,s,a),!ae(be(),n)),D=(s,a,l)=>vt(s,o,{...d.mount?u:U(a)?n:se(s)?{[s]:a}:a},l,a),C=s=>ke(f(d.mount?u:n,s,r.shouldUnregister?f(n,s,[]):[])),N=(s,a,l={})=>{let _=f(i,s),y=a;if(_){let c=_._f;c&&(!c.disabled&&O(u,s,wt(a,c)),y=Ae(c.ref)&&K(a)?"":a,Ft(c.ref)?[...c.ref.options].forEach(v=>v.selected=y.includes(v.value)):c.refs?me(c.ref)?c.refs.forEach(v=>{(!v.defaultChecked||!v.disabled)&&(Array.isArray(y)?v.checked=!!y.find(p=>p===v.value):v.checked=y===v.value||!!y)}):c.refs.forEach(v=>v.checked=v.value===y):Ge(c.ref)?c.ref.value="":(c.ref.value=y,c.ref.type||m.state.next({name:s,values:T(u)})))}(l.shouldDirty||l.shouldTouch)&&g(s,y,l.shouldTouch,l.shouldDirty,!0),l.shouldValidate&&oe(s)},$=(s,a,l)=>{for(let _ in a){if(!a.hasOwnProperty(_))return;let y=a[_],c=s+"."+_,v=f(i,c);(o.array.has(s)||P(y)||v&&!v._f)&&!le(y)?$(c,y,l):N(c,y,l)}},J=(s,a,l={})=>{let _=f(i,s),y=o.array.has(s),c=T(a);O(u,s,c),y?(m.array.next({name:s,values:T(u)}),(F.isDirty||F.dirtyFields||w.isDirty||w.dirtyFields)&&l.shouldDirty&&m.state.next({name:s,dirtyFields:ge(n,u),isDirty:te(s,c)})):_&&!_._f&&!K(c)?$(s,c,l):N(s,c,l),He(s,o)&&m.state.next({...t,name:s}),m.state.next({name:d.mount?s:void 0,values:T(u)})},re=async s=>{d.mount=!0;let a=s.target,l=a.name,_=!0,y=f(i,l),c=M=>{_=Number.isNaN(M)||le(M)&&isNaN(M.getTime())||ae(M,f(u,l,M))},v=de(r.mode),p=de(r.reValidateMode);if(y){let M,Y,ve=a.type?dt(y._f):mt(s),ne=s.type===Fe.BLUR||s.type===Fe.FOCUS_OUT,Ut=!Qt(y._f)&&!r.resolver&&!f(t.errors,l)&&!y._f.deps||Zt(ne,f(t.touchedFields,l),t.isSubmitted,p,v),Oe=He(l,o,ne);O(u,l,ve),ne?(!a||!a.readOnly)&&(y._f.onBlur&&y._f.onBlur(s),S&&S(0)):y._f.onChange&&y._f.onChange(s);let Me=g(l,ve,ne),Lt=!j(Me)||Oe;if(!ne&&m.state.next({name:l,type:s.type,values:T(u)}),Ut)return(F.isValid||w.isValid)&&(r.mode==="onBlur"?ne&&E():ne||E()),Lt&&m.state.next({name:l,...Oe?{}:Me});if(!ne&&Oe&&m.state.next({...t}),r.resolver){let{errors:at}=await A([l]);if(c(ve),_){let Nt=yt(t.errors,i,l),nt=yt(at,i,Nt.name||l);M=nt.error,l=nt.name,Y=j(at)}}else B([l],!0),M=(await $e(y,o.disabled,u,H,r.shouldUseNativeValidation))[l],B([l]),c(ve),_&&(M?Y=!1:(F.isValid||w.isValid)&&(Y=await R(i,!0)));_&&(y._f.deps&&oe(y._f.deps),h(l,Y,M,Me))}},ye=(s,a)=>{if(f(t.errors,a)&&s.focus)return s.focus(),1},oe=async(s,a={})=>{let l,_,y=z(s);if(r.resolver){let c=await k(U(s)?s:y);l=j(c),_=s?!y.some(v=>f(c,v)):l}else s?(_=(await Promise.all(y.map(async c=>{let v=f(i,c);return await R(v&&v._f?{[c]:v}:v)}))).every(Boolean),!(!_&&!t.isValid)&&E()):_=l=await R(i);return m.state.next({...!se(s)||(F.isValid||w.isValid)&&l!==t.isValid?{}:{name:s},...r.resolver||!s?{isValid:l}:{},errors:t.errors}),a.shouldFocus&&!_&&fe(i,ye,s?y:o.mount),_},be=s=>{let a={...d.mount?u:n};return U(s)?a:se(s)?f(a,s):s.map(l=>f(a,l))},Ye=(s,a)=>({invalid:!!f((a||t).errors,s),isDirty:!!f((a||t).dirtyFields,s),error:f((a||t).errors,s),isValidating:!!f(t.validatingFields,s),isTouched:!!f((a||t).touchedFields,s)}),Et=s=>{s&&z(s).forEach(a=>I(t.errors,a)),m.state.next({errors:s?t.errors:{}})},Xe=(s,a,l)=>{let _=(f(i,s,{_f:{}})._f||{}).ref,y=f(t.errors,s)||{},{ref:c,message:v,type:p,...M}=y;O(t.errors,s,{...M,...a,ref:_}),m.state.next({name:s,errors:t.errors,isValid:!1}),l&&l.shouldFocus&&_&&_.focus&&_.focus()},pt=(s,a)=>ee(s)?m.state.subscribe({next:l=>"values"in l&&s(D(void 0,a),l)}):D(s,a,!0),Ze=s=>m.state.subscribe({next:a=>{Xt(s.name,a.name,s.exact)&&Yt(a,s.formState||F,Tt,s.reRenderRoot)&&s.callback({values:{...u},...t,...a,defaultValues:n})}}).unsubscribe,Ct=s=>(d.mount=!0,w={...w,...s.formState},Ze({...s,formState:w})),Ee=(s,a={})=>{for(let l of s?z(s):o.mount)o.mount.delete(l),o.array.delete(l),a.keepValue||(I(i,l),I(u,l)),!a.keepError&&I(t.errors,l),!a.keepDirty&&I(t.dirtyFields,l),!a.keepTouched&&I(t.touchedFields,l),!a.keepIsValidating&&I(t.validatingFields,l),!r.shouldUnregister&&!a.keepDefaultValue&&I(n,l);m.state.next({values:T(u)}),m.state.next({...t,...a.keepDirty?{isDirty:te()}:{}}),!a.keepIsValid&&E()},et=({disabled:s,name:a})=>{(Q(s)&&d.mount||s||o.disabled.has(a))&&(s?o.disabled.add(a):o.disabled.delete(a))},pe=(s,a={})=>{let l=f(i,s),_=Q(a.disabled)||Q(r.disabled);return O(i,s,{...l||{},_f:{...l&&l._f?l._f:{ref:{name:s}},name:s,mount:!0,...a}}),o.mount.add(s),l?et({disabled:Q(a.disabled)?a.disabled:r.disabled,name:s}):L(s,!0,a.value),{..._?{disabled:a.disabled||r.disabled}:{},...r.progressive?{required:!!a.required,min:_e(a.min),max:_e(a.max),minLength:_e(a.minLength),maxLength:_e(a.maxLength),pattern:_e(a.pattern)}:{},name:s,onChange:re,onBlur:re,ref:y=>{if(y){pe(s,a),l=f(i,s);let c=U(y.value)&&y.querySelectorAll&&y.querySelectorAll("input,select,textarea")[0]||y,v=jt(c),p=l._f.refs||[];if(v?p.find(M=>M===c):c===l._f.ref)return;O(i,s,{_f:{...l._f,...v?{refs:[...p.filter(Re),c,...Array.isArray(f(n,s))?[{}]:[]],ref:{type:c.type,name:s}}:{ref:c}}}),L(s,!1,void 0,c)}else l=f(i,s,{}),l._f&&(l._f.mount=!1),(r.shouldUnregister||a.shouldUnregister)&&!(ht(o.array,s)&&d.action)&&o.unMount.add(s)}}},Ce=()=>r.shouldFocusError&&fe(i,ye,o.mount),Ot=s=>{Q(s)&&(m.state.next({disabled:s}),fe(i,(a,l)=>{let _=f(i,l);_&&(a.disabled=_._f.disabled||s,Array.isArray(_._f.refs)&&_._f.refs.forEach(y=>{y.disabled=_._f.disabled||s}))},0,!1))},tt=(s,a)=>async l=>{let _;l&&(l.preventDefault&&l.preventDefault(),l.persist&&l.persist());let y=T(u);if(m.state.next({isSubmitting:!0}),r.resolver){let{errors:c,values:v}=await A();t.errors=c,y=T(v)}else await R(i);if(o.disabled.size)for(let c of o.disabled)I(y,c);if(I(t.errors,"root"),j(t.errors)){m.state.next({errors:{}});try{await s(y,l)}catch(c){_=c}}else a&&await a({...t.errors},l),Ce(),setTimeout(Ce);if(m.state.next({isSubmitted:!0,isSubmitting:!1,isSubmitSuccessful:j(t.errors)&&!_,submitCount:t.submitCount+1,errors:t.errors}),_)throw _},Mt=(s,a={})=>{f(i,s)&&(U(a.defaultValue)?J(s,T(f(n,s))):(J(s,a.defaultValue),O(n,s,T(a.defaultValue))),a.keepTouched||I(t.touchedFields,s),a.keepDirty||(I(t.dirtyFields,s),t.isDirty=a.defaultValue?te(s,T(f(n,s))):te()),a.keepError||(I(t.errors,s),F.isValid&&E()),m.state.next({...t}))},rt=(s,a={})=>{let l=s?T(s):n,_=T(l),y=j(s),c=y?n:_;if(a.keepDefaultValues||(n=l),!a.keepValues){if(a.keepDirtyValues){let v=new Set([...o.mount,...Object.keys(ge(n,u))]);for(let p of Array.from(v))f(t.dirtyFields,p)?O(c,p,f(u,p)):J(p,f(c,p))}else{if(Ke&&U(s))for(let v of o.mount){let p=f(i,v);if(p&&p._f){let M=Array.isArray(p._f.refs)?p._f.refs[0]:p._f.ref;if(Ae(M)){let Y=M.closest("form");if(Y){Y.reset();break}}}}if(a.keepFieldsRef)for(let v of o.mount)J(v,f(c,v));else i={}}u=r.shouldUnregister?a.keepDefaultValues?T(n):{}:T(c),m.array.next({values:{...c}}),m.state.next({values:{...c}})}o={mount:a.keepDirtyValues?o.mount:new Set,unMount:new Set,array:new Set,disabled:new Set,watch:new Set,watchAll:!1,focus:""},d.mount=!F.isValid||!!a.keepIsValid||!!a.keepDirtyValues,d.watch=!!r.shouldUnregister,m.state.next({submitCount:a.keepSubmitCount?t.submitCount:0,isDirty:y?!1:a.keepDirty?t.isDirty:!!(a.keepDefaultValues&&!ae(s,n)),isSubmitted:a.keepIsSubmitted?t.isSubmitted:!1,dirtyFields:y?{}:a.keepDirtyValues?a.keepDefaultValues&&u?ge(n,u):t.dirtyFields:a.keepDefaultValues&&s?ge(n,s):a.keepDirty?t.dirtyFields:{},touchedFields:a.keepTouched?t.touchedFields:{},errors:a.keepErrors?t.errors:{},isSubmitSuccessful:a.keepIsSubmitSuccessful?t.isSubmitSuccessful:!1,isSubmitting:!1,defaultValues:n})},st=(s,a)=>rt(ee(s)?s(u):s,a),Rt=(s,a={})=>{let l=f(i,s),_=l&&l._f;if(_){let y=_.refs?_.refs[0]:_.ref;y.focus&&(y.focus(),a.shouldSelect&&ee(y.select)&&y.select())}},Tt=s=>{t={...t,...s}},it={control:{register:pe,unregister:Ee,getFieldState:Ye,handleSubmit:tt,setError:Xe,_subscribe:Ze,_runSchema:A,_focusError:Ce,_getWatch:D,_getDirty:te,_setValid:E,_setFieldArray:Z,_setDisabledField:et,_setErrors:W,_getFieldArray:C,_reset:rt,_resetDefaultValues:()=>ee(r.defaultValues)&&r.defaultValues().then(s=>{st(s,r.resetOptions),m.state.next({isLoading:!1})}),_removeUnmounted:G,_disableForm:Ot,_subjects:m,_proxyFormState:F,get _fields(){return i},get _formValues(){return u},get _state(){return d},set _state(s){d=s},get _defaultValues(){return n},get _names(){return o},set _names(s){o=s},get _formState(){return t},get _options(){return r},set _options(s){r={...r,...s}}},subscribe:Ct,trigger:oe,register:pe,handleSubmit:tt,watch:pt,setValue:J,getValues:be,reset:st,resetField:Mt,clearErrors:Et,unregister:Ee,setError:Xe,setFocus:Rt,getFieldState:Ye};return{...it,formControl:it}}var ue=()=>{if(typeof crypto<"u"&&crypto.randomUUID)return crypto.randomUUID();let e=typeof performance>"u"?Date.now():performance.now()*1e3;return"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,r=>{let t=(Math.random()*16+e)%16|0;return(r=="x"?t:t&3|8).toString(16)})},Te=(e,r,t={})=>t.shouldFocus||U(t.shouldFocus)?t.focusName||`${e}.${U(t.focusIndex)?r:t.focusIndex}.`:"",Ue=(e,r)=>[...e,...z(r)],Le=e=>Array.isArray(e)?e.map(()=>{}):void 0;function Ne(e,r,t){return[...e.slice(0,r),...z(t),...e.slice(r)]}var Ie=(e,r,t)=>Array.isArray(e)?(U(e[t])&&(e[t]=void 0),e.splice(t,0,e.splice(r,1)[0]),e):[],Pe=(e,r)=>[...z(r),...z(e)];function sr(e,r){let t=0,i=[...e];for(let n of r)i.splice(n-t,1),t++;return ke(i).length?i:[]}var Be=(e,r)=>U(r)?[]:sr(e,z(r).sort((t,i)=>t-i)),We=(e,r,t)=>{[e[r],e[t]]=[e[t],e[r]]},_t=(e,r,t)=>(e[r]=t,e);function or(e){let r=he(),{control:t=r.control,name:i,keyName:n="id",shouldUnregister:u,rules:d}=e,[o,S]=b.useState(t._getFieldArray(i)),x=b.useRef(t._getFieldArray(i).map(ue)),F=b.useRef(o),w=b.useRef(!1);F.current=o,t._names.array.add(i),b.useMemo(()=>d&&t.register(i,d),[t,d,i]),De(()=>t._subjects.array.subscribe({next:({values:g,name:h})=>{if(h===i||!h){let A=f(g,i);Array.isArray(A)&&(S(A),x.current=A.map(ue))}}}).unsubscribe,[t,i]);let m=b.useCallback(g=>{w.current=!0,t._setFieldArray(i,g)},[t,i]),H=(g,h)=>{let A=z(T(g)),k=Ue(t._getFieldArray(i),A);t._names.focus=Te(i,k.length-1,h),x.current=Ue(x.current,A.map(ue)),m(k),S(k),t._setFieldArray(i,k,Ue,{argA:Le(g)})},q=(g,h)=>{let A=z(T(g)),k=Pe(t._getFieldArray(i),A);t._names.focus=Te(i,0,h),x.current=Pe(x.current,A.map(ue)),m(k),S(k),t._setFieldArray(i,k,Pe,{argA:Le(g)})},E=g=>{let h=Be(t._getFieldArray(i),g);x.current=Be(x.current,g),m(h),S(h),!Array.isArray(f(t._fields,i))&&O(t._fields,i,void 0),t._setFieldArray(i,h,Be,{argA:g})},B=(g,h,A)=>{let k=z(T(h)),R=Ne(t._getFieldArray(i),g,k);t._names.focus=Te(i,g,A),x.current=Ne(x.current,g,k.map(ue)),m(R),S(R),t._setFieldArray(i,R,Ne,{argA:g,argB:Le(h)})},Z=(g,h)=>{let A=t._getFieldArray(i);We(A,g,h),We(x.current,g,h),m(A),S(A),t._setFieldArray(i,A,We,{argA:g,argB:h},!1)},V=(g,h)=>{let A=t._getFieldArray(i);Ie(A,g,h),Ie(x.current,g,h),m(A),S(A),t._setFieldArray(i,A,Ie,{argA:g,argB:h},!1)},W=(g,h)=>{let A=T(h),k=_t(t._getFieldArray(i),g,A);x.current=[...k].map((R,G)=>!R||G===g?ue():x.current[G]),m(k),S([...k]),t._setFieldArray(i,k,_t,{argA:g,argB:A},!0,!1)},L=g=>{let h=z(T(g));x.current=h.map(ue),m([...h]),S([...h]),t._setFieldArray(i,[...h],A=>A,{},!0,!1)};return b.useEffect(()=>{if(t._state.action=!1,He(i,t._names)&&t._subjects.state.next({...t._formState}),w.current&&(!de(t._options.mode).isOnSubmit||t._formState.isSubmitted)&&!de(t._options.reValidateMode).isOnSubmit)if(t._options.resolver)t._runSchema([i]).then(g=>{let h=f(g.errors,i),A=f(t._formState.errors,i);(A?!h&&A.type||h&&(A.type!==h.type||A.message!==h.message):h&&h.type)&&(h?O(t._formState.errors,i,h):I(t._formState.errors,i),t._subjects.state.next({errors:t._formState.errors}))});else{let g=f(t._fields,i);g&&g._f&&!(de(t._options.reValidateMode).isOnSubmit&&de(t._options.mode).isOnSubmit)&&$e(g,t._names.disabled,t._formValues,t._options.criteriaMode===X.all,t._options.shouldUseNativeValidation,!0).then(h=>!j(h)&&t._subjects.state.next({errors:Dt(t._formState.errors,h,i)}))}t._subjects.state.next({name:i,values:T(t._formValues)}),t._names.focus&&fe(t._fields,(g,h)=>{if(t._names.focus&&h.startsWith(t._names.focus)&&g.focus)return g.focus(),1}),t._names.focus="",t._setValid(),w.current=!1},[o,i,t]),b.useEffect(()=>(!f(t._formValues,i)&&t._setFieldArray(i),()=>{let g=(h,A)=>{let k=f(t._fields,h);k&&k._f&&(k._f.mount=A)};t._options.shouldUnregister||u?t.unregister(i):g(i,!1)}),[i,t,n,u]),{swap:b.useCallback(Z,[m,i,t]),move:b.useCallback(V,[m,i,t]),prepend:b.useCallback(q,[m,i,t]),append:b.useCallback(H,[m,i,t]),remove:b.useCallback(E,[m,i,t]),insert:b.useCallback(B,[m,i,t]),update:b.useCallback(W,[m,i,t]),replace:b.useCallback(L,[m,i,t]),fields:b.useMemo(()=>o.map((g,h)=>({...g,[n]:x.current[h]||ue()})),[o,n])}}function cr(e={}){let r=b.useRef(void 0),t=b.useRef(void 0),[i,n]=b.useState({isDirty:!1,isValidating:!1,isLoading:ee(e.defaultValues),isSubmitted:!1,isSubmitting:!1,isSubmitSuccessful:!1,isValid:!1,submitCount:0,dirtyFields:{},touchedFields:{},validatingFields:{},errors:e.errors||{},disabled:e.disabled||!1,isReady:!1,defaultValues:ee(e.defaultValues)?void 0:e.defaultValues});if(!r.current)if(e.formControl)r.current={...e.formControl,formState:i},e.defaultValues&&!ee(e.defaultValues)&&e.formControl.reset(e.defaultValues,e.resetOptions);else{let{formControl:d,...o}=rr(e);r.current={...o,formState:i}}let u=r.current.control;return u._options=e,De(()=>{let d=u._subscribe({formState:u._proxyFormState,callback:()=>n({...u._formState}),reRenderRoot:!0});return n(o=>({...o,isReady:!0})),u._formState.isReady=!0,d},[u]),b.useEffect(()=>u._disableForm(e.disabled),[u,e.disabled]),b.useEffect(()=>{e.mode&&(u._options.mode=e.mode),e.reValidateMode&&(u._options.reValidateMode=e.reValidateMode)},[u,e.mode,e.reValidateMode]),b.useEffect(()=>{e.errors&&(u._setErrors(e.errors),u._focusError())},[u,e.errors]),b.useEffect(()=>{e.shouldUnregister&&u._subjects.state.next({values:u._getWatch()})},[u,e.shouldUnregister]),b.useEffect(()=>{if(u._proxyFormState.isDirty){let d=u._getDirty();d!==i.isDirty&&u._subjects.state.next({isDirty:d})}},[u,i.isDirty]),b.useEffect(()=>{e.values&&!ae(e.values,t.current)?(u._reset(e.values,{keepFieldsRef:!0,...u._options.resetOptions}),t.current=e.values,n(d=>({...d}))):u._resetDefaultValues()},[u,e.values]),b.useEffect(()=>{u._state.mount||(u._setValid(),u._state.mount=!0),u._state.watch&&(u._state.watch=!1,u._subjects.state.next({...u._formState})),u._removeUnmounted()}),r.current.formState=bt(i,u),r.current}export{ur as Controller,lr as Form,nr as FormProvider,$t as appendErrors,rr as createFormControl,f as get,O as set,qt as useController,or as useFieldArray,cr as useForm,he as useFormContext,Bt as useFormState,Wt as useWatch};
+// node_modules/react-hook-form/dist/index.esm.mjs
+import React from "react";
+var isCheckBoxInput = (element) => element.type === "checkbox";
+var isDateObject = (value) => value instanceof Date;
+var isNullOrUndefined = (value) => value == null;
+var isObjectType = (value) => typeof value === "object";
+var isObject = (value) => !isNullOrUndefined(value) && !Array.isArray(value) && isObjectType(value) && !isDateObject(value);
+var getEventValue = (event) => isObject(event) && event.target ? isCheckBoxInput(event.target) ? event.target.checked : event.target.value : event;
+var getNodeParentName = (name) => name.substring(0, name.search(/\.\d+(\.|$)/)) || name;
+var isNameInFieldArray = (names, name) => names.has(getNodeParentName(name));
+var isPlainObject = (tempObject) => {
+  const prototypeCopy = tempObject.constructor && tempObject.constructor.prototype;
+  return isObject(prototypeCopy) && prototypeCopy.hasOwnProperty("isPrototypeOf");
+};
+var isWeb = typeof window !== "undefined" && typeof window.HTMLElement !== "undefined" && typeof document !== "undefined";
+function cloneObject(data) {
+  let copy;
+  const isArray = Array.isArray(data);
+  const isFileListInstance = typeof FileList !== "undefined" ? data instanceof FileList : false;
+  if (data instanceof Date) {
+    copy = new Date(data);
+  } else if (!(isWeb && (data instanceof Blob || isFileListInstance)) && (isArray || isObject(data))) {
+    copy = isArray ? [] : Object.create(Object.getPrototypeOf(data));
+    if (!isArray && !isPlainObject(data)) {
+      copy = data;
+    } else {
+      for (const key in data) {
+        if (data.hasOwnProperty(key)) {
+          copy[key] = cloneObject(data[key]);
+        }
+      }
+    }
+  } else {
+    return data;
+  }
+  return copy;
+}
+var isKey = (value) => /^\w*$/.test(value);
+var isUndefined = (val) => val === void 0;
+var compact = (value) => Array.isArray(value) ? value.filter(Boolean) : [];
+var stringToPath = (input) => compact(input.replace(/["|']|\]/g, "").split(/\.|\[/));
+var get = (object, path, defaultValue) => {
+  if (!path || !isObject(object)) {
+    return defaultValue;
+  }
+  const result = (isKey(path) ? [path] : stringToPath(path)).reduce((result2, key) => isNullOrUndefined(result2) ? result2 : result2[key], object);
+  return isUndefined(result) || result === object ? isUndefined(object[path]) ? defaultValue : object[path] : result;
+};
+var isBoolean = (value) => typeof value === "boolean";
+var set = (object, path, value) => {
+  let index = -1;
+  const tempPath = isKey(path) ? [path] : stringToPath(path);
+  const length = tempPath.length;
+  const lastIndex = length - 1;
+  while (++index < length) {
+    const key = tempPath[index];
+    let newValue = value;
+    if (index !== lastIndex) {
+      const objValue = object[key];
+      newValue = isObject(objValue) || Array.isArray(objValue) ? objValue : !isNaN(+tempPath[index + 1]) ? [] : {};
+    }
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      return;
+    }
+    object[key] = newValue;
+    object = object[key];
+  }
+};
+var EVENTS = {
+  BLUR: "blur",
+  FOCUS_OUT: "focusout",
+  CHANGE: "change"
+};
+var VALIDATION_MODE = {
+  onBlur: "onBlur",
+  onChange: "onChange",
+  onSubmit: "onSubmit",
+  onTouched: "onTouched",
+  all: "all"
+};
+var INPUT_VALIDATION_RULES = {
+  max: "max",
+  min: "min",
+  maxLength: "maxLength",
+  minLength: "minLength",
+  pattern: "pattern",
+  required: "required",
+  validate: "validate"
+};
+var HookFormContext = React.createContext(null);
+HookFormContext.displayName = "HookFormContext";
+var useFormContext = () => React.useContext(HookFormContext);
+var FormProvider = (props) => {
+  const { children, ...data } = props;
+  return React.createElement(HookFormContext.Provider, { value: data }, children);
+};
+var getProxyFormState = (formState, control, localProxyFormState, isRoot = true) => {
+  const result = {
+    defaultValues: control._defaultValues
+  };
+  for (const key in formState) {
+    Object.defineProperty(result, key, {
+      get: () => {
+        const _key = key;
+        if (control._proxyFormState[_key] !== VALIDATION_MODE.all) {
+          control._proxyFormState[_key] = !isRoot || VALIDATION_MODE.all;
+        }
+        localProxyFormState && (localProxyFormState[_key] = true);
+        return formState[_key];
+      }
+    });
+  }
+  return result;
+};
+var useIsomorphicLayoutEffect = typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+function useFormState(props) {
+  const methods = useFormContext();
+  const { control = methods.control, disabled, name, exact } = props || {};
+  const [formState, updateFormState] = React.useState(control._formState);
+  const _localProxyFormState = React.useRef({
+    isDirty: false,
+    isLoading: false,
+    dirtyFields: false,
+    touchedFields: false,
+    validatingFields: false,
+    isValidating: false,
+    isValid: false,
+    errors: false
+  });
+  useIsomorphicLayoutEffect(() => control._subscribe({
+    name,
+    formState: _localProxyFormState.current,
+    exact,
+    callback: (formState2) => {
+      !disabled && updateFormState({
+        ...control._formState,
+        ...formState2
+      });
+    }
+  }), [name, disabled, exact]);
+  React.useEffect(() => {
+    _localProxyFormState.current.isValid && control._setValid(true);
+  }, [control]);
+  return React.useMemo(() => getProxyFormState(formState, control, _localProxyFormState.current, false), [formState, control]);
+}
+var isString = (value) => typeof value === "string";
+var generateWatchOutput = (names, _names, formValues, isGlobal, defaultValue) => {
+  if (isString(names)) {
+    isGlobal && _names.watch.add(names);
+    return get(formValues, names, defaultValue);
+  }
+  if (Array.isArray(names)) {
+    return names.map((fieldName) => (isGlobal && _names.watch.add(fieldName), get(formValues, fieldName)));
+  }
+  isGlobal && (_names.watchAll = true);
+  return formValues;
+};
+var isPrimitive = (value) => isNullOrUndefined(value) || !isObjectType(value);
+function deepEqual(object1, object2, _internal_visited = /* @__PURE__ */ new WeakSet()) {
+  if (isPrimitive(object1) || isPrimitive(object2)) {
+    return object1 === object2;
+  }
+  if (isDateObject(object1) && isDateObject(object2)) {
+    return object1.getTime() === object2.getTime();
+  }
+  const keys1 = Object.keys(object1);
+  const keys2 = Object.keys(object2);
+  if (keys1.length !== keys2.length) {
+    return false;
+  }
+  if (_internal_visited.has(object1) || _internal_visited.has(object2)) {
+    return true;
+  }
+  _internal_visited.add(object1);
+  _internal_visited.add(object2);
+  for (const key of keys1) {
+    const val1 = object1[key];
+    if (!keys2.includes(key)) {
+      return false;
+    }
+    if (key !== "ref") {
+      const val2 = object2[key];
+      if (isDateObject(val1) && isDateObject(val2) || isObject(val1) && isObject(val2) || Array.isArray(val1) && Array.isArray(val2) ? !deepEqual(val1, val2, _internal_visited) : val1 !== val2) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+function useWatch(props) {
+  const methods = useFormContext();
+  const { control = methods.control, name, defaultValue, disabled, exact, compute } = props || {};
+  const _defaultValue = React.useRef(defaultValue);
+  const _compute = React.useRef(compute);
+  const _computeFormValues = React.useRef(void 0);
+  _compute.current = compute;
+  const defaultValueMemo = React.useMemo(() => control._getWatch(name, _defaultValue.current), [control, name]);
+  const [value, updateValue] = React.useState(_compute.current ? _compute.current(defaultValueMemo) : defaultValueMemo);
+  useIsomorphicLayoutEffect(() => control._subscribe({
+    name,
+    formState: {
+      values: true
+    },
+    exact,
+    callback: (formState) => {
+      if (!disabled) {
+        const formValues = generateWatchOutput(name, control._names, formState.values || control._formValues, false, _defaultValue.current);
+        if (_compute.current) {
+          const computedFormValues = _compute.current(formValues);
+          if (!deepEqual(computedFormValues, _computeFormValues.current)) {
+            updateValue(computedFormValues);
+            _computeFormValues.current = computedFormValues;
+          }
+        } else {
+          updateValue(formValues);
+        }
+      }
+    }
+  }), [control, disabled, name, exact]);
+  React.useEffect(() => control._removeUnmounted());
+  return value;
+}
+function useController(props) {
+  const methods = useFormContext();
+  const { name, disabled, control = methods.control, shouldUnregister, defaultValue } = props;
+  const isArrayField = isNameInFieldArray(control._names.array, name);
+  const defaultValueMemo = React.useMemo(() => get(control._formValues, name, get(control._defaultValues, name, defaultValue)), [control, name, defaultValue]);
+  const value = useWatch({
+    control,
+    name,
+    defaultValue: defaultValueMemo,
+    exact: true
+  });
+  const formState = useFormState({
+    control,
+    name,
+    exact: true
+  });
+  const _props = React.useRef(props);
+  const _registerProps = React.useRef(control.register(name, {
+    ...props.rules,
+    value,
+    ...isBoolean(props.disabled) ? { disabled: props.disabled } : {}
+  }));
+  _props.current = props;
+  const fieldState = React.useMemo(() => Object.defineProperties({}, {
+    invalid: {
+      enumerable: true,
+      get: () => !!get(formState.errors, name)
+    },
+    isDirty: {
+      enumerable: true,
+      get: () => !!get(formState.dirtyFields, name)
+    },
+    isTouched: {
+      enumerable: true,
+      get: () => !!get(formState.touchedFields, name)
+    },
+    isValidating: {
+      enumerable: true,
+      get: () => !!get(formState.validatingFields, name)
+    },
+    error: {
+      enumerable: true,
+      get: () => get(formState.errors, name)
+    }
+  }), [formState, name]);
+  const onChange = React.useCallback((event) => _registerProps.current.onChange({
+    target: {
+      value: getEventValue(event),
+      name
+    },
+    type: EVENTS.CHANGE
+  }), [name]);
+  const onBlur = React.useCallback(() => _registerProps.current.onBlur({
+    target: {
+      value: get(control._formValues, name),
+      name
+    },
+    type: EVENTS.BLUR
+  }), [name, control._formValues]);
+  const ref = React.useCallback((elm) => {
+    const field2 = get(control._fields, name);
+    if (field2 && elm) {
+      field2._f.ref = {
+        focus: () => elm.focus && elm.focus(),
+        select: () => elm.select && elm.select(),
+        setCustomValidity: (message) => elm.setCustomValidity(message),
+        reportValidity: () => elm.reportValidity()
+      };
+    }
+  }, [control._fields, name]);
+  const field = React.useMemo(() => ({
+    name,
+    value,
+    ...isBoolean(disabled) || formState.disabled ? { disabled: formState.disabled || disabled } : {},
+    onChange,
+    onBlur,
+    ref
+  }), [name, disabled, formState.disabled, onChange, onBlur, ref, value]);
+  React.useEffect(() => {
+    const _shouldUnregisterField = control._options.shouldUnregister || shouldUnregister;
+    control.register(name, {
+      ..._props.current.rules,
+      ...isBoolean(_props.current.disabled) ? { disabled: _props.current.disabled } : {}
+    });
+    const updateMounted = (name2, value2) => {
+      const field2 = get(control._fields, name2);
+      if (field2 && field2._f) {
+        field2._f.mount = value2;
+      }
+    };
+    updateMounted(name, true);
+    if (_shouldUnregisterField) {
+      const value2 = cloneObject(get(control._options.defaultValues, name));
+      set(control._defaultValues, name, value2);
+      if (isUndefined(get(control._formValues, name))) {
+        set(control._formValues, name, value2);
+      }
+    }
+    !isArrayField && control.register(name);
+    return () => {
+      (isArrayField ? _shouldUnregisterField && !control._state.action : _shouldUnregisterField) ? control.unregister(name) : updateMounted(name, false);
+    };
+  }, [name, control, isArrayField, shouldUnregister]);
+  React.useEffect(() => {
+    control._setDisabledField({
+      disabled,
+      name
+    });
+  }, [disabled, name, control]);
+  return React.useMemo(() => ({
+    field,
+    formState,
+    fieldState
+  }), [field, formState, fieldState]);
+}
+var Controller = (props) => props.render(useController(props));
+var flatten = (obj) => {
+  const output = {};
+  for (const key of Object.keys(obj)) {
+    if (isObjectType(obj[key]) && obj[key] !== null) {
+      const nested = flatten(obj[key]);
+      for (const nestedKey of Object.keys(nested)) {
+        output[`${key}.${nestedKey}`] = nested[nestedKey];
+      }
+    } else {
+      output[key] = obj[key];
+    }
+  }
+  return output;
+};
+var POST_REQUEST = "post";
+function Form(props) {
+  const methods = useFormContext();
+  const [mounted, setMounted] = React.useState(false);
+  const { control = methods.control, onSubmit, children, action, method = POST_REQUEST, headers, encType, onError, render, onSuccess, validateStatus, ...rest } = props;
+  const submit = async (event) => {
+    let hasError = false;
+    let type = "";
+    await control.handleSubmit(async (data) => {
+      const formData = new FormData();
+      let formDataJson = "";
+      try {
+        formDataJson = JSON.stringify(data);
+      } catch (_a) {
+      }
+      const flattenFormValues = flatten(control._formValues);
+      for (const key in flattenFormValues) {
+        formData.append(key, flattenFormValues[key]);
+      }
+      if (onSubmit) {
+        await onSubmit({
+          data,
+          event,
+          method,
+          formData,
+          formDataJson
+        });
+      }
+      if (action) {
+        try {
+          const shouldStringifySubmissionData = [
+            headers && headers["Content-Type"],
+            encType
+          ].some((value) => value && value.includes("json"));
+          const response = await fetch(String(action), {
+            method,
+            headers: {
+              ...headers,
+              ...encType && encType !== "multipart/form-data" ? { "Content-Type": encType } : {}
+            },
+            body: shouldStringifySubmissionData ? formDataJson : formData
+          });
+          if (response && (validateStatus ? !validateStatus(response.status) : response.status < 200 || response.status >= 300)) {
+            hasError = true;
+            onError && onError({ response });
+            type = String(response.status);
+          } else {
+            onSuccess && onSuccess({ response });
+          }
+        } catch (error) {
+          hasError = true;
+          onError && onError({ error });
+        }
+      }
+    })(event);
+    if (hasError && props.control) {
+      props.control._subjects.state.next({
+        isSubmitSuccessful: false
+      });
+      props.control.setError("root.server", {
+        type
+      });
+    }
+  };
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  return render ? React.createElement(React.Fragment, null, render({
+    submit
+  })) : React.createElement("form", { noValidate: mounted, action, method, encType, onSubmit: submit, ...rest }, children);
+}
+var appendErrors = (name, validateAllFieldCriteria, errors, type, message) => validateAllFieldCriteria ? {
+  ...errors[name],
+  types: {
+    ...errors[name] && errors[name].types ? errors[name].types : {},
+    [type]: message || true
+  }
+} : {};
+var convertToArrayPayload = (value) => Array.isArray(value) ? value : [value];
+var createSubject = () => {
+  let _observers = [];
+  const next = (value) => {
+    for (const observer of _observers) {
+      observer.next && observer.next(value);
+    }
+  };
+  const subscribe = (observer) => {
+    _observers.push(observer);
+    return {
+      unsubscribe: () => {
+        _observers = _observers.filter((o) => o !== observer);
+      }
+    };
+  };
+  const unsubscribe = () => {
+    _observers = [];
+  };
+  return {
+    get observers() {
+      return _observers;
+    },
+    next,
+    subscribe,
+    unsubscribe
+  };
+};
+var isEmptyObject = (value) => isObject(value) && !Object.keys(value).length;
+var isFileInput = (element) => element.type === "file";
+var isFunction = (value) => typeof value === "function";
+var isHTMLElement = (value) => {
+  if (!isWeb) {
+    return false;
+  }
+  const owner = value ? value.ownerDocument : 0;
+  return value instanceof (owner && owner.defaultView ? owner.defaultView.HTMLElement : HTMLElement);
+};
+var isMultipleSelect = (element) => element.type === `select-multiple`;
+var isRadioInput = (element) => element.type === "radio";
+var isRadioOrCheckbox = (ref) => isRadioInput(ref) || isCheckBoxInput(ref);
+var live = (ref) => isHTMLElement(ref) && ref.isConnected;
+function baseGet(object, updatePath) {
+  const length = updatePath.slice(0, -1).length;
+  let index = 0;
+  while (index < length) {
+    object = isUndefined(object) ? index++ : object[updatePath[index++]];
+  }
+  return object;
+}
+function isEmptyArray(obj) {
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key) && !isUndefined(obj[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+function unset(object, path) {
+  const paths = Array.isArray(path) ? path : isKey(path) ? [path] : stringToPath(path);
+  const childObject = paths.length === 1 ? object : baseGet(object, paths);
+  const index = paths.length - 1;
+  const key = paths[index];
+  if (childObject) {
+    delete childObject[key];
+  }
+  if (index !== 0 && (isObject(childObject) && isEmptyObject(childObject) || Array.isArray(childObject) && isEmptyArray(childObject))) {
+    unset(object, paths.slice(0, -1));
+  }
+  return object;
+}
+var objectHasFunction = (data) => {
+  for (const key in data) {
+    if (isFunction(data[key])) {
+      return true;
+    }
+  }
+  return false;
+};
+function markFieldsDirty(data, fields = {}) {
+  const isParentNodeArray = Array.isArray(data);
+  if (isObject(data) || isParentNodeArray) {
+    for (const key in data) {
+      if (Array.isArray(data[key]) || isObject(data[key]) && !objectHasFunction(data[key])) {
+        fields[key] = Array.isArray(data[key]) ? [] : {};
+        markFieldsDirty(data[key], fields[key]);
+      } else if (!isNullOrUndefined(data[key])) {
+        fields[key] = true;
+      }
+    }
+  }
+  return fields;
+}
+function getDirtyFieldsFromDefaultValues(data, formValues, dirtyFieldsFromValues) {
+  const isParentNodeArray = Array.isArray(data);
+  if (isObject(data) || isParentNodeArray) {
+    for (const key in data) {
+      if (Array.isArray(data[key]) || isObject(data[key]) && !objectHasFunction(data[key])) {
+        if (isUndefined(formValues) || isPrimitive(dirtyFieldsFromValues[key])) {
+          dirtyFieldsFromValues[key] = Array.isArray(data[key]) ? markFieldsDirty(data[key], []) : { ...markFieldsDirty(data[key]) };
+        } else {
+          getDirtyFieldsFromDefaultValues(data[key], isNullOrUndefined(formValues) ? {} : formValues[key], dirtyFieldsFromValues[key]);
+        }
+      } else {
+        dirtyFieldsFromValues[key] = !deepEqual(data[key], formValues[key]);
+      }
+    }
+  }
+  return dirtyFieldsFromValues;
+}
+var getDirtyFields = (defaultValues, formValues) => getDirtyFieldsFromDefaultValues(defaultValues, formValues, markFieldsDirty(formValues));
+var defaultResult = {
+  value: false,
+  isValid: false
+};
+var validResult = { value: true, isValid: true };
+var getCheckboxValue = (options) => {
+  if (Array.isArray(options)) {
+    if (options.length > 1) {
+      const values = options.filter((option) => option && option.checked && !option.disabled).map((option) => option.value);
+      return { value: values, isValid: !!values.length };
+    }
+    return options[0].checked && !options[0].disabled ? (
+      // @ts-expect-error expected to work in the browser
+      options[0].attributes && !isUndefined(options[0].attributes.value) ? isUndefined(options[0].value) || options[0].value === "" ? validResult : { value: options[0].value, isValid: true } : validResult
+    ) : defaultResult;
+  }
+  return defaultResult;
+};
+var getFieldValueAs = (value, { valueAsNumber, valueAsDate, setValueAs }) => isUndefined(value) ? value : valueAsNumber ? value === "" ? NaN : value ? +value : value : valueAsDate && isString(value) ? new Date(value) : setValueAs ? setValueAs(value) : value;
+var defaultReturn = {
+  isValid: false,
+  value: null
+};
+var getRadioValue = (options) => Array.isArray(options) ? options.reduce((previous, option) => option && option.checked && !option.disabled ? {
+  isValid: true,
+  value: option.value
+} : previous, defaultReturn) : defaultReturn;
+function getFieldValue(_f) {
+  const ref = _f.ref;
+  if (isFileInput(ref)) {
+    return ref.files;
+  }
+  if (isRadioInput(ref)) {
+    return getRadioValue(_f.refs).value;
+  }
+  if (isMultipleSelect(ref)) {
+    return [...ref.selectedOptions].map(({ value }) => value);
+  }
+  if (isCheckBoxInput(ref)) {
+    return getCheckboxValue(_f.refs).value;
+  }
+  return getFieldValueAs(isUndefined(ref.value) ? _f.ref.value : ref.value, _f);
+}
+var getResolverOptions = (fieldsNames, _fields, criteriaMode, shouldUseNativeValidation) => {
+  const fields = {};
+  for (const name of fieldsNames) {
+    const field = get(_fields, name);
+    field && set(fields, name, field._f);
+  }
+  return {
+    criteriaMode,
+    names: [...fieldsNames],
+    fields,
+    shouldUseNativeValidation
+  };
+};
+var isRegex = (value) => value instanceof RegExp;
+var getRuleValue = (rule) => isUndefined(rule) ? rule : isRegex(rule) ? rule.source : isObject(rule) ? isRegex(rule.value) ? rule.value.source : rule.value : rule;
+var getValidationModes = (mode) => ({
+  isOnSubmit: !mode || mode === VALIDATION_MODE.onSubmit,
+  isOnBlur: mode === VALIDATION_MODE.onBlur,
+  isOnChange: mode === VALIDATION_MODE.onChange,
+  isOnAll: mode === VALIDATION_MODE.all,
+  isOnTouch: mode === VALIDATION_MODE.onTouched
+});
+var ASYNC_FUNCTION = "AsyncFunction";
+var hasPromiseValidation = (fieldReference) => !!fieldReference && !!fieldReference.validate && !!(isFunction(fieldReference.validate) && fieldReference.validate.constructor.name === ASYNC_FUNCTION || isObject(fieldReference.validate) && Object.values(fieldReference.validate).find((validateFunction) => validateFunction.constructor.name === ASYNC_FUNCTION));
+var hasValidation = (options) => options.mount && (options.required || options.min || options.max || options.maxLength || options.minLength || options.pattern || options.validate);
+var isWatched = (name, _names, isBlurEvent) => !isBlurEvent && (_names.watchAll || _names.watch.has(name) || [..._names.watch].some((watchName) => name.startsWith(watchName) && /^\.\w+/.test(name.slice(watchName.length))));
+var iterateFieldsByAction = (fields, action, fieldsNames, abortEarly) => {
+  for (const key of fieldsNames || Object.keys(fields)) {
+    const field = get(fields, key);
+    if (field) {
+      const { _f, ...currentField } = field;
+      if (_f) {
+        if (_f.refs && _f.refs[0] && action(_f.refs[0], key) && !abortEarly) {
+          return true;
+        } else if (_f.ref && action(_f.ref, _f.name) && !abortEarly) {
+          return true;
+        } else {
+          if (iterateFieldsByAction(currentField, action)) {
+            break;
+          }
+        }
+      } else if (isObject(currentField)) {
+        if (iterateFieldsByAction(currentField, action)) {
+          break;
+        }
+      }
+    }
+  }
+  return;
+};
+function schemaErrorLookup(errors, _fields, name) {
+  const error = get(errors, name);
+  if (error || isKey(name)) {
+    return {
+      error,
+      name
+    };
+  }
+  const names = name.split(".");
+  while (names.length) {
+    const fieldName = names.join(".");
+    const field = get(_fields, fieldName);
+    const foundError = get(errors, fieldName);
+    if (field && !Array.isArray(field) && name !== fieldName) {
+      return { name };
+    }
+    if (foundError && foundError.type) {
+      return {
+        name: fieldName,
+        error: foundError
+      };
+    }
+    if (foundError && foundError.root && foundError.root.type) {
+      return {
+        name: `${fieldName}.root`,
+        error: foundError.root
+      };
+    }
+    names.pop();
+  }
+  return {
+    name
+  };
+}
+var shouldRenderFormState = (formStateData, _proxyFormState, updateFormState, isRoot) => {
+  updateFormState(formStateData);
+  const { name, ...formState } = formStateData;
+  return isEmptyObject(formState) || Object.keys(formState).length >= Object.keys(_proxyFormState).length || Object.keys(formState).find((key) => _proxyFormState[key] === (!isRoot || VALIDATION_MODE.all));
+};
+var shouldSubscribeByName = (name, signalName, exact) => !name || !signalName || name === signalName || convertToArrayPayload(name).some((currentName) => currentName && (exact ? currentName === signalName : currentName.startsWith(signalName) || signalName.startsWith(currentName)));
+var skipValidation = (isBlurEvent, isTouched, isSubmitted, reValidateMode, mode) => {
+  if (mode.isOnAll) {
+    return false;
+  } else if (!isSubmitted && mode.isOnTouch) {
+    return !(isTouched || isBlurEvent);
+  } else if (isSubmitted ? reValidateMode.isOnBlur : mode.isOnBlur) {
+    return !isBlurEvent;
+  } else if (isSubmitted ? reValidateMode.isOnChange : mode.isOnChange) {
+    return isBlurEvent;
+  }
+  return true;
+};
+var unsetEmptyArray = (ref, name) => !compact(get(ref, name)).length && unset(ref, name);
+var updateFieldArrayRootError = (errors, error, name) => {
+  const fieldArrayErrors = convertToArrayPayload(get(errors, name));
+  set(fieldArrayErrors, "root", error[name]);
+  set(errors, name, fieldArrayErrors);
+  return errors;
+};
+var isMessage = (value) => isString(value);
+function getValidateError(result, ref, type = "validate") {
+  if (isMessage(result) || Array.isArray(result) && result.every(isMessage) || isBoolean(result) && !result) {
+    return {
+      type,
+      message: isMessage(result) ? result : "",
+      ref
+    };
+  }
+}
+var getValueAndMessage = (validationData) => isObject(validationData) && !isRegex(validationData) ? validationData : {
+  value: validationData,
+  message: ""
+};
+var validateField = async (field, disabledFieldNames, formValues, validateAllFieldCriteria, shouldUseNativeValidation, isFieldArray) => {
+  const { ref, refs, required, maxLength, minLength, min, max, pattern, validate, name, valueAsNumber, mount } = field._f;
+  const inputValue = get(formValues, name);
+  if (!mount || disabledFieldNames.has(name)) {
+    return {};
+  }
+  const inputRef = refs ? refs[0] : ref;
+  const setCustomValidity = (message) => {
+    if (shouldUseNativeValidation && inputRef.reportValidity) {
+      inputRef.setCustomValidity(isBoolean(message) ? "" : message || "");
+      inputRef.reportValidity();
+    }
+  };
+  const error = {};
+  const isRadio = isRadioInput(ref);
+  const isCheckBox = isCheckBoxInput(ref);
+  const isRadioOrCheckbox2 = isRadio || isCheckBox;
+  const isEmpty = (valueAsNumber || isFileInput(ref)) && isUndefined(ref.value) && isUndefined(inputValue) || isHTMLElement(ref) && ref.value === "" || inputValue === "" || Array.isArray(inputValue) && !inputValue.length;
+  const appendErrorsCurry = appendErrors.bind(null, name, validateAllFieldCriteria, error);
+  const getMinMaxMessage = (exceedMax, maxLengthMessage, minLengthMessage, maxType = INPUT_VALIDATION_RULES.maxLength, minType = INPUT_VALIDATION_RULES.minLength) => {
+    const message = exceedMax ? maxLengthMessage : minLengthMessage;
+    error[name] = {
+      type: exceedMax ? maxType : minType,
+      message,
+      ref,
+      ...appendErrorsCurry(exceedMax ? maxType : minType, message)
+    };
+  };
+  if (isFieldArray ? !Array.isArray(inputValue) || !inputValue.length : required && (!isRadioOrCheckbox2 && (isEmpty || isNullOrUndefined(inputValue)) || isBoolean(inputValue) && !inputValue || isCheckBox && !getCheckboxValue(refs).isValid || isRadio && !getRadioValue(refs).isValid)) {
+    const { value, message } = isMessage(required) ? { value: !!required, message: required } : getValueAndMessage(required);
+    if (value) {
+      error[name] = {
+        type: INPUT_VALIDATION_RULES.required,
+        message,
+        ref: inputRef,
+        ...appendErrorsCurry(INPUT_VALIDATION_RULES.required, message)
+      };
+      if (!validateAllFieldCriteria) {
+        setCustomValidity(message);
+        return error;
+      }
+    }
+  }
+  if (!isEmpty && (!isNullOrUndefined(min) || !isNullOrUndefined(max))) {
+    let exceedMax;
+    let exceedMin;
+    const maxOutput = getValueAndMessage(max);
+    const minOutput = getValueAndMessage(min);
+    if (!isNullOrUndefined(inputValue) && !isNaN(inputValue)) {
+      const valueNumber = ref.valueAsNumber || (inputValue ? +inputValue : inputValue);
+      if (!isNullOrUndefined(maxOutput.value)) {
+        exceedMax = valueNumber > maxOutput.value;
+      }
+      if (!isNullOrUndefined(minOutput.value)) {
+        exceedMin = valueNumber < minOutput.value;
+      }
+    } else {
+      const valueDate = ref.valueAsDate || new Date(inputValue);
+      const convertTimeToDate = (time) => /* @__PURE__ */ new Date((/* @__PURE__ */ new Date()).toDateString() + " " + time);
+      const isTime = ref.type == "time";
+      const isWeek = ref.type == "week";
+      if (isString(maxOutput.value) && inputValue) {
+        exceedMax = isTime ? convertTimeToDate(inputValue) > convertTimeToDate(maxOutput.value) : isWeek ? inputValue > maxOutput.value : valueDate > new Date(maxOutput.value);
+      }
+      if (isString(minOutput.value) && inputValue) {
+        exceedMin = isTime ? convertTimeToDate(inputValue) < convertTimeToDate(minOutput.value) : isWeek ? inputValue < minOutput.value : valueDate < new Date(minOutput.value);
+      }
+    }
+    if (exceedMax || exceedMin) {
+      getMinMaxMessage(!!exceedMax, maxOutput.message, minOutput.message, INPUT_VALIDATION_RULES.max, INPUT_VALIDATION_RULES.min);
+      if (!validateAllFieldCriteria) {
+        setCustomValidity(error[name].message);
+        return error;
+      }
+    }
+  }
+  if ((maxLength || minLength) && !isEmpty && (isString(inputValue) || isFieldArray && Array.isArray(inputValue))) {
+    const maxLengthOutput = getValueAndMessage(maxLength);
+    const minLengthOutput = getValueAndMessage(minLength);
+    const exceedMax = !isNullOrUndefined(maxLengthOutput.value) && inputValue.length > +maxLengthOutput.value;
+    const exceedMin = !isNullOrUndefined(minLengthOutput.value) && inputValue.length < +minLengthOutput.value;
+    if (exceedMax || exceedMin) {
+      getMinMaxMessage(exceedMax, maxLengthOutput.message, minLengthOutput.message);
+      if (!validateAllFieldCriteria) {
+        setCustomValidity(error[name].message);
+        return error;
+      }
+    }
+  }
+  if (pattern && !isEmpty && isString(inputValue)) {
+    const { value: patternValue, message } = getValueAndMessage(pattern);
+    if (isRegex(patternValue) && !inputValue.match(patternValue)) {
+      error[name] = {
+        type: INPUT_VALIDATION_RULES.pattern,
+        message,
+        ref,
+        ...appendErrorsCurry(INPUT_VALIDATION_RULES.pattern, message)
+      };
+      if (!validateAllFieldCriteria) {
+        setCustomValidity(message);
+        return error;
+      }
+    }
+  }
+  if (validate) {
+    if (isFunction(validate)) {
+      const result = await validate(inputValue, formValues);
+      const validateError = getValidateError(result, inputRef);
+      if (validateError) {
+        error[name] = {
+          ...validateError,
+          ...appendErrorsCurry(INPUT_VALIDATION_RULES.validate, validateError.message)
+        };
+        if (!validateAllFieldCriteria) {
+          setCustomValidity(validateError.message);
+          return error;
+        }
+      }
+    } else if (isObject(validate)) {
+      let validationResult = {};
+      for (const key in validate) {
+        if (!isEmptyObject(validationResult) && !validateAllFieldCriteria) {
+          break;
+        }
+        const validateError = getValidateError(await validate[key](inputValue, formValues), inputRef, key);
+        if (validateError) {
+          validationResult = {
+            ...validateError,
+            ...appendErrorsCurry(key, validateError.message)
+          };
+          setCustomValidity(validateError.message);
+          if (validateAllFieldCriteria) {
+            error[name] = validationResult;
+          }
+        }
+      }
+      if (!isEmptyObject(validationResult)) {
+        error[name] = {
+          ref: inputRef,
+          ...validationResult
+        };
+        if (!validateAllFieldCriteria) {
+          return error;
+        }
+      }
+    }
+  }
+  setCustomValidity(true);
+  return error;
+};
+var defaultOptions = {
+  mode: VALIDATION_MODE.onSubmit,
+  reValidateMode: VALIDATION_MODE.onChange,
+  shouldFocusError: true
+};
+function createFormControl(props = {}) {
+  let _options = {
+    ...defaultOptions,
+    ...props
+  };
+  let _formState = {
+    submitCount: 0,
+    isDirty: false,
+    isReady: false,
+    isLoading: isFunction(_options.defaultValues),
+    isValidating: false,
+    isSubmitted: false,
+    isSubmitting: false,
+    isSubmitSuccessful: false,
+    isValid: false,
+    touchedFields: {},
+    dirtyFields: {},
+    validatingFields: {},
+    errors: _options.errors || {},
+    disabled: _options.disabled || false
+  };
+  let _fields = {};
+  let _defaultValues = isObject(_options.defaultValues) || isObject(_options.values) ? cloneObject(_options.defaultValues || _options.values) || {} : {};
+  let _formValues = _options.shouldUnregister ? {} : cloneObject(_defaultValues);
+  let _state = {
+    action: false,
+    mount: false,
+    watch: false
+  };
+  let _names = {
+    mount: /* @__PURE__ */ new Set(),
+    disabled: /* @__PURE__ */ new Set(),
+    unMount: /* @__PURE__ */ new Set(),
+    array: /* @__PURE__ */ new Set(),
+    watch: /* @__PURE__ */ new Set()
+  };
+  let delayErrorCallback;
+  let timer = 0;
+  const _proxyFormState = {
+    isDirty: false,
+    dirtyFields: false,
+    validatingFields: false,
+    touchedFields: false,
+    isValidating: false,
+    isValid: false,
+    errors: false
+  };
+  let _proxySubscribeFormState = {
+    ..._proxyFormState
+  };
+  const _subjects = {
+    array: createSubject(),
+    state: createSubject()
+  };
+  const shouldDisplayAllAssociatedErrors = _options.criteriaMode === VALIDATION_MODE.all;
+  const debounce = (callback) => (wait) => {
+    clearTimeout(timer);
+    timer = setTimeout(callback, wait);
+  };
+  const _setValid = async (shouldUpdateValid) => {
+    if (!_options.disabled && (_proxyFormState.isValid || _proxySubscribeFormState.isValid || shouldUpdateValid)) {
+      const isValid = _options.resolver ? isEmptyObject((await _runSchema()).errors) : await executeBuiltInValidation(_fields, true);
+      if (isValid !== _formState.isValid) {
+        _subjects.state.next({
+          isValid
+        });
+      }
+    }
+  };
+  const _updateIsValidating = (names, isValidating) => {
+    if (!_options.disabled && (_proxyFormState.isValidating || _proxyFormState.validatingFields || _proxySubscribeFormState.isValidating || _proxySubscribeFormState.validatingFields)) {
+      (names || Array.from(_names.mount)).forEach((name) => {
+        if (name) {
+          isValidating ? set(_formState.validatingFields, name, isValidating) : unset(_formState.validatingFields, name);
+        }
+      });
+      _subjects.state.next({
+        validatingFields: _formState.validatingFields,
+        isValidating: !isEmptyObject(_formState.validatingFields)
+      });
+    }
+  };
+  const _setFieldArray = (name, values = [], method, args, shouldSetValues = true, shouldUpdateFieldsAndState = true) => {
+    if (args && method && !_options.disabled) {
+      _state.action = true;
+      if (shouldUpdateFieldsAndState && Array.isArray(get(_fields, name))) {
+        const fieldValues = method(get(_fields, name), args.argA, args.argB);
+        shouldSetValues && set(_fields, name, fieldValues);
+      }
+      if (shouldUpdateFieldsAndState && Array.isArray(get(_formState.errors, name))) {
+        const errors = method(get(_formState.errors, name), args.argA, args.argB);
+        shouldSetValues && set(_formState.errors, name, errors);
+        unsetEmptyArray(_formState.errors, name);
+      }
+      if ((_proxyFormState.touchedFields || _proxySubscribeFormState.touchedFields) && shouldUpdateFieldsAndState && Array.isArray(get(_formState.touchedFields, name))) {
+        const touchedFields = method(get(_formState.touchedFields, name), args.argA, args.argB);
+        shouldSetValues && set(_formState.touchedFields, name, touchedFields);
+      }
+      if (_proxyFormState.dirtyFields || _proxySubscribeFormState.dirtyFields) {
+        _formState.dirtyFields = getDirtyFields(_defaultValues, _formValues);
+      }
+      _subjects.state.next({
+        name,
+        isDirty: _getDirty(name, values),
+        dirtyFields: _formState.dirtyFields,
+        errors: _formState.errors,
+        isValid: _formState.isValid
+      });
+    } else {
+      set(_formValues, name, values);
+    }
+  };
+  const updateErrors = (name, error) => {
+    set(_formState.errors, name, error);
+    _subjects.state.next({
+      errors: _formState.errors
+    });
+  };
+  const _setErrors = (errors) => {
+    _formState.errors = errors;
+    _subjects.state.next({
+      errors: _formState.errors,
+      isValid: false
+    });
+  };
+  const updateValidAndValue = (name, shouldSkipSetValueAs, value, ref) => {
+    const field = get(_fields, name);
+    if (field) {
+      const defaultValue = get(_formValues, name, isUndefined(value) ? get(_defaultValues, name) : value);
+      isUndefined(defaultValue) || ref && ref.defaultChecked || shouldSkipSetValueAs ? set(_formValues, name, shouldSkipSetValueAs ? defaultValue : getFieldValue(field._f)) : setFieldValue(name, defaultValue);
+      _state.mount && _setValid();
+    }
+  };
+  const updateTouchAndDirty = (name, fieldValue, isBlurEvent, shouldDirty, shouldRender) => {
+    let shouldUpdateField = false;
+    let isPreviousDirty = false;
+    const output = {
+      name
+    };
+    if (!_options.disabled) {
+      if (!isBlurEvent || shouldDirty) {
+        if (_proxyFormState.isDirty || _proxySubscribeFormState.isDirty) {
+          isPreviousDirty = _formState.isDirty;
+          _formState.isDirty = output.isDirty = _getDirty();
+          shouldUpdateField = isPreviousDirty !== output.isDirty;
+        }
+        const isCurrentFieldPristine = deepEqual(get(_defaultValues, name), fieldValue);
+        isPreviousDirty = !!get(_formState.dirtyFields, name);
+        isCurrentFieldPristine ? unset(_formState.dirtyFields, name) : set(_formState.dirtyFields, name, true);
+        output.dirtyFields = _formState.dirtyFields;
+        shouldUpdateField = shouldUpdateField || (_proxyFormState.dirtyFields || _proxySubscribeFormState.dirtyFields) && isPreviousDirty !== !isCurrentFieldPristine;
+      }
+      if (isBlurEvent) {
+        const isPreviousFieldTouched = get(_formState.touchedFields, name);
+        if (!isPreviousFieldTouched) {
+          set(_formState.touchedFields, name, isBlurEvent);
+          output.touchedFields = _formState.touchedFields;
+          shouldUpdateField = shouldUpdateField || (_proxyFormState.touchedFields || _proxySubscribeFormState.touchedFields) && isPreviousFieldTouched !== isBlurEvent;
+        }
+      }
+      shouldUpdateField && shouldRender && _subjects.state.next(output);
+    }
+    return shouldUpdateField ? output : {};
+  };
+  const shouldRenderByError = (name, isValid, error, fieldState) => {
+    const previousFieldError = get(_formState.errors, name);
+    const shouldUpdateValid = (_proxyFormState.isValid || _proxySubscribeFormState.isValid) && isBoolean(isValid) && _formState.isValid !== isValid;
+    if (_options.delayError && error) {
+      delayErrorCallback = debounce(() => updateErrors(name, error));
+      delayErrorCallback(_options.delayError);
+    } else {
+      clearTimeout(timer);
+      delayErrorCallback = null;
+      error ? set(_formState.errors, name, error) : unset(_formState.errors, name);
+    }
+    if ((error ? !deepEqual(previousFieldError, error) : previousFieldError) || !isEmptyObject(fieldState) || shouldUpdateValid) {
+      const updatedFormState = {
+        ...fieldState,
+        ...shouldUpdateValid && isBoolean(isValid) ? { isValid } : {},
+        errors: _formState.errors,
+        name
+      };
+      _formState = {
+        ..._formState,
+        ...updatedFormState
+      };
+      _subjects.state.next(updatedFormState);
+    }
+  };
+  const _runSchema = async (name) => {
+    _updateIsValidating(name, true);
+    const result = await _options.resolver(_formValues, _options.context, getResolverOptions(name || _names.mount, _fields, _options.criteriaMode, _options.shouldUseNativeValidation));
+    _updateIsValidating(name);
+    return result;
+  };
+  const executeSchemaAndUpdateState = async (names) => {
+    const { errors } = await _runSchema(names);
+    if (names) {
+      for (const name of names) {
+        const error = get(errors, name);
+        error ? set(_formState.errors, name, error) : unset(_formState.errors, name);
+      }
+    } else {
+      _formState.errors = errors;
+    }
+    return errors;
+  };
+  const executeBuiltInValidation = async (fields, shouldOnlyCheckValid, context = {
+    valid: true
+  }) => {
+    for (const name in fields) {
+      const field = fields[name];
+      if (field) {
+        const { _f, ...fieldValue } = field;
+        if (_f) {
+          const isFieldArrayRoot = _names.array.has(_f.name);
+          const isPromiseFunction = field._f && hasPromiseValidation(field._f);
+          if (isPromiseFunction && _proxyFormState.validatingFields) {
+            _updateIsValidating([name], true);
+          }
+          const fieldError = await validateField(field, _names.disabled, _formValues, shouldDisplayAllAssociatedErrors, _options.shouldUseNativeValidation && !shouldOnlyCheckValid, isFieldArrayRoot);
+          if (isPromiseFunction && _proxyFormState.validatingFields) {
+            _updateIsValidating([name]);
+          }
+          if (fieldError[_f.name]) {
+            context.valid = false;
+            if (shouldOnlyCheckValid) {
+              break;
+            }
+          }
+          !shouldOnlyCheckValid && (get(fieldError, _f.name) ? isFieldArrayRoot ? updateFieldArrayRootError(_formState.errors, fieldError, _f.name) : set(_formState.errors, _f.name, fieldError[_f.name]) : unset(_formState.errors, _f.name));
+        }
+        !isEmptyObject(fieldValue) && await executeBuiltInValidation(fieldValue, shouldOnlyCheckValid, context);
+      }
+    }
+    return context.valid;
+  };
+  const _removeUnmounted = () => {
+    for (const name of _names.unMount) {
+      const field = get(_fields, name);
+      field && (field._f.refs ? field._f.refs.every((ref) => !live(ref)) : !live(field._f.ref)) && unregister(name);
+    }
+    _names.unMount = /* @__PURE__ */ new Set();
+  };
+  const _getDirty = (name, data) => !_options.disabled && (name && data && set(_formValues, name, data), !deepEqual(getValues(), _defaultValues));
+  const _getWatch = (names, defaultValue, isGlobal) => generateWatchOutput(names, _names, {
+    ..._state.mount ? _formValues : isUndefined(defaultValue) ? _defaultValues : isString(names) ? { [names]: defaultValue } : defaultValue
+  }, isGlobal, defaultValue);
+  const _getFieldArray = (name) => compact(get(_state.mount ? _formValues : _defaultValues, name, _options.shouldUnregister ? get(_defaultValues, name, []) : []));
+  const setFieldValue = (name, value, options = {}) => {
+    const field = get(_fields, name);
+    let fieldValue = value;
+    if (field) {
+      const fieldReference = field._f;
+      if (fieldReference) {
+        !fieldReference.disabled && set(_formValues, name, getFieldValueAs(value, fieldReference));
+        fieldValue = isHTMLElement(fieldReference.ref) && isNullOrUndefined(value) ? "" : value;
+        if (isMultipleSelect(fieldReference.ref)) {
+          [...fieldReference.ref.options].forEach((optionRef) => optionRef.selected = fieldValue.includes(optionRef.value));
+        } else if (fieldReference.refs) {
+          if (isCheckBoxInput(fieldReference.ref)) {
+            fieldReference.refs.forEach((checkboxRef) => {
+              if (!checkboxRef.defaultChecked || !checkboxRef.disabled) {
+                if (Array.isArray(fieldValue)) {
+                  checkboxRef.checked = !!fieldValue.find((data) => data === checkboxRef.value);
+                } else {
+                  checkboxRef.checked = fieldValue === checkboxRef.value || !!fieldValue;
+                }
+              }
+            });
+          } else {
+            fieldReference.refs.forEach((radioRef) => radioRef.checked = radioRef.value === fieldValue);
+          }
+        } else if (isFileInput(fieldReference.ref)) {
+          fieldReference.ref.value = "";
+        } else {
+          fieldReference.ref.value = fieldValue;
+          if (!fieldReference.ref.type) {
+            _subjects.state.next({
+              name,
+              values: cloneObject(_formValues)
+            });
+          }
+        }
+      }
+    }
+    (options.shouldDirty || options.shouldTouch) && updateTouchAndDirty(name, fieldValue, options.shouldTouch, options.shouldDirty, true);
+    options.shouldValidate && trigger(name);
+  };
+  const setValues = (name, value, options) => {
+    for (const fieldKey in value) {
+      if (!value.hasOwnProperty(fieldKey)) {
+        return;
+      }
+      const fieldValue = value[fieldKey];
+      const fieldName = name + "." + fieldKey;
+      const field = get(_fields, fieldName);
+      (_names.array.has(name) || isObject(fieldValue) || field && !field._f) && !isDateObject(fieldValue) ? setValues(fieldName, fieldValue, options) : setFieldValue(fieldName, fieldValue, options);
+    }
+  };
+  const setValue = (name, value, options = {}) => {
+    const field = get(_fields, name);
+    const isFieldArray = _names.array.has(name);
+    const cloneValue = cloneObject(value);
+    set(_formValues, name, cloneValue);
+    if (isFieldArray) {
+      _subjects.array.next({
+        name,
+        values: cloneObject(_formValues)
+      });
+      if ((_proxyFormState.isDirty || _proxyFormState.dirtyFields || _proxySubscribeFormState.isDirty || _proxySubscribeFormState.dirtyFields) && options.shouldDirty) {
+        _subjects.state.next({
+          name,
+          dirtyFields: getDirtyFields(_defaultValues, _formValues),
+          isDirty: _getDirty(name, cloneValue)
+        });
+      }
+    } else {
+      field && !field._f && !isNullOrUndefined(cloneValue) ? setValues(name, cloneValue, options) : setFieldValue(name, cloneValue, options);
+    }
+    isWatched(name, _names) && _subjects.state.next({ ..._formState, name });
+    _subjects.state.next({
+      name: _state.mount ? name : void 0,
+      values: cloneObject(_formValues)
+    });
+  };
+  const onChange = async (event) => {
+    _state.mount = true;
+    const target = event.target;
+    let name = target.name;
+    let isFieldValueUpdated = true;
+    const field = get(_fields, name);
+    const _updateIsFieldValueUpdated = (fieldValue) => {
+      isFieldValueUpdated = Number.isNaN(fieldValue) || isDateObject(fieldValue) && isNaN(fieldValue.getTime()) || deepEqual(fieldValue, get(_formValues, name, fieldValue));
+    };
+    const validationModeBeforeSubmit = getValidationModes(_options.mode);
+    const validationModeAfterSubmit = getValidationModes(_options.reValidateMode);
+    if (field) {
+      let error;
+      let isValid;
+      const fieldValue = target.type ? getFieldValue(field._f) : getEventValue(event);
+      const isBlurEvent = event.type === EVENTS.BLUR || event.type === EVENTS.FOCUS_OUT;
+      const shouldSkipValidation = !hasValidation(field._f) && !_options.resolver && !get(_formState.errors, name) && !field._f.deps || skipValidation(isBlurEvent, get(_formState.touchedFields, name), _formState.isSubmitted, validationModeAfterSubmit, validationModeBeforeSubmit);
+      const watched = isWatched(name, _names, isBlurEvent);
+      set(_formValues, name, fieldValue);
+      if (isBlurEvent) {
+        if (!target || !target.readOnly) {
+          field._f.onBlur && field._f.onBlur(event);
+          delayErrorCallback && delayErrorCallback(0);
+        }
+      } else if (field._f.onChange) {
+        field._f.onChange(event);
+      }
+      const fieldState = updateTouchAndDirty(name, fieldValue, isBlurEvent);
+      const shouldRender = !isEmptyObject(fieldState) || watched;
+      !isBlurEvent && _subjects.state.next({
+        name,
+        type: event.type,
+        values: cloneObject(_formValues)
+      });
+      if (shouldSkipValidation) {
+        if (_proxyFormState.isValid || _proxySubscribeFormState.isValid) {
+          if (_options.mode === "onBlur") {
+            if (isBlurEvent) {
+              _setValid();
+            }
+          } else if (!isBlurEvent) {
+            _setValid();
+          }
+        }
+        return shouldRender && _subjects.state.next({ name, ...watched ? {} : fieldState });
+      }
+      !isBlurEvent && watched && _subjects.state.next({ ..._formState });
+      if (_options.resolver) {
+        const { errors } = await _runSchema([name]);
+        _updateIsFieldValueUpdated(fieldValue);
+        if (isFieldValueUpdated) {
+          const previousErrorLookupResult = schemaErrorLookup(_formState.errors, _fields, name);
+          const errorLookupResult = schemaErrorLookup(errors, _fields, previousErrorLookupResult.name || name);
+          error = errorLookupResult.error;
+          name = errorLookupResult.name;
+          isValid = isEmptyObject(errors);
+        }
+      } else {
+        _updateIsValidating([name], true);
+        error = (await validateField(field, _names.disabled, _formValues, shouldDisplayAllAssociatedErrors, _options.shouldUseNativeValidation))[name];
+        _updateIsValidating([name]);
+        _updateIsFieldValueUpdated(fieldValue);
+        if (isFieldValueUpdated) {
+          if (error) {
+            isValid = false;
+          } else if (_proxyFormState.isValid || _proxySubscribeFormState.isValid) {
+            isValid = await executeBuiltInValidation(_fields, true);
+          }
+        }
+      }
+      if (isFieldValueUpdated) {
+        field._f.deps && trigger(field._f.deps);
+        shouldRenderByError(name, isValid, error, fieldState);
+      }
+    }
+  };
+  const _focusInput = (ref, key) => {
+    if (get(_formState.errors, key) && ref.focus) {
+      ref.focus();
+      return 1;
+    }
+    return;
+  };
+  const trigger = async (name, options = {}) => {
+    let isValid;
+    let validationResult;
+    const fieldNames = convertToArrayPayload(name);
+    if (_options.resolver) {
+      const errors = await executeSchemaAndUpdateState(isUndefined(name) ? name : fieldNames);
+      isValid = isEmptyObject(errors);
+      validationResult = name ? !fieldNames.some((name2) => get(errors, name2)) : isValid;
+    } else if (name) {
+      validationResult = (await Promise.all(fieldNames.map(async (fieldName) => {
+        const field = get(_fields, fieldName);
+        return await executeBuiltInValidation(field && field._f ? { [fieldName]: field } : field);
+      }))).every(Boolean);
+      !(!validationResult && !_formState.isValid) && _setValid();
+    } else {
+      validationResult = isValid = await executeBuiltInValidation(_fields);
+    }
+    _subjects.state.next({
+      ...!isString(name) || (_proxyFormState.isValid || _proxySubscribeFormState.isValid) && isValid !== _formState.isValid ? {} : { name },
+      ..._options.resolver || !name ? { isValid } : {},
+      errors: _formState.errors
+    });
+    options.shouldFocus && !validationResult && iterateFieldsByAction(_fields, _focusInput, name ? fieldNames : _names.mount);
+    return validationResult;
+  };
+  const getValues = (fieldNames) => {
+    const values = {
+      ..._state.mount ? _formValues : _defaultValues
+    };
+    return isUndefined(fieldNames) ? values : isString(fieldNames) ? get(values, fieldNames) : fieldNames.map((name) => get(values, name));
+  };
+  const getFieldState = (name, formState) => ({
+    invalid: !!get((formState || _formState).errors, name),
+    isDirty: !!get((formState || _formState).dirtyFields, name),
+    error: get((formState || _formState).errors, name),
+    isValidating: !!get(_formState.validatingFields, name),
+    isTouched: !!get((formState || _formState).touchedFields, name)
+  });
+  const clearErrors = (name) => {
+    name && convertToArrayPayload(name).forEach((inputName) => unset(_formState.errors, inputName));
+    _subjects.state.next({
+      errors: name ? _formState.errors : {}
+    });
+  };
+  const setError = (name, error, options) => {
+    const ref = (get(_fields, name, { _f: {} })._f || {}).ref;
+    const currentError = get(_formState.errors, name) || {};
+    const { ref: currentRef, message, type, ...restOfErrorTree } = currentError;
+    set(_formState.errors, name, {
+      ...restOfErrorTree,
+      ...error,
+      ref
+    });
+    _subjects.state.next({
+      name,
+      errors: _formState.errors,
+      isValid: false
+    });
+    options && options.shouldFocus && ref && ref.focus && ref.focus();
+  };
+  const watch = (name, defaultValue) => isFunction(name) ? _subjects.state.subscribe({
+    next: (payload) => "values" in payload && name(_getWatch(void 0, defaultValue), payload)
+  }) : _getWatch(name, defaultValue, true);
+  const _subscribe = (props2) => _subjects.state.subscribe({
+    next: (formState) => {
+      if (shouldSubscribeByName(props2.name, formState.name, props2.exact) && shouldRenderFormState(formState, props2.formState || _proxyFormState, _setFormState, props2.reRenderRoot)) {
+        props2.callback({
+          values: { ..._formValues },
+          ..._formState,
+          ...formState,
+          defaultValues: _defaultValues
+        });
+      }
+    }
+  }).unsubscribe;
+  const subscribe = (props2) => {
+    _state.mount = true;
+    _proxySubscribeFormState = {
+      ..._proxySubscribeFormState,
+      ...props2.formState
+    };
+    return _subscribe({
+      ...props2,
+      formState: _proxySubscribeFormState
+    });
+  };
+  const unregister = (name, options = {}) => {
+    for (const fieldName of name ? convertToArrayPayload(name) : _names.mount) {
+      _names.mount.delete(fieldName);
+      _names.array.delete(fieldName);
+      if (!options.keepValue) {
+        unset(_fields, fieldName);
+        unset(_formValues, fieldName);
+      }
+      !options.keepError && unset(_formState.errors, fieldName);
+      !options.keepDirty && unset(_formState.dirtyFields, fieldName);
+      !options.keepTouched && unset(_formState.touchedFields, fieldName);
+      !options.keepIsValidating && unset(_formState.validatingFields, fieldName);
+      !_options.shouldUnregister && !options.keepDefaultValue && unset(_defaultValues, fieldName);
+    }
+    _subjects.state.next({
+      values: cloneObject(_formValues)
+    });
+    _subjects.state.next({
+      ..._formState,
+      ...!options.keepDirty ? {} : { isDirty: _getDirty() }
+    });
+    !options.keepIsValid && _setValid();
+  };
+  const _setDisabledField = ({ disabled, name }) => {
+    if (isBoolean(disabled) && _state.mount || !!disabled || _names.disabled.has(name)) {
+      disabled ? _names.disabled.add(name) : _names.disabled.delete(name);
+    }
+  };
+  const register = (name, options = {}) => {
+    let field = get(_fields, name);
+    const disabledIsDefined = isBoolean(options.disabled) || isBoolean(_options.disabled);
+    set(_fields, name, {
+      ...field || {},
+      _f: {
+        ...field && field._f ? field._f : { ref: { name } },
+        name,
+        mount: true,
+        ...options
+      }
+    });
+    _names.mount.add(name);
+    if (field) {
+      _setDisabledField({
+        disabled: isBoolean(options.disabled) ? options.disabled : _options.disabled,
+        name
+      });
+    } else {
+      updateValidAndValue(name, true, options.value);
+    }
+    return {
+      ...disabledIsDefined ? { disabled: options.disabled || _options.disabled } : {},
+      ..._options.progressive ? {
+        required: !!options.required,
+        min: getRuleValue(options.min),
+        max: getRuleValue(options.max),
+        minLength: getRuleValue(options.minLength),
+        maxLength: getRuleValue(options.maxLength),
+        pattern: getRuleValue(options.pattern)
+      } : {},
+      name,
+      onChange,
+      onBlur: onChange,
+      ref: (ref) => {
+        if (ref) {
+          register(name, options);
+          field = get(_fields, name);
+          const fieldRef = isUndefined(ref.value) ? ref.querySelectorAll ? ref.querySelectorAll("input,select,textarea")[0] || ref : ref : ref;
+          const radioOrCheckbox = isRadioOrCheckbox(fieldRef);
+          const refs = field._f.refs || [];
+          if (radioOrCheckbox ? refs.find((option) => option === fieldRef) : fieldRef === field._f.ref) {
+            return;
+          }
+          set(_fields, name, {
+            _f: {
+              ...field._f,
+              ...radioOrCheckbox ? {
+                refs: [
+                  ...refs.filter(live),
+                  fieldRef,
+                  ...Array.isArray(get(_defaultValues, name)) ? [{}] : []
+                ],
+                ref: { type: fieldRef.type, name }
+              } : { ref: fieldRef }
+            }
+          });
+          updateValidAndValue(name, false, void 0, fieldRef);
+        } else {
+          field = get(_fields, name, {});
+          if (field._f) {
+            field._f.mount = false;
+          }
+          (_options.shouldUnregister || options.shouldUnregister) && !(isNameInFieldArray(_names.array, name) && _state.action) && _names.unMount.add(name);
+        }
+      }
+    };
+  };
+  const _focusError = () => _options.shouldFocusError && iterateFieldsByAction(_fields, _focusInput, _names.mount);
+  const _disableForm = (disabled) => {
+    if (isBoolean(disabled)) {
+      _subjects.state.next({ disabled });
+      iterateFieldsByAction(_fields, (ref, name) => {
+        const currentField = get(_fields, name);
+        if (currentField) {
+          ref.disabled = currentField._f.disabled || disabled;
+          if (Array.isArray(currentField._f.refs)) {
+            currentField._f.refs.forEach((inputRef) => {
+              inputRef.disabled = currentField._f.disabled || disabled;
+            });
+          }
+        }
+      }, 0, false);
+    }
+  };
+  const handleSubmit = (onValid, onInvalid) => async (e) => {
+    let onValidError = void 0;
+    if (e) {
+      e.preventDefault && e.preventDefault();
+      e.persist && e.persist();
+    }
+    let fieldValues = cloneObject(_formValues);
+    _subjects.state.next({
+      isSubmitting: true
+    });
+    if (_options.resolver) {
+      const { errors, values } = await _runSchema();
+      _formState.errors = errors;
+      fieldValues = cloneObject(values);
+    } else {
+      await executeBuiltInValidation(_fields);
+    }
+    if (_names.disabled.size) {
+      for (const name of _names.disabled) {
+        unset(fieldValues, name);
+      }
+    }
+    unset(_formState.errors, "root");
+    if (isEmptyObject(_formState.errors)) {
+      _subjects.state.next({
+        errors: {}
+      });
+      try {
+        await onValid(fieldValues, e);
+      } catch (error) {
+        onValidError = error;
+      }
+    } else {
+      if (onInvalid) {
+        await onInvalid({ ..._formState.errors }, e);
+      }
+      _focusError();
+      setTimeout(_focusError);
+    }
+    _subjects.state.next({
+      isSubmitted: true,
+      isSubmitting: false,
+      isSubmitSuccessful: isEmptyObject(_formState.errors) && !onValidError,
+      submitCount: _formState.submitCount + 1,
+      errors: _formState.errors
+    });
+    if (onValidError) {
+      throw onValidError;
+    }
+  };
+  const resetField = (name, options = {}) => {
+    if (get(_fields, name)) {
+      if (isUndefined(options.defaultValue)) {
+        setValue(name, cloneObject(get(_defaultValues, name)));
+      } else {
+        setValue(name, options.defaultValue);
+        set(_defaultValues, name, cloneObject(options.defaultValue));
+      }
+      if (!options.keepTouched) {
+        unset(_formState.touchedFields, name);
+      }
+      if (!options.keepDirty) {
+        unset(_formState.dirtyFields, name);
+        _formState.isDirty = options.defaultValue ? _getDirty(name, cloneObject(get(_defaultValues, name))) : _getDirty();
+      }
+      if (!options.keepError) {
+        unset(_formState.errors, name);
+        _proxyFormState.isValid && _setValid();
+      }
+      _subjects.state.next({ ..._formState });
+    }
+  };
+  const _reset = (formValues, keepStateOptions = {}) => {
+    const updatedValues = formValues ? cloneObject(formValues) : _defaultValues;
+    const cloneUpdatedValues = cloneObject(updatedValues);
+    const isEmptyResetValues = isEmptyObject(formValues);
+    const values = isEmptyResetValues ? _defaultValues : cloneUpdatedValues;
+    if (!keepStateOptions.keepDefaultValues) {
+      _defaultValues = updatedValues;
+    }
+    if (!keepStateOptions.keepValues) {
+      if (keepStateOptions.keepDirtyValues) {
+        const fieldsToCheck = /* @__PURE__ */ new Set([
+          ..._names.mount,
+          ...Object.keys(getDirtyFields(_defaultValues, _formValues))
+        ]);
+        for (const fieldName of Array.from(fieldsToCheck)) {
+          get(_formState.dirtyFields, fieldName) ? set(values, fieldName, get(_formValues, fieldName)) : setValue(fieldName, get(values, fieldName));
+        }
+      } else {
+        if (isWeb && isUndefined(formValues)) {
+          for (const name of _names.mount) {
+            const field = get(_fields, name);
+            if (field && field._f) {
+              const fieldReference = Array.isArray(field._f.refs) ? field._f.refs[0] : field._f.ref;
+              if (isHTMLElement(fieldReference)) {
+                const form = fieldReference.closest("form");
+                if (form) {
+                  form.reset();
+                  break;
+                }
+              }
+            }
+          }
+        }
+        if (keepStateOptions.keepFieldsRef) {
+          for (const fieldName of _names.mount) {
+            setValue(fieldName, get(values, fieldName));
+          }
+        } else {
+          _fields = {};
+        }
+      }
+      _formValues = _options.shouldUnregister ? keepStateOptions.keepDefaultValues ? cloneObject(_defaultValues) : {} : cloneObject(values);
+      _subjects.array.next({
+        values: { ...values }
+      });
+      _subjects.state.next({
+        values: { ...values }
+      });
+    }
+    _names = {
+      mount: keepStateOptions.keepDirtyValues ? _names.mount : /* @__PURE__ */ new Set(),
+      unMount: /* @__PURE__ */ new Set(),
+      array: /* @__PURE__ */ new Set(),
+      disabled: /* @__PURE__ */ new Set(),
+      watch: /* @__PURE__ */ new Set(),
+      watchAll: false,
+      focus: ""
+    };
+    _state.mount = !_proxyFormState.isValid || !!keepStateOptions.keepIsValid || !!keepStateOptions.keepDirtyValues;
+    _state.watch = !!_options.shouldUnregister;
+    _subjects.state.next({
+      submitCount: keepStateOptions.keepSubmitCount ? _formState.submitCount : 0,
+      isDirty: isEmptyResetValues ? false : keepStateOptions.keepDirty ? _formState.isDirty : !!(keepStateOptions.keepDefaultValues && !deepEqual(formValues, _defaultValues)),
+      isSubmitted: keepStateOptions.keepIsSubmitted ? _formState.isSubmitted : false,
+      dirtyFields: isEmptyResetValues ? {} : keepStateOptions.keepDirtyValues ? keepStateOptions.keepDefaultValues && _formValues ? getDirtyFields(_defaultValues, _formValues) : _formState.dirtyFields : keepStateOptions.keepDefaultValues && formValues ? getDirtyFields(_defaultValues, formValues) : keepStateOptions.keepDirty ? _formState.dirtyFields : {},
+      touchedFields: keepStateOptions.keepTouched ? _formState.touchedFields : {},
+      errors: keepStateOptions.keepErrors ? _formState.errors : {},
+      isSubmitSuccessful: keepStateOptions.keepIsSubmitSuccessful ? _formState.isSubmitSuccessful : false,
+      isSubmitting: false,
+      defaultValues: _defaultValues
+    });
+  };
+  const reset = (formValues, keepStateOptions) => _reset(isFunction(formValues) ? formValues(_formValues) : formValues, keepStateOptions);
+  const setFocus = (name, options = {}) => {
+    const field = get(_fields, name);
+    const fieldReference = field && field._f;
+    if (fieldReference) {
+      const fieldRef = fieldReference.refs ? fieldReference.refs[0] : fieldReference.ref;
+      if (fieldRef.focus) {
+        fieldRef.focus();
+        options.shouldSelect && isFunction(fieldRef.select) && fieldRef.select();
+      }
+    }
+  };
+  const _setFormState = (updatedFormState) => {
+    _formState = {
+      ..._formState,
+      ...updatedFormState
+    };
+  };
+  const _resetDefaultValues = () => isFunction(_options.defaultValues) && _options.defaultValues().then((values) => {
+    reset(values, _options.resetOptions);
+    _subjects.state.next({
+      isLoading: false
+    });
+  });
+  const methods = {
+    control: {
+      register,
+      unregister,
+      getFieldState,
+      handleSubmit,
+      setError,
+      _subscribe,
+      _runSchema,
+      _focusError,
+      _getWatch,
+      _getDirty,
+      _setValid,
+      _setFieldArray,
+      _setDisabledField,
+      _setErrors,
+      _getFieldArray,
+      _reset,
+      _resetDefaultValues,
+      _removeUnmounted,
+      _disableForm,
+      _subjects,
+      _proxyFormState,
+      get _fields() {
+        return _fields;
+      },
+      get _formValues() {
+        return _formValues;
+      },
+      get _state() {
+        return _state;
+      },
+      set _state(value) {
+        _state = value;
+      },
+      get _defaultValues() {
+        return _defaultValues;
+      },
+      get _names() {
+        return _names;
+      },
+      set _names(value) {
+        _names = value;
+      },
+      get _formState() {
+        return _formState;
+      },
+      get _options() {
+        return _options;
+      },
+      set _options(value) {
+        _options = {
+          ..._options,
+          ...value
+        };
+      }
+    },
+    subscribe,
+    trigger,
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    getValues,
+    reset,
+    resetField,
+    clearErrors,
+    unregister,
+    setError,
+    setFocus,
+    getFieldState
+  };
+  return {
+    ...methods,
+    formControl: methods
+  };
+}
+var generateId = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  const d = typeof performance === "undefined" ? Date.now() : performance.now() * 1e3;
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16 + d) % 16 | 0;
+    return (c == "x" ? r : r & 3 | 8).toString(16);
+  });
+};
+var getFocusFieldName = (name, index, options = {}) => options.shouldFocus || isUndefined(options.shouldFocus) ? options.focusName || `${name}.${isUndefined(options.focusIndex) ? index : options.focusIndex}.` : "";
+var appendAt = (data, value) => [
+  ...data,
+  ...convertToArrayPayload(value)
+];
+var fillEmptyArray = (value) => Array.isArray(value) ? value.map(() => void 0) : void 0;
+function insert(data, index, value) {
+  return [
+    ...data.slice(0, index),
+    ...convertToArrayPayload(value),
+    ...data.slice(index)
+  ];
+}
+var moveArrayAt = (data, from, to) => {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  if (isUndefined(data[to])) {
+    data[to] = void 0;
+  }
+  data.splice(to, 0, data.splice(from, 1)[0]);
+  return data;
+};
+var prependAt = (data, value) => [
+  ...convertToArrayPayload(value),
+  ...convertToArrayPayload(data)
+];
+function removeAtIndexes(data, indexes) {
+  let i = 0;
+  const temp = [...data];
+  for (const index of indexes) {
+    temp.splice(index - i, 1);
+    i++;
+  }
+  return compact(temp).length ? temp : [];
+}
+var removeArrayAt = (data, index) => isUndefined(index) ? [] : removeAtIndexes(data, convertToArrayPayload(index).sort((a, b) => a - b));
+var swapArrayAt = (data, indexA, indexB) => {
+  [data[indexA], data[indexB]] = [data[indexB], data[indexA]];
+};
+var updateAt = (fieldValues, index, value) => {
+  fieldValues[index] = value;
+  return fieldValues;
+};
+function useFieldArray(props) {
+  const methods = useFormContext();
+  const { control = methods.control, name, keyName = "id", shouldUnregister, rules } = props;
+  const [fields, setFields] = React.useState(control._getFieldArray(name));
+  const ids = React.useRef(control._getFieldArray(name).map(generateId));
+  const _fieldIds = React.useRef(fields);
+  const _actioned = React.useRef(false);
+  _fieldIds.current = fields;
+  control._names.array.add(name);
+  React.useMemo(() => rules && control.register(name, rules), [control, rules, name]);
+  useIsomorphicLayoutEffect(() => control._subjects.array.subscribe({
+    next: ({ values, name: fieldArrayName }) => {
+      if (fieldArrayName === name || !fieldArrayName) {
+        const fieldValues = get(values, name);
+        if (Array.isArray(fieldValues)) {
+          setFields(fieldValues);
+          ids.current = fieldValues.map(generateId);
+        }
+      }
+    }
+  }).unsubscribe, [control, name]);
+  const updateValues = React.useCallback((updatedFieldArrayValues) => {
+    _actioned.current = true;
+    control._setFieldArray(name, updatedFieldArrayValues);
+  }, [control, name]);
+  const append = (value, options) => {
+    const appendValue = convertToArrayPayload(cloneObject(value));
+    const updatedFieldArrayValues = appendAt(control._getFieldArray(name), appendValue);
+    control._names.focus = getFocusFieldName(name, updatedFieldArrayValues.length - 1, options);
+    ids.current = appendAt(ids.current, appendValue.map(generateId));
+    updateValues(updatedFieldArrayValues);
+    setFields(updatedFieldArrayValues);
+    control._setFieldArray(name, updatedFieldArrayValues, appendAt, {
+      argA: fillEmptyArray(value)
+    });
+  };
+  const prepend = (value, options) => {
+    const prependValue = convertToArrayPayload(cloneObject(value));
+    const updatedFieldArrayValues = prependAt(control._getFieldArray(name), prependValue);
+    control._names.focus = getFocusFieldName(name, 0, options);
+    ids.current = prependAt(ids.current, prependValue.map(generateId));
+    updateValues(updatedFieldArrayValues);
+    setFields(updatedFieldArrayValues);
+    control._setFieldArray(name, updatedFieldArrayValues, prependAt, {
+      argA: fillEmptyArray(value)
+    });
+  };
+  const remove = (index) => {
+    const updatedFieldArrayValues = removeArrayAt(control._getFieldArray(name), index);
+    ids.current = removeArrayAt(ids.current, index);
+    updateValues(updatedFieldArrayValues);
+    setFields(updatedFieldArrayValues);
+    !Array.isArray(get(control._fields, name)) && set(control._fields, name, void 0);
+    control._setFieldArray(name, updatedFieldArrayValues, removeArrayAt, {
+      argA: index
+    });
+  };
+  const insert$1 = (index, value, options) => {
+    const insertValue = convertToArrayPayload(cloneObject(value));
+    const updatedFieldArrayValues = insert(control._getFieldArray(name), index, insertValue);
+    control._names.focus = getFocusFieldName(name, index, options);
+    ids.current = insert(ids.current, index, insertValue.map(generateId));
+    updateValues(updatedFieldArrayValues);
+    setFields(updatedFieldArrayValues);
+    control._setFieldArray(name, updatedFieldArrayValues, insert, {
+      argA: index,
+      argB: fillEmptyArray(value)
+    });
+  };
+  const swap = (indexA, indexB) => {
+    const updatedFieldArrayValues = control._getFieldArray(name);
+    swapArrayAt(updatedFieldArrayValues, indexA, indexB);
+    swapArrayAt(ids.current, indexA, indexB);
+    updateValues(updatedFieldArrayValues);
+    setFields(updatedFieldArrayValues);
+    control._setFieldArray(name, updatedFieldArrayValues, swapArrayAt, {
+      argA: indexA,
+      argB: indexB
+    }, false);
+  };
+  const move = (from, to) => {
+    const updatedFieldArrayValues = control._getFieldArray(name);
+    moveArrayAt(updatedFieldArrayValues, from, to);
+    moveArrayAt(ids.current, from, to);
+    updateValues(updatedFieldArrayValues);
+    setFields(updatedFieldArrayValues);
+    control._setFieldArray(name, updatedFieldArrayValues, moveArrayAt, {
+      argA: from,
+      argB: to
+    }, false);
+  };
+  const update = (index, value) => {
+    const updateValue = cloneObject(value);
+    const updatedFieldArrayValues = updateAt(control._getFieldArray(name), index, updateValue);
+    ids.current = [...updatedFieldArrayValues].map((item, i) => !item || i === index ? generateId() : ids.current[i]);
+    updateValues(updatedFieldArrayValues);
+    setFields([...updatedFieldArrayValues]);
+    control._setFieldArray(name, updatedFieldArrayValues, updateAt, {
+      argA: index,
+      argB: updateValue
+    }, true, false);
+  };
+  const replace = (value) => {
+    const updatedFieldArrayValues = convertToArrayPayload(cloneObject(value));
+    ids.current = updatedFieldArrayValues.map(generateId);
+    updateValues([...updatedFieldArrayValues]);
+    setFields([...updatedFieldArrayValues]);
+    control._setFieldArray(name, [...updatedFieldArrayValues], (data) => data, {}, true, false);
+  };
+  React.useEffect(() => {
+    control._state.action = false;
+    isWatched(name, control._names) && control._subjects.state.next({
+      ...control._formState
+    });
+    if (_actioned.current && (!getValidationModes(control._options.mode).isOnSubmit || control._formState.isSubmitted) && !getValidationModes(control._options.reValidateMode).isOnSubmit) {
+      if (control._options.resolver) {
+        control._runSchema([name]).then((result) => {
+          const error = get(result.errors, name);
+          const existingError = get(control._formState.errors, name);
+          if (existingError ? !error && existingError.type || error && (existingError.type !== error.type || existingError.message !== error.message) : error && error.type) {
+            error ? set(control._formState.errors, name, error) : unset(control._formState.errors, name);
+            control._subjects.state.next({
+              errors: control._formState.errors
+            });
+          }
+        });
+      } else {
+        const field = get(control._fields, name);
+        if (field && field._f && !(getValidationModes(control._options.reValidateMode).isOnSubmit && getValidationModes(control._options.mode).isOnSubmit)) {
+          validateField(field, control._names.disabled, control._formValues, control._options.criteriaMode === VALIDATION_MODE.all, control._options.shouldUseNativeValidation, true).then((error) => !isEmptyObject(error) && control._subjects.state.next({
+            errors: updateFieldArrayRootError(control._formState.errors, error, name)
+          }));
+        }
+      }
+    }
+    control._subjects.state.next({
+      name,
+      values: cloneObject(control._formValues)
+    });
+    control._names.focus && iterateFieldsByAction(control._fields, (ref, key) => {
+      if (control._names.focus && key.startsWith(control._names.focus) && ref.focus) {
+        ref.focus();
+        return 1;
+      }
+      return;
+    });
+    control._names.focus = "";
+    control._setValid();
+    _actioned.current = false;
+  }, [fields, name, control]);
+  React.useEffect(() => {
+    !get(control._formValues, name) && control._setFieldArray(name);
+    return () => {
+      const updateMounted = (name2, value) => {
+        const field = get(control._fields, name2);
+        if (field && field._f) {
+          field._f.mount = value;
+        }
+      };
+      control._options.shouldUnregister || shouldUnregister ? control.unregister(name) : updateMounted(name, false);
+    };
+  }, [name, control, keyName, shouldUnregister]);
+  return {
+    swap: React.useCallback(swap, [updateValues, name, control]),
+    move: React.useCallback(move, [updateValues, name, control]),
+    prepend: React.useCallback(prepend, [updateValues, name, control]),
+    append: React.useCallback(append, [updateValues, name, control]),
+    remove: React.useCallback(remove, [updateValues, name, control]),
+    insert: React.useCallback(insert$1, [updateValues, name, control]),
+    update: React.useCallback(update, [updateValues, name, control]),
+    replace: React.useCallback(replace, [updateValues, name, control]),
+    fields: React.useMemo(() => fields.map((field, index) => ({
+      ...field,
+      [keyName]: ids.current[index] || generateId()
+    })), [fields, keyName])
+  };
+}
+function useForm(props = {}) {
+  const _formControl = React.useRef(void 0);
+  const _values = React.useRef(void 0);
+  const [formState, updateFormState] = React.useState({
+    isDirty: false,
+    isValidating: false,
+    isLoading: isFunction(props.defaultValues),
+    isSubmitted: false,
+    isSubmitting: false,
+    isSubmitSuccessful: false,
+    isValid: false,
+    submitCount: 0,
+    dirtyFields: {},
+    touchedFields: {},
+    validatingFields: {},
+    errors: props.errors || {},
+    disabled: props.disabled || false,
+    isReady: false,
+    defaultValues: isFunction(props.defaultValues) ? void 0 : props.defaultValues
+  });
+  if (!_formControl.current) {
+    if (props.formControl) {
+      _formControl.current = {
+        ...props.formControl,
+        formState
+      };
+      if (props.defaultValues && !isFunction(props.defaultValues)) {
+        props.formControl.reset(props.defaultValues, props.resetOptions);
+      }
+    } else {
+      const { formControl, ...rest } = createFormControl(props);
+      _formControl.current = {
+        ...rest,
+        formState
+      };
+    }
+  }
+  const control = _formControl.current.control;
+  control._options = props;
+  useIsomorphicLayoutEffect(() => {
+    const sub = control._subscribe({
+      formState: control._proxyFormState,
+      callback: () => updateFormState({ ...control._formState }),
+      reRenderRoot: true
+    });
+    updateFormState((data) => ({
+      ...data,
+      isReady: true
+    }));
+    control._formState.isReady = true;
+    return sub;
+  }, [control]);
+  React.useEffect(() => control._disableForm(props.disabled), [control, props.disabled]);
+  React.useEffect(() => {
+    if (props.mode) {
+      control._options.mode = props.mode;
+    }
+    if (props.reValidateMode) {
+      control._options.reValidateMode = props.reValidateMode;
+    }
+  }, [control, props.mode, props.reValidateMode]);
+  React.useEffect(() => {
+    if (props.errors) {
+      control._setErrors(props.errors);
+      control._focusError();
+    }
+  }, [control, props.errors]);
+  React.useEffect(() => {
+    props.shouldUnregister && control._subjects.state.next({
+      values: control._getWatch()
+    });
+  }, [control, props.shouldUnregister]);
+  React.useEffect(() => {
+    if (control._proxyFormState.isDirty) {
+      const isDirty = control._getDirty();
+      if (isDirty !== formState.isDirty) {
+        control._subjects.state.next({
+          isDirty
+        });
+      }
+    }
+  }, [control, formState.isDirty]);
+  React.useEffect(() => {
+    if (props.values && !deepEqual(props.values, _values.current)) {
+      control._reset(props.values, {
+        keepFieldsRef: true,
+        ...control._options.resetOptions
+      });
+      _values.current = props.values;
+      updateFormState((state) => ({ ...state }));
+    } else {
+      control._resetDefaultValues();
+    }
+  }, [control, props.values]);
+  React.useEffect(() => {
+    if (!control._state.mount) {
+      control._setValid();
+      control._state.mount = true;
+    }
+    if (control._state.watch) {
+      control._state.watch = false;
+      control._subjects.state.next({ ...control._formState });
+    }
+    control._removeUnmounted();
+  });
+  _formControl.current.formState = getProxyFormState(formState, control);
+  return _formControl.current;
+}
+export {
+  Controller,
+  Form,
+  FormProvider,
+  appendErrors,
+  createFormControl,
+  get,
+  set,
+  useController,
+  useFieldArray,
+  useForm,
+  useFormContext,
+  useFormState,
+  useWatch
+};
