@@ -5,13 +5,12 @@
 <h1 align="center">BrassClaw</h1>
 
 <p align="center">
-  <strong>あなたの味方になる、安全なパーソナルAIアシスタント</strong>
+  <strong>あなたのハードウェアで完全に動作する、安全なパーソナルAIアシスタント</strong>
 </p>
 
 <p align="center">
+  <a href="https://github.com/chtugha/brassclaw/releases/latest"><img src="https://img.shields.io/github/v/release/chtugha/brassclaw?label=最新リリース" alt="Latest Release" /></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache%202.0-blue.svg" alt="License: MIT OR Apache-2.0" /></a>
-  <a href="https://t.me/brassclawAI"><img src="https://img.shields.io/badge/Telegram-%40brassclawAI-26A5E4?style=flat&logo=telegram&logoColor=white" alt="Telegram: @brassclawAI" /></a>
-  <a href="https://www.reddit.com/r/brassclawAI/"><img src="https://img.shields.io/badge/Reddit-r%2FbrassclawAI-FF4500?style=flat&logo=reddit&logoColor=white" alt="Reddit: r/brassclawAI" /></a>
 </p>
 
 <p align="center">
@@ -25,9 +24,8 @@
 <p align="center">
   <a href="#フィロソフィー">フィロソフィー</a> •
   <a href="#機能">機能</a> •
-  <a href="#インストール">インストール</a> •
+  <a href="#クイックスタート">クイックスタート</a> •
   <a href="#設定">設定</a> •
-  <a href="#セキュリティ">セキュリティ</a> •
   <a href="#アーキテクチャ">アーキテクチャ</a>
 </p>
 
@@ -35,308 +33,183 @@
 
 ## フィロソフィー
 
-BrassClawはシンプルな原則に基づいて構築されています：**あなたのAIアシスタントは、あなたのために働くべきであり、あなたに不利益をもたらすべきではありません。**
+BrassClawはシンプルな原則に基づいて構築されています：**あなたのAIアシスタントは、あなたのために働くべきです。**
 
-AIシステムがデータの取り扱いについて不透明になり、企業の利益に沿って調整されることが増えている世界で、BrassClawは異なるアプローチを取ります：
+- **100%ローカル動作** — vLLM、Ollama、またはOpenAI互換サーバーで動作。クラウドアカウント不要
+- **データはあなたのもの** — すべてのデータはローカルの組み込みPostgresに暗号化されて保存されます
+- **コンシューマーハードウェア対応** — 7Bモデルは4GB VRAMで良好に動作
+- **多層防御** — プロセスサンドボックス、ケイパビリティリース、フックフレームワーク、プロンプトインジェクション対策
+- **オープンソース** — 完全に監査可能。テレメトリやデータ収集なし
+- **オーケストレーター優先** — MontyオーケストレーターがLLMを最小限に抑えて実行エンジンとして機能
 
-- **あなたのデータはあなたのもの** - すべての情報はローカルに保存・暗号化され、あなたの管理下から離れることはありません
-- **設計段階からの透明性** - オープンソース、監査可能、隠れたテレメトリやデータ収集なし
-- **自己拡張する能力** - ベンダーのアップデートを待たずに、新しいツールをその場で構築
-- **多層防御** - 複数のセキュリティレイヤーがプロンプトインジェクションやデータ流出から保護
-
-BrassClawは、個人生活にも仕事にも本当に信頼できるAIアシスタントです。
+---
 
 ## 機能
 
+### オーケストレーター優先エンジン
+
+- **Monty（Pythonオーケストレーター）** がレシピのステップを順番に実行し、Rustツールを直接呼び出す
+- **Tier-0レシピ** — LLM呼び出しなしの完全に決定論的な実行パス
+- **スキル** — マークダウンファイルがAPIの使用方法をシステムに教える。Rustのコンパイル不要
+- **Sempai/Kohaiレビューループ** — 新しいコンポーネント（レシピ、スキル、ToolSkill）を自動的に作成し、検証キューに入れる
+
 ### セキュリティファースト
 
-- **WASMサンドボックス** - 信頼されていないツールは、機能ベースの権限を持つ隔離されたWebAssemblyコンテナで実行
-- **認証情報の保護** - シークレットはツールに公開されず、リーク検出付きでホスト境界で注入
-- **プロンプトインジェクション防御** - パターン検出、コンテンツサニタイズ、ポリシー適用
-- **エンドポイントの許可リスト** - HTTPリクエストは明示的に許可されたホストとパスのみに制限
+- **プロセスサンドボックス** — 信頼されていないツールのサブプロセスはスコープ付きファイルシステムとエンドポイント許可リストで実行
+- **フックフレームワーク** — ケイパビリティ呼び出しとプロンプト変更に対する4つの信頼ティア（Builtin、Trusted、Installed、SelfAuthored）
+- **ケイパビリティリース** — すべてのツール呼び出しに対する細粒度で取り消し可能な権限付与
+- **認証情報の保護** — シークレットはツールに公開されない。ホスト境界でリーク検出付きで注入
+- **プロンプトインジェクション防御** — パターン検出、コンテンツのサニタイズ、ポリシー適用
+- **エンドポイント許可リスト** — HTTPリクエストは明示的に承認されたホストとパスのみに制限
 
 ### 常時利用可能
 
-- **マルチチャネル** - REPL、HTTPウェブフック、WASMチャネル（Telegram、Slack）、Webゲートウェイ
-- **Dockerサンドボックス** - ジョブごとのトークンとオーケストレーター/ワーカーパターンによる隔離されたコンテナ実行
-- **Webゲートウェイ** - リアルタイムSSE/WebSocketストリーミング対応のブラウザUI
-- **ルーティン** - cronスケジュール、イベントトリガー、ウェブフックハンドラーによるバックグラウンド自動化
-- **ハートビートシステム** - 監視・保守タスクのためのプロアクティブなバックグラウンド実行
-- **並列ジョブ** - 隔離されたコンテキストで複数のリクエストを同時に処理
-- **自己修復** - スタックした操作の自動検出と復旧
+- **マルチチャネル** — REPL、WebUI（React SPAは`/v2`）、Slack、Telegram、HTTPウェブフック、APIサーバー
+- **永続メモリ** — 組み込みPostgresによるReciprocal Rank Fusionを使用したハイブリッドのフルテキスト＋ベクター検索
+- **ルーティン** — バックグラウンド自動化のためのcronスケジュール、イベントトリガー、ウェブフックハンドラー
+- **サブエージェント** — 複雑なタスクのための専門的な子エージェントのスポーン
+- **MCPプロトコル** — あらゆるModel Context Protocolサーバーへの接続
 
-### 自己拡張
+### 検証パイプライン
 
-- **動的ツール構築** - 必要なものを説明すると、BrassClawがWASMツールとして構築
-- **MCPプロトコル** - Model Context Protocolサーバーに接続して追加機能を利用
-- **プラグインアーキテクチャ** - 再起動なしで新しいWASMツールやチャネルを追加
+すべてのユーザー作成およびエージェント作成コンポーネントは2ゲートの検証パイプラインを通過します：
 
-### 永続メモリ
+- **Q1** — 自動化されたオーケストレーテッドサンドボックスチェック
+- **Q2** — 人間によるレビュー（オペレーターのみ、自動化不可）
 
-- **ハイブリッド検索** - Reciprocal Rank Fusionを使用した全文検索+ベクトル検索
-- **ワークスペースファイルシステム** - メモ、ログ、コンテキストのための柔軟なパスベースストレージ
-- **アイデンティティファイル** - セッション間で一貫した人格と設定を維持
+---
 
-## インストール
+## クイックスタート
 
-### 前提条件
+**最小要件：** 約8GBのRAM、最新の64ビットCPU、約4GBの空きディスクスペース。
 
-- Rust 1.85+
-- PostgreSQL 15+ ([pgvector](https://github.com/pgvector/pgvector)拡張機能を含む)
-- NEAR AIアカウント（セットアップウィザードで認証を処理）
+### オプションA：Linuxサーバー — ワンライン インストール（推奨）
 
-## ダウンロードまたはビルド
-
-最新のアップデートは[リリースページ](https://github.com/chtugha/brassclaw/releases/)をご覧ください。
-
-<details>
-  <summary>Windowsインストーラーでインストール（Windows）</summary>
-
-[Windowsインストーラー](https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-x86_64-pc-windows-msvc.msi)をダウンロードして実行してください。
-
-</details>
-
-<details>
-  <summary>PowerShellスクリプトでインストール（Windows）</summary>
-
-```sh
-irm https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-installer.ps1 | iex
-```
-
-</details>
-
-<details>
-  <summary>シェルスクリプトでインストール（macOS、Linux、Windows/WSL）</summary>
-
-```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-installer.sh | sh
-```
-</details>
-
-<details>
-  <summary>Homebrewでインストール（macOS/Linux）</summary>
-
-```sh
-brew install brassclaw
-```
-
-</details>
-
-<details>
-  <summary>ソースコードからコンパイル（Windows、Linux、macOSでCargo）</summary>
-
-`cargo`でインストールします。コンピューターに[Rust](https://rustup.rs)がインストールされていることを確認してください。
+GitHubリリースから最新のビルド済みバイナリをダウンロードし、systemdサービスとして登録します：
 
 ```bash
-# リポジトリをクローン
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/install.sh | sudo bash
+```
+
+バージョンを指定してインストール：
+
+```bash
+sudo bash install.sh -v 0.9.1
+```
+
+**アンインストール：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh | sudo bash
+```
+
+### オプションB：macOS — 手動バイナリインストール
+
+```bash
+# Apple Silicon (M1/M2/M3):
+curl -fsSL -o brassclaw-reborn https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-arm64
+chmod +x brassclaw-reborn && sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
+
+# Intel Mac:
+curl -fsSL -o brassclaw-reborn https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-amd64
+chmod +x brassclaw-reborn && sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
+```
+
+### オプションC：ソースからビルド
+
+[Rust 1.94+](https://rustup.rs)が必要です。
+
+```bash
 git clone https://github.com/chtugha/brassclaw.git
 cd brassclaw
-
-# ビルド
-cargo build --release
-
-# テストを実行
-cargo test
+cargo build --release --bin brassclaw
 ```
 
-**フルリリース**（チャネルソースを変更した後）の場合、まず`./scripts/build-all.sh`を実行してチャネルを再ビルドしてください。
+バイナリは `target/release/brassclaw` にあります。
 
-</details>
-
-### データベースのセットアップ
-
-```bash
-# データベースを作成
-createdb brassclaw
-
-# pgvectorを有効化
-psql brassclaw -c "CREATE EXTENSION IF NOT EXISTS vector;"
-```
+---
 
 ## 設定
 
-セットアップウィザードを実行してBrassClawを設定します：
+### 設定ファイル
+
+設定は `~/.brassclaw/reborn/config.toml` にあります。初回起動時に例が作成されます。
+
+```toml
+[llm.default]
+provider_id = "openai_compatible"
+model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+base_url = "http://localhost:8000/v1"
+
+[identity]
+tenant = "my-instance"
+```
+
+### 環境変数
+
+| 変数 | 説明 |
+|------|------|
+| `BRASSCLAW_REBORN_HOME` | データディレクトリ（デフォルト: `~/.brassclaw/reborn`） |
+| `BRASSCLAW_RUNTIME_PROFILE` | セキュリティポリシー（デフォルト: `local_dev`）。有効な値: `local_dev`、`local_safe`、`local_yolo`、`hosted_safe` |
+| `BRASSCLAW_PG_URL` | 外部PostgresのURL。省略時は組み込みPostgresを使用 |
+| `BRASSCLAW_REBORN_WEBUI_TOKEN` | WebUI認証用ベアラートークン |
+| `BRASSCLAW_REBORN_WEBUI_USER_ID` | セッションに注入されるユーザーID |
+
+### LLMプロバイダーの設定
+
+**Ollama（ホームユース向け推奨）：**
 
 ```bash
-brassclaw onboard
+ollama serve
+ollama pull qwen2.5:7b
 ```
 
-ウィザードは、データベース接続、NEAR AI認証（ブラウザOAuth経由）、シークレットの暗号化（システムキーチェーンを使用）を処理します。設定は接続されたデータベースに永続化されます。ブートストラップ変数（例：`DATABASE_URL`、`LLM_BACKEND`）は、データベース接続前に利用できるよう`~/.brassclaw/.env`に書き込まれます。
-
-### 代替LLMプロバイダー
-
-BrassClawはデフォルトでNEAR AIを使用しますが、多くのLLMプロバイダーをすぐに利用できます。組み込みプロバイダーには**Anthropic**、**OpenAI**、**Google Gemini**、**MiniMax**、**Mistral**、**Ollama**（ローカル）が含まれます。**OpenRouter**（300以上のモデル）、**Together AI**、**Fireworks AI**、セルフホストサーバー（**vLLM**、**LiteLLM**）などのOpenAI互換サービスもサポートされています。
-
-ウィザードでプロバイダーを選択するか、環境変数を直接設定してください：
-
-```env
-# 例：MiniMax（組み込み、204Kコンテキスト）
-LLM_BACKEND=minimax
-MINIMAX_API_KEY=...
-
-# 例：OpenAI互換エンドポイント
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=https://openrouter.ai/api/v1
-LLM_API_KEY=sk-or-...
-LLM_MODEL=anthropic/claude-sonnet-4
+`config.toml`:
+```toml
+[llm.default]
+provider_id = "ollama"
+model = "qwen2.5:7b"
 ```
 
-完全なプロバイダーガイドは[docs/capabilities/llm-providers.md](docs/capabilities/llm-providers.md)をご覧ください。
+**vLLM（GPUサーバー向け推奨）：**
 
-## セキュリティ
-
-BrassClawは、データを保護し悪用を防ぐために多層防御を実装しています。
-
-### WASMサンドボックス
-
-すべての信頼されていないツールは、隔離されたWebAssemblyコンテナで実行されます：
-
-- **機能ベースの権限** - HTTP、シークレット、ツール呼び出しの明示的なオプトイン
-- **エンドポイントの許可リスト** - 許可されたホスト/パスへのHTTPリクエストのみ
-- **認証情報の注入** - シークレットはホスト境界で注入され、WASMコードに公開されない
-- **リーク検出** - リクエストとレスポンスのシークレット流出試行をスキャン
-- **レート制限** - 悪用防止のためのツールごとのリクエスト制限
-- **リソース制限** - メモリ、CPU、実行時間の制約
-
-```
-WASM ──► 許可リスト ──► リーク    ──► 認証情報 ──► リクエスト ──► リーク    ──► WASM
-         バリデーター    スキャン       注入        実行          スキャン
-                       (リクエスト)                             (レスポンス)
+```bash
+vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --host 0.0.0.0 --port 8000
 ```
 
-### プロンプトインジェクション防御
+`config.toml`:
+```toml
+[llm.default]
+provider_id = "openai_compatible"
+model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+base_url = "http://localhost:8000/v1"
+```
 
-外部コンテンツは複数のセキュリティレイヤーを通過します：
-
-- パターンベースのインジェクション試行検出
-- コンテンツのサニタイズとエスケープ
-- 重要度レベル付きポリシールール（ブロック/警告/レビュー/サニタイズ）
-- 安全なLLMコンテキスト注入のためのツール出力ラッピング
-
-### データ保護
-
-- すべてのデータはローカルのPostgreSQLデータベースに保存
-- AES-256-GCMでシークレットを暗号化
-- テレメトリ、分析、データ共有なし
-- すべてのツール実行の完全な監査ログ
+---
 
 ## アーキテクチャ
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│                          チャネル                               │
-│  ┌──────┐  ┌──────┐   ┌─────────────┐  ┌─────────────┐         │
-│  │ REPL │  │ HTTP │   │WASMチャネル │  │ Web         │         │
-│  └──┬───┘  └──┬───┘   └──────┬──────┘  │ ゲートウェイ│         │
-│     │         │              │         │(SSE + WS)   │         │
-│     │         │              │         └──────┬──────┘         │
-│     └─────────┴──────────────┴────────────────┘                │
-│                              │                                 │
-│                    ┌─────────▼─────────┐                       │
-│                    │  エージェントループ │  インテントルーティング│
-│                    └────┬──────────┬───┘                       │
-│                         │          │                           │
-│              ┌──────────▼────┐  ┌──▼───────────────┐           │
-│              │ スケジューラー │  │ ルーティン       │           │
-│              │ (並列ジョブ)  │  │ エンジン         │           │
-│              └──────┬────────┘  │(cron,event,wh)   │           │
-│                     │           └────────┬─────────┘           │
-│       ┌─────────────┼────────────────────┘                     │
-│       │             │                                          │
-│   ┌───▼─────┐  ┌────▼────────────────┐                         │
-│   │ ローカル │  │  オーケストレーター  │                         │
-│   │ ワーカー │  │  ┌───────────────┐  │                         │
-│   │(プロセス │  │  │ Docker        │  │                         │
-│   │ 内)     │  │  │ サンドボックス│  │                         │
-│   └───┬─────┘  │  │ コンテナ      │  │                         │
-│       │        │  │ ┌───────────┐ │  │                         │
-│       │        │  │ │Worker / CC│ │  │                         │
-│       │        │  │ └───────────┘ │  │                         │
-│       │        │  └───────────────┘  │                         │
-│       │        └─────────┬───────────┘                         │
-│       └──────────────────┤                                     │
-│                          │                                     │
-│              ┌───────────▼──────────┐                          │
-│              │   ツールレジストリ    │                          │
-│              │ 組み込み, MCP, WASM  │                          │
-│              └──────────────────────┘                          │
-└────────────────────────────────────────────────────────────────┘
-```
+BrassClawは3層モデルを使用しています：
 
-### コアコンポーネント
+- **製品層** — UXとサーフェス。CLI、WebUI（`/v2`のReact SPA）、Slack、Telegram
+- **ループ層** — エージェントの動作。Montyオーケストレーターがレシピのステップを順番に実行し、LLMを呼び出し、Rustツールを名前で呼び出す
+- **カーネル層** — 権限の所有。LLMプロバイダーの抽象化、サンドボックス化されたサブプロセス実行、認証情報の注入、セキュリティポリシーの適用
 
-| コンポーネント | 目的 |
-|---------------|------|
-| **エージェントループ** | メインのメッセージ処理とジョブの調整 |
-| **ルーター** | ユーザーの意図を分類（コマンド、クエリ、タスク） |
-| **スケジューラー** | 優先度付きの並列ジョブ実行を管理 |
-| **ワーカー** | LLM推論とツール呼び出しでジョブを実行 |
-| **オーケストレーター** | コンテナのライフサイクル、LLMプロキシ、ジョブごとの認証 |
-| **Webゲートウェイ** | チャット、メモリ、ジョブ、ログ、拡張機能、ルーティンのブラウザUI |
-| **ルーティンエンジン** | スケジュール（cron）とリアクティブ（イベント、ウェブフック）のバックグラウンドタスク |
-| **ワークスペース** | ハイブリッド検索付き永続メモリ |
-| **セーフティレイヤー** | プロンプトインジェクション防御とコンテンツサニタイズ |
+**コンポーネントカタログ**はPostgresにクラスコードで格納されます：
 
-## 使い方
+| クラス | タイプ | 説明 |
+|--------|--------|------|
+| 1–3 | スキル | タスクパターンを説明するオーケストレーター向けの散文 |
+| 13 | ToolSkill | バインディング記述子 — パラメータスキーマ、前提条件 |
+| 21 | レシピ | 完全なターンスクリプト：RecipeVariant、インテントサンプル、ステップリンク |
+| 22 | PythonCode | エグゼキューター — `host.<tool>(...)` を呼び出してRustをディスパッチ |
+| 23 | ExtensionCatalogue | ドメインの概要 |
 
-Engine v2 は現在オプトインです。従来のエージェントループではなく新しいエンジンを使いたい場合は、BrassClaw を `ENGINE_V2=true` 付きで起動してください。
-
-```bash
-# 初回セットアップ（データベース、認証などを設定）
-brassclaw onboard
-
-# インストール済みバイナリを起動
-brassclaw
-
-# Engine v2 でインストール済みバイナリを起動
-ENGINE_V2=true brassclaw
-
-# ソースからインタラクティブREPLを起動
-cargo run
-
-# ソースから Engine v2 のインタラクティブREPLを起動
-ENGINE_V2=true cargo run
-
-# Engine v2 をデバッグログ付きで起動
-ENGINE_V2=true RUST_LOG=brassclaw=debug cargo run
-```
-
-## 開発
-
-```bash
-# コードフォーマット
-cargo fmt
-
-# リント
-cargo clippy --all --benches --tests --examples --all-features
-
-# テスト実行
-createdb brassclaw_test
-cargo test
-
-# 特定のテストを実行
-cargo test test_name
-```
-
-- **チャネル**: Telegram、Discord、その他のチャネルの設定は[docs/channels/overview.mdx](docs/channels/overview.mdx)を参照してください。
-- **チャネルソースの変更**: `cargo build`の前に`./channels-src/telegram/build.sh`を実行して、更新されたWASMをバンドルしてください。
-
-## OpenClawの系譜
-
-BrassClawは[OpenClaw](https://github.com/openclaw/openclaw)にインスパイアされたRust再実装です。完全な対応表は[FEATURE_PARITY.md](FEATURE_PARITY.md)をご覧ください。
-
-主な違い：
-
-- **Rust vs TypeScript** - ネイティブパフォーマンス、メモリ安全性、シングルバイナリ
-- **WASMサンドボックス vs Docker** - 軽量、機能ベースのセキュリティ
-- **PostgreSQL vs SQLite** - 本番環境対応の永続化
-- **セキュリティファースト設計** - 複数の防御レイヤー、認証情報の保護
+---
 
 ## ライセンス
 
-以下のいずれかのライセンスの下で提供されています：
+以下のいずれかのライセンスの下でライセンスされています：
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT License ([LICENSE-MIT](LICENSE-MIT))
-
-お好みに応じて選択してください。
+- Apache License, Version 2.0（[LICENSE-APACHE](LICENSE-APACHE)）
+- MIT License（[LICENSE-MIT](LICENSE-MIT)）

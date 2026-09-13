@@ -5,13 +5,12 @@
 <h1 align="center">BrassClaw</h1>
 
 <p align="center">
-  <strong>安全可靠的个人 AI 助手，始终站在你这边</strong>
+  <strong>完全运行在你的硬件上的安全个人 AI 助手</strong>
 </p>
 
 <p align="center">
+  <a href="https://github.com/chtugha/brassclaw/releases/latest"><img src="https://img.shields.io/github/v/release/chtugha/brassclaw?label=最新发布" alt="Latest Release" /></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache%202.0-blue.svg" alt="License: MIT OR Apache-2.0" /></a>
-  <a href="https://t.me/brassclawAI"><img src="https://img.shields.io/badge/Telegram-%40brassclawAI-26A5E4?style=flat&logo=telegram&logoColor=white" alt="Telegram: @brassclawAI" /></a>
-  <a href="https://www.reddit.com/r/brassclawAI/"><img src="https://img.shields.io/badge/Reddit-r%2FbrassclawAI-FF4500?style=flat&logo=reddit&logoColor=white" alt="Reddit: r/brassclawAI" /></a>
 </p>
 
 <p align="center">
@@ -25,323 +24,190 @@
 <p align="center">
   <a href="#设计理念">设计理念</a> •
   <a href="#功能特性">功能特性</a> •
-  <a href="#安装">安装</a> •
+  <a href="#快速开始">快速开始</a> •
   <a href="#配置">配置</a> •
-  <a href="#安全机制">安全机制</a> •
-  <a href="#系统架构">系统架构</a>
+  <a href="#架构">架构</a>
 </p>
 
 ---
 
 ## 设计理念
 
-BrassClaw 基于一个简单的原则：**你的 AI 助手应该为你服务，而不是与你为敌。**
+BrassClaw 基于一个简单的原则：**你的 AI 助手应该为你服务。**
 
-在 AI 系统对数据处理日益不透明、与企业利益捆绑的今天，BrassClaw 选择了一条不同的路：
+- **100% 本地运行** — 使用 vLLM、Ollama 或任何 OpenAI 兼容服务器；无需云账号
+- **数据归你所有** — 所有状态存储在本地嵌入式 Postgres 中，加密保护，始终在你掌控之下
+- **适配消费级硬件** — 7B 模型在 4GB 显存下运行良好
+- **纵深防御** — 进程沙箱、能力租约、钩子框架、提示注入防御
+- **完全开源** — 可完整审计，无遥测或数据收集
+- **编排器优先** — Monty 编排器作为执行引擎，仅在真正需要时调用 LLM
 
-- **数据归你所有** — 所有信息存储在本地，加密保护，始终在你掌控之下
-- **透明至上** — 完全开源，可审计，没有隐藏的遥测或数据收集
-- **自主扩展** — 随时构建新工具，无需等待供应商更新
-- **纵深防御** — 多层安全机制抵御提示注入和数据泄露
-
-BrassClaw 是一个你真正可以信赖的 AI 助手，无论是个人生活还是工作。
+---
 
 ## 功能特性
 
+### 编排器优先引擎
+
+- **Monty（Python 编排器）** 按顺序执行配方步骤并直接调用 Rust 工具
+- **Tier-0 配方** — 零 LLM 调用的完全确定性执行路径
+- **技能（Skills）** — Markdown 文件教导系统如何使用 API；无需编译 Rust
+- **Sempai/Kohai 审查循环** — 自动编写新组件（配方、技能、ToolSkill）并加入验证队列
+
 ### 安全优先
 
-- **WASM 沙箱** — 不受信任的工具在隔离的 WebAssembly 容器中运行，采用基于能力的权限模型
-- **凭据保护** — 密钥永远不会暴露给工具；在宿主边界注入并进行泄露检测
+- **进程沙箱** — 不受信任的工具子进程在有范围限制的文件系统和端点白名单下运行
+- **钩子框架** — 能力调用和提示变更的 4 个信任层级（Builtin、Trusted、Installed、SelfAuthored）
+- **能力租约** — 每次工具调用的细粒度可撤销权限授予
+- **凭据保护** — 密钥永远不暴露给工具；在宿主边界注入并进行泄露检测
 - **提示注入防御** — 模式检测、内容清理和策略执行
 - **端点白名单** — HTTP 请求仅限于明确批准的主机和路径
 
 ### 随时可用
 
-- **多渠道接入** — REPL、HTTP webhook、WASM 渠道（Telegram、Slack）和 Web 网关
-- **Docker 沙箱** — 隔离的容器执行，支持每任务令牌和编排器/工作器模式
-- **Web 网关** — 浏览器 UI，支持实时 SSE/WebSocket 流式传输
+- **多渠道** — REPL、WebUI（React SPA，路径 `/v2`）、Slack、Telegram、HTTP Webhook、API 服务器
+- **持久记忆** — 基于嵌入式 Postgres 的混合全文 + 向量搜索，采用倒数排名融合（RRF）
 - **定时任务** — Cron 调度、事件触发器、Webhook 处理器，实现后台自动化
-- **心跳系统** — 主动后台执行，用于监控和维护任务
-- **并行任务** — 使用隔离上下文同时处理多个请求
-- **自修复** — 自动检测并恢复卡住的操作
+- **子代理** — 为复杂任务生成专门的子代理
+- **MCP 协议** — 连接任意 Model Context Protocol 服务器
 
-### 自主扩展
+### 验证流水线
 
-- **动态工具构建** — 描述你的需求，BrassClaw 会将其构建为 WASM 工具
-- **MCP 协议** — 连接模型上下文协议（Model Context Protocol）服务器以获取额外能力
-- **插件架构** — 无需重启即可加载新的 WASM 工具和渠道
+所有用户创建和代理创建的组件都经过两关验证流水线：
 
-### 持久记忆
+- **Q1** — 自动化编排沙箱检查
+- **Q2** — 人工审核（仅操作员；永不自动化）
 
-- **混合搜索** — 全文搜索 + 向量搜索，采用倒数排名融合（Reciprocal Rank Fusion）
-- **工作空间文件系统** — 灵活的基于路径的存储，用于笔记、日志和上下文
-- **身份文件** — 跨会话保持一致的个性和偏好设置
+---
 
-## 安装
+## 快速开始
 
-### 前置要求
+**最低要求：** 约 8GB 内存，现代 64 位 CPU，约 4GB 可用磁盘空间。
 
-- Rust 1.85+
-- PostgreSQL 15+，需安装 [pgvector](https://github.com/pgvector/pgvector) 扩展
-- NEAR AI 账户（通过设置向导进行身份验证）
-- 如果从源码构建微信语音 / SILK 路径，还需要安装 `libclang` 和可用的 C 编译工具链
+### 选项 A：Linux 服务器 — 一行安装（推荐）
 
-## 下载或编译
-
-访问 [Releases 页面](https://github.com/chtugha/brassclaw/releases/) 查看最新版本。
-
-<details>
-  <summary>通过 Windows 安装程序安装 (Windows)</summary>
-
-下载 [Windows 安装程序](https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-x86_64-pc-windows-msvc.msi) 并运行。
-
-</details>
-
-<details>
-  <summary>通过 PowerShell 脚本安装 (Windows)</summary>
-
-```sh
-irm https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-installer.ps1 | iex
-```
-
-</details>
-
-<details>
-  <summary>通过 Shell 脚本安装 (macOS、Linux、Windows/WSL)</summary>
-
-```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-installer.sh | sh
-```
-</details>
-
-<details>
-  <summary>通过 Homebrew 安装 (macOS/Linux)</summary>
-
-```sh
-brew install brassclaw
-```
-
-</details>
-
-<details>
-  <summary>从源码编译 (Windows、Linux、macOS 上使用 Cargo)</summary>
-
-确保你已安装 [Rust](https://rustup.rs)。
+从 GitHub Releases 下载最新预构建二进制文件并注册为 systemd 服务：
 
 ```bash
-# 克隆仓库
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/install.sh | sudo bash
+```
+
+固定到指定版本：
+
+```bash
+sudo bash install.sh -v 0.9.1
+```
+
+**卸载：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh | sudo bash
+```
+
+### 选项 B：macOS — 手动二进制安装
+
+```bash
+# Apple Silicon (M1/M2/M3):
+curl -fsSL -o brassclaw-reborn https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-arm64
+chmod +x brassclaw-reborn && sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
+
+# Intel Mac:
+curl -fsSL -o brassclaw-reborn https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-amd64
+chmod +x brassclaw-reborn && sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
+```
+
+### 选项 C：从源码构建
+
+需要 [Rust 1.94+](https://rustup.rs)。
+
+```bash
 git clone https://github.com/chtugha/brassclaw.git
 cd brassclaw
-
-# 编译
-cargo build --release
-
-# 运行测试
-cargo test
+cargo build --release --bin brassclaw
 ```
 
-如需进行**完整发布构建**（修改了渠道源码后），先运行 `./scripts/build-all.sh` 重新编译渠道。
+二进制文件位于 `target/release/brassclaw`。
 
-> **可选：** 微信语音消息（`audio/silk`）需要独立的 `brassclaw-silk-decoder`
-> 辅助二进制才能被转写。该工具因为依赖 `silk-codec`（会引入 `bindgen` /
-> `libclang`），已被排除在默认工作区之外。请使用
-> `./crates/brassclaw_silk_decoder/build.sh` 单独编译（需要 libclang 与 C
-> 编译器），再把生成的二进制放到 `$PATH`、`brassclaw` 同级目录，或通过
-> `BRASSCLAW_SILK_DECODER` 环境变量指定路径。即使没有它，语音消息仍会送达，
-> 只是会以原始的 `audio/silk` 数据块形式呈现。
-
-</details>
-
-### 数据库设置
-
-```bash
-# 创建数据库
-createdb brassclaw
-
-# 启用 pgvector 扩展
-psql brassclaw -c "CREATE EXTENSION IF NOT EXISTS vector;"
-```
+---
 
 ## 配置
 
-运行设置向导来配置 BrassClaw：
+### 配置文件
 
-```bash
-brassclaw onboard
+主配置位于 `~/.brassclaw/reborn/config.toml`。首次运行时会创建示例文件。
+
+```toml
+[llm.default]
+provider_id = "openai_compatible"
+model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+base_url = "http://localhost:8000/v1"
+
+[identity]
+tenant = "my-instance"
 ```
 
-向导将引导你完成数据库连接、NEAR AI 身份验证（通过浏览器 OAuth）和密钥加密（使用系统钥匙串）。设置会保存在数据库中；引导变量（如 `DATABASE_URL`、`LLM_BACKEND`）写入 `~/.brassclaw/.env`，以便在数据库连接前可用。
+### 环境变量
 
-### 替代 LLM 提供商
-
-BrassClaw 默认使用 NEAR AI，但开箱即用地支持多种 LLM 提供商。
-内置提供商包括 **Anthropic**、**OpenAI**、**GitHub Copilot**、**Google Gemini**、**MiniMax**、**Mistral** 和 **Ollama**（本地部署）。同时也支持 OpenAI 兼容服务，如 **OpenRouter**（300+ 模型）、**Together AI**、**Fireworks AI** 以及自托管服务器（**vLLM**、**LiteLLM**）。
-
-在向导中选择你的提供商，或直接设置环境变量：
-
-```env
-# 示例：MiniMax（内置，204K 上下文）
-LLM_BACKEND=minimax
-MINIMAX_API_KEY=...
-
-# 示例：OpenAI 兼容端点
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=https://openrouter.ai/api/v1
-LLM_API_KEY=sk-or-...
-LLM_MODEL=anthropic/claude-sonnet-4
-```
-
-详见 [docs/capabilities/llm-providers.md](docs/capabilities/llm-providers.md) 获取完整的提供商指南。
-
-## 安全机制
-
-BrassClaw 实现了纵深防御策略来保护你的数据并防止滥用。
-
-### WASM 沙箱
-
-所有不受信任的工具都在隔离的 WebAssembly 容器中运行：
-
-- **基于能力的权限** — 明确授权 HTTP、密钥、工具调用等能力
-- **端点白名单** — HTTP 请求仅限已批准的主机和路径
-- **凭据注入** — 密钥在宿主边界注入，永远不会暴露给 WASM 代码
-- **泄露检测** — 扫描请求和响应以防止密钥外泄
-- **速率限制** — 每个工具独立的请求限制，防止滥用
-- **资源限制** — 内存、CPU 和执行时间约束
-
-```
-WASM ──► 白名单  ──► 泄露扫描 ──► 凭据  ──► 执行  ──► 泄露扫描 ──► WASM
-         验证器     (请求)      注入器    请求     (响应)
-```
-
-### 提示注入防御
-
-外部内容需通过多个安全层：
-
-- 基于模式的注入尝试检测
-- 内容清理和转义
-- 带严重级别的策略规则（阻止/警告/审核/清理）
-- 工具输出包装，确保安全的 LLM 上下文注入
-
-### 数据保护
-
-- 所有数据存储在本地 PostgreSQL 数据库中
-- 密钥使用 AES-256-GCM 加密
-- 无遥测、无分析、无数据共享
-- 所有工具执行的完整审计日志
-
-## 系统架构
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│                            渠道                                 │
-│  ┌──────┐  ┌──────┐   ┌─────────────┐  ┌─────────────┐         │
-│  │ REPL │  │ HTTP │   │ WASM 渠道   │  │  Web 网关   │         │
-│  └──┬───┘  └──┬───┘   └──────┬──────┘  │ (SSE + WS)  │         │
-│     │         │              │         └──────┬──────┘         │
-│     └─────────┴──────────────┴────────────────┘                │
-│                              │                                 │
-│                    ┌─────────▼─────────┐                       │
-│                    │    代理循环       │  意图路由              │
-│                    └────┬──────────┬───┘                       │
-│                         │          │                           │
-│              ┌──────────▼────┐  ┌──▼───────────────┐           │
-│              │    调度器      │  │   定时任务引擎    │           │
-│              │  (并行任务)    │  │(cron, 事件, Webhook)│          │
-│              └──────┬────────┘  └────────┬─────────┘           │
-│                     │                    │                     │
-│       ┌─────────────┼────────────────────┘                     │
-│       │             │                                          │
-│   ┌───▼─────┐  ┌────▼────────────────┐                         │
-│   │  本地   │  │      编排器          │                         │
-│   │ 工作器  │  │  ┌───────────────┐  │                         │
-│   │(进程内) │  │  │ Docker 沙箱   │  │                         │
-│   └───┬─────┘  │  │     容器      │  │                         │
-│       │        │  │ ┌───────────┐ │  │                         │
-│       │        │  │ │工作器/CC  │ │  │                         │
-│       │        │  │ └───────────┘ │  │                         │
-│       │        │  └───────────────┘  │                         │
-│       │        └─────────┬───────────┘                         │
-│       └──────────────────┤                                     │
-│                          │                                     │
-│              ┌───────────▼──────────┐                          │
-│              │      工具注册表       │                          │
-│              │ 内置、MCP、WASM      │                          │
-│              └──────────────────────┘                          │
-└────────────────────────────────────────────────────────────────┘
-```
-
-### 核心组件
-
-| 组件 | 用途 |
+| 变量 | 描述 |
 |------|------|
-| **代理循环** | 主消息处理和任务协调 |
-| **路由器** | 分类用户意图（命令、查询、任务） |
-| **调度器** | 管理带优先级的并行任务执行 |
-| **工作器** | 执行包含 LLM 推理和工具调用的任务 |
-| **编排器** | 容器生命周期、LLM 代理、每任务认证 |
-| **Web 网关** | 浏览器 UI，含聊天、记忆、任务、日志、扩展、定时任务 |
-| **定时任务引擎** | 定时（cron）和响应式（事件、webhook）后台任务 |
-| **工作空间** | 带混合搜索的持久记忆 |
-| **安全层** | 提示注入防御和内容清理 |
+| `BRASSCLAW_REBORN_HOME` | 数据目录（默认：`~/.brassclaw/reborn`） |
+| `BRASSCLAW_RUNTIME_PROFILE` | 安全策略（默认：`local_dev`）。有效值：`local_dev`、`local_safe`、`local_yolo`、`hosted_safe` |
+| `BRASSCLAW_PG_URL` | 外部 Postgres URL。省略时使用嵌入式 Postgres |
+| `BRASSCLAW_REBORN_WEBUI_TOKEN` | WebUI 认证 Bearer 令牌 |
+| `BRASSCLAW_REBORN_WEBUI_USER_ID` | 注入会话的用户标识 |
 
-## 使用方式
+### LLM 提供商配置
 
-Engine v2 当前需要显式开启。如果你想运行新的引擎而不是旧的代理循环，请在启动 BrassClaw 时设置 `ENGINE_V2=true`。
+**Ollama（家用推荐）：**
 
 ```bash
-# 首次设置（配置数据库、认证等）
-brassclaw onboard
-
-# 启动已安装的二进制
-brassclaw
-
-# 使用 Engine v2 启动已安装的二进制
-ENGINE_V2=true brassclaw
-
-# 从源码启动交互式 REPL
-cargo run
-
-# 从源码启动 Engine v2 交互式 REPL
-ENGINE_V2=true cargo run
-
-# 使用 Engine v2 并启用调试日志
-ENGINE_V2=true RUST_LOG=brassclaw=debug cargo run
+ollama serve
+ollama pull qwen2.5:7b
 ```
 
-## 开发
+```toml
+[llm.default]
+provider_id = "ollama"
+model = "qwen2.5:7b"
+```
+
+**vLLM（GPU 服务器推荐）：**
 
 ```bash
-# 格式化代码
-cargo fmt
-
-# 代码检查
-cargo clippy --all --benches --tests --examples --all-features
-
-# 运行测试
-createdb brassclaw_test
-cargo test
-
-# 运行指定测试
-cargo test test_name
+vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --host 0.0.0.0 --port 8000
 ```
 
-- **渠道**：参见 [docs/channels/overview.mdx](docs/channels/overview.mdx) 了解 Telegram、Discord 和其他渠道的设置。
-- **修改渠道源码**：在 `cargo build` 之前运行 `./channels-src/telegram/build.sh` 以便打包更新后的 WASM。
+```toml
+[llm.default]
+provider_id = "openai_compatible"
+model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+base_url = "http://localhost:8000/v1"
+```
 
-## OpenClaw 传承
+---
 
-BrassClaw 是受 [OpenClaw](https://github.com/openclaw/openclaw) 启发的 Rust 重新实现。参见 [FEATURE_PARITY.md](FEATURE_PARITY.md) 了解完整的功能追踪矩阵。
+## 架构
 
-主要差异：
+BrassClaw 使用三层模型，约 70 个 Rust crate：
 
-- **Rust vs TypeScript** — 原生性能、内存安全、单一二进制文件
-- **WASM 沙箱 vs Docker** — 轻量级、基于能力的安全机制
-- **PostgreSQL vs SQLite** — 生产级持久化存储
-- **安全优先设计** — 多层防御、凭据保护
+- **产品层** — 拥有用户体验：CLI、WebUI（`/v2` 的 React SPA）、Slack、Telegram
+- **循环层** — 拥有代理行为：Monty 编排器按顺序执行配方步骤，并按名称调用 Rust 工具
+- **内核层** — 拥有权限：LLM 提供商抽象、沙箱子进程执行、凭据注入、安全策略执行
+
+**组件目录**按类代码存储在 Postgres 中：
+
+| 类 | 类型 | 描述 |
+|----|------|------|
+| 1–3 | Skill | 面向编排器的任务模式散文描述 |
+| 13 | ToolSkill | 绑定描述符 — 参数模式、前置条件 |
+| 21 | Recipe | 完整轮次脚本：RecipeVariant、意图示例、步骤链接 |
+| 22 | PythonCode | 执行器 — 调用 `host.<tool>(...)` 分派 Rust |
+| 23 | ExtensionCatalogue | 领域概览 |
+
+---
 
 ## 许可证
 
-可选择以下任一许可证：
+以下任一许可证授权：
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT License ([LICENSE-MIT](LICENSE-MIT))
+- Apache License, Version 2.0（[LICENSE-APACHE](LICENSE-APACHE)）
+- MIT License（[LICENSE-MIT](LICENSE-MIT)）

@@ -8,8 +8,9 @@
 #   ./scripts/dev-setup.sh
 #
 # After running, you can:
-#   cargo check           # default features (postgres + libsql)
-#   cargo test            # default test suite (uses libsql temp DB)
+#   cargo check           # default features
+#   cargo test            # unit tests (in-memory backends; no external DB needed)
+#   cargo test --features integration # integration tests (requires Postgres)
 #   cargo test --all-features         # full test suite
 
 set -euo pipefail
@@ -30,8 +31,8 @@ echo "[1/4] rustup found: $(rustup --version 2>/dev/null | head -1)"
 echo "[2/4] Running cargo check..."
 cargo check
 
-# 3. Run tests using libsql temp DB (no Docker/external DB needed)
-echo "[3/4] Running tests (no external DB required)..."
+# 3. Run unit tests (no external DB needed for unit tests)
+echo "[3/4] Running unit tests (no external DB required)..."
 cargo test
 
 # 4. Install git hooks
@@ -55,7 +56,7 @@ echo ""
 echo "=== Setup complete ==="
 echo ""
 echo "Quick start:"
-echo "  cargo run                            # Run with default features"
-echo "  cargo test                           # Test suite (libsql temp DB)"
-echo "  cargo test --all-features            # Full test suite"
-echo "  cargo clippy --all-features          # Lint all code"
+echo "  cargo build --release --bin brassclaw  # Build the Reborn binary"
+echo "  cargo test                             # Unit tests (no external DB)"
+echo "  cargo test --features integration      # Integration tests (requires Postgres)"
+echo "  cargo clippy --all-features            # Lint all code"

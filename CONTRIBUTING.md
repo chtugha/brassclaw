@@ -109,21 +109,17 @@ See `CLAUDE.md` for full style guidelines.
 
 ## Architecture Boundaries
 
-The codebase has two distinct runtimes:
+All production code lives in `crates/`. The `src/` directory contains only a thin `main.rs` shim that delegates to `brassclaw_reborn_cli`. Do not add code to `src/`.
 
-- **Reborn** (`crates/`): the new architecture. New features and Reborn-owned surfaces belong here.
-- **v1** (`src/`): the legacy runtime. Do not modify v1 files unless your task explicitly targets v1 behavior.
-
-Do not mix patterns between the two runtimes. See `CLAUDE.md` for the four-layer Reborn model.
+The codebase follows a three-layer Reborn model — Products → Loops → Kernel — documented in `CLAUDE.md`. See `AGENTS.md` for the crate routing map.
 
 ## Database Changes
 
-BrassClaw uses dual-backend persistence (PostgreSQL + libSQL). All new persistence features must support both backends.
+All persistence uses PostgreSQL (embedded or external). In-memory backends are acceptable in unit tests only.
 
-- Add new DB operations to the shared `Database` trait first, then implement both backends.
+- All new persistence must use Postgres. Do not add libSQL or SQLite paths.
 - Do not collapse bootstrap config, DB-backed settings, and encrypted secrets into each other.
-
-See `src/db/CLAUDE.md` and `.claude/rules/database.md`.
+- Treat bootstrap config, DB-backed settings, and encrypted secrets as distinct layers.
 
 ## Adding Dependencies
 
@@ -147,7 +143,7 @@ All PRs follow a risk-based review process:
 |-------|-------|-------------|
 | **A** | Docs, tests, chore, dependency bumps | 1 approval + CI green |
 | **B** | Features, maintainer-requested refactors, new tools/channels | 1 approval + CI green + test evidence |
-| **C** | Security (`crates/brassclaw_safety/`, `src/secrets/`), runtime (`crates/brassclaw_reborn/`, `src/agent/`, `src/worker/`), database schema, CI workflows | 2 approvals + rollback plan documented |
+| **C** | Security (`crates/brassclaw_safety/`, `crates/brassclaw_secrets/`), runtime (`crates/brassclaw_reborn/`, `crates/brassclaw_agent_loop/`), database schema, CI workflows | 2 approvals + rollback plan documented |
 
 Select the appropriate track in the PR template based on what your changes touch.
 
@@ -157,8 +153,8 @@ SKILL.md files extend the agent's prompt with domain-specific instructions. When
 
 - Trusted skills live in `~/.brassclaw/skills/` or the workspace `skills/` directory.
 - Installed skills come from the registry and are subject to read-only tool attenuation.
-- Skills are selected by a scoring pipeline: gating -> scoring -> budget (2,048 tokens) -> attenuation.
-- Read `.claude/rules/skills.md` before authoring a new skill.
+- Skills are selected by a scoring pipeline: gating → scoring → budget (2,048 tokens) → attenuation.
+- Read `AGENTS.md` (Skills system section) before authoring a new skill.
 
 ## Documenting Your Changes
 
@@ -177,4 +173,4 @@ mint dev           # preview
 mint broken-links  # check internal links
 ```
 
-Read `.claude/skills/mintlify-docs` for Mintlify authoring guidelines.
+Read `.claude/skills/mintlify-docs/SKILL.md` for Mintlify authoring guidelines.
