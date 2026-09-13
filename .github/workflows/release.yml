@@ -49,6 +49,12 @@ jobs:
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build
+        # Clear the Homebrew ld64.lld rustflag on macOS — that path only
+        # exists on a developer machine, not on GitHub Actions runners.
+        # Setting this env var to empty overrides the [target.aarch64-apple-darwin]
+        # rustflags in .cargo/config.toml so the default system linker is used.
+        env:
+          CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: ""
         run: cargo build --release --bin brassclaw --target ${{ matrix.target }}
 
       - name: Compute checksum (Linux)
