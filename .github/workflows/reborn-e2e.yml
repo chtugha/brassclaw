@@ -20,18 +20,6 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/reborn-e2e.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "crates/brassclaw_*/**"
-      - "docs/reborn/**"
-      - "scripts/reborn-e2e-rust.sh"
-      - "tests/e2e/**"
-      - "providers.json"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".github/workflows/reborn-e2e.yml"
 
 permissions:
   contents: read
@@ -59,7 +47,7 @@ jobs:
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-e2e-build
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.event_name == 'workflow_call' }}
 
       - name: Build brassclaw
         run: cargo build --bin brassclaw --features libsql
@@ -96,7 +84,7 @@ jobs:
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-e2e-${{ matrix.group }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.event_name == 'workflow_call' }}
 
       - name: Run deterministic Reborn Rust gate
         env:

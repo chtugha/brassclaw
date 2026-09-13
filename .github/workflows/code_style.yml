@@ -6,11 +6,6 @@ on:
       - main
     types:
       - checks_requested
-  # Pushes to main refresh the rust-cache entries that PR and merge-group
-  # jobs restore from. Non-push runs stay restore-only.
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -143,14 +138,14 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           shared-key: clippy
-          save-if: ${{ matrix.name == 'all-features' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: ${{ matrix.name == 'all-features' && github.event_name == 'workflow_dispatch' }}
       - name: Check lints
         run: cargo clippy --all --benches --tests --examples ${{ matrix.flags }} -- -D warnings
 
   clippy-windows:
     name: Clippy Windows (${{ matrix.name }})
     needs: [changes, clippy-matrix]
-    if: needs.changes.outputs.has_code == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.has_code == 'true' && github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     strategy:
       fail-fast: true
@@ -168,7 +163,7 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: windows-${{ matrix.name }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.event_name == 'workflow_dispatch' }}
       - name: Check lints
         run: cargo clippy --all --benches --tests --examples ${{ matrix.flags }} -- -D warnings
 

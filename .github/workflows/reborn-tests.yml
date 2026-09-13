@@ -31,9 +31,6 @@ on:
       - main
     types:
       - checks_requested
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -140,7 +137,7 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           shared-key: boundary-tests
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: \${{ github.event_name == 'workflow_call' }}
 
       - name: Run architecture boundary tests
         run: cargo test -p brassclaw_architecture --all-targets -- --nocapture
@@ -204,8 +201,8 @@ jobs:
       - id: set
         run: |
           # Windows build is a compile check across feature combinations.
-          # PRs/merge queue use the slim matrix (all-features only); push and
-          # workflow_call use the full matrix. Mirrors the legacy workflow.
+          # PRs/merge queue use the slim matrix (all-features only);
+          # workflow_call (release pipeline) uses the full matrix.
           FULL='[{"name":"all-features","flags":"--no-default-features --features postgres,libsql,html-to-markdown,bedrock,import"},{"name":"default","flags":""}]'
           SLIM='[{"name":"all-features","flags":"--no-default-features --features postgres,libsql,html-to-markdown,bedrock,import"}]'
 
@@ -245,7 +242,7 @@ jobs:
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-${{ matrix.package }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: \${{ github.event_name == 'workflow_call' }}
 
       - name: Run crate tests
         run: |
@@ -287,7 +284,7 @@ jobs:
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-root-${{ matrix.partition }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: \${{ github.event_name == 'workflow_call' }}
 
       - name: Run Reborn root tests
         run: scripts/ci/run-reborn-root-partition.sh
@@ -298,7 +295,7 @@ jobs:
     if: >
       needs.changes.outputs.docs_only != 'true' &&
       needs.changes.outputs.has_reborn_tests == 'true' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_call' || needs.changes.outputs.has_runtime_heavy_risk == 'true')
+      (github.event_name == 'workflow_call' || needs.changes.outputs.has_runtime_heavy_risk == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -315,7 +312,7 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-heavy-integration
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: \${{ github.event_name == 'workflow_call' }}
       - name: Run thread scheduling integration tests
         run: |
           timeout --signal=INT --kill-after=30s 15m \
@@ -324,7 +321,7 @@ jobs:
   windows-build:
     name: Windows Build (${{ matrix.name }})
     needs: [changes, matrix-config]
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_call')
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true' && (github.event_name == 'workflow_call')
     runs-on: windows-latest
     strategy:
       fail-fast: true
@@ -341,7 +338,7 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-windows-${{ matrix.name }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: \${{ github.event_name == 'workflow_call' }}
       - name: Check compilation
         run: cargo check --all --benches --tests --examples ${{ matrix.flags }}
 
@@ -351,7 +348,7 @@ jobs:
     if: >
       needs.changes.outputs.docs_only != 'true' &&
       needs.changes.outputs.has_reborn_tests == 'true' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_call') &&
+      (github.event_name == 'workflow_call') &&
       needs.changes.outputs.has_core_code == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -365,7 +362,7 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-bench
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: \${{ github.event_name == 'workflow_call' }}
       - name: Compile benchmarks
         run: cargo bench --all-features --no-run
 
@@ -375,7 +372,7 @@ jobs:
     if: >
       needs.changes.outputs.docs_only != 'true' &&
       needs.changes.outputs.has_reborn_tests == 'true' &&
-      (github.event_name == 'push' || (github.event_name == 'workflow_call' && inputs.include_docker))
+      (github.event_name == 'workflow_call' && inputs.include_docker)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -467,7 +464,6 @@ jobs:
     if: >
       needs.changes.outputs.docs_only != 'true' &&
       needs.changes.outputs.has_reborn_tests == 'true' &&
-      github.event_name != 'push' &&
       (github.event_name == 'workflow_call' || needs.changes.outputs.has_engine_replay_risk == 'true')
     uses: ./.github/workflows/replay-gate.yml
     with:
@@ -524,23 +520,23 @@ jobs:
           require_success "crate-tests" "${{ needs.crate-tests.result }}"
           require_success "root-reborn-parity-tests" "${{ needs.root-reborn-parity-tests.result }}"
 
-          if [[ "$event" == "push" || "$event" == "workflow_call" || "${{ needs.changes.outputs.has_runtime_heavy_risk }}" == "true" ]]; then
+          if [[ "$event" == "workflow_call" || "${{ needs.changes.outputs.has_runtime_heavy_risk }}" == "true" ]]; then
             require_success "heavy-integration-tests" "${{ needs.heavy-integration-tests.result }}"
           fi
 
-          if [[ "$event" != "push" && ( "$event" == "workflow_call" || "${{ needs.changes.outputs.has_engine_replay_risk }}" == "true" ) ]]; then
+          if [[ "$event" == "workflow_call" || "${{ needs.changes.outputs.has_engine_replay_risk }}" == "true" ]]; then
             require_success "replay-required" "${{ needs.replay-required.result }}"
           fi
 
-          if [[ "$event" == "push" || "$event" == "workflow_call" ]]; then
+          if [[ "$event" == "workflow_call" ]]; then
             require_success "windows-build" "${{ needs.windows-build.result }}"
           fi
 
-          if [[ ( "$event" == "push" || "$event" == "workflow_call" ) && "${{ needs.changes.outputs.has_core_code }}" == "true" ]]; then
+          if [[ "$event" == "workflow_call" && "${{ needs.changes.outputs.has_core_code }}" == "true" ]]; then
             require_success "bench-compile" "${{ needs.bench-compile.result }}"
           fi
 
-          if [[ "$event" == "push" || ( "$event" == "workflow_call" && "${{ inputs.include_docker }}" == "true" ) ]]; then
+          if [[ "$event" == "workflow_call" && "${{ inputs.include_docker }}" == "true" ]]; then
             require_success "docker-build" "${{ needs.docker-build.result }}"
           fi
 

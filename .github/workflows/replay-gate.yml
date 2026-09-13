@@ -4,15 +4,7 @@ name: Replay Snapshot Gate
 # change to engine dispatch, agent loop, or tool execution has to come with
 # an accepted snapshot diff. `reborn-tests.yml` calls this workflow directly
 # through `workflow_call` when replay becomes part of the protected
-# `Tests (Reborn)` roll-up, and `push: main` keeps the replay cache warm
-# between those runs.
-#
-# Cache strategy: GitHub Actions enforces a 10 GB per-repo cache quota, and
-# the repo routinely sits close to that ceiling, so PR-scoped caches get
-# LRU-evicted between runs. The `push: main` trigger primes a warm cache
-# every time work lands there; PRs targeting main then restore from that
-# cache (GitHub allows cross-ref restore from the PR's base) instead of
-# paying the full cold-cache compile on every push.
+# `Tests (Reborn)` roll-up.
 
 on:
   workflow_call:
@@ -21,9 +13,7 @@ on:
         description: Commit SHA or ref to test
         required: false
         type: string
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
