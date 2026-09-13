@@ -450,10 +450,10 @@ impl TurnRunnerWorker {
         claimed: &ClaimedTurnRun,
     ) -> Result<LoopExit, DriverInvocationError> {
         let monty = self.monty_driver.as_ref().ok_or_else(|| {
-            DriverInvocationError::HostCreationFailed {
+            DriverInvocationError::DriverError(AgentLoopDriverError::Unavailable {
                 reason: "no MontyTurnDriverPort wired; call with_monty_driver before running"
                     .to_string(),
-            }
+            })
         })?;
         let host = self
             .host_factory

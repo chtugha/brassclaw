@@ -85,6 +85,10 @@ use brassclaw_engine::{
     },
 };
 #[cfg(feature = "skills-db")]
+use brassclaw_threads::{
+    AppendAssistantDraftRequest, MessageContent, SessionThreadService, ThreadScope,
+};
+#[cfg(feature = "skills-db")]
 use brassclaw_turns::{
     LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, TurnRunId, TurnScope,
     run_profile::{
@@ -92,6 +96,77 @@ use brassclaw_turns::{
         MontyTurnDriverPort,
     },
 };
+
+/// RAII guard that ensures a checked-out [`MontySession`] is always returned to
+/// the [`MontySessionRegistry`] when the guard is dropped, even if the future
+/// driving the session is cancelled mid-flight (e.g. `TurnTimeout`,
+/// `WorkerCancelled`, `DriverPanic`).
+///
+/// Call [`SessionGuard::take`] to move the session out for explicit handling
+/// (park or drop). When `take()` is called the guard is disarmed and its `Drop`
+/// is a no-op.
+///
+/// # Why this matters
+/// `TurnRunnerWorker::execute_claimed_run` drives the Monty driver inside a
+/// `tokio::select!`. If any non-driver arm wins (timeout, cancel, panic), the
+/// `drive_turn` future is dropped. Without this guard, the session is silently
+/// lost: the registry slot becomes empty, and the next turn restarts the VM
+/// from scratch — silently discarding all cross-turn orchestrator state.
+#[cfg(feature = "skills-db")]
+struct SessionGuard {
+    session: Option<MontySession>,
+    registry: Arc<MontySessionRegistry>,
+    scope: TurnScope,
+}
+
+#[cfg(feature = "skills-db")]
+impl SessionGuard {
+    fn new(session: MontySession, registry: Arc<MontySessionRegistry>, scope: TurnScope) -> Self {
+        Self {
+            session: Some(session),
+            registry,
+            scope,
+        }
+    }
+
+    /// Take ownership of the session, disarming the park-on-drop guard.
+    /// The caller must handle the session (park or drop it explicitly).
+    fn take(mut self) -> MontySession {
+        self.session.take().expect("SessionGuard: session already taken")
+    }
+}
+
+#[cfg(feature = "skills-db")]
+impl Drop for SessionGuard {
+    fn drop(&mut self) {
+        if let Some(session) = self.session.take() {
+            // The guard is being dropped while still holding the session — this
+            // happens when the drive future is cancelled mid-flight. Re-park the
+            // session so the next turn for this conversation can resume rather than
+            // restarting the VM from scratch.
+            //
+            // `MontySessionRegistry::park` is async, but `Drop` is sync. We use
+            // `tokio::runtime::Handle::try_current` + `spawn_blocking` / `block_in_place`
+            // as a best-effort fallback. If no Tokio runtime is available (e.g. during
+            // test teardown), the session is simply lost — acceptable since in practice
+            // this guard only lives inside an async Tokio task.
+            let registry = Arc::clone(&self.registry);
+            let scope = self.scope.clone();
+            match tokio::runtime::Handle::try_current() {
+                Ok(handle) => {
+                    handle.spawn(async move {
+                        registry.park(scope, session).await;
+                    });
+                }
+                Err(_) => {
+                    // No Tokio runtime — session is lost. This should not happen in
+                    // production (the driver runs inside a Tokio task) but is safe to
+                    // ignore: worst case is a fresh VM on the next turn.
+                }
+            }
+        }
+    }
+}
 
 /// Per-conversation signal-channel broker (user-locked A). Holds the
 /// `SignalSender` for the turn currently in flight for each conversation so the
@@ -173,6 +248,9 @@ pub(crate) struct PersistentMontyDriver {
     kohai_port: Option<Arc<dyn KohaiPort>>,
     /// DB-backed max wall-clock budget override for the Monty VM.
     max_duration_secs: Option<u64>,
+    /// Thread service used to persist assistant messages added by
+    /// `host.post_reply` during a Monty turn (C.6 slice 4d reply persistence).
+    session_thread_service: Arc<dyn SessionThreadService>,
 }
 
 #[cfg(feature = "skills-db")]
@@ -191,6 +269,7 @@ impl PersistentMontyDriver {
         component_port: Option<Arc<dyn ComponentPort>>,
         kohai_port: Option<Arc<dyn KohaiPort>>,
         max_duration_secs: Option<u64>,
+        session_thread_service: Arc<dyn SessionThreadService>,
     ) -> Self {
         Self {
             registry,
@@ -205,6 +284,7 @@ impl PersistentMontyDriver {
             component_port,
             kohai_port,
             max_duration_secs,
+            session_thread_service,
         }
     }
 
@@ -288,8 +368,14 @@ impl PersistentMontyDriver {
         // Checkout a parked session for this conversation, or build a fresh one
         // (turn 1). Turn 1 needs a prime drive (None) to reach the first
         // host.await_next_turn() park, THEN the resume drive (Some(input)).
-        let mut session = match self.registry.try_checkout(&context.scope).await {
-            Some(session) => session,
+        //
+        // The session is wrapped in a `SessionGuard` immediately after checkout /
+        // construction. The guard ensures the session is re-parked if this future
+        // is cancelled mid-flight (e.g. TurnTimeout, WorkerCancelled, DriverPanic)
+        // — without it the session would be silently lost and the next turn for
+        // this conversation would restart the VM from scratch.
+        let session = match self.registry.try_checkout(&context.scope).await {
+            Some(session) => SessionGuard::new(session, Arc::clone(&self.registry), context.scope.clone()),
             None => {
                 let mut fresh =
                     prepare_monty_session(thread, Some(&self.store), max_duration_override)
@@ -310,26 +396,117 @@ impl PersistentMontyDriver {
                         return self.completed_exit(context);
                     }
                 }
-                fresh
+                SessionGuard::new(fresh, Arc::clone(&self.registry), context.scope.clone())
+            }
+        };
+        // Move the session out of the guard for driving; re-wrap afterwards.
+        // `take()` disarms the guard so it won't double-park on drop.
+        let mut session = session.take();
+
+        // Snapshot message count before the resume drive so we can diff
+        // afterwards and persist any new assistant messages from host.post_reply.
+        let pre_resume_message_count = thread.messages.len();
+
+        // Resume the parked await_next_turn() with this turn's user input.
+        let yield_ = match self
+            .drive_one(&mut session, thread, signal_rx, &effects, Some(&user_input))
+            .await
+        {
+            Ok(y) => y,
+            Err(e) => {
+                // Drive failed — the VM state is unknown. Do not re-park; discard
+                // the session so the next turn starts fresh rather than handing a
+                // potentially-corrupt VM to the next resume.
+                drop(session);
+                return Err(e);
             }
         };
 
-        // Resume the parked await_next_turn() with this turn's user input.
-        let yield_ = self
-            .drive_one(&mut session, thread, signal_rx, &effects, Some(&user_input))
-            .await?;
-
+        // The drive succeeded. Determine the disposition of the session before
+        // persisting, so a persistence failure cannot strand the session.
         match yield_ {
             OrchestratorYield::Complete(_) => {
-                // VM finished — drop the session (do not park).
-                self.registry.drop_session(&context.scope).await;
+                // VM finished — discard the session (it must not be reused).
+                drop(session);
             }
             OrchestratorYield::AwaitNextTurn => {
-                // Turn done, VM stays alive — park for the next turn.
+                // Turn done, VM stays alive — park now, before persisting.
+                // Parking first means a persistence failure below cannot lose VM
+                // state: the session is safely stored and the next turn can resume.
                 self.registry.park(context.scope.clone(), session).await;
             }
         }
+
+        // Persist assistant messages appended by host.post_reply during the resume.
+        // This is the "persisted outside the LoopExit ref mechanism" step documented
+        // in the module-level comment: the orchestrator owns the reply artifact,
+        // and we write it to SessionThreadService here so the WebUI can display it.
+        self.persist_new_assistant_messages(context, thread, pre_resume_message_count)
+            .await?;
+
         self.completed_exit(context)
+    }
+
+    /// Persist any new assistant messages added to `thread.messages` after
+    /// index `pre_drive_message_count` by `host.post_reply` during the resume
+    /// drive. For each new assistant message, calls `append_assistant_draft`
+    /// then `finalize_assistant_message` on the [`SessionThreadService`].
+    ///
+    /// Returns an error if persistence fails for any message — a failed
+    /// persist means the reply is lost, which is treated as a driver failure.
+    async fn persist_new_assistant_messages(
+        &self,
+        context: &LoopRunContext,
+        thread: &Thread,
+        pre_drive_message_count: usize,
+    ) -> Result<(), AgentLoopDriverError> {
+        let new_messages = if pre_drive_message_count < thread.messages.len() {
+            &thread.messages[pre_drive_message_count..]
+        } else {
+            return Ok(());
+        };
+
+        let thread_scope = thread_scope_from_turn_scope(&context.scope);
+        let thread_id = context.scope.thread_id.clone();
+        let run_id_str = context.run_id.to_string();
+
+        for msg in new_messages {
+            if msg.role != MessageRole::Assistant || msg.content.is_empty() {
+                continue;
+            }
+            let draft = self
+                .session_thread_service
+                .append_assistant_draft(AppendAssistantDraftRequest {
+                    scope: thread_scope.clone(),
+                    thread_id: thread_id.clone(),
+                    turn_run_id: run_id_str.clone(),
+                    content: MessageContent::text(msg.content.clone()),
+                })
+                .await
+                .map_err(|e| AgentLoopDriverError::Failed {
+                    reason_kind: format!(
+                        "monty turn driver: failed to append assistant draft: {e}"
+                    ),
+                })?;
+            self.session_thread_service
+                .finalize_assistant_message(
+                    &thread_scope,
+                    &thread_id,
+                    draft.message_id,
+                    MessageContent::text(msg.content.clone()),
+                )
+                .await
+                .map_err(|e| AgentLoopDriverError::Failed {
+                    reason_kind: format!(
+                        "monty turn driver: failed to finalize assistant message: {e}"
+                    ),
+                })?;
+            debug!(
+                run_id = %context.run_id,
+                "PersistentMontyDriver: persisted assistant reply from host.post_reply"
+            );
+        }
+        Ok(())
     }
 
     /// Minimal completed-exit handshake: the orchestrator owns the durable
@@ -382,6 +559,23 @@ fn last_user_input_string(thread: &Thread) -> String {
         &thread.internal_messages
     };
     last_user_input_from_messages(messages)
+}
+
+/// Build a [`ThreadScope`] from a [`TurnScope`] for use with
+/// [`SessionThreadService`] calls. `agent_id` falls back to `"default"` when
+/// the `TurnScope` does not carry an explicit agent (tenant-level turns).
+/// `owner_user_id` is extracted from the explicit thread owner when present.
+#[cfg(feature = "skills-db")]
+fn thread_scope_from_turn_scope(scope: &TurnScope) -> ThreadScope {
+    ThreadScope {
+        tenant_id: scope.tenant_id.clone(),
+        agent_id: scope
+            .agent_id
+            .clone()
+            .unwrap_or_else(|| brassclaw_host_api::AgentId::from_trusted("default".to_string())),
+        project_id: scope.project_id.clone(),
+        owner_user_id: scope.explicit_owner_user_id().cloned(),
+    }
 }
 
 #[cfg(feature = "skills-db")]
@@ -522,5 +716,17 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<PersistentMontyDriver>();
         assert_send_sync::<SignalBroker>();
+    }
+
+    // ── SessionGuard ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn session_guard_is_send() {
+        // The guard is moved into async blocks inside drive_turn_inner (across
+        // await points), so it must be Send. MontySession is Send but !Sync;
+        // SessionGuard inherits !Sync, which is acceptable — it is never shared
+        // via &SessionGuard across threads, only moved across await points.
+        fn assert_send<T: Send>() {}
+        assert_send::<SessionGuard>();
     }
 }

@@ -228,6 +228,11 @@ impl RunProfileDefinition {
         self
     }
 
+    pub fn with_allow_no_reply_completion(mut self, allow: bool) -> Self {
+        self.checkpoint_policy.allow_no_reply_completion = allow;
+        self
+    }
+
     fn resolve(&self, request: &RunProfileResolutionRequest) -> ResolvedRunProfile {
         let mut provenance = provenance_for(self, request);
         let resource_budget_policy = self.resolve_resource_budget_policy(request, &mut provenance);

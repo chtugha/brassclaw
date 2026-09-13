@@ -27,7 +27,6 @@ export function ProviderCard({
   onDelete,
   onReset,
   onNearaiLogin,
-  onNearaiWallet,
   onCodexLogin,
   loginBusy,
 }) {
@@ -85,9 +84,6 @@ export function ProviderCard({
     !isActive && provider.id === "nearai"
       ? html`
           ${apiKeyAction}
-          <${Button} type="button" variant="secondary" size="sm" disabled=${loginBusy} onClick=${onNearaiWallet}>
-            ${t("onboarding.nearWallet")}
-          <//>
           <${Button} type="button" variant="secondary" size="sm" disabled=${loginBusy} onClick=${() => onNearaiLogin("github")}>
             GitHub
           <//>

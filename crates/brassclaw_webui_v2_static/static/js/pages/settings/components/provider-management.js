@@ -122,7 +122,6 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
                             onDelete=${actions.handleDelete}
                             onReset=${actions.handleReset}
                             onNearaiLogin=${login.startNearai}
-                            onNearaiWallet=${login.startNearaiWallet}
                             onCodexLogin=${login.startCodex}
                             loginBusy=${loginBusy}
                           />

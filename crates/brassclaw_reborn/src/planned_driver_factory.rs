@@ -224,13 +224,19 @@ pub fn planned_default_profile_definition() -> Result<RunProfileDefinition, RunP
         .map_err(|reason| RunProfileRegistryError::InvalidProfile { reason })?;
     let capability_surface_profile_id = CapabilitySurfaceProfileId::new("interactive_tools")
         .map_err(|reason| RunProfileRegistryError::InvalidProfile { reason })?;
+    // The reborn-planned-default profile is used by the cross-turn-persistent
+    // Monty driver (C.6 slice 4d), which returns LoopCompletionKind::NoReply
+    // on every completed turn (the orchestrator posts its reply via
+    // host.post_reply outside the LoopExit ref mechanism). The profile must
+    // therefore permit no-reply completions.
     Ok(RunProfileDefinition::interactive_like(
         profile_id,
         descriptor,
         checkpoint_schema_id,
         planned_driver_checkpoint_schema_version(),
         capability_surface_profile_id,
-    ))
+    )
+    .with_allow_no_reply_completion(true))
 }
 
 pub fn subagent_planned_profile_definition() -> Result<RunProfileDefinition, RunProfileRegistryError>

@@ -96,6 +96,7 @@ where
 
     /// Remove and return the session for `key`. Use when the VM completed (the
     /// session must not be reused); returns `None` if nothing was parked.
+    #[allow(dead_code)]
     pub(crate) async fn drop_session(&self, key: &K) -> Option<V> {
         let mut entries = self.entries.lock().await;
         entries.remove(key).map(|entry| entry.value)

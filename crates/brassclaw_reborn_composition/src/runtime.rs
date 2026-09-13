@@ -2584,6 +2584,7 @@ pub async fn build_reborn_runtime(
             component_port,
             kohai_port,
             resolved_max_turn_duration.map(|d| d.as_secs()),
+            Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
         );
         Some(Arc::new(driver) as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>)
     };
