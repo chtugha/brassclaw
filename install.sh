@@ -221,8 +221,11 @@ create_systemd_service() {
             "$service_file" 2>/dev/null || true)
     fi
     if [[ -z "$webui_token" ]]; then
-        webui_token=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | dd bs=40 count=1 2>/dev/null || \
-                      LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | fold -w 40 | head -n 1)
+        # Avoid SIGPIPE under set -euo pipefail: read a large fixed block with
+        # dd so tr drains fully, then cut to 40 chars with ${var:0:40}.
+        _raw=$(dd if=/dev/urandom bs=256 count=1 2>/dev/null | LC_ALL=C tr -dc 'A-Za-z0-9')
+        webui_token="${_raw:0:40}"
+        unset _raw
     fi
     if [[ -z "$webui_user_id" ]]; then
         webui_user_id="brassclaw-admin"
