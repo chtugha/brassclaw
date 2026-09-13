@@ -188,6 +188,7 @@ registerPack("en", {
   "settings.actions": "Actions",
   "settings.orchestrator": "Orchestrator",
   "settings.scaffold": "Scaffold",
+  "settings.recipes": "Recipes",
   "settings.montyVm": "Monty VM",
   "settings.security": "Security",
   "settings.validationQueue": "Validation Queue",
@@ -1056,6 +1057,12 @@ registerPack("en", {
   "scaffold.none": "No scaffolds registered",
   "scaffold.noneDesc": "Scaffold components will appear here once they are validated.",
   "scaffold.library": "Scaffold library",
+
+  // Settings — Recipes tab.
+  "recipes.failedLoad": "Failed to load recipes: {message}",
+  "recipes.none": "No recipes registered",
+  "recipes.noneDesc": "Recipes will appear here once they have been validated.",
+  "recipes.library": "Recipe library",
 
   // Settings — Monty VM tab (Phase 6).
   "montyVm.failedLoad": "Failed to load Monty VM settings: {message}",

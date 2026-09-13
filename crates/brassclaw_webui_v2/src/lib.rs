@@ -87,7 +87,9 @@ pub use descriptors::{
     WEBUI_V2_ROUTE_UPDATE_INTERCEPTOR_CONFIG, WEBUI_V2_ROUTE_UPDATE_TOOL_PERMISSION,
     WEBUI_V2_ROUTE_UPSERT_INTENT_INPUT, WEBUI_V2_ROUTE_UPSERT_LLM_PROVIDER,
     WEBUI_V2_ROUTE_VALIDATE_COMPONENT, WEBUI_V2_ROUTE_GET_SETTINGS_CONFIG,
-    WEBUI_V2_ROUTE_PUT_SETTINGS_CONFIG_KEY, is_webui_v2_llm_config_route_id, webui_v2_routes,
+    WEBUI_V2_ROUTE_PUT_SETTINGS_CONFIG_KEY, WEBUI_V2_ROUTE_GET_SETTINGS_RECIPES,
+    WEBUI_V2_PATTERN_SETTINGS_RECIPES,
+    is_webui_v2_llm_config_route_id, webui_v2_routes,
 };
 pub use error::{WebUiV2HttpError, WebUiV2HttpErrorBody};
 pub use handlers::{
@@ -99,6 +101,7 @@ pub use handlers::{
     remove_extension, remove_skill, resolve_gate, send_message, set_active_llm,
     set_automation_state, setup_extension, start_codex_login, start_nearai_login, stream_events,
     stream_events_ws, test_llm_connection, update_automation, upsert_llm_provider,
+    get_settings_recipes,
 };
 pub use router::{
     WebUiV2RouteOptions, WebUiV2State, webui_v2_router, webui_v2_router_with_options,

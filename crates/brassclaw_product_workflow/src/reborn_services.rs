@@ -1581,6 +1581,18 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
+    /// List recipes for the Settings UI.
+    async fn list_settings_recipes(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
     /// Get the current Monty VM settings.
     async fn get_monty_vm_settings(
         &self,
@@ -4708,6 +4720,14 @@ impl RebornServicesApi for RebornServices {
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
         let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
         svc.list_scaffolds().await.map_err(map_settings_listing_error)
+    }
+
+    async fn list_settings_recipes(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        svc.list_recipes().await.map_err(map_settings_listing_error)
     }
 
     async fn get_settings_config(

@@ -79,6 +79,8 @@ pub(crate) mod inner {
         ComponentTableSpec::new("reborn_actions", false);
     pub(crate) const SPEC_EXTENSIONS: ComponentTableSpec =
         ComponentTableSpec::new("reborn_extensions_unified", false);
+    pub(crate) const SPEC_RECIPES: ComponentTableSpec =
+        ComponentTableSpec::new("reborn_recipes", false);
     // Future-phase tables — will return empty list if not yet migrated.
     pub(crate) const SPEC_ORCHESTRATORS: ComponentTableSpec =
         ComponentTableSpec::new("reborn_orchestrators", false);
@@ -218,6 +220,11 @@ pub(crate) mod inner {
 
     #[async_trait::async_trait]
     impl brassclaw_product_workflow::SettingsListingService for PgSettingsListingService {
+        async fn list_recipes(
+            &self,
+        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {
+            self.list(SPEC_RECIPES).await.map_err(map_listing_error)
+        }
         async fn list_skills(
             &self,
         ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {

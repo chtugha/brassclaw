@@ -1609,6 +1609,17 @@ pub async fn get_settings_scaffolds(
     Ok(Json(response))
 }
 
+/// `GET /api/settings/recipes`
+///
+/// List recipes for the Settings UI.
+pub async fn get_settings_recipes(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_recipes(caller).await?;
+    Ok(Json(response))
+}
+
 /// `GET /api/settings/config`
 ///
 /// Return all allowed config keys (agent.*, heartbeat.*, sandbox.*, routines.*,

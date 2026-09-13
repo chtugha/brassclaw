@@ -9,6 +9,7 @@ export const SETTINGS_TABS = [
   { id: "actions", labelKey: "settings.actions", icon: "bolt" },
   { id: "orchestrator", labelKey: "settings.orchestrator", icon: "layers" },
   { id: "scaffold", labelKey: "settings.scaffold", icon: "layers" },
+  { id: "recipes", labelKey: "settings.recipes", icon: "layers" },
   { id: "monty-vm", labelKey: "settings.montyVm", icon: "pulse" },
   { id: "security", labelKey: "settings.security", icon: "shield" },
   { id: "validation-queue", labelKey: "settings.validationQueue", icon: "shield" },

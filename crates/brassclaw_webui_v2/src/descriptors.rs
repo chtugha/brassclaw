@@ -108,6 +108,7 @@ pub const WEBUI_V2_ROUTE_GET_SETTINGS_EXTENSIONS: &str = "webui.v2.get_settings_
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_ACTIONS: &str = "webui.v2.get_settings_actions";
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_ORCHESTRATORS: &str = "webui.v2.get_settings_orchestrators";
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_SCAFFOLDS: &str = "webui.v2.get_settings_scaffolds";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_RECIPES: &str = "webui.v2.get_settings_recipes";
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_MONTY_VM: &str = "webui.v2.get_settings_monty_vm";
 pub const WEBUI_V2_ROUTE_PUT_SETTINGS_MONTY_VM: &str = "webui.v2.put_settings_monty_vm";
 pub const WEBUI_V2_ROUTE_POST_SETTINGS_MONTY_VM_RESTART: &str =
@@ -127,6 +128,7 @@ pub const WEBUI_V2_PATTERN_SETTINGS_EXTENSIONS: &str = "/api/settings/extensions
 pub const WEBUI_V2_PATTERN_SETTINGS_ACTIONS: &str = "/api/settings/actions";
 pub const WEBUI_V2_PATTERN_SETTINGS_ORCHESTRATORS: &str = "/api/settings/orchestrators";
 pub const WEBUI_V2_PATTERN_SETTINGS_SCAFFOLDS: &str = "/api/settings/scaffolds";
+pub const WEBUI_V2_PATTERN_SETTINGS_RECIPES: &str = "/api/settings/recipes";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM: &str = "/api/settings/monty-vm";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART: &str = "/api/settings/monty-vm/restart";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS: &str = "/api/settings/monty-vm/status";
@@ -300,6 +302,7 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         get_settings_actions_descriptor(),
         get_settings_orchestrators_descriptor(),
         get_settings_scaffolds_descriptor(),
+        get_settings_recipes_descriptor(),
         get_settings_monty_vm_descriptor(),
         put_settings_monty_vm_descriptor(),
         post_settings_monty_vm_restart_descriptor(),
@@ -1134,6 +1137,20 @@ fn get_settings_scaffolds_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_ROUTE_GET_SETTINGS_SCAFFOLDS,
         NetworkMethod::Get,
         WEBUI_V2_PATTERN_SETTINGS_SCAFFOLDS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_recipes_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_RECIPES,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_RECIPES,
         read_policy(
             read_rate_limit(),
             AuditTraceClass::UserAction,

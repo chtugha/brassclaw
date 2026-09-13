@@ -200,6 +200,9 @@ export function fetchSettingsOrchestrators() {
 export function fetchSettingsScaffolds() {
   return apiFetch("/api/settings/scaffolds");
 }
+export function fetchSettingsRecipes() {
+  return apiFetch("/api/settings/recipes");
+}
 
 // Phase 6 — Monty VM settings + lifecycle.
 export function fetchMontyVmSettings() {

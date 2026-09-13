@@ -511,6 +511,7 @@ pub trait ConfigStore: Send + Sync {
 /// `brassclaw_reborn_composition::pg_settings_listing`.
 #[async_trait]
 pub trait SettingsListingService: Send + Sync {
+    async fn list_recipes(&self) -> Result<SettingsListResponse, SettingsListingError>;
     async fn list_skills(&self) -> Result<SettingsListResponse, SettingsListingError>;
     async fn list_tools(&self) -> Result<SettingsListResponse, SettingsListingError>;
     async fn list_actions(&self) -> Result<SettingsListResponse, SettingsListingError>;
