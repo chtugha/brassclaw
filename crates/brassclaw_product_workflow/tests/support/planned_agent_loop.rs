@@ -30,10 +30,12 @@ use brassclaw_product_workflow::{
     InboundTurnService, ResolvedBinding,
 };
 use brassclaw_reborn::{
+    app_loop_family::{LoopFamilyConfig, build_loop_family_registry_with_full_config},
     loop_exit_applier::ThreadCheckpointLoopExitEvidencePort,
     model_routes::{
         ModelRoute, ModelRoutePolicy, ModelSelectionMode, ModelSlot, StaticModelRouteResolver,
     },
+    planned_driver_factory::default_planned_driver,
     runtime::{
         DefaultPlannedRuntimeConfig, DefaultPlannedRuntimeParts, RebornRuntimeLoopComposition,
         build_product_live_planned_runtime,
@@ -51,17 +53,17 @@ use brassclaw_threads::{
 };
 use brassclaw_trust::EffectiveTrustClass;
 use brassclaw_turns::{
-    CancelRunRequest, GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore,
-    InMemoryLoopCheckpointStore, InMemoryTurnStateStore, LoopResultRef, SanitizedCancelReason,
-    TurnActor, TurnCoordinator, TurnRunId, TurnRunState, TurnRunWake, TurnScope, TurnStateStore,
-    TurnStatus,
+    AgentLoopDriver, AgentLoopDriverError, AgentLoopDriverRunRequest, CancelRunRequest,
+    GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore,
+    InMemoryTurnStateStore, LoopExit, LoopResultRef, SanitizedCancelReason, TurnActor,
+    TurnCoordinator, TurnRunId, TurnRunState, TurnRunWake, TurnScope, TurnStateStore, TurnStatus,
     run_profile::{
-        AgentLoopHostError, CapabilityBatchInvocation, CapabilityBatchOutcome,
-        CapabilityCallCandidate, CapabilityDescriptorView, CapabilityInputRef,
-        CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage, CapabilitySurfaceVersion,
-        ConcurrencyHint, InMemoryLoopHostMilestoneSink, InstructionSafetyContext,
-        LoopCancelReasonKind, LoopCapabilityPort, LoopInputAckToken, LoopInputCursorToken,
-        LoopRunContext, NoOpBudgetAccountant, NoOpPolicyGuard, ParentLoopOutput, PromptMode,
+        AgentLoopDriverHost, AgentLoopHostError, CapabilityBatchInvocation, CapabilityBatchOutcome,
+        CapabilityCallCandidate, CapabilityDescriptorView, CapabilityInputRef, CapabilityInvocation,
+        CapabilityOutcome, CapabilityResultMessage, CapabilitySurfaceVersion, ConcurrencyHint,
+        InMemoryLoopHostMilestoneSink, InstructionSafetyContext, LoopCancelReasonKind,
+        LoopCapabilityPort, LoopInputAckToken, LoopInputCursorToken, LoopRunContext,
+        MontyTurnDriverPort, NoOpBudgetAccountant, NoOpPolicyGuard, ParentLoopOutput, PromptMode,
         VisibleCapabilityRequest, VisibleCapabilitySurface,
     },
 };
@@ -318,7 +320,7 @@ impl ProductLiveAgentLoopHarness {
             proposal_sink: None,
             #[cfg(feature = "root-llm-provider")]
             system_bundle_source: None,
-            monty_driver: None,
+            monty_driver: Some(harness_monty_driver()),
         })
         .expect("product-live planned AgentLoop harness should build");
 
@@ -913,6 +915,63 @@ impl HostIdentityContextSource for EmptyIdentityContextSource {
     ) -> Result<Vec<HostIdentityContextCandidate>, HostIdentityContextBuildError> {
         Ok(Vec::new())
     }
+}
+
+/// Wraps the canonical [`AgentLoopDriver`] behind [`MontyTurnDriverPort`] for
+/// harness tests. Routes the first `drive_turn` call through `driver.run` and
+/// subsequent calls (resumed turns) through `driver.resume` with a synthetic
+/// checkpoint id — matching the pattern used in the production-path integration
+/// tests in `loop_driver_host.rs`.
+struct WrappingMontyDriver {
+    driver: Arc<dyn AgentLoopDriver>,
+    call_count: std::sync::atomic::AtomicU32,
+}
+
+impl WrappingMontyDriver {
+    fn new(driver: Arc<dyn AgentLoopDriver>) -> Arc<Self> {
+        Arc::new(Self {
+            driver,
+            call_count: std::sync::atomic::AtomicU32::new(0),
+        })
+    }
+}
+
+#[async_trait]
+impl MontyTurnDriverPort for WrappingMontyDriver {
+    async fn drive_turn(
+        &self,
+        request: AgentLoopDriverRunRequest,
+        host: &(dyn AgentLoopDriverHost + Send + Sync),
+    ) -> Result<LoopExit, AgentLoopDriverError> {
+        use std::sync::atomic::Ordering;
+        let call = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if call == 0 {
+            self.driver.run(request, host).await
+        } else {
+            self.driver
+                .resume(
+                    brassclaw_turns::AgentLoopDriverResumeRequest {
+                        turn_id: request.turn_id,
+                        run_id: request.run_id,
+                        checkpoint_id: brassclaw_turns::TurnCheckpointId::new(),
+                        resolved_run_profile: request.resolved_run_profile,
+                    },
+                    host,
+                )
+                .await
+        }
+    }
+}
+
+/// Build a canonical `MontyTurnDriverPort` suitable for harness tests.
+/// Uses the default loop family config (unbounded token budget) so all
+/// stage-level behavior is exercised exactly as in production.
+pub fn harness_monty_driver() -> Arc<dyn MontyTurnDriverPort> {
+    let family_registry = build_loop_family_registry_with_full_config(LoopFamilyConfig::default())
+        .expect("harness loop family registry must build");
+    let build = default_planned_driver(family_registry)
+        .expect("harness planned driver must build");
+    WrappingMontyDriver::new(build.driver)
 }
 
 #[derive(Default)]

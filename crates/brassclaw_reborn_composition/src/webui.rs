@@ -469,6 +469,11 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             Arc::clone(pool),
             comp_port,
             scope,
+            // Default to the no-op spawner; the host binary (CLI / ingress) can
+            // replace it by calling `RebornWebuiBundle::with_mcp_listener_spawner`
+            // after construction, or wire a `DefaultMcpListenerSpawner` at this
+            // call site if the host owns the wiring.
+            Arc::new(crate::mcp_server_service::NoopMcpListenerSpawner),
         );
         api = api.with_mcp_server_service(
             Arc::new(svc) as Arc<dyn brassclaw_product_workflow::McpServerService>

@@ -22,6 +22,10 @@
 //!   reads v1 secrets / settings / DB.
 
 mod auth;
+/// Host-owned MCP listener spawner — binds TCP listener + drives axum::serve
+/// for the Orchestrator MCP Server (Phase V). Lives here because product/API
+/// crates are forbidden from calling TcpListener::bind or axum::serve.
+pub mod mcp_listener_spawner;
 mod oidc;
 mod session;
 mod signed_session_login;

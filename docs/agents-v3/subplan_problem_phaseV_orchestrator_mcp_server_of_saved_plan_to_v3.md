@@ -243,12 +243,12 @@ No new migrations. No new DB tables. No new Rust tools. No new execution primiti
 ## 6. Implementation Steps (Strict Sequential Order)
 
 - [x] Write this subplan
-- [ ] **V.1** — Scaffold `orchestrator_mcp_server.rs` with `OrchestratorMcpServer` struct, `OrchestratorMcpServerConfig`, `OrchestratorMcpError` (thiserror), and the `POST /mcp` Axum handler skeleton (initialize / tools/list / tools/call dispatch)
-- [ ] **V.2** — Implement `list_tools()`: query `composition_port.list_skills()` filtered to `consumer_tags @> '["02:orchestrator"]'`, project to `McpDiscoveredTool`; unit test with stub port
-- [ ] **V.3** — Implement `call_tool()`: resolve → compose → execute → MCP result; unit test gate-blocks dispatch; unit test successful dispatch
-- [ ] **V.4** — Update K4 `PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT` in `builtin_bootstrap.rs`
-- [ ] **V.5** — Wire `spawn_orchestrator_mcp_server` into composition startup; clippy clean; commit + push
-- [ ] Mark Phase V as `[x] Done` in `saved_plan_to_v3.md`
+- [x] **V.1** — Scaffold `orchestrator_mcp_server.rs` with `OrchestratorMcpServer` struct, `OrchestratorMcpServerConfig`, `OrchestratorMcpError` (thiserror), and the `POST /mcp` Axum handler skeleton (initialize / tools/list / tools/call dispatch)
+- [x] **V.2** — Implement `list_tools()`: query `composition_port.list_skills()` filtered to `consumer_tags @> '["02:orchestrator"]'`, project to `McpDiscoveredTool`; unit test with stub port
+- [x] **V.3** — Implement `call_tool()`: resolve → compose → execute → MCP result; unit test gate-blocks dispatch; unit test successful dispatch
+- [x] **V.4** — Update K4 `PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT` in `builtin_bootstrap.rs`
+- [x] **V.5** — Wire `spawn_orchestrator_mcp_server` into composition startup; clippy clean; commit + push
+- [x] Mark Phase V as `[x] Done` in `saved_plan_to_v3.md`
 
 ---
 

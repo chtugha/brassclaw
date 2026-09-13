@@ -6289,8 +6289,11 @@ So a third host port is required — the **only** crate that can bridge the two 
   > User decision Q-active_skills=B (obsolete, superseded by the orchestrated Sempai validation
   > system): delete them all (D1–D15 + DC1–DC2 in the subplan). Deferred cascades (documented,
   > NOT deleted): the `SkillActivated` pub event variant in `brassclaw_common` (serialization-
-  > breaking) + the `test_skill_oauth_flow.py` e2e assertion (separate OAuth scenario). Ships in
-  > the H8.4 commit. Run H8.4a before finalizing H8.4.
+  > breaking — removing it is a wire-format decision that requires a separate scoped plan;
+  > intentionally left in place) + the `test_skill_oauth_flow.py` e2e assertion (separate OAuth
+  > scenario, documented in `tests/e2e/E2E_DEBT.md`). Ships in the H8.4 commit.
+  > **Status [2025-07]: both deferred items remain intentionally unresolved; no code change
+  > is needed or planned at this time.**
   >
   > **⚠️ FIND-NEW-PASS12-01 + FIND-NEW-PASS12-02 — CRITICAL: the composition host CANNOT call
   > `handle_assemble_prior_knowledge` or `execute_recipe_orchestrator_channel` directly.**

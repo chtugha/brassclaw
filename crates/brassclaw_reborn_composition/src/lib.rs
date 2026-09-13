@@ -151,7 +151,7 @@ pub mod builtin_bootstrap;
 /// Phase V: Orchestrator MCP Server — exposes orchestrator Skills as MCP tools.
 pub mod orchestrator_mcp_server;
 /// Phase V: McpServerService — lifecycle management (start/stop) for the MCP server.
-pub(crate) mod mcp_server_service;
+pub mod mcp_server_service;
 /// Phase P Step 9: doc-sync file-watcher + PG listener.
 pub(crate) mod doc_sync_watcher;
 #[cfg(feature = "postgres")]

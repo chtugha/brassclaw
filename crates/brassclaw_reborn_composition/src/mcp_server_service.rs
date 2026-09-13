@@ -3,7 +3,14 @@
 //! Implements [`brassclaw_product_workflow::McpServerService`]: manages the
 //! lifecycle of the Orchestrator MCP Server (start / stop / status / settings).
 //!
-//! The server runs as a tokio background task holding an Axum `TcpListener`.
+//! The server runs as a tokio background task.  Socket binding and the HTTP
+//! serve loop are **not** owned here — they belong in the host binary
+//! (CLI or ingress crate) per the
+//! `reborn_product_api_crates_do_not_bind_http_ingress` architecture contract.
+//! The composition crate exposes a [`McpListenerSpawner`] trait; the host
+//! binary provides the concrete impl and passes it at construction time via
+//! [`McpServerServiceImpl::new`].
+//!
 //! Settings are kept in a `Mutex<McpServerSettings>` (in-process only; no DB
 //! row needed — the port and auto_start are operator-level runtime toggles).
 //!
@@ -15,9 +22,32 @@
 #![allow(dead_code)]
 #![forbid(unsafe_code)]
 
+/// Trait that binds a TCP socket on the given port and drives the HTTP serve
+/// loop for the supplied router.
+///
+/// **This trait must be implemented in a host-owned crate** (e.g.
+/// `brassclaw_reborn_webui_ingress` or the CLI binary).  The composition crate
+/// only defines the trait surface here — it never binds sockets or drives
+/// a serve loop directly, in compliance with
+/// `reborn_product_api_crates_do_not_bind_http_ingress`.
+///
+/// Not feature-gated — the trait surface is shared by any caller, not just the
+/// `skills-db` gated code path.
+#[async_trait::async_trait]
+pub trait McpListenerSpawner: Send + Sync {
+    /// Bind a TCP socket on `port` and spawn the HTTP serve loop for
+    /// `router`.  Returns the port that was actually bound (useful when the
+    /// caller requested port 0 for OS assignment) and a `JoinHandle` for the
+    /// serve task.
+    async fn bind_and_serve(
+        &self,
+        port: u16,
+        router: axum::Router,
+    ) -> Result<(u16, tokio::task::JoinHandle<()>), brassclaw_product_workflow::McpServerServiceError>;
+}
+
 #[cfg(feature = "skills-db")]
 mod inner {
-    use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
@@ -32,6 +62,8 @@ mod inner {
     use tokio::task::JoinHandle;
 
     use crate::orchestrator_mcp_server::{OrchestratorMcpServerConfig, orchestrator_mcp_router};
+
+    use super::McpListenerSpawner;
 
     // ── Internal state ────────────────────────────────────────────────────────
 
@@ -55,12 +87,16 @@ mod inner {
     /// Composition-side impl of [`McpServerService`].
     ///
     /// Holds settings + a handle to the running server task (when started).
+    /// Socket binding and the HTTP serve loop are delegated to the injected
+    /// [`McpListenerSpawner`] — which must be a host-owned impl from
+    /// `brassclaw_reborn_webui_ingress` or the CLI binary.
     pub(crate) struct McpServerServiceImpl {
         pool: Arc<PgPool>,
         port: Arc<dyn ComponentPort>,
         scope: ComponentScope,
         settings: Mutex<McpServerSettings>,
         running: Mutex<RunningServer>,
+        spawner: Arc<dyn McpListenerSpawner>,
     }
 
     impl McpServerServiceImpl {
@@ -68,6 +104,7 @@ mod inner {
             pool: Arc<PgPool>,
             port: Arc<dyn ComponentPort>,
             scope: ComponentScope,
+            spawner: Arc<dyn McpListenerSpawner>,
         ) -> Self {
             Self {
                 pool,
@@ -75,6 +112,7 @@ mod inner {
                 scope,
                 settings: Mutex::new(McpServerSettings::default()),
                 running: Mutex::new(RunningServer::default()),
+                spawner,
             }
         }
 
@@ -159,31 +197,21 @@ mod inner {
                 OrchestratorMcpServerConfig::default(),
             );
 
-            let addr: SocketAddr = format!("0.0.0.0:{port}").parse().map_err(|e: std::net::AddrParseError| {
-                McpServerServiceError::Invalid(e.to_string())
-            })?;
-
-            // Await happens here with no MutexGuard held.
-            let listener = tokio::net::TcpListener::bind(addr)
-                .await
-                .map_err(|e| McpServerServiceError::Internal(e.to_string()))?;
-
-            let handle = tokio::spawn(async move {
-                if let Err(e) = axum::serve(listener, router).await {
-                    tracing::debug!("MCP server stopped: {e}");
-                }
-            });
+            // Delegate socket binding and the HTTP serve loop to the host-owned spawner.
+            // The spawner lives in brassclaw_reborn_webui_ingress or the CLI binary,
+            // which are permitted to bind sockets and drive serve loops.
+            let (bound_port, handle) = self.spawner.bind_and_serve(port, router).await?;
 
             // Reacquire the guard to store the handle.
             {
                 let mut running = self.lock_running()?;
-                running.port = port;
+                running.port = bound_port;
                 running.handle = Some(handle);
             }
 
             Ok(McpServerActionResponse {
                 state: McpServerState::Running,
-                message: format!("MCP server started on port {port}"),
+                message: format!("MCP server started on port {bound_port}"),
             })
         }
 
@@ -206,7 +234,36 @@ mod inner {
     }
 }
 
-// ── Public re-export (feature-gated) ─────────────────────────────────────────
+// ── No-op spawner (used as default when the host has not wired a real one) ───
+
+/// A [`McpListenerSpawner`] that always returns an error.
+///
+/// Used as the default when the host binary has not injected a concrete spawner
+/// (e.g. in tests or when the MCP server is disabled by configuration).
+/// Calling [`McpServerService::start`] with this spawner will return
+/// `McpServerServiceError::Internal` with a clear message.
+pub struct NoopMcpListenerSpawner;
+
+#[async_trait::async_trait]
+impl McpListenerSpawner for NoopMcpListenerSpawner {
+    async fn bind_and_serve(
+        &self,
+        _port: u16,
+        _router: axum::Router,
+    ) -> Result<(u16, tokio::task::JoinHandle<()>), brassclaw_product_workflow::McpServerServiceError> {
+        Err(brassclaw_product_workflow::McpServerServiceError::Internal(
+            "no MCP listener spawner configured — wire a DefaultMcpListenerSpawner from the host binary".into(),
+        ))
+    }
+}
+
+// ── Public re-exports ────────────────────────────────────────────────────────
+
+/// Re-exported so that host-owned ingress crates can satisfy the
+/// [`McpListenerSpawner`] contract without taking a direct dependency on
+/// `brassclaw_product_workflow` (which is architecturally forbidden from the
+/// ingress crate per `reborn_crate_dependency_boundaries_hold`).
+pub use brassclaw_product_workflow::McpServerServiceError;
 
 #[cfg(feature = "skills-db")]
 pub(crate) use inner::McpServerServiceImpl;

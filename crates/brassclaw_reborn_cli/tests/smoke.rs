@@ -1,5 +1,6 @@
 use std::{
     io::Write,
+    net::TcpListener,
     path::Path,
     process::{Command, Stdio},
 };
@@ -10,12 +11,29 @@ fn reborn_bin() -> &'static str {
     env!("CARGO_BIN_EXE_brassclaw-reborn")
 }
 
+/// Allocate a free TCP port for an isolated embedded-Postgres instance.
+///
+/// Binds to port 0 (OS picks a free port), records the port, then closes the
+/// listener so the embedded Postgres server can bind to it. There is a small
+/// TOCTOU window, but it is acceptable for test isolation.
+fn free_pg_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .expect("bind to free port for isolated embedded Postgres")
+        .local_addr()
+        .expect("local addr")
+        .port()
+}
+
 fn isolated_no_llm_command(workspace: &Path, reborn_home: &Path) -> Command {
     let mut command = Command::new(reborn_bin());
     command
         .current_dir(workspace)
         .env_clear()
         .env("HOME", workspace.join("isolated-home"))
+        // Give each parallel binary invocation its own embedded-Postgres port
+        // so that concurrent tests that start the runtime do not fight over
+        // the default port 5434.
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .env("LLM_USE_CODEX_AUTH", "false")
         .env("LLM_BACKEND", "")
         .env("LLM_MODEL", "")
@@ -222,22 +240,15 @@ fn skills_list_reports_reborn_skill_data() {
         stdout.contains("source: reborn-local-dev"),
         "stdout: {stdout}"
     );
-    assert!(
-        stdout.contains("- code-review (system)"),
-        "stdout: {stdout}"
-    );
+    // Phase P.1 removed the bundled VFS skill installer; system skills are now
+    // seeded to the DB at runtime via builtin_bootstrap.rs — `skills list`
+    // (which does not start Postgres) only shows user-filesystem skills.
     assert!(
         stdout.contains("- catalog-helper (user)"),
         "stdout: {stdout}"
     );
     assert!(!stdout.contains("not-wired"), "stdout: {stdout}");
     assert!(!stdout.contains("v1_state"), "stdout: {stdout}");
-    assert!(
-        !reborn_home
-            .join("local-dev/system/skills/code-review/SKILL.md")
-            .exists(),
-        "skills list should report bundled skills without installing them"
-    );
     assert!(
         !v1_home.exists(),
         "skills list must not create or read v1 state"
@@ -304,12 +315,14 @@ fn skills_list_json_reports_reborn_skill_data() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid JSON");
-    assert!(
-        json["configured"].as_u64().expect("configured count") > 1,
+    // Phase P.1 removed the bundled VFS skill installer; system skills are now
+    // DB-seeded only. `skills list` (no Postgres) only shows user-filesystem skills.
+    assert_eq!(
+        json["configured"].as_u64().expect("configured count"),
+        1,
         "json: {json}"
     );
     assert_eq!(json["source"], "reborn-local-dev");
-    assert_skill_source(&json, "code-review", "system");
     assert_skill_source(&json, "json-helper", "user");
     // `details.profile` was removed from skills --json output.
     assert_eq!(json["details"]["owner_id"], "reborn-cli");
@@ -1132,6 +1145,7 @@ fn repl_exit_command_exits_cleanly_without_touching_v1_state() {
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home_dir)
         .env("BRASSCLAW_BASE_DIR", &v1_base_dir)
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1193,6 +1207,7 @@ fn repl_resolves_codex_auth_env_without_openai_api_key() {
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home_dir)
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .env("LLM_BACKEND", "openai_codex")
         .env("LLM_USE_CODEX_AUTH", "true")
         .env("CODEX_AUTH_PATH", &codex_auth_path)
@@ -1249,6 +1264,7 @@ fn repl_resolves_codex_api_key_auth_env_without_openai_api_key() {
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home_dir)
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .env("LLM_BACKEND", "openai_codex")
         .env("LLM_USE_CODEX_AUTH", "true")
         .env("CODEX_AUTH_PATH", &codex_auth_path)
@@ -1324,6 +1340,7 @@ fn repl_help_command_prints_repl_commands_and_exits_on_exit() {
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1359,6 +1376,7 @@ fn run_help_command_prints_repl_commands_and_exits_on_quit() {
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1396,6 +1414,7 @@ fn repl_piped_message_exits_nonzero_when_runtime_does_not_produce_reply() {
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1435,6 +1454,7 @@ fn run_message_exits_nonzero_when_runtime_does_not_produce_reply() {
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .output()
         .expect("brassclaw-reborn run --message should run");
 
@@ -1460,6 +1480,7 @@ fn run_piped_stdin_exits_nonzero_when_runtime_does_not_produce_reply() {
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1879,12 +1900,9 @@ fn run_warns_when_falling_back_to_stub_gateway() {
         stderr.contains("no LLM selection configured") && stderr.contains("Runs will fail"),
         "stderr should warn about degraded stub-gateway boot; got: {stderr}"
     );
-    assert!(
-        reborn_home
-            .join("local-dev/system/skills/code-review/SKILL.md")
-            .is_file(),
-        "runtime bootstrap should install bundled Reborn skills"
-    );
+    // Phase P.1 removed the bundled VFS skill installer: system skills are now
+    // seeded to the reborn_skills DB table at runtime via builtin_bootstrap.rs.
+    // No SKILL.md file is written to local-dev/system/skills/ anymore.
 }
 
 #[test]

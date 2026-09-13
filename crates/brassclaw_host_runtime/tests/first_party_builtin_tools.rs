@@ -38,7 +38,8 @@ use brassclaw_host_api::runtime_policy::{
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
     APPLY_PATCH_CAPABILITY_ID, CapabilitySurfacePolicy, CapabilitySurfaceVersion,
-    CommandExecutionOutput, CommandExecutionRequest, ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID,
+    COMPONENT_DB_CAPABILITY_ID, CommandExecutionOutput, CommandExecutionRequest,
+    ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID,
     GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID, HostRuntime,
     HostRuntimeServices, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID,
     MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID,
@@ -6634,6 +6635,7 @@ fn provider_id() -> ExtensionId {
 
 fn all_builtin_capability_ids() -> Vec<&'static str> {
     vec![
+        COMPONENT_DB_CAPABILITY_ID,
         ECHO_CAPABILITY_ID,
         TIME_CAPABILITY_ID,
         JSON_CAPABILITY_ID,

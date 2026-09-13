@@ -486,6 +486,12 @@ mod tests {
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("not wired") || err.to_string().contains("NotWired"));
+        // The "not wired" message is in the safe_summary field (not the Display
+        // output, which only shows the error kind for security reasons).
+        let summary = err.safe_summary().unwrap_or_default();
+        assert!(
+            summary.contains("not wired") || summary.contains("NotWired"),
+            "expected safe_summary to mention 'not wired', got: {summary:?}"
+        );
     }
 }

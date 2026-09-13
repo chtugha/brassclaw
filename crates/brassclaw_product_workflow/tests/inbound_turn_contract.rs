@@ -41,16 +41,19 @@ use brassclaw_threads::{
     ThreadScope,
 };
 use brassclaw_turns::{
-    CancelRunRequest, CancelRunResponse, DefaultTurnCoordinator, EventCursor, GetRunStateRequest,
-    IdempotencyKey, InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore,
-    InMemoryTurnStateStore, LoopResultRef, ResumeTurnRequest, ResumeTurnResponse, RunProfileId,
-    RunProfileVersion, SanitizedCancelReason, SubmitTurnRequest, SubmitTurnResponse, ThreadBusy,
-    TurnActor, TurnCoordinator, TurnError, TurnId, TurnRunId, TurnRunState, TurnRunWake, TurnScope,
-    TurnStateStore, TurnStatus,
+    AgentLoopDriverError, AgentLoopDriverRunRequest, CancelRunRequest, CancelRunResponse,
+    DefaultTurnCoordinator, EventCursor, GetRunStateRequest, IdempotencyKey,
+    InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore, InMemoryTurnStateStore,
+    LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, LoopResultRef, ResumeTurnRequest,
+    ResumeTurnResponse, RunProfileId, RunProfileVersion, SanitizedCancelReason, SubmitTurnRequest,
+    SubmitTurnResponse, ThreadBusy, TurnActor, TurnCoordinator, TurnError, TurnId, TurnRunId,
+    TurnRunState, TurnRunWake, TurnScope, TurnStateStore, TurnStatus,
     run_profile::{
-        AgentLoopHostError, InMemoryLoopHostMilestoneSink, InstructionSafetyContext,
-        LoopCancelReasonKind, LoopCapabilityPort, LoopInputAckToken, LoopInputCursorToken,
-        LoopRunContext, NoOpBudgetAccountant, NoOpPolicyGuard, PromptMode,
+        AgentLoopDriverHost, AgentLoopHostError, FinalizeAssistantMessage,
+        InMemoryLoopHostMilestoneSink, InstructionSafetyContext, LoopCancelReasonKind,
+        LoopCapabilityPort, LoopInputAckToken, LoopInputCursorToken, LoopModelRequest,
+        LoopPromptBundleRequest, LoopRunContext, MontyTurnDriverPort, NoOpBudgetAccountant,
+        NoOpPolicyGuard, ParentLoopOutput, PromptMode, VisibleCapabilityRequest,
     },
 };
 use chrono::Utc;
@@ -297,6 +300,81 @@ impl HostIdentityContextSource for EmptyIdentityContextSource {
         _mode: PromptMode,
     ) -> Result<Vec<HostIdentityContextCandidate>, HostIdentityContextBuildError> {
         Ok(Vec::new())
+    }
+}
+
+/// Minimal `MontyTurnDriverPort` for tests that only need one model call and a
+/// final reply. Calls `visible_capabilities`, `build_prompt_bundle`,
+/// `stream_model`, and `finalize_assistant_message` — the same path the
+/// production C.6 driver takes on a text-only turn.
+struct ReplyMontyDriver {
+    reply: String,
+}
+
+#[async_trait]
+impl MontyTurnDriverPort for ReplyMontyDriver {
+    async fn drive_turn(
+        &self,
+        _request: AgentLoopDriverRunRequest,
+        host: &(dyn AgentLoopDriverHost + Send + Sync),
+    ) -> Result<LoopExit, AgentLoopDriverError> {
+        let surface = host
+            .visible_capabilities(VisibleCapabilityRequest)
+            .await
+            .map_err(|e| AgentLoopDriverError::Failed {
+                reason_kind: e.to_string(),
+            })?;
+        let prompt_bundle = host
+            .build_prompt_bundle(LoopPromptBundleRequest {
+                mode: PromptMode::TextOnly,
+                context_cursor: None,
+                surface_version: Some(surface.version.clone()),
+                checkpoint_state_ref: None,
+                max_messages: Some(8),
+                inline_messages: Vec::new(),
+                capability_view: None,
+                recipe_hint: None,
+            })
+            .await
+            .map_err(|e| AgentLoopDriverError::Failed {
+                reason_kind: e.to_string(),
+            })?;
+        let model_response = host
+            .stream_model(LoopModelRequest {
+                messages: prompt_bundle.messages,
+                surface_version: Some(surface.version),
+                model_preference: None,
+                capability_view: None,
+                resolved_messages: None,
+            })
+            .await
+            .map_err(|e| AgentLoopDriverError::Failed {
+                reason_kind: e.to_string(),
+            })?;
+        let ParentLoopOutput::AssistantReply(_reply) = model_response.output else {
+            return Err(AgentLoopDriverError::Failed {
+                reason_kind: "unexpected_model_output".to_string(),
+            });
+        };
+        // Use the scripted reply text so tests can assert on a known string.
+        let reply_ref = host
+            .finalize_assistant_message(FinalizeAssistantMessage {
+                reply: brassclaw_turns::run_profile::AssistantReply {
+                    content: self.reply.clone(),
+                },
+            })
+            .await
+            .map_err(|e| AgentLoopDriverError::Failed {
+                reason_kind: e.to_string(),
+            })?;
+        Ok(LoopExit::Completed(LoopCompleted {
+            completion_kind: LoopCompletionKind::FinalReply,
+            reply_message_refs: vec![reply_ref],
+            result_refs: vec![],
+            final_checkpoint_id: None,
+            usage_summary_ref: None,
+            exit_id: LoopExitId::new("exit:reply-monty-driver").unwrap(),
+        }))
     }
 }
 
@@ -704,7 +782,9 @@ async fn user_message_no_profile_uses_product_live_runtime_and_persists_reply() 
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
-        monty_driver: None,
+        monty_driver: Some(Arc::new(ReplyMontyDriver {
+            reply: "planned product reply".to_string(),
+        })),
     })
     .expect("product-live runtime should build");
 
@@ -883,7 +963,9 @@ async fn user_message_no_profile_can_cancel_product_live_run_from_product_path()
         proposal_sink: None,
         #[cfg(feature = "root-llm-provider")]
         system_bundle_source: None,
-        monty_driver: None,
+        monty_driver: Some(Arc::new(ReplyMontyDriver {
+            reply: "reply after cancel".to_string(),
+        })),
     })
     .expect("product-live runtime should build");
 

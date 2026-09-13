@@ -7,14 +7,14 @@ use std::collections::BTreeSet;
 
 use brassclaw_host_api::CapabilityId;
 use brassclaw_host_runtime::{
-    APPLY_PATCH_CAPABILITY_ID, ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID,
-    HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID,
-    MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID,
-    MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID, SHELL_CAPABILITY_ID,
-    SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID, SKILL_REMOVE_CAPABILITY_ID,
-    SPAWN_SUBAGENT_CAPABILITY_ID, TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID,
-    TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID, WRITE_FILE_CAPABILITY_ID,
-    builtin_first_party_package,
+    APPLY_PATCH_CAPABILITY_ID, COMPONENT_DB_CAPABILITY_ID, ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID,
+    GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID, JSON_CAPABILITY_ID,
+    LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID,
+    MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID,
+    SHELL_CAPABILITY_ID, SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID,
+    SKILL_REMOVE_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID, TIME_CAPABILITY_ID,
+    TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID,
+    WRITE_FILE_CAPABILITY_ID, builtin_first_party_package,
 };
 use brassclaw_loop_support::{HostManagedModelMessageRole, HostManagedModelResponse};
 use brassclaw_turns::{TurnStatus, run_profile::LoopHostMilestoneKind};
@@ -49,6 +49,10 @@ const REBORN_FIRST_PARTY_E2E_COVERED_CAPABILITIES: &[&str] = &[
     TRIGGER_CREATE_CAPABILITY_ID,
     TRIGGER_LIST_CAPABILITY_ID,
     TRIGGER_REMOVE_CAPABILITY_ID,
+    // Phase P §0.22: pure-op (compute_hash / extract_section) coverage — no
+    // backend needed for these ops; DB-backed ops (upsert, read_hash, etc.)
+    // require a Postgres fixture and are covered by integration tests.
+    COMPONENT_DB_CAPABILITY_ID,
 ];
 
 const SKILL_NAME: &str = "reborn-skill-e2e";
@@ -570,6 +574,79 @@ async fn reborn_trace_memory_first_party_tools_parity() {
         "memory_tree should include alpha directory"
     );
     assert_eq!(results[3].output["result_count"], serde_json::json!(1));
+    harness.assert_model_exhausted();
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn reborn_trace_component_db_first_party_tool_parity() {
+    let component_db = CapabilityId::new(COMPONENT_DB_CAPABILITY_ID).expect("valid capability id");
+    // compute_hash is a pure op — no backend needed; SHA-256 of "hello" is known.
+    let input_text = "hello reborn component_db e2e";
+    let model_gateway = RebornTraceReplayModelGateway::with_scripted_steps([
+        RebornModelReplayStep::ProviderToolCalls {
+            calls: vec![RebornScriptedProviderToolCall::new(
+                component_db.clone(),
+                "call_component_db_compute_hash",
+                serde_json::json!({
+                    "op": "compute_hash",
+                    "text": input_text
+                }),
+            )],
+            expected_tool_results: Vec::new(),
+        },
+        RebornModelReplayStep::Response {
+            response: HostManagedModelResponse::assistant_reply("component_db trace complete"),
+            expected_tool_results: Vec::new(),
+        },
+    ]);
+    let mut harness = RebornBinaryE2EHarness::with_host_runtime_component_db_capabilities(
+        "room-trace-component-db-first-party-tool",
+        model_gateway,
+    )
+    .await
+    .expect("harness");
+    harness.start();
+
+    let submitted = harness
+        .submit_text(
+            "event-trace-component-db-first-party-tool",
+            "exercise component_db first-party tool",
+        )
+        .await
+        .expect("submit text");
+    harness
+        .wait_for_status(submitted.run_id, TurnStatus::Completed)
+        .await
+        .expect("completed run");
+    harness
+        .assert_final_reply("component_db trace complete")
+        .await
+        .expect("final reply");
+
+    let invocations = harness.capability_invocations();
+    assert_eq!(invocations.len(), 1);
+    assert_eq!(invocations[0].capability_id, component_db);
+
+    let results = harness.capability_results();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].capability_id, component_db);
+    // The compute_hash op returns a hex SHA-256 string — 64 hex chars.
+    let hash = results[0].output["hash"]
+        .as_str()
+        .expect("compute_hash output must have a hash field");
+    assert_eq!(hash.len(), 64, "SHA-256 hex must be 64 characters");
+    assert!(
+        hash.chars().all(|c| c.is_ascii_hexdigit()),
+        "SHA-256 hex must contain only hex digits"
+    );
+    // Verify the hash is deterministic and matches the known value.
+    assert_eq!(
+        hash,
+        brassclaw_host_runtime::sha256_hex(input_text),
+        "compute_hash must return a deterministic SHA-256"
+    );
     harness.assert_model_exhausted();
 
     harness.shutdown().await;

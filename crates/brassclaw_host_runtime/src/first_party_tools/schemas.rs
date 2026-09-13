@@ -339,6 +339,55 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
             "required": ["trigger_id"],
             "additionalProperties": false
         }),
+        // Phase P §0.22 — generic component-DB tool (pure ops: compute_hash,
+        // extract_section; DB-backed ops: read_hash, read_row, upsert, mark_stale).
+        "schemas/builtin/component_db.input.v1.json" => json!({
+            "type": "object",
+            "properties": {
+                "op": {
+                    "type": "string",
+                    "enum": [
+                        "compute_hash",
+                        "extract_section",
+                        "read_hash",
+                        "read_row",
+                        "upsert",
+                        "mark_stale"
+                    ],
+                    "description": "Operation to perform. compute_hash and extract_section are pure (no backend required). All others require a wired Postgres backend."
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Input text for compute_hash"
+                },
+                "markdown": {
+                    "type": "string",
+                    "description": "Markdown document for extract_section"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Section heading to extract (case-insensitive match, supports numbered headings)"
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "User id scope for DB operations"
+                },
+                "project_id": {
+                    "type": "string",
+                    "description": "Project id scope for DB operations"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Row name for read_hash, read_row"
+                },
+                "fields": {
+                    "type": "object",
+                    "description": "Row fields for upsert (name, description, content, content_hash required; source, similarity_parent_id, replaces_id, consumer_tags optional)"
+                }
+            },
+            "required": ["op"],
+            "additionalProperties": false
+        }),
         _ => return None,
     })
 }

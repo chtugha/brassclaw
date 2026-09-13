@@ -84,6 +84,21 @@ pub(crate) fn execute(
         .enable_all()
         .build()?;
     rt.block_on(async move {
+        // Start (or reuse) the embedded Postgres server and upgrade the build
+        // input to the Postgres-backed production profile. Mirrors the startup
+        // sequence in `serve.rs`. Without this, `build_reborn_runtime` panics
+        // because Postgres is mandatory and no pool has been wired.
+        #[cfg(feature = "postgres")]
+        let (runtime_input, managed_pg) =
+            start_postgres_for_run(runtime_input, &boot_config).await?;
+        #[cfg(not(feature = "postgres"))]
+        let managed_pg: Option<brassclaw_embedded_postgres::ManagedPostgres> = None;
+
+        // The `run` / `repl` path has no WebUI-authenticated user identity, so
+        // the trigger-fire access checker is not wired here (it requires an
+        // owner identity from the caller). This is permanently a no-op for
+        // the run path — trigger poller authentication is the responsibility
+        // of the operator-seeded trigger access store, not the runtime build.
         let runtime_input =
             with_run_local_trigger_fire_access_checker(runtime_input, &boot_config).await?;
         let runtime = build_reborn_runtime(runtime_input).await?;
@@ -98,20 +113,101 @@ pub(crate) fn execute(
             run_repl_loop(&runtime, &conversation, cancellation).await
         };
 
+        // Shut down the runtime first so the Postgres pool (owned by
+        // RebornServices) is dropped before stopping the embedded PG server
+        // (§2.2, §5.5: pool must be dropped before pg_ctl stop).
         runtime.shutdown().await?;
+        #[cfg(feature = "postgres")]
+        if let Some(pg) = managed_pg
+            && let Err(error) = pg.shutdown().await
+        {
+            // Use debug! — info!/warn! in a background task corrupts the terminal UI (AGENTS.md §67).
+            tracing::debug!(%error, "embedded Postgres shutdown failed (run path)");
+        }
         outcome
     })?;
     Ok(())
 }
 
 /// Wires the local trigger-fire access checker into `runtime_input` for the
-/// `run` command. Currently a no-op until embedded PG is plumbed into the
-/// local-dev run path (known tech-debt: wire pool after embedded-PG startup).
+/// `run` / `repl` path. This is permanently a no-op: unlike the `serve` path
+/// (which has an authenticated WebUI user identity to seed), the run path
+/// has no such identity. Trigger-poller authentication is the operator's
+/// responsibility via the trigger access store.
 async fn with_run_local_trigger_fire_access_checker(
     runtime_input: RebornRuntimeInput,
     _config: &RebornBootConfig,
 ) -> anyhow::Result<RebornRuntimeInput> {
     Ok(runtime_input)
+}
+
+/// Start (or reuse) the embedded Postgres server for the `run` / `repl` path
+/// and upgrade the `RebornRuntimeInput` to a Postgres-backed production input.
+///
+/// Mirrors `serve.rs`'s `start_postgres_and_upgrade_input` — see that function
+/// for full documentation of the startup sequence and shutdown ordering.
+///
+/// The `run` path does NOT wire a local trigger-fire access checker (no WebUI
+/// user identity is present). That responsibility belongs to the `serve` path.
+#[cfg(feature = "postgres")]
+async fn start_postgres_for_run(
+    input: RebornRuntimeInput,
+    boot_config: &RebornBootConfig,
+) -> anyhow::Result<(
+    RebornRuntimeInput,
+    Option<brassclaw_embedded_postgres::ManagedPostgres>,
+)> {
+    use brassclaw_embedded_postgres::{EmbeddedPostgresConfig, ManagedPostgres};
+    use brassclaw_pg::migrations;
+    use brassclaw_pg::pool::build_pool;
+    use brassclaw_reborn_composition::local_dev_runtime_policy;
+    // SecretMaterial is secrecy::SecretString — use directly to avoid
+    // depending on brassclaw_secrets as a direct CLI dep.
+    use secrecy::SecretString as SecretMaterial;
+
+    // If the operator supplied an external PG URL, use it directly.
+    let (pg_url, managed_pg) = if let Ok(url) = std::env::var("BRASSCLAW_PG_URL") {
+        (url, None)
+    } else {
+        let config = EmbeddedPostgresConfig::from_reborn_home(boot_config.home().path());
+        let managed = ManagedPostgres::start(config)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to start embedded Postgres: {e}"))?;
+        let url = managed.connection_url();
+        (url, Some(managed))
+    };
+
+    let pool = build_pool(&pg_url)
+        .map_err(|e| anyhow::anyhow!("failed to build Postgres connection pool: {e}"))?;
+
+    migrations::run_migrations(&pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Postgres schema migrations failed: {e}"))?;
+
+    // Carry the owner_id from the existing local-dev input so the runtime's
+    // actor identity is preserved.
+    let owner_id = input
+        .services
+        .as_ref()
+        .map(|s| s.owner_id().to_string())
+        .unwrap_or_else(|| "reborn-cli".to_string());
+
+    let reborn_home = boot_config.home().path().to_path_buf();
+    let runtime_policy = local_dev_runtime_policy()
+        .map_err(|e| anyhow::anyhow!("failed to resolve local-dev runtime policy: {e}"))?;
+    let pg_input = RebornBuildInput::postgres_with_reborn_home(
+        owner_id,
+        pool,
+        SecretMaterial::from(pg_url),
+        reborn_home,
+    )
+    .with_runtime_policy(runtime_policy);
+
+    // Replace the local-dev build input with the Postgres-backed one while
+    // preserving every other runtime-level setting on `input`.
+    let mut upgraded = input;
+    upgraded.services = Some(pg_input);
+    Ok((upgraded, managed_pg))
 }
 
 fn print_runtime_banner(config: &RebornBootConfig) {

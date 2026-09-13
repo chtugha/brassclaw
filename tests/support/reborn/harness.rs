@@ -44,16 +44,17 @@ use brassclaw_host_api::{
 };
 use brassclaw_host_runtime::{
     APPLY_PATCH_CAPABILITY_ID, BUILTIN_FIRST_PARTY_PROVIDER, CapabilitySurfacePolicy,
-    CapabilitySurfaceVersion as HostRuntimeCapabilitySurfaceVersion, ECHO_CAPABILITY_ID,
-    GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID,
-    HostRuntime, HostRuntimeServices, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID,
-    MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID,
-    MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID, RuntimeCredentialAccessSecret,
-    RuntimeCredentialAccountRequest, RuntimeCredentialAccountResolver, SHELL_CAPABILITY_ID,
-    SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID, SKILL_REMOVE_CAPABILITY_ID,
-    SPAWN_SUBAGENT_CAPABILITY_ID, SurfaceKind, TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID,
-    TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID, WRITE_FILE_CAPABILITY_ID,
-    builtin_first_party_handlers, builtin_first_party_package,
+    CapabilitySurfaceVersion as HostRuntimeCapabilitySurfaceVersion, COMPONENT_DB_CAPABILITY_ID,
+    ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID,
+    HTTP_SAVE_CAPABILITY_ID, HostRuntime, HostRuntimeServices, JSON_CAPABILITY_ID,
+    LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID,
+    MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID,
+    RuntimeCredentialAccessSecret, RuntimeCredentialAccountRequest,
+    RuntimeCredentialAccountResolver, SHELL_CAPABILITY_ID, SKILL_INSTALL_CAPABILITY_ID,
+    SKILL_LIST_CAPABILITY_ID, SKILL_REMOVE_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID,
+    SurfaceKind, TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID,
+    TRIGGER_REMOVE_CAPABILITY_ID, WRITE_FILE_CAPABILITY_ID, builtin_first_party_handlers,
+    builtin_first_party_package,
 };
 use brassclaw_loop_support::{
     CapabilityAllowSet, CapabilityResolveError, CapabilityResultWrite,
@@ -80,9 +81,13 @@ use brassclaw_reborn::subagent::{
     goal_store::InMemoryBoundedSubagentGoalStore,
 };
 use brassclaw_reborn::{
+    app_loop_family::build_loop_family_registry,
     loop_exit_applier::{
         BlockedEvidenceRequest, CompletionEvidenceRequest, FailureEvidenceRequest,
         FinalCheckpointEvidenceRequest, LoopExitEvidencePort, ThreadCheckpointLoopExitEvidencePort,
+    },
+    planned_driver_factory::{
+        SUBAGENT_PLANNED_DRIVER_ID, default_planned_driver, subagent_planned_driver,
     },
     runtime::{
         DefaultPlannedRuntimeConfig, DefaultPlannedRuntimeParts, RebornRuntimeLoopComposition,
@@ -106,20 +111,21 @@ use brassclaw_threads::{
 use brassclaw_trust::{AdminConfig, AdminEntry, HostTrustAssignment, HostTrustPolicy};
 use brassclaw_trust::{EffectiveTrustClass, TrustDecision};
 use brassclaw_turns::{
-    CancelRunRequest, FilesystemTurnStateStore, GateRef, GetLoopCheckpointRequest,
-    GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore, LoopBlockedKind,
-    LoopCheckpointKind, LoopCheckpointStore, LoopGateRef, LoopResultRef, ReplyTargetBindingRef,
-    ResumeTurnRequest, SanitizedCancelReason, SourceBindingRef, TurnActor, TurnCoordinator,
-    TurnError, TurnRunId, TurnRunRecord, TurnRunState, TurnScope, TurnSpawnTreeStateStore,
-    TurnStateStore, TurnStatus,
+    AgentLoopDriverResumeRequest, CancelRunRequest, FilesystemTurnStateStore, GateRef,
+    GetLoopCheckpointRequest, GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore,
+    LoopBlockedKind, LoopCheckpointKind, LoopCheckpointStore, LoopExit, LoopGateRef, LoopResultRef,
+    ReplyTargetBindingRef, ResumeTurnRequest, SanitizedCancelReason, SourceBindingRef,
+    TurnActor, TurnCoordinator, TurnError, TurnRunId, TurnRunRecord,
+    TurnRunState, TurnScope, TurnSpawnTreeStateStore, TurnStateStore, TurnStatus,
     run_profile::{
+        AgentLoopDriver, AgentLoopDriverError, AgentLoopDriverHost, AgentLoopDriverRunRequest,
         AgentLoopHostError, AgentLoopHostErrorKind, CapabilityBatchInvocation,
         CapabilityBatchOutcome, CapabilityCallCandidate, CapabilityDescriptorView,
         CapabilityInputRef, CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage,
         CapabilitySurfaceVersion, ConcurrencyHint, LoopCapabilityPort, LoopHostMilestone,
-        LoopHostMilestoneKind, LoopHostMilestoneSink, LoopRunContext, ParentLoopOutput, PromptMode,
-        ProviderToolCall, ProviderToolCallReplay, ProviderToolDefinition, VisibleCapabilityRequest,
-        VisibleCapabilitySurface,
+        LoopHostMilestoneKind, LoopHostMilestoneSink, LoopRunContext, MontyTurnDriverPort,
+        ParentLoopOutput, PromptMode, ProviderToolCall, ProviderToolCallReplay,
+        ProviderToolDefinition, VisibleCapabilityRequest, VisibleCapabilitySurface,
     },
 };
 use serde_json::json;
@@ -137,6 +143,100 @@ use super::{
 };
 
 pub type HarnessWaitConfig = WaitConfig;
+
+/// [`MontyTurnDriverPort`] for the test harness.
+///
+/// The pre-C.6-slice-5 driver_registry turn-dispatch path was retired (C.6 slice
+/// 5); the turn runner now exclusively calls `MontyTurnDriverPort::drive_turn`.
+///
+/// Routes each turn to the correct `PlannedDriver` variant based on the
+/// `resolved_run_profile.loop_driver.id`:
+///
+/// - `reborn:planned-default` → main conversation driver
+/// - `reborn:planned-subagent` → child (subagent) driver
+///
+/// Within each variant, run vs resume is determined by inspecting the persisted
+/// `TurnRunState.checkpoint_id`:
+///
+/// - `None` → fresh turn → `AgentLoopDriver::run`
+/// - `Some(id)` → resumed after approval/dependent-run block →
+///   `AgentLoopDriver::resume` with the real checkpoint id so the driver can
+///   reload the `BeforeBlock` state it stored during the initial run.
+struct HarnessPlannedMontyDriver {
+    default_driver: Arc<dyn AgentLoopDriver>,
+    subagent_driver: Arc<dyn AgentLoopDriver>,
+    turn_state: Arc<dyn TurnStateStore>,
+}
+
+impl HarnessPlannedMontyDriver {
+    fn new(
+        turn_state: Arc<dyn TurnStateStore>,
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
+        let family_registry = build_loop_family_registry()?;
+        let default_build = default_planned_driver(Arc::clone(&family_registry))?;
+        let subagent_build = subagent_planned_driver(family_registry)?;
+        Ok(Arc::new(Self {
+            default_driver: default_build.driver,
+            subagent_driver: subagent_build.driver,
+            turn_state,
+        }))
+    }
+
+    fn driver_for(
+        &self,
+        request: &AgentLoopDriverRunRequest,
+    ) -> Result<&Arc<dyn AgentLoopDriver>, AgentLoopDriverError> {
+        let id = request.resolved_run_profile.loop_driver.id.as_str();
+        if id == SUBAGENT_PLANNED_DRIVER_ID {
+            Ok(&self.subagent_driver)
+        } else {
+            // Covers reborn:planned-default and any unrecognised ID — the
+            // driver's own validate_run_request will reject mismatches.
+            Ok(&self.default_driver)
+        }
+    }
+}
+
+#[async_trait]
+impl MontyTurnDriverPort for HarnessPlannedMontyDriver {
+    async fn drive_turn(
+        &self,
+        request: AgentLoopDriverRunRequest,
+        host: &(dyn AgentLoopDriverHost + Send + Sync),
+    ) -> Result<LoopExit, AgentLoopDriverError> {
+        let driver = self.driver_for(&request)?;
+        // Determine run vs resume by inspecting the persisted run state.
+        // A resumed run carries a checkpoint_id set when it was blocked;
+        // a fresh run has checkpoint_id = None.
+        let run_context = host.run_context();
+        let run_state = self
+            .turn_state
+            .get_run_state(GetRunStateRequest {
+                scope: run_context.scope.clone(),
+                run_id: request.run_id,
+            })
+            .await
+            .map_err(|e| AgentLoopDriverError::Unavailable {
+                reason: format!("harness: could not fetch run state: {e}"),
+            })?;
+
+        if let Some(checkpoint_id) = run_state.checkpoint_id {
+            driver
+                .resume(
+                    AgentLoopDriverResumeRequest {
+                        turn_id: request.turn_id,
+                        run_id: request.run_id,
+                        checkpoint_id,
+                        resolved_run_profile: request.resolved_run_profile,
+                    },
+                    host,
+                )
+                .await
+        } else {
+            driver.run(request, host).await
+        }
+    }
+}
 
 const TEST_CAPABILITY_ID: &str = "test.echo";
 const TEST_CAPABILITY_SURFACE_VERSION: &str = "trace_replay_v1";
@@ -550,6 +650,20 @@ impl RebornBinaryE2EHarness {
         .await
     }
 
+    pub async fn with_host_runtime_component_db_capabilities(
+        conversation_id: &str,
+        model_gateway: RebornTraceReplayModelGateway,
+    ) -> HarnessResult<Self> {
+        let host_runtime = Arc::new(HostRuntimeCapabilityHarness::component_db_tools().await?);
+        Self::with_model_gateway_capability_mode(
+            conversation_id,
+            model_gateway,
+            HarnessCapabilityMode::HostRuntime(host_runtime),
+            false,
+        )
+        .await
+    }
+
     pub async fn with_host_runtime_core_builtin_capabilities_network_policy(
         conversation_id: &str,
         model_gateway: RebornTraceReplayModelGateway,
@@ -906,7 +1020,9 @@ impl RebornBinaryE2EHarness {
             sempai_gateway: None,
             interceptor_mode: None,
             proposal_sink: None,
-            monty_driver: None,
+            monty_driver: Some(HarnessPlannedMontyDriver::new(
+                turn_store.clone() as Arc<dyn TurnStateStore>,
+            )?),
         })?;
         let binding_service: Arc<dyn ConversationBindingService> =
             Arc::new(product_harness.binding_service()?);
@@ -1602,6 +1718,21 @@ impl HostRuntimeCapabilityHarness {
             Vec::new(),
             ExtensionId::new(BUILTIN_FIRST_PARTY_PROVIDER)?,
             UserId::new("reborn-e2e-trigger-management-user")?,
+            MountView::default(),
+        )
+        .await
+    }
+
+    /// `builtin.component_db` harness — no backend wired; `compute_hash` and
+    /// `extract_section` are pure ops that work without one.
+    async fn component_db_tools() -> HarnessResult<Self> {
+        Self::new_with_mounts(
+            "reborn-e2e-component-db-tools",
+            vec![CapabilityId::new(COMPONENT_DB_CAPABILITY_ID)?],
+            vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
+            Vec::new(),
+            ExtensionId::new(BUILTIN_FIRST_PARTY_PROVIDER)?,
+            UserId::new("reborn-e2e-component-db-user")?,
             MountView::default(),
         )
         .await

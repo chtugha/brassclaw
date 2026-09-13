@@ -35,8 +35,8 @@
 //! This module exposes [`orchestrator_mcp_router`] which returns an
 //! `axum::Router`.  Per the project's HTTP boundary rule
 //! (`reborn_product_api_crates_do_not_bind_http_ingress`), this crate does
-//! **not** bind a `TcpListener` or drive an `axum::serve` future.  The host
-//! binary (CLI / daemon) owns the listener lifecycle.
+//! **not** bind sockets or drive a serve loop.  The host binary (CLI / daemon)
+//! owns the listener lifecycle.
 
 #![allow(dead_code)]
 #![forbid(unsafe_code)]
