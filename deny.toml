@@ -53,6 +53,13 @@ ignore = [
     # UAF/double-free is not reachable in practice.
     # Remove once ratatui upgrades to lru ≥ 0.18.2.
     "RUSTSEC-2026-0253",
+    # h2: unbounded empty DATA frames CPU exhaustion (RUSTSEC-2026-0258).
+    # The affected h2 0.3.27 is a transitive dep via libsql 0.6.0 → hyper 0.14.
+    # The h2 0.3.x branch has no patched release; h2 0.4.x is updated to 0.4.19
+    # (patched). BrassClaw does not expose the h2/hyper 0.14 path to untrusted
+    # callers — it is used only for outbound libsql connections under operator
+    # control. Remove once libsql upgrades off hyper 0.14 / h2 0.3.
+    "RUSTSEC-2026-0258",
 ]
 
 [licenses]
