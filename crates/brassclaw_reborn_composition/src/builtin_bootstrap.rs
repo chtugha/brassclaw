@@ -2848,7 +2848,7 @@ fn tool_list_dir_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"path": "{{path}}"})),
-        effect_type: "read_filesystem".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some("path must be within the active workspace mount".into()),
         error_handling: Some(
             "path-not-found or permission denied -> tool error; output capped at 1 MiB".into(),
@@ -2882,7 +2882,7 @@ fn tool_glob_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"pattern": "{{pattern}}"})),
-        effect_type: "read_filesystem".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some(
             "pattern required; path must be within the active workspace mount".into(),
         ),
@@ -2927,7 +2927,7 @@ fn tool_grep_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"pattern": "{{pattern}}"})),
-        effect_type: "read_filesystem".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some(
             "pattern required; path must be within the active workspace mount".into(),
         ),
@@ -5301,7 +5301,7 @@ fn tool_http_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"url": "{{url}}"})),
-        effect_type: "network_egress".to_string(),
+        effect_type: "network".to_string(),
         preconditions: Some(
             "url must be absolute http/https; network egress must be permitted by policy".into(),
         ),
@@ -7028,7 +7028,7 @@ fn tool_memory_search_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"query": "{{query}}"})),
-        effect_type: "read_memory".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some("query must not be empty".into()),
         error_handling: Some(
             "empty result is not an error; memory backend unavailable -> tool error".into(),
@@ -7068,7 +7068,7 @@ fn tool_memory_write_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"content": "{{content}}"})),
-        effect_type: "write_memory".to_string(),
+        effect_type: "write".to_string(),
         preconditions: Some("content required unless using bootstrap target".into()),
         error_handling: Some(
             "old_string not found in patch mode -> tool error; write failure -> tool error".into(),
@@ -7100,7 +7100,7 @@ fn tool_memory_read_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"path": "{{path}}"})),
-        effect_type: "read_memory".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some("path must not be empty".into()),
         error_handling: Some("document not found -> tool error".into()),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -7130,7 +7130,7 @@ fn tool_memory_tree_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({})),
-        effect_type: "read_memory".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some("path, if supplied, must resolve within the memory mount".into()),
         error_handling: Some("path not found in memory -> tool error".into()),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -12043,7 +12043,7 @@ fn tool_spawn_subagent_row(tenant: &str) -> NewPgTool {
             "required": ["goal"]
         })),
         param_template: Some(json!({"goal": "{{goal}}"})),
-        effect_type: "ExternalWrite".to_string(),
+        effect_type: "exec".to_string(),
         preconditions: Some("".into()),
         error_handling: Some("".into()),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -12073,7 +12073,7 @@ fn tool_trigger_create_row(tenant: &str) -> NewPgTool {
             "required": ["name", "schedule", "recipe_name"]
         })),
         param_template: Some(json!({"name": "{{name}}"})),
-        effect_type: "ExternalWrite".to_string(),
+        effect_type: "exec".to_string(),
         preconditions: Some("".into()),
         error_handling: Some("".into()),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -12099,7 +12099,7 @@ fn tool_trigger_list_row(tenant: &str) -> NewPgTool {
             "required": []
         })),
         param_template: Some(json!({})),
-        effect_type: "Read".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some("".into()),
         error_handling: Some("".into()),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -12127,7 +12127,7 @@ fn tool_trigger_remove_row(tenant: &str) -> NewPgTool {
             "required": ["trigger_name"]
         })),
         param_template: Some(json!({"trigger_name": "{{trigger_name}}"})),
-        effect_type: "ExternalWrite".to_string(),
+        effect_type: "write".to_string(),
         preconditions: Some("".into()),
         error_handling: Some("".into()),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -13547,7 +13547,7 @@ fn tool_time_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"operation": "now"})),
-        effect_type: "read_only".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some("invalid timezone → tool error; invalid timestamp → tool error".into()),
         error_handling: Some(
             "invalid timezone → tool error; invalid timestamp → tool error".into(),
@@ -13581,7 +13581,7 @@ fn tool_json_row(tenant: &str) -> NewPgTool {
             "additionalProperties": false
         })),
         param_template: Some(json!({"operation": "{{operation}}", "data": "{{data}}"})),
-        effect_type: "read_only".to_string(),
+        effect_type: "read".to_string(),
         preconditions: Some("operation required; data required".into()),
         error_handling: Some(
             "invalid JSON for parse/query → tool error; path not found → null".into(),
@@ -13610,7 +13610,7 @@ fn tool_echo_row(tenant: &str) -> NewPgTool {
             "required": ["message"]
         })),
         param_template: Some(json!({"message": "{{message}}"})),
-        effect_type: "Read".to_string(),
+        effect_type: "read".to_string(),
         preconditions: None,
         error_handling: None,
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -13636,7 +13636,7 @@ fn tool_skill_list_row(tenant: &str) -> NewPgTool {
             "required": []
         })),
         param_template: Some(json!({})),
-        effect_type: "Read".to_string(),
+        effect_type: "read".to_string(),
         preconditions: None,
         error_handling: None,
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -13664,7 +13664,7 @@ fn tool_skill_install_row(tenant: &str) -> NewPgTool {
             "required": ["source_url"]
         })),
         param_template: Some(json!({"source_url": "{{source_url}}"})),
-        effect_type: "Write".to_string(),
+        effect_type: "write".to_string(),
         preconditions: None,
         error_handling: None,
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
@@ -13691,7 +13691,7 @@ fn tool_skill_remove_row(tenant: &str) -> NewPgTool {
             "required": ["skill_name"]
         })),
         param_template: Some(json!({"skill_name": "{{skill_name}}"})),
-        effect_type: "Write".to_string(),
+        effect_type: "write".to_string(),
         preconditions: None,
         error_handling: None,
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
