@@ -103,15 +103,16 @@ README is the index for the source docs that the mechanism consumes.
 
 ---
 
-## Relationship to `saved_plan_to_v3.md` and the prior audits
+## Prior planning documents
 
-- `./saved_plan_to_v3.md` — the v3 implementation plan (phases A–N). These docs describe the
-  *target* system the plan builds; each doc's "Status: today vs. v3" section cites the plan.
-- `./Goals_pre_v3_review.md` — the two-goals audit (no installation profiles; no postgres-less
-  design). Goal 1 fully accomplished; Goal 2 partially (production path fail-hard; the residual
-  postgres-less *test build* is Step 13, deferred to a task with e2e execution capability).
-- `./saved_plan_to_v3_review.md` — the 18-finding plan review (all resolved across 14 passes).
-- `./MESSAGE_FLOW_AND_PLAN_AUDIT.md` — the message-flow audit (current vs. plan vs. user
-  description).
+The planning and audit documents that informed this system have been archived to
+[`docs/archive/`](../archive/) and are no longer referenced from active code or documentation:
 
-These docs are consistent with those audits and cite them where relevant.
+- `saved_plan_to_v3.md` — the v3 implementation plan (phases A–N), now fully executed
+- `Goals_pre_v3_review.md` — two-goals audit, both goals accomplished
+- `saved_plan_to_v3_review.md` — 18-finding plan review, all findings resolved
+- `MESSAGE_FLOW_AND_PLAN_AUDIT.md` — message-flow audit
+- `builtin_stuff_v3.md`, `tomedo_v3.md`, `automations_v3.md`, others — reference material
+
+These are preserved for historical reference. The `docs/agents-v3/` files are the
+current authoritative documentation.

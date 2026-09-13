@@ -47,13 +47,29 @@ export function usePrefixes() {
     setRegenerating((prev) => new Set([...prev, name]));
     try {
       const updated = await regeneratePrefix(name);
+      // Merge regenerate response into the entry.
+      // regenerate always clears staleness and sets a new fingerprint/timestamp.
       setEntries((prev) =>
         prev
-          ? prev.map((e) => (e.name === name ? { ...e, ...updated } : e))
+          ? prev.map((e) =>
+              e.name === name
+                ? { ...e, ...updated, is_stale: false }
+                : e
+            )
           : prev
       );
+      // Reload the full list so the tab reflects the latest DB state.
+      reload();
     } catch (err) {
-      setRegenerateError(err.message || String(err));
+      // Try to surface a human-readable message from the API error payload.
+      let msg = err.message || String(err);
+      try {
+        const parsed = typeof msg === "string" ? JSON.parse(msg) : null;
+        if (parsed?.error) {
+          msg = `${parsed.error}${parsed.kind && parsed.kind !== parsed.error ? ` (${parsed.kind})` : ""}`;
+        }
+      } catch (_) {}
+      setRegenerateError(msg);
     } finally {
       setRegenerating((prev) => {
         const next = new Set(prev);
@@ -61,7 +77,7 @@ export function usePrefixes() {
         return next;
       });
     }
-  }, []);
+  }, [reload]);
 
   return {
     entries,

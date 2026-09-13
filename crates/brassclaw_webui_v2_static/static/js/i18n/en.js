@@ -11,6 +11,7 @@ registerPack("en", {
   "common.delete": "Delete",
   "common.edit": "Edit",
   "common.loading": "Loading...",
+  "common.refresh": "Refresh",
   "common.save": "Save",
   "common.saving": "Saving...",
 
@@ -1183,13 +1184,17 @@ registerPack("en", {
 
   // Phase K.1 — Prefix cache tab.
   "prefix.title": "Prefix bundles",
-  "prefix.desc": "Pre-assembled component bundles prepended as System message [0] on every turn. Regenerate after validating new components to keep the bundle current.",
+  "prefix.desc": "Pre-assembled component bundles prepended as System message [0] on every turn. Generate (or Regenerate) after validating new components to keep the bundle current.",
   "prefix.empty": "No prefix bundles found.",
   "prefix.failedLoad": "Failed to load prefix cache: {message}",
+  "prefix.regenerateError": "Regenerate failed: {message}",
   "prefix.stale": "stale",
   "prefix.fresh": "fresh",
+  "prefix.neverGenerated": "never generated",
   "prefix.fingerprint": "fingerprint",
   "prefix.assembledAt": "assembled",
+  "prefix.generate": "Generate",
+  "prefix.generating": "Generating…",
   "prefix.regenerate": "Regenerate",
   "prefix.regenerating": "Regenerating…",
 

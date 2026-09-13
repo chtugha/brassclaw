@@ -40,7 +40,7 @@ export function PrefixTab() {
       ${regenerateError &&
         html`
           <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            ${regenerateError}
+            ${t("prefix.regenerateError", { message: regenerateError })}
           </div>
         `}
 
@@ -87,8 +87,23 @@ export function PrefixTab() {
 // ---------------------------------------------------------------------------
 
 function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
-  const staleTone = entry.is_stale ? "warning" : "positive";
-  const staleLabel = entry.is_stale ? t("prefix.stale") : t("prefix.fresh");
+  // An entry that has never been generated has no fingerprint or assembled_at.
+  const neverGenerated = !entry.assembled_at && !entry.fingerprint;
+  const staleTone = neverGenerated ? "muted" : entry.is_stale ? "warning" : "positive";
+  const staleLabel = neverGenerated
+    ? t("prefix.neverGenerated")
+    : entry.is_stale
+    ? t("prefix.stale")
+    : t("prefix.fresh");
+
+  // Label changes based on whether this is the first generation.
+  const actionLabel = neverGenerated
+    ? isRegenerating
+      ? t("prefix.generating")
+      : t("prefix.generate")
+    : isRegenerating
+    ? t("prefix.regenerating")
+    : t("prefix.regenerate");
 
   return html`
     <div className="flex items-center justify-between gap-4 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-3">
@@ -118,7 +133,7 @@ function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
         disabled=${isRegenerating}
         onClick=${() => onRegenerate(entry.name)}
       >
-        ${isRegenerating ? t("prefix.regenerating") : t("prefix.regenerate")}
+        ${actionLabel}
       <//>
     </div>
   `;
