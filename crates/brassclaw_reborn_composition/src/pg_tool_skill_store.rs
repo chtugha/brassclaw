@@ -104,11 +104,10 @@ impl PgToolSkillStore {
         &self,
         row: NewPgToolSkill,
     ) -> Result<Option<Uuid>, PgToolSkillStoreError> {
-        let includes_json = serde_json::to_value(&row.includes).map_err(|e| {
-            PgToolSkillStoreError::Db {
+        let includes_json =
+            serde_json::to_value(&row.includes).map_err(|e| PgToolSkillStoreError::Db {
                 reason: format!("includes encode failed: {e}"),
-            }
-        })?;
+            })?;
         let client = self.pool.get().await.map_err(map_pool)?;
         let row = client
             .query_opt(

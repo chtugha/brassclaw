@@ -1083,8 +1083,6 @@ impl RebornServicesApi for StubServices {
     ) -> Result<String, RebornServicesError> {
         Ok("---\nname: stub-skill\n---\n\nStub body.".to_string())
     }
-
-
 }
 
 fn extension_action_response(message: &str) -> RebornExtensionActionResponse {

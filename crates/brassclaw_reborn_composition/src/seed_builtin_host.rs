@@ -154,7 +154,11 @@ impl HostStores {
     }
 
     /// Insert-or-recover a leaf Skill id (class 1). Same ON-CONFLICT pattern.
-    async fn upsert_skill(&self, row: NewPgSkill, name: &str) -> Result<Uuid, SeedBuiltinHostError> {
+    async fn upsert_skill(
+        &self,
+        row: NewPgSkill,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinHostError> {
         let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinHostError::Db {
             reason: e.to_string(),
         };
@@ -177,9 +181,10 @@ impl HostStores {
         row: NewPgPythonCode,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinHostError> {
-        let map = |e: crate::pg_python_code_store::PgPythonCodeStoreError| SeedBuiltinHostError::Db {
-            reason: e.to_string(),
-        };
+        let map =
+            |e: crate::pg_python_code_store::PgPythonCodeStoreError| SeedBuiltinHostError::Db {
+                reason: e.to_string(),
+            };
         if let Some(existing) = self
             .python_code
             .get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
@@ -238,8 +243,7 @@ pub async fn seed_builtin_host_components(
         .await
         .map_err(|e| SeedBuiltinHostError::Db {
             reason: e.to_string(),
-        })?
-    {
+        })? {
         Some(existing) => existing.id,
         None => {
             let row = NewPgExtensionCatalogue {
@@ -366,9 +370,7 @@ pub async fn seed_builtin_host_components(
 /// `{llm_call_required, tier, rust_steps:[{tool,tool_skill}],
 /// orchestrator_steps:[{python_code}]}`.
 #[allow(clippy::too_many_lines)]
-async fn seed_host_resolve_intent(
-    stores: &HostStores,
-) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+async fn seed_host_resolve_intent(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
     let tool_id = stores
@@ -778,9 +780,7 @@ async fn seed_host_compose_orchestrator(
 /// idempotently and returns the minted ids in `[tool, tool_skill,
 /// python_code, skill, recipe]` order.
 #[allow(clippy::too_many_lines)]
-async fn seed_host_post_reply(
-    stores: &HostStores,
-) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+async fn seed_host_post_reply(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
     let tool_id = stores
@@ -879,8 +879,7 @@ async fn seed_host_post_reply(
                 agent_id: SEED_AGENT.to_string(),
                 project_id: SEED_PROJECT.to_string(),
                 name: "skill-host-post-reply".to_string(),
-                description: "Leaf skill: how to post the final answer into the chat."
-                    .to_string(),
+                description: "Leaf skill: how to post the final answer into the chat.".to_string(),
                 body: "Call `ts-host-post-reply` once with the final answer text after the \
                        turn's work is complete. This is the single end-of-turn emit for both \
                        modes. After posting, call the `host-save-history` recipe so \
@@ -920,9 +919,7 @@ async fn seed_host_post_reply(
                 prior_knowledge_content: None,
                 override_prompt_creation: false,
                 consumer_tags: vec!["02:orchestrator".into()],
-                intent_examples: Some(json!([
-                    "(internal end-of-turn emit — not user-routed)"
-                ])),
+                intent_examples: Some(json!(["(internal end-of-turn emit — not user-routed)"])),
                 source: "system".into(),
                 step_descriptions: Some(json!([
                     {"step": 0, "action": "post_reply", "desc": "Post the final answer."}
@@ -953,9 +950,7 @@ async fn seed_host_post_reply(
 /// carries the fork-1 `05:validation` tag (retrievable validated-builtin
 /// marker).
 #[allow(clippy::too_many_lines)]
-async fn seed_host_fetch_component(
-    stores: &HostStores,
-) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+async fn seed_host_fetch_component(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
     let tool_id = stores
@@ -981,12 +976,8 @@ async fn seed_host_fetch_component(
                 })),
                 param_template: Some(json!({"uuid": "", "class_code": 0})),
                 effect_type: "read".to_string(),
-                preconditions: Some(
-                    "skills-db pool wired (returns null without it).".to_string(),
-                ),
-                error_handling: Some(
-                    "Missing/invalid/absent → null; never raises.".to_string(),
-                ),
+                preconditions: Some("skills-db pool wired (returns null without it).".to_string()),
+                error_handling: Some("Missing/invalid/absent → null; never raises.".to_string()),
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
@@ -1095,9 +1086,7 @@ async fn seed_host_fetch_component(
 /// adds the provider prefix → Kohai calls `first_party_tools/http` → Kohai saves
 /// the answer → answer back to the Orchestrator.
 #[allow(clippy::too_many_lines)]
-async fn seed_host_kohai_complete(
-    stores: &HostStores,
-) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+async fn seed_host_kohai_complete(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
     let tool_id = stores
@@ -1254,9 +1243,7 @@ async fn seed_host_kohai_complete(
 /// new-architecture first-class callable to the `memory_write` tool. Returns
 /// the minted ids in `[pc-host-history-format, pc-memory-write, recipe]` order.
 #[allow(clippy::too_many_lines)]
-async fn seed_host_save_history(
-    stores: &HostStores,
-) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+async fn seed_host_save_history(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
     let pc_history_format_id = stores
@@ -1604,9 +1591,7 @@ prompt = {
 /// (emit_event, save_checkpoint, transition_to, check_budget, log_budget_warning)
 /// are RETIRED (Q-D) — the Orchestrator owns its own thread/run state.
 #[allow(clippy::too_many_lines)]
-async fn seed_host_check_signals(
-    stores: &HostStores,
-) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+async fn seed_host_check_signals(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
     let tool_id = stores
@@ -1643,8 +1628,7 @@ async fn seed_host_check_signals(
                 agent_id: SEED_AGENT.to_string(),
                 project_id: SEED_PROJECT.to_string(),
                 name: "ts-host-check-signals".to_string(),
-                description: "Poll the thread signal channel for stop/suspend/inject."
-                    .to_string(),
+                description: "Poll the thread signal channel for stop/suspend/inject.".to_string(),
                 content: "Call `host.check_signals()` between orchestrator steps. On \
                           'stop', halt cleanly. On {inject: msg}, fold the message in and \
                           continue. On None, proceed."
@@ -1698,8 +1682,7 @@ async fn seed_host_check_signals(
                 agent_id: SEED_AGENT.to_string(),
                 project_id: SEED_PROJECT.to_string(),
                 name: "skill-host-check-signals".to_string(),
-                description: "Poll for stop/suspend/inject signals between steps."
-                    .to_string(),
+                description: "Poll for stop/suspend/inject signals between steps.".to_string(),
                 body: "Call `ts-host-check-signals` between orchestrator steps. On 'stop', \
                        halt cleanly. On {inject: msg}, fold the message in and continue. \
                        On None, proceed."
@@ -1907,12 +1890,8 @@ async fn seed_host_resolve_component_by_name(
                 })),
                 param_template: Some(json!({"name": "", "class_code": 0})),
                 effect_type: "read".to_string(),
-                preconditions: Some(
-                    "skills-db pool wired (returns null without it).".to_string(),
-                ),
-                error_handling: Some(
-                    "Missing/invalid/absent → null; never raises.".to_string(),
-                ),
+                preconditions: Some("skills-db pool wired (returns null without it).".to_string()),
+                error_handling: Some("Missing/invalid/absent → null; never raises.".to_string()),
                 consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),

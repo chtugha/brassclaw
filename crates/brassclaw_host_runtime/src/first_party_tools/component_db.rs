@@ -104,7 +104,9 @@ pub struct ComponentDbUpsertResult {
 /// Errors returned by backend operations.
 #[derive(Debug, thiserror::Error)]
 pub enum ComponentDbError {
-    #[error("component_db backend not wired — inject via BuiltinFirstPartyTools::with_component_db")]
+    #[error(
+        "component_db backend not wired — inject via BuiltinFirstPartyTools::with_component_db"
+    )]
     NotWired,
     #[error("database error: {0}")]
     Db(String),
@@ -188,11 +190,7 @@ pub fn extract_md_section(markdown: &str, title: &str) -> Option<String> {
     for line in markdown.lines() {
         if let Some(stripped) = line.strip_prefix("## ") {
             // Strip optional numeric prefix like "7. " from heading text.
-            let heading_text = stripped
-                .splitn(2, ". ")
-                .last()
-                .unwrap_or(stripped)
-                .trim();
+            let heading_text = stripped.splitn(2, ". ").last().unwrap_or(stripped).trim();
             if in_section {
                 // Hit the next ## heading — section ends.
                 break;
@@ -317,8 +315,7 @@ pub(super) async fn dispatch(
                 .ok_or_else(|| input_error("upsert requires: fields (object)"))?;
             let upsert_row = ComponentDbUpsert {
                 name: require_str_from(fields, "name", "upsert.fields")?.to_string(),
-                description: require_str_from(fields, "description", "upsert.fields")?
-                    .to_string(),
+                description: require_str_from(fields, "description", "upsert.fields")?.to_string(),
                 content: require_str_from(fields, "content", "upsert.fields")?.to_string(),
                 content_hash: require_str_from(fields, "content_hash", "upsert.fields")?
                     .to_string(),
@@ -338,7 +335,12 @@ pub(super) async fn dispatch(
                 consumer_tags: fields
                     .get("consumer_tags")
                     .and_then(Value::as_array)
-                    .map(|arr| arr.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_string)
+                            .collect()
+                    })
                     .unwrap_or_else(|| vec!["03:llm".to_string()]),
             };
             let result = backend.upsert(&scope, upsert_row).await.map_err(db_error)?;
@@ -398,10 +400,7 @@ fn input_error(msg: impl Into<String>) -> FirstPartyCapabilityError {
 
 fn db_error(e: ComponentDbError) -> FirstPartyCapabilityError {
     use brassclaw_host_api::RuntimeDispatchErrorKind;
-    FirstPartyCapabilityError::with_safe_summary(
-        RuntimeDispatchErrorKind::Backend,
-        e.to_string(),
-    )
+    FirstPartyCapabilityError::with_safe_summary(RuntimeDispatchErrorKind::Backend, e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -451,12 +450,9 @@ mod tests {
     #[tokio::test]
     async fn dispatch_compute_hash() {
         let state = ComponentDbState::default();
-        let result = dispatch(
-            &state,
-            &json!({"op": "compute_hash", "text": "hello"}),
-        )
-        .await
-        .unwrap();
+        let result = dispatch(&state, &json!({"op": "compute_hash", "text": "hello"}))
+            .await
+            .unwrap();
         assert_eq!(
             result["hash"].as_str().unwrap(),
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"

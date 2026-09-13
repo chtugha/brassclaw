@@ -314,11 +314,11 @@ async fn reconcile_dynamic_tool_lease(
     store: Option<&Arc<dyn Store>>,
     lease_planner: &crate::capability::planner::LeasePlanner,
 ) -> Result<(), EngineError> {
-    use std::collections::HashSet;
+    use crate::Capability;
     use crate::capability::registry::CapabilityRegistry;
     use crate::types::capability::GrantedActions;
     use crate::types::step::StepId;
-    use crate::Capability;
+    use std::collections::HashSet;
 
     let active_leases = leases.active_for_thread(thread.id).await;
     let context = crate::executor::thread_context::thread_execution_context(
@@ -1660,9 +1660,12 @@ async fn handle_compose_orchestrator(
             // fall back gracefully.
             if let Ok(decl_uuid) = uuid::Uuid::parse_str(decl_id) {
                 let _ = port
-                    .invalidate_component(&scope, decl_uuid, class_code, &format!(
-                        "include {include_id} did not resolve at composition time"
-                    ))
+                    .invalidate_component(
+                        &scope,
+                        decl_uuid,
+                        class_code,
+                        &format!("include {include_id} did not resolve at composition time"),
+                    )
                     .await;
             }
             ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
@@ -3375,12 +3378,12 @@ fn dispatch_dynamic_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::effect::ThreadExecutionContext;
     use crate::memory::intent_system::{IntentCandidate, IntentResolution};
     use crate::memory::{
-        ComponentItem, ComponentScope, FetchForTurnResult, RetrievalSource,
-        RetrievalSourceError, TurnRoutingSignals,
+        ComponentItem, ComponentScope, FetchForTurnResult, RetrievalSource, RetrievalSourceError,
+        TurnRoutingSignals,
     };
+    use crate::traits::effect::ThreadExecutionContext;
     use crate::types::memory::{DocType, MemoryDoc};
     use crate::types::project::ProjectId;
     use async_trait::async_trait;
@@ -3601,8 +3604,7 @@ mod tests {
             _component_id: uuid::Uuid,
             _class_code: i32,
             _reason: &str,
-        ) -> Pin<Box<dyn Future<Output = Result<(), ComponentPortError>> + Send + '_>>
-        {
+        ) -> Pin<Box<dyn Future<Output = Result<(), ComponentPortError>> + Send + '_>> {
             // Test double — no queue; no-op.
             Box::pin(async { Ok(()) })
         }

@@ -33,18 +33,13 @@ impl McpListenerSpawner for DefaultMcpListenerSpawner {
     ) -> Result<(u16, JoinHandle<()>), McpServerServiceError> {
         let addr: SocketAddr = format!("0.0.0.0:{port}")
             .parse()
-            .map_err(|e: std::net::AddrParseError| {
-                McpServerServiceError::Invalid(e.to_string())
-            })?;
+            .map_err(|e: std::net::AddrParseError| McpServerServiceError::Invalid(e.to_string()))?;
 
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .map_err(|e| McpServerServiceError::Internal(e.to_string()))?;
 
-        let bound_port = listener
-            .local_addr()
-            .map(|a| a.port())
-            .unwrap_or(port);
+        let bound_port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
 
         let handle = tokio::spawn(async move {
             if let Err(e) = axum::serve(listener, router).await {

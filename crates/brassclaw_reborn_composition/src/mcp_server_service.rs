@@ -116,12 +116,20 @@ mod inner {
             }
         }
 
-        fn lock_settings(&self) -> Result<std::sync::MutexGuard<'_, McpServerSettings>, McpServerServiceError> {
-            self.settings.lock().map_err(|_| McpServerServiceError::Internal("settings lock poisoned".into()))
+        fn lock_settings(
+            &self,
+        ) -> Result<std::sync::MutexGuard<'_, McpServerSettings>, McpServerServiceError> {
+            self.settings
+                .lock()
+                .map_err(|_| McpServerServiceError::Internal("settings lock poisoned".into()))
         }
 
-        fn lock_running(&self) -> Result<std::sync::MutexGuard<'_, RunningServer>, McpServerServiceError> {
-            self.running.lock().map_err(|_| McpServerServiceError::Internal("running lock poisoned".into()))
+        fn lock_running(
+            &self,
+        ) -> Result<std::sync::MutexGuard<'_, RunningServer>, McpServerServiceError> {
+            self.running
+                .lock()
+                .map_err(|_| McpServerServiceError::Internal("running lock poisoned".into()))
         }
     }
 
@@ -139,16 +147,16 @@ mod inner {
             let mut settings = self.lock_settings()?;
             if let Some(port) = req.port {
                 if port < 1024 {
-                    return Err(McpServerServiceError::Invalid(
-                        "port must be ≥ 1024".into(),
-                    ));
+                    return Err(McpServerServiceError::Invalid("port must be ≥ 1024".into()));
                 }
                 settings.port = port;
             }
             if let Some(auto_start) = req.auto_start {
                 settings.auto_start = auto_start;
             }
-            Ok(McpServerSettingsResponse { settings: settings.clone() })
+            Ok(McpServerSettingsResponse {
+                settings: settings.clone(),
+            })
         }
 
         async fn get_status(&self) -> Result<McpServerStatusResponse, McpServerServiceError> {
@@ -250,7 +258,8 @@ impl McpListenerSpawner for NoopMcpListenerSpawner {
         &self,
         _port: u16,
         _router: axum::Router,
-    ) -> Result<(u16, tokio::task::JoinHandle<()>), brassclaw_product_workflow::McpServerServiceError> {
+    ) -> Result<(u16, tokio::task::JoinHandle<()>), brassclaw_product_workflow::McpServerServiceError>
+    {
         Err(brassclaw_product_workflow::McpServerServiceError::Internal(
             "no MCP listener spawner configured — wire a DefaultMcpListenerSpawner from the host binary".into(),
         ))

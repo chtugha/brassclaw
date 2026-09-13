@@ -23,9 +23,7 @@ use brassclaw_turns::{
     },
 };
 
-use crate::{
-    loop_exit_applier::{InMemoryLoopExitEvidencePort, LoopExitApplier},
-};
+use crate::loop_exit_applier::{InMemoryLoopExitEvidencePort, LoopExitApplier};
 
 use super::*;
 
@@ -742,8 +740,7 @@ async fn worker_recovers_expired_leases_before_claiming() {
 #[tokio::test]
 async fn worker_reuses_claim_runner_and_lease_for_heartbeat_and_exit() {
     let desc = test_descriptor();
-    let monty =
-        Arc::new(MockMontyDriver::completing().with_delay(Duration::from_millis(150)));
+    let monty = Arc::new(MockMontyDriver::completing().with_delay(Duration::from_millis(150)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
@@ -876,8 +873,7 @@ async fn worker_claims_and_completes_run() {
 #[tokio::test]
 async fn worker_records_terminal_failure_when_heartbeat_fails() {
     let desc = test_descriptor();
-    let monty =
-        Arc::new(MockMontyDriver::completing().with_delay(Duration::from_secs(60)));
+    let monty = Arc::new(MockMontyDriver::completing().with_delay(Duration::from_secs(60)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
     let port = Arc::new(
@@ -922,8 +918,7 @@ async fn worker_records_terminal_failure_when_heartbeat_fails() {
 #[tokio::test]
 async fn worker_cancellation_relinquishes_run() {
     let desc = test_descriptor();
-    let monty =
-        Arc::new(MockMontyDriver::completing().with_delay(Duration::from_secs(60)));
+    let monty = Arc::new(MockMontyDriver::completing().with_delay(Duration::from_secs(60)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let run_id = claimed.state.run_id;
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
@@ -1264,8 +1259,7 @@ async fn wake_signal_triggers_claim_attempt() {
 #[tokio::test]
 async fn heartbeat_runs_during_driver_execution() {
     let desc = test_descriptor();
-    let monty =
-        Arc::new(MockMontyDriver::completing().with_delay(Duration::from_millis(300)));
+    let monty = Arc::new(MockMontyDriver::completing().with_delay(Duration::from_millis(300)));
     let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
     let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
 

@@ -73,7 +73,10 @@ mod tests {
     fn dual_anchored_template() {
         assert_eq!(
             parse_template("show me files in the % directory"),
-            Some(("show me files in the ".to_string(), " directory".to_string()))
+            Some((
+                "show me files in the ".to_string(),
+                " directory".to_string()
+            ))
         );
     }
 
@@ -98,10 +101,7 @@ mod tests {
     fn bare_slot_no_anchor() {
         // Both anchors empty → Q1 hard error (no-anchor rule). parse_template
         // still returns the split; the validator rejects it.
-        assert_eq!(
-            parse_template("%"),
-            Some(("".to_string(), "".to_string()))
-        );
+        assert_eq!(parse_template("%"), Some(("".to_string(), "".to_string())));
     }
 
     #[test]
@@ -146,9 +146,6 @@ mod tests {
     fn truly_adjacent_bare_slots() {
         // "%%" → prefix = "", suffix = "" (both `%` at the boundaries).
         // No anchor → Q1 hard error.
-        assert_eq!(
-            parse_template("%%"),
-            Some(("".to_string(), "".to_string()))
-        );
+        assert_eq!(parse_template("%%"), Some(("".to_string(), "".to_string())));
     }
 }

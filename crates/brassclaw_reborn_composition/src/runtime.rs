@@ -2437,11 +2437,9 @@ pub async fn build_reborn_runtime(
     let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> =
         services.pg_pool.as_ref().map(|pool| {
             Arc::new(
-                crate::retrieval_lookup_impl::PgRetrievalLookup::new(
-                    Arc::new(brassclaw_engine::memory::PostgresSource::new(Arc::clone(
-                        pool,
-                    ))),
-                )
+                crate::retrieval_lookup_impl::PgRetrievalLookup::new(Arc::new(
+                    brassclaw_engine::memory::PostgresSource::new(Arc::clone(pool)),
+                ))
                 .with_skill_activation_observer(Arc::clone(&skill_activation_observer_arc)),
             ) as Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>
         });
@@ -2539,15 +2537,13 @@ pub async fn build_reborn_runtime(
                     validated_identity.tenant_id.as_str(),
                 ))
                     as Arc<dyn brassclaw_interceptor::InterceptorStore>;
-                let basic_prompt = shared_basic_prompt
-                    .clone()
-                    .unwrap_or_else(|| Arc::new(
-                        crate::pg_basic_prompt_store::PgBasicPromptStore::new(
-                            Arc::clone(pool),
-                            validated_identity.tenant_id.as_str(),
-                            validated_identity.agent_id.as_str(),
-                        ),
-                    ));
+                let basic_prompt = shared_basic_prompt.clone().unwrap_or_else(|| {
+                    Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+                        Arc::clone(pool),
+                        validated_identity.tenant_id.as_str(),
+                        validated_identity.agent_id.as_str(),
+                    ))
+                });
                 match crate::pg_kohai_port::PgKohaiPort::new(
                     interceptor,
                     basic_prompt,
@@ -3397,7 +3393,6 @@ mod tests {
 
     use async_trait::async_trait;
     use brassclaw_auth::{GOOGLE_CALENDAR_EVENTS_SCOPE, GOOGLE_CALENDAR_READONLY_SCOPE};
-    use chrono::Utc;
     use brassclaw_authorization::CapabilityLeaseStore;
     use brassclaw_events::{EventStreamKey, ReadScope};
     use brassclaw_host_api::{
@@ -3411,8 +3406,7 @@ mod tests {
     };
     use brassclaw_loop_support::{
         HostManagedModelError, HostManagedModelErrorKind, HostManagedModelGateway,
-        HostManagedModelMessageRole, HostManagedModelRequest, HostManagedModelResponse,
-        ModelCost,
+        HostManagedModelMessageRole, HostManagedModelRequest, HostManagedModelResponse, ModelCost,
         SpawnSubagentMode, SubagentKindId, SubagentThreadKind, SubagentThreadMetadata,
     };
     use brassclaw_product_adapters::{ProductOutboundPayload, ProductProjectionItem};
@@ -3435,11 +3429,12 @@ mod tests {
         SourceBindingRef, SubmitChildRunRequest, SubmitTurnRequest, SubmitTurnResponse, TurnActor,
         TurnCheckpointId, TurnId, TurnLeaseToken, TurnRunId, TurnRunnerId, TurnScope, TurnStatus,
         run_profile::{
-            InMemoryRunProfileResolver, LoopCapabilityPort, LoopCheckpointStateRef,
-            ModelProfileId, ProviderToolCall, VisibleCapabilityRequest,
+            InMemoryRunProfileResolver, LoopCapabilityPort, LoopCheckpointStateRef, ModelProfileId,
+            ProviderToolCall, VisibleCapabilityRequest,
         },
         runner::{BlockRunRequest, ClaimRunRequest, TurnRunTransitionPort},
     };
+    use chrono::Utc;
     use rust_decimal_macros::dec;
 
     use crate::RebornReadinessState;
@@ -5312,5 +5307,4 @@ mod tests {
         );
         runtime.shutdown().await.expect("runtime shutdown");
     }
-
 }

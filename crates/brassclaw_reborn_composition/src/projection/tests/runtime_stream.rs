@@ -8,23 +8,22 @@ use super::*;
 use brassclaw_first_party_extension_ports::{
     SkillActivationMode, SkillActivationObservedEvent, SkillActivationRequest,
 };
+use brassclaw_product_adapters::ProductWorkSummaryPhase;
 #[cfg(feature = "skills-db")]
 use brassclaw_product_adapters::{
     PROJECTION_SKILL_ACTIVATION_MAX_ITEMS, PROJECTION_SKILL_FEEDBACK_MAX_BYTES,
     PROJECTION_SKILL_NAME_MAX_BYTES,
 };
-use brassclaw_product_adapters::ProductWorkSummaryPhase;
-use brassclaw_turns::{
-    TurnId,
-    run_profile::{
-        CapabilityInputRef, InMemoryLoopHostMilestoneSink,
-        LoopDriverId, LoopDriverNoteKind, LoopHostMilestone, LoopHostMilestoneKind,
-        LoopSafeSummary,
-    },
-};
 #[cfg(feature = "skills-db")]
 use brassclaw_turns::run_profile::{
     InMemoryRunProfileResolver, LoopRunContext, RunProfileResolutionRequest, RunProfileResolver,
+};
+use brassclaw_turns::{
+    TurnId,
+    run_profile::{
+        CapabilityInputRef, InMemoryLoopHostMilestoneSink, LoopDriverId, LoopDriverNoteKind,
+        LoopHostMilestone, LoopHostMilestoneKind, LoopSafeSummary,
+    },
 };
 
 fn preview_input_ref(label: &str) -> CapabilityInputRef {

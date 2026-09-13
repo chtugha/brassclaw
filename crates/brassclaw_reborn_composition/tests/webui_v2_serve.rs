@@ -2037,10 +2037,7 @@ async fn get_docus_route_reaches_facade_with_valid_uuid() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri(format!(
-                    "/api/webchat/v2/docus/{}",
-                    uuid::Uuid::new_v4()
-                ))
+                .uri(format!("/api/webchat/v2/docus/{}", uuid::Uuid::new_v4()))
                 .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
                 .body(Body::empty())
                 .expect("request"),
@@ -2085,10 +2082,7 @@ async fn update_docus_route_reaches_facade_with_valid_payload() {
         .oneshot(
             Request::builder()
                 .method(Method::PUT)
-                .uri(format!(
-                    "/api/webchat/v2/docus/{}",
-                    uuid::Uuid::new_v4()
-                ))
+                .uri(format!("/api/webchat/v2/docus/{}", uuid::Uuid::new_v4()))
                 .header(header::AUTHORIZATION, format!("Bearer {VALID_TOKEN}"))
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"content":"updated content"}"#))
@@ -2110,10 +2104,7 @@ async fn update_docus_route_requires_bearer_auth() {
         .oneshot(
             Request::builder()
                 .method(Method::PUT)
-                .uri(format!(
-                    "/api/webchat/v2/docus/{}",
-                    uuid::Uuid::new_v4()
-                ))
+                .uri(format!("/api/webchat/v2/docus/{}", uuid::Uuid::new_v4()))
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"content":"updated"}"#))
                 .expect("request"),

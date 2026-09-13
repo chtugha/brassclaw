@@ -59,12 +59,12 @@ use brassclaw_turns::{
     TurnCoordinator, TurnRunId, TurnRunState, TurnRunWake, TurnScope, TurnStateStore, TurnStatus,
     run_profile::{
         AgentLoopDriverHost, AgentLoopHostError, CapabilityBatchInvocation, CapabilityBatchOutcome,
-        CapabilityCallCandidate, CapabilityDescriptorView, CapabilityInputRef, CapabilityInvocation,
-        CapabilityOutcome, CapabilityResultMessage, CapabilitySurfaceVersion, ConcurrencyHint,
-        InMemoryLoopHostMilestoneSink, InstructionSafetyContext, LoopCancelReasonKind,
-        LoopCapabilityPort, LoopInputAckToken, LoopInputCursorToken, LoopRunContext,
-        MontyTurnDriverPort, NoOpBudgetAccountant, NoOpPolicyGuard, ParentLoopOutput, PromptMode,
-        VisibleCapabilityRequest, VisibleCapabilitySurface,
+        CapabilityCallCandidate, CapabilityDescriptorView, CapabilityInputRef,
+        CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage, CapabilitySurfaceVersion,
+        ConcurrencyHint, InMemoryLoopHostMilestoneSink, InstructionSafetyContext,
+        LoopCancelReasonKind, LoopCapabilityPort, LoopInputAckToken, LoopInputCursorToken,
+        LoopRunContext, MontyTurnDriverPort, NoOpBudgetAccountant, NoOpPolicyGuard,
+        ParentLoopOutput, PromptMode, VisibleCapabilityRequest, VisibleCapabilitySurface,
     },
 };
 use chrono::Utc;
@@ -969,8 +969,7 @@ impl MontyTurnDriverPort for WrappingMontyDriver {
 pub fn harness_monty_driver() -> Arc<dyn MontyTurnDriverPort> {
     let family_registry = build_loop_family_registry_with_full_config(LoopFamilyConfig::default())
         .expect("harness loop family registry must build");
-    let build = default_planned_driver(family_registry)
-        .expect("harness planned driver must build");
+    let build = default_planned_driver(family_registry).expect("harness planned driver must build");
     WrappingMontyDriver::new(build.driver)
 }
 

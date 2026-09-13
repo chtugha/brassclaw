@@ -188,10 +188,6 @@ pub trait ComponentPort: Send + Sync {
         class_code: i32,
         reason: &str,
     ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<(), ComponentPortError>>
-                + Send
-                + '_,
-        >,
+        Box<dyn std::future::Future<Output = Result<(), ComponentPortError>> + Send + '_>,
     >;
 }

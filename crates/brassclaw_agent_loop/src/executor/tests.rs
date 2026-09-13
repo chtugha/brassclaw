@@ -3109,7 +3109,10 @@ async fn tier_zero_stage_calls_bridge_and_produces_reply() {
     // Bridge called exactly once with all three args (AGENTS.md: capture every arg).
     let recorded = calls.lock().expect("lock").clone();
     assert_eq!(recorded.len(), 1, "run_tier_zero called exactly once");
-    assert_eq!(recorded[0].recipe_hint, hint, "recipe_hint forwarded verbatim");
+    assert_eq!(
+        recorded[0].recipe_hint, hint,
+        "recipe_hint forwarded verbatim"
+    );
     assert_eq!(
         recorded[0].recipe_rust_context,
         serde_json::Value::Array(rust_ctx_arr),

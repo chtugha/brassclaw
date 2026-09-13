@@ -118,10 +118,7 @@ impl PgSkillStore {
     /// `reborn_intent_inputs` so `resolve_intent` can match them immediately.
     /// Seeding is best-effort — a failure is logged at `debug!` and does not
     /// block the insert.
-    pub(crate) async fn insert(
-        &self,
-        row: NewPgSkill,
-    ) -> Result<Option<Uuid>, PgSkillStoreError> {
+    pub(crate) async fn insert(&self, row: NewPgSkill) -> Result<Option<Uuid>, PgSkillStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
         let inserted = client
             .query_opt(

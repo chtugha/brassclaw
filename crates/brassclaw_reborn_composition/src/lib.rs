@@ -85,49 +85,56 @@ mod projection;
 #[cfg(feature = "skills-db")]
 pub mod skill_import;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
+#[cfg(feature = "postgres")]
+pub mod builtin_bootstrap;
+/// Phase P Step 9: doc-sync file-watcher + PG listener.
+pub(crate) mod doc_sync_watcher;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod embedding_providers;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;
 mod fetch_cached_content;
+/// Phase V: McpServerService — lifecycle management (start/stop) for the MCP server.
+pub mod mcp_server_service;
 #[cfg(feature = "migrate-from-libsql")]
 pub mod migration;
 pub(crate) mod orchestrator_lookup_impl;
+/// Phase V: Orchestrator MCP Server — exposes orchestrator Skills as MCP tools.
+pub mod orchestrator_mcp_server;
+pub(crate) mod persistent_monty_driver;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_basic_prompt_store;
 #[cfg(feature = "postgres")]
-pub(crate) mod pg_component_db_backend;
-#[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_component_db_backend;
+pub(crate) mod pg_composition_port;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_docus_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_extension_catalogue_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_intent_inputs_store;
+pub(crate) mod pg_kohai_port;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_memory_doc_store;
 pub(crate) mod pg_monty_vm_settings;
 #[cfg(feature = "postgres")]
-pub(crate) mod pg_docus_store;
-#[cfg(feature = "postgres")]
 pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
-pub(crate) mod pg_composition_port;
-pub(crate) mod pg_kohai_port;
-pub(crate) mod session_registry;
-pub(crate) mod persistent_monty_driver;
 pub(crate) mod pg_security_settings_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_skill_store;
+pub(crate) mod pg_thread_engine_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_token_settings_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_tool_skill_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_tool_store;
-pub(crate) mod pg_thread_engine_store;
-#[cfg(feature = "postgres")]
-pub(crate) mod pg_token_settings_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_user_preference_store;
 pub(crate) mod plan_library;
@@ -145,19 +152,12 @@ pub(crate) mod retrieval_lookup_impl;
 mod runtime;
 mod runtime_input;
 #[cfg(feature = "postgres")]
-pub mod seed_builtin_host;
-#[cfg(feature = "postgres")]
-pub mod builtin_bootstrap;
-/// Phase V: Orchestrator MCP Server — exposes orchestrator Skills as MCP tools.
-pub mod orchestrator_mcp_server;
-/// Phase V: McpServerService — lifecycle management (start/stop) for the MCP server.
-pub mod mcp_server_service;
-/// Phase P Step 9: doc-sync file-watcher + PG listener.
-pub(crate) mod doc_sync_watcher;
-#[cfg(feature = "postgres")]
 pub mod secrets_master;
+#[cfg(feature = "postgres")]
+pub mod seed_builtin_host;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod sempai_proposal_sink;
+pub(crate) mod session_registry;
 mod skill_listing;
 #[cfg(feature = "test-support")]
 pub mod test_support;
@@ -251,7 +251,9 @@ pub use provider_admin_product_command::RebornProviderAdminProductCommandService
 pub use readiness::{
     RebornFacadeReadiness, RebornReadiness, RebornReadinessState, RebornWorkerReadiness,
 };
-pub use runtime::{AssistantReply, ConversationId, RebornRuntime, RebornRuntimeError, build_reborn_runtime};
+pub use runtime::{
+    AssistantReply, ConversationId, RebornRuntime, RebornRuntimeError, build_reborn_runtime,
+};
 #[cfg(feature = "root-llm-provider")]
 pub use runtime_input::ResolvedRebornLlm;
 pub use runtime_input::{

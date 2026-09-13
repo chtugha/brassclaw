@@ -65,11 +65,15 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 #[cfg(feature = "skills-db")]
-use brassclaw_engine::executor::{ComponentPort, ComponentPortError};
+use crate::validation_queue::ValidationQueueStore;
 #[cfg(feature = "skills-db")]
-use brassclaw_engine::executor::db_skill_loader::{fetch_llm_skills_as_json, scope_from_thread_ids};
+use brassclaw_engine::executor::db_skill_loader::{
+    fetch_llm_skills_as_json, scope_from_thread_ids,
+};
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::executor::orchestrator::list_skills_from_store;
+#[cfg(feature = "skills-db")]
+use brassclaw_engine::executor::{ComponentPort, ComponentPortError};
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::memory::composition::compose_program;
 #[cfg(feature = "skills-db")]
@@ -77,11 +81,11 @@ use brassclaw_engine::memory::instruction_builder::{
     StepDescriptionEntry, build_instruction, capture_variables,
 };
 #[cfg(feature = "skills-db")]
-use brassclaw_engine::memory::intent_system::{IntentScope, IntentResolution, resolve_intent};
+use brassclaw_engine::memory::intent_system::{IntentResolution, IntentScope, resolve_intent};
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::memory::retrieval_source::{
-    ComponentScope, fetch_component_by_id, fetch_component_by_name,
-    fetch_components_by_ids, lookup_component_class,
+    ComponentScope, fetch_component_by_id, fetch_component_by_name, fetch_components_by_ids,
+    lookup_component_class,
 };
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::memory::{ComposedProgram, ResolvedComponent};
@@ -93,13 +97,14 @@ use brassclaw_engine::types::recipe::RecipeVariant;
 use brassclaw_engine::types::thread::Thread;
 #[cfg(feature = "skills-db")]
 use brassclaw_pg::PgPool;
-#[cfg(feature = "skills-db")]
-use crate::validation_queue::ValidationQueueStore;
 
 /// Match a variant by `step_link` (§7.3). Returns the first variant whose
 /// `step_link` equals the supplied formula, or `None` when no variant matches
 /// (caller surfaces [`ComponentPortError::NoVariantMatch`]).
-fn match_variant<'a>(variants: &'a [RecipeVariantUngated], step_link: &str) -> Option<&'a RecipeVariantUngated> {
+fn match_variant<'a>(
+    variants: &'a [RecipeVariantUngated],
+    step_link: &str,
+) -> Option<&'a RecipeVariantUngated> {
     variants
         .iter()
         .find(|v| v.step_link.as_deref() == Some(step_link))
@@ -158,8 +163,9 @@ impl PgCompositionPort {
     pub(crate) fn new(
         pool: Arc<PgPool>,
         store: Option<Arc<dyn Store>>,
-        #[cfg(feature = "postgres")]
-        basic_prompt_store: Option<Arc<crate::pg_basic_prompt_store::PgBasicPromptStore>>,
+        #[cfg(feature = "postgres")] basic_prompt_store: Option<
+            Arc<crate::pg_basic_prompt_store::PgBasicPromptStore>,
+        >,
     ) -> Self {
         Self {
             pool,
@@ -182,12 +188,9 @@ impl PgCompositionPort {
         _user_input: &str,
     ) -> Result<ComposedProgram, ComponentPortError> {
         // 1. Action row — scope filter.
-        let client = pool
-            .get()
-            .await
-            .map_err(|e| ComponentPortError::Failure {
-                reason: e.to_string(),
-            })?;
+        let client = pool.get().await.map_err(|e| ComponentPortError::Failure {
+            reason: e.to_string(),
+        })?;
         let row = client
             .query_opt(
                 "SELECT name, validation_status,
@@ -229,9 +232,7 @@ impl PgCompositionPort {
 
         // 4. Synthetic all-steps step_link. An empty steps array → empty
         //    ComposedProgram (no-op action — caller receives ok:true, no steps).
-        if step_descs.is_empty()
-            || step_descs.iter().all(|sd| sd.steps.is_empty())
-        {
+        if step_descs.is_empty() || step_descs.iter().all(|sd| sd.steps.is_empty()) {
             return Ok(ComposedProgram {
                 skills: Vec::new(),
                 steplist: Vec::new(),
@@ -245,11 +246,10 @@ impl PgCompositionPort {
         let action_step_link = "0:1-0:E";
 
         // 5. IBS compile — same as the recipe path.
-        let instruction =
-            build_instruction(action_step_link, &step_descs, &[], llm_call_required)
-                .map_err(|e| ComponentPortError::Failure {
-                    reason: e.to_string(),
-                })?;
+        let instruction = build_instruction(action_step_link, &step_descs, &[], llm_call_required)
+            .map_err(|e| ComponentPortError::Failure {
+                reason: e.to_string(),
+            })?;
 
         // 6. No variable_patterns on actions (no template slots).
         let vars: Vec<(String, String)> = Vec::new();
@@ -271,11 +271,12 @@ impl PgCompositionPort {
         }
         let mut pairs: Vec<(Uuid, i32)> = Vec::with_capacity(uuids.len());
         for id in &uuids {
-            if let Some(class_code) = lookup_component_class(pool, scope, *id)
-                .await
-                .map_err(|e| ComponentPortError::Failure {
-                    reason: e.to_string(),
-                })?
+            if let Some(class_code) =
+                lookup_component_class(pool, scope, *id)
+                    .await
+                    .map_err(|e| ComponentPortError::Failure {
+                        reason: e.to_string(),
+                    })?
             {
                 pairs.push((*id, class_code));
             }
@@ -322,12 +323,9 @@ impl PgCompositionPort {
     ) -> Result<ComposedProgram, ComponentPortError> {
         // 1. Recipe row — scope filter only (§7.2). JSONB read as text +
         //    serde_json::from_str (engine idiom).
-        let client = pool
-            .get()
-            .await
-            .map_err(|e| ComponentPortError::Failure {
-                reason: e.to_string(),
-            })?;
+        let client = pool.get().await.map_err(|e| ComponentPortError::Failure {
+            reason: e.to_string(),
+        })?;
         let row = client
             .query_opt(
                 "SELECT name, tier, wilson_lower, validation_status,
@@ -373,8 +371,7 @@ impl PgCompositionPort {
         let llm_call_required = !tier0_eligible;
 
         // 3. Matched variant (§7.3).
-        let variants: Vec<RecipeVariant> =
-            serde_json::from_str(&variants_text).unwrap_or_default();
+        let variants: Vec<RecipeVariant> = serde_json::from_str(&variants_text).unwrap_or_default();
         let Some(matched) = match_variant(&variants, step_link) else {
             return Err(ComponentPortError::NoVariantMatch {
                 step_link: step_link.to_string(),
@@ -391,10 +388,15 @@ impl PgCompositionPort {
         // 5. IBS compile (§0.4, §0.7). A compile failure is a hard composition
         //    error (not the soft-fail the retrieval path takes) — the
         //    orchestrator asked for this exact recipe/variant.
-        let instruction = build_instruction(step_link, &step_descs, &variable_patterns, llm_call_required)
-            .map_err(|e| ComponentPortError::Failure {
-                reason: e.to_string(),
-            })?;
+        let instruction = build_instruction(
+            step_link,
+            &step_descs,
+            &variable_patterns,
+            llm_call_required,
+        )
+        .map_err(|e| ComponentPortError::Failure {
+            reason: e.to_string(),
+        })?;
 
         // 6. Capture {{vars.name}} (§7.1: template = user_text = user_input).
         let vars = capture_variables(user_input, user_input, &variable_patterns);
@@ -581,10 +583,8 @@ impl ComponentPort for PgCompositionPort {
                         reason: e.to_string(),
                     })?;
                 if class_code == Some(16) {
-                    return Self::compose_action_program(
-                        &pool, &scope, component_id, &user_input,
-                    )
-                    .await;
+                    return Self::compose_action_program(&pool, &scope, component_id, &user_input)
+                        .await;
                 }
                 // Non-action component with no step_link — let compose_with_pool
                 // surface the NoVariantMatch error (step_link is required for
@@ -600,8 +600,9 @@ impl ComponentPort for PgCompositionPort {
         component_id: uuid::Uuid,
         class_code: i32,
         reason: &str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), ComponentPortError>> + Send + '_>>
-    {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(), ComponentPortError>> + Send + '_>,
+    > {
         let pool = self.pool.clone();
         let scope = scope.clone();
         let reason = reason.to_string();
@@ -646,10 +647,7 @@ mod tests {
 
     #[test]
     fn match_variant_returns_the_variant_with_matching_step_link() {
-        let variants = vec![
-            variant(Some("0:1-2"), "ls"),
-            variant(Some("1:1"), "pwd"),
-        ];
+        let variants = vec![variant(Some("0:1-2"), "ls"), variant(Some("1:1"), "pwd")];
         let matched = super::match_variant(&variants, "1:1");
         assert_eq!(matched.map(|v| v.variant_key.as_str()), Some("pwd"));
     }
@@ -708,7 +706,8 @@ mod tests {
             description: String::new(),
             cdylib_artifact_path: None,
         };
-        let map: HashMap<Uuid, ResolvedComponentUngated> = [(id, resolved.clone())].into_iter().collect();
+        let map: HashMap<Uuid, ResolvedComponentUngated> =
+            [(id, resolved.clone())].into_iter().collect();
         let resolver = super::MapComponentResolver { map: &map };
         assert_eq!(resolver.resolve(id), Some(resolved));
         assert!(resolver.resolve(Uuid::new_v4()).is_none());

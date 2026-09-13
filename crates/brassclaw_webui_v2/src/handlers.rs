@@ -23,10 +23,10 @@ use brassclaw_product_workflow::{
     CodexLoginStart, ComponentAuditStatus, DocusItem, DocusListResponse, InterceptorConfigSnapshot,
     LifecyclePackageKind, LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest,
     LlmProbeResult, McpServerActionResponse, McpServerSettingsResponse, McpServerStartRequest,
-    McpServerStatusResponse, MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse,
-    MontyVmStatusResponse, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
-    NearAiWalletLoginResult, OutcomeKind, PrefixListResponse, PrefixRegenerateResponse,
-    ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
+    McpServerStatusResponse, MontyVmRestartRequest, MontyVmRestartResponse,
+    MontyVmSettingsResponse, MontyVmStatusResponse, NearAiLoginRequest, NearAiLoginStart,
+    NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind, PrefixListResponse,
+    PrefixRegenerateResponse, ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
     RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
     RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
     RebornExtensionRegistryResponse, RebornInstallSkillRequest, RebornListAutomationsResponse,
@@ -35,17 +35,16 @@ use brassclaw_product_workflow::{
     RebornServicesErrorKind, RebornSetupExtensionResponse, RebornSkillInstallResult,
     RebornSkillRemoveResult, RebornStreamEventsRequest, RebornSubmitTurnResponse,
     RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
-    RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse, RecordOutcomeRequest,
-    RecordOutcomeResponse, SecurityModeConfig, SetActiveLlmRequest, SettingsListResponse,
-    ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
+    RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
+    RecordOutcomeRequest, RecordOutcomeResponse, SecurityModeConfig, SetActiveLlmRequest,
+    SettingsListResponse, ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
     UpdateChatPreferenceResponse, UpdateDocusRequest, UpdateInterceptorConfigRequest,
     UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest, UpdateValidationStatusRequest,
-    UpdateValidationStatusResponse,
-    UpsertLlmProviderRequest, ValidationQueueCountResponse, ValidationQueueFilter,
-    ValidationQueueListResponse, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
-    WebUiCreateThreadRequest, WebUiInboundValidationCode, WebUiInboundValidationError,
-    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
-    WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    UpdateValidationStatusResponse, UpsertLlmProviderRequest, ValidationQueueCountResponse,
+    ValidationQueueFilter, ValidationQueueListResponse, WebUiAuthenticatedCaller,
+    WebUiCancelRunRequest, WebUiCreateThreadRequest, WebUiInboundValidationCode,
+    WebUiInboundValidationError, WebUiListAutomationsRequest, WebUiListThreadsRequest,
+    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use futures::SinkExt;
 use futures::stream::Stream;
@@ -1418,10 +1417,16 @@ pub async fn export_skill(
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ExportSkillPath { id }): Path<ExportSkillPath>,
 ) -> Result<axum::response::Response, WebUiV2HttpError> {
-    let skill_md = state.services().export_skill_as_skill_md(caller, id).await?;
+    let skill_md = state
+        .services()
+        .export_skill_as_skill_md(caller, id)
+        .await?;
     let response = axum::response::Response::builder()
         .status(axum::http::StatusCode::OK)
-        .header(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; charset=utf-8",
+        )
         .header(
             axum::http::header::CONTENT_DISPOSITION,
             "attachment; filename=\"SKILL.md\"",

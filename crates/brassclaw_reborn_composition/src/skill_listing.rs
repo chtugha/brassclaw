@@ -122,5 +122,4 @@ mod tests {
             "unexpected error: {error}"
         );
     }
-
 }

@@ -43,9 +43,11 @@ use display_preview::{
     CapabilityDisplayPreviewResolution, CapabilityDisplayPreviewSource,
     NoopCapabilityDisplayPreviewSource,
 };
-use live_progress::{LiveProgressMilestoneSink, LiveProjectionPublisher, product_items_for_live_update};
 #[cfg(feature = "skills-db")]
 use live_progress::LiveSkillActivationObserver;
+use live_progress::{
+    LiveProgressMilestoneSink, LiveProjectionPublisher, product_items_for_live_update,
+};
 use runtime_replay::{
     DeliveredRuntimePayload, RuntimePayloadCandidate, RuntimePayloadResolution, RuntimePayloads,
     replay_payload_candidates, snapshot_payload_candidates,

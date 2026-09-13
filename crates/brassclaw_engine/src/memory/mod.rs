@@ -29,8 +29,8 @@ pub use metric_outcome::MetricRecorder;
 pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillMatch};
 pub use recipe_validator::{RecipeValidator, ValidationResult};
 pub use retrieval_source::{
-    ComponentItem, ComponentScope, FetchForTurnResult, RetrievalSource,
-    RetrievalSourceError, TurnRoutingSignals,
+    ComponentItem, ComponentScope, FetchForTurnResult, RetrievalSource, RetrievalSourceError,
+    TurnRoutingSignals,
 };
 #[cfg(feature = "skills-db")]
 pub use retrieval_source::{

@@ -234,8 +234,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                 .unwrap_or_default()
                 .join("docs/agents-v3");
 
-            let tenant_id_result =
-                brassclaw_host_api::TenantId::new(host_tenant_id.as_str());
+            let tenant_id_result = brassclaw_host_api::TenantId::new(host_tenant_id.as_str());
 
             if let Ok(tenant_id) = tenant_id_result {
                 let trigger_repo: std::sync::Arc<dyn brassclaw_triggers::TriggerRepository> =
@@ -243,10 +242,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                         (*pool).clone(),
                     ));
                 let watcher_ctx = std::sync::Arc::new(
-                    crate::doc_sync_watcher::DocSyncWatcher::new(
-                        trigger_repo,
-                        tenant_id,
-                    ),
+                    crate::doc_sync_watcher::DocSyncWatcher::new(trigger_repo, tenant_id),
                 );
                 let shutdown = tokio_util::sync::CancellationToken::new();
 
@@ -269,9 +265,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                     // Embedded Postgres fallback: default port 5434.
                     let port = std::env::var("BRASSCLAW_EMBEDDED_PG_PORT")
                         .unwrap_or_else(|_| "5434".to_string());
-                    Some(format!(
-                        "postgres://postgres@127.0.0.1:{port}/brassclaw"
-                    ))
+                    Some(format!("postgres://postgres@127.0.0.1:{port}/brassclaw"))
                 });
                 if let Some(pg_url) = pg_url_opt {
                     crate::doc_sync_watcher::spawn_doc_sync_pg_listener(
@@ -393,10 +387,9 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             Arc::clone(pool),
             tenant_id,
         );
-        api = api.with_security_settings_store(
-            Arc::new(security_store)
-                as Arc<dyn brassclaw_product_workflow::SecuritySettingsStore>,
-        );
+        api = api
+            .with_security_settings_store(Arc::new(security_store)
+                as Arc<dyn brassclaw_product_workflow::SecuritySettingsStore>);
         tracing::debug!("SecuritySettingsStore wired through PgSecuritySettingsStore");
     }
 
@@ -437,11 +430,8 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         let queue = Arc::new(crate::validation_queue::ValidationQueueStore::new(
             Arc::clone(pool),
         ));
-        let docus_store = crate::pg_docus_store::PgDocusStore::new(
-            Arc::clone(pool),
-            queue,
-            tenant_id,
-        );
+        let docus_store =
+            crate::pg_docus_store::PgDocusStore::new(Arc::clone(pool), queue, tenant_id);
         api = api.with_docus_store(
             Arc::new(docus_store) as Arc<dyn brassclaw_product_workflow::DocusStore>
         );

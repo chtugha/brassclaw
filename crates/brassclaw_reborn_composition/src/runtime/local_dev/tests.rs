@@ -26,8 +26,8 @@ mod tests {
         ToolResultReferenceEnvelope, ToolResultSafeSummary,
     };
     use brassclaw_turns::{
-        LoopMessageRef, RunProfileResolutionRequest, RunProfileResolver,
-        TurnActor, TurnId, TurnRunId, TurnScope,
+        LoopMessageRef, RunProfileResolutionRequest, RunProfileResolver, TurnActor, TurnId,
+        TurnRunId, TurnScope,
         run_profile::{
             CapabilityFailureKind, CapabilityInvocation, CapabilityOutcome,
             InMemoryLoopHostMilestoneSink, InMemoryRunProfileResolver, ModelProfileId,

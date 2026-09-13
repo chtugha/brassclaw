@@ -199,7 +199,10 @@ async fn fetch_component_content_fields(
         13 => ("reborn_tool_skills", "COALESCE(content, '') AS content"),
         21 => ("reborn_recipes", "description AS content"),
         22 => ("reborn_python_code", "content"),
-        23 => ("reborn_extension_catalogues", "COALESCE(overview_doc, '') AS content"),
+        23 => (
+            "reborn_extension_catalogues",
+            "COALESCE(overview_doc, '') AS content",
+        ),
         _ => {
             // Unknown class — cannot validate, defer.
             return Ok(None);
@@ -355,10 +358,7 @@ fn run_validator_python(
 
     match run_python_code_body(&body_with_return, &[]) {
         Ok(Some(val)) => {
-            let passed = val
-                .get("pass")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let passed = val.get("pass").and_then(|v| v.as_bool()).unwrap_or(false);
             let errors: Vec<String> = val
                 .get("errors")
                 .and_then(|e| e.as_array())
@@ -448,8 +448,7 @@ pub async fn run_q1_validation(
     };
 
     // Step 4 — fetch the component's name / description / content fields.
-    let Some(fields) =
-        fetch_component_content_fields(pool, scope, component_id, class_i16).await?
+    let Some(fields) = fetch_component_content_fields(pool, scope, component_id, class_i16).await?
     else {
         tracing::debug!(
             component_id = %component_id,
@@ -462,7 +461,8 @@ pub async fn run_q1_validation(
     };
 
     // Step 5 — run the pure-logic structural validator in the Monty sandbox.
-    let (passed, errors) = run_validator_python(&pc_body, &fields.name, &fields.description, &fields.content);
+    let (passed, errors) =
+        run_validator_python(&pc_body, &fields.name, &fields.description, &fields.content);
 
     tracing::debug!(
         component_id = %component_id,
@@ -475,14 +475,10 @@ pub async fn run_q1_validation(
 
     // Step 6 — record the gate result on the queue.
     if passed {
-        queue_store
-            .gate1_pass(scope, component_id, &[])
-            .await?;
+        queue_store.gate1_pass(scope, component_id, &[]).await?;
         Ok(Q1Outcome::Passed)
     } else {
-        queue_store
-            .gate1_fail(scope, component_id, &errors)
-            .await?;
+        queue_store.gate1_fail(scope, component_id, &errors).await?;
         Ok(Q1Outcome::Failed { errors })
     }
 }
@@ -546,8 +542,12 @@ result = {"pass": len(_errors) == 0, "errors": _errors}
 
     #[test]
     fn run_validator_python_passes_when_all_fields_present() {
-        let (passed, errors) =
-            run_validator_python(TEST_VALIDATOR_BODY, "my-tool", "does something useful", "real body");
+        let (passed, errors) = run_validator_python(
+            TEST_VALIDATOR_BODY,
+            "my-tool",
+            "does something useful",
+            "real body",
+        );
         assert!(passed, "all fields non-empty — should pass");
         assert!(errors.is_empty(), "no errors expected, got: {errors:?}");
     }
@@ -586,13 +586,20 @@ result = {"pass": len(_errors) == 0, "errors": _errors}
     fn run_validator_python_fails_when_all_empty() {
         let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "", "", "");
         assert!(!passed);
-        assert_eq!(errors.len(), 3, "expected 3 errors (name + desc + content), got: {errors:?}");
+        assert_eq!(
+            errors.len(),
+            3,
+            "expected 3 errors (name + desc + content), got: {errors:?}"
+        );
     }
 
     #[test]
     fn run_validator_python_treats_whitespace_only_as_empty() {
         let (passed, errors) = run_validator_python(TEST_VALIDATOR_BODY, "  ", "desc", "content");
-        assert!(!passed, "whitespace-only name should fail the .strip() check");
+        assert!(
+            !passed,
+            "whitespace-only name should fail the .strip() check"
+        );
         assert!(
             errors.iter().any(|e| e.contains("name")),
             "expected 'name is empty' error, got: {errors:?}"

@@ -64,11 +64,11 @@ const COMPONENT_TABLES: &[(&str, u16)] = &[
     ("reborn_tool_skills", 13),
     ("reborn_plans", 14),
     ("reborn_extensions_unified", 9),
-    ("reborn_docus", 17),               // Phase P Step 1 — doc-conversion artifacts
-    ("reborn_python_code", 22),         // Phase B — executor PythonCode components
+    ("reborn_docus", 17),       // Phase P Step 1 — doc-conversion artifacts
+    ("reborn_python_code", 22), // Phase B — executor PythonCode components
     ("reborn_extension_catalogues", 23), // Phase C — domain catalogue overviews
     ("reborn_orchestrators", 10), // future migration; skipped when absent
-    ("reborn_scaffolds", 50),     // future migration; skipped when absent
+    ("reborn_scaffolds", 50),   // future migration; skipped when absent
 ];
 
 /// Class code → human-readable type label for bundle headers.
@@ -592,7 +592,9 @@ mod tests {
     #[test]
     fn component_tables_contains_reborn_docus() {
         assert!(
-            COMPONENT_TABLES.iter().any(|(t, c)| *t == "reborn_docus" && *c == 17),
+            COMPONENT_TABLES
+                .iter()
+                .any(|(t, c)| *t == "reborn_docus" && *c == 17),
             "COMPONENT_TABLES must contain (\"reborn_docus\", 17) for Phase P doc-conversion"
         );
     }
@@ -600,7 +602,9 @@ mod tests {
     #[test]
     fn component_tables_contains_reborn_python_code() {
         assert!(
-            COMPONENT_TABLES.iter().any(|(t, c)| *t == "reborn_python_code" && *c == 22),
+            COMPONENT_TABLES
+                .iter()
+                .any(|(t, c)| *t == "reborn_python_code" && *c == 22),
             "COMPONENT_TABLES must contain (\"reborn_python_code\", 22)"
         );
     }
@@ -608,7 +612,9 @@ mod tests {
     #[test]
     fn component_tables_contains_reborn_extension_catalogues() {
         assert!(
-            COMPONENT_TABLES.iter().any(|(t, c)| *t == "reborn_extension_catalogues" && *c == 23),
+            COMPONENT_TABLES
+                .iter()
+                .any(|(t, c)| *t == "reborn_extension_catalogues" && *c == 23),
             "COMPONENT_TABLES must contain (\"reborn_extension_catalogues\", 23)"
         );
     }

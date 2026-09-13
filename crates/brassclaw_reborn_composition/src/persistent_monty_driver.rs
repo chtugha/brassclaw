@@ -64,34 +64,34 @@ use tokio::sync::Mutex;
 use tracing::debug;
 
 #[cfg(feature = "skills-db")]
+use crate::runtime::TierZeroEffectExecutorBuilder;
+#[cfg(feature = "skills-db")]
+use crate::session_registry::MontySessionRegistry;
+#[cfg(feature = "skills-db")]
 use brassclaw_engine::{
+    Store,
     capability::{lease::LeaseManager, policy::PolicyEngine},
     executor::{
-        orchestrator::{prepare_monty_session, MontySession, OrchestratorYield},
         ComponentPort, DynamicToolPort, KohaiPort,
+        orchestrator::{MontySession, OrchestratorYield, prepare_monty_session},
     },
     gate::GateController,
-    runtime::messaging::{signal_channel, SignalReceiver, SignalSender, ThreadSignal},
+    runtime::messaging::{SignalReceiver, SignalSender, ThreadSignal, signal_channel},
     traits::effect::EffectExecutor,
     types::{
         event::ThreadEvent,
         message::{MessageRole, ThreadMessage},
         thread::{Thread, ThreadId as EngineThreadId},
     },
-    Store,
 };
 #[cfg(feature = "skills-db")]
 use brassclaw_turns::{
+    LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, TurnRunId, TurnScope,
     run_profile::{
         AgentLoopDriverError, AgentLoopDriverHost, AgentLoopDriverRunRequest, LoopRunContext,
         MontyTurnDriverPort,
     },
-    LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, TurnRunId, TurnScope,
 };
-#[cfg(feature = "skills-db")]
-use crate::runtime::TierZeroEffectExecutorBuilder;
-#[cfg(feature = "skills-db")]
-use crate::session_registry::MontySessionRegistry;
 
 /// Per-conversation signal-channel broker (user-locked A). Holds the
 /// `SignalSender` for the turn currently in flight for each conversation so the
@@ -395,11 +395,12 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
         let context = host.run_context();
         let scope = context.scope.clone();
 
-        let thread = self.load_thread(context).await.ok_or_else(|| {
-            AgentLoopDriverError::Failed {
-                reason_kind: "monty turn driver: thread not found".to_string(),
-            }
-        })?;
+        let thread =
+            self.load_thread(context)
+                .await
+                .ok_or_else(|| AgentLoopDriverError::Failed {
+                    reason_kind: "monty turn driver: thread not found".to_string(),
+                })?;
         let mut thread = thread;
 
         let user_input = last_user_input_string(&thread);
@@ -412,7 +413,13 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
         self.signal_broker.set(scope.clone(), signal_tx).await;
 
         let result = self
-            .drive_turn_inner(context, &mut thread, &mut signal_rx, user_input, max_duration_override)
+            .drive_turn_inner(
+                context,
+                &mut thread,
+                &mut signal_rx,
+                user_input,
+                max_duration_override,
+            )
             .await;
 
         // Turn is over either way: drop the turn's signal sender so a stray

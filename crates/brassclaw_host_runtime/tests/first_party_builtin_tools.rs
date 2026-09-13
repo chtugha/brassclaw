@@ -37,15 +37,14 @@ use brassclaw_host_api::runtime_policy::{
 };
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
-    APPLY_PATCH_CAPABILITY_ID, CapabilitySurfacePolicy, CapabilitySurfaceVersion,
-    COMPONENT_DB_CAPABILITY_ID, CommandExecutionOutput, CommandExecutionRequest,
-    ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID,
-    GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID, HostRuntime,
-    HostRuntimeServices, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID,
-    MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID,
-    READ_FILE_CAPABILITY_ID, RuntimeCapabilityFailure, RuntimeCapabilityOutcome,
-    RuntimeCapabilityRequest, RuntimeFailureKind, RuntimeProcessError, RuntimeProcessPort,
-    SHELL_CAPABILITY_ID, SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID,
+    APPLY_PATCH_CAPABILITY_ID, COMPONENT_DB_CAPABILITY_ID, CapabilitySurfacePolicy,
+    CapabilitySurfaceVersion, CommandExecutionOutput, CommandExecutionRequest, ECHO_CAPABILITY_ID,
+    GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID,
+    HostRuntime, HostRuntimeServices, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID,
+    MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID,
+    MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID, RuntimeCapabilityFailure,
+    RuntimeCapabilityOutcome, RuntimeCapabilityRequest, RuntimeFailureKind, RuntimeProcessError,
+    RuntimeProcessPort, SHELL_CAPABILITY_ID, SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID,
     SKILL_REMOVE_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID, SandboxCommandTransport, SurfaceKind,
     TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID,
     TRIGGER_REMOVE_CAPABILITY_ID, TenantSandboxProcessPort, ToolCallHttpEgress, TriggerCreateHook,

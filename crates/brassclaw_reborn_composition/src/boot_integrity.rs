@@ -97,7 +97,7 @@ fn variable_class_arm(table: &'static str) -> String {
 fn build_integrity_query() -> String {
     let arms: Vec<String> = vec![
         // Variable class_code tables
-        variable_class_arm("reborn_skills"),           // classes 1/2/3/10/50
+        variable_class_arm("reborn_skills"), // classes 1/2/3/10/50
         variable_class_arm("reborn_extensions_unified"), // classes 4-9
         // Fixed class_code tables
         fixed_class_arm("reborn_tools", 0),
@@ -111,7 +111,7 @@ fn build_integrity_query() -> String {
         fixed_class_arm("reborn_lessons", 18),
         fixed_class_arm("reborn_issues", 19),
         fixed_class_arm("reborn_notes", 20),
-        fixed_class_arm("reborn_python_code", 22),        // V052 / class 22
+        fixed_class_arm("reborn_python_code", 22), // V052 / class 22
         fixed_class_arm("reborn_extension_catalogues", 23), // V053 / class 23
     ];
     arms.join(" UNION ALL ")
@@ -136,15 +136,20 @@ fn build_integrity_query() -> String {
 /// One DB round-trip for the UNION ALL scan, then one `submit` per missing row.
 /// In steady state (V077 populate ran successfully) there should be zero missing
 /// rows and the function returns immediately after the scan.
-pub(crate) async fn run_boot_integrity_check(pool: &std::sync::Arc<PgPool>) -> Result<u64, BootIntegrityError> {
+pub(crate) async fn run_boot_integrity_check(
+    pool: &std::sync::Arc<PgPool>,
+) -> Result<u64, BootIntegrityError> {
     let client = pool.get().await.map_err(|e| BootIntegrityError::Pool {
         reason: e.to_string(),
     })?;
 
     let sql = build_integrity_query();
-    let rows = client.query(&sql, &[]).await.map_err(|e| BootIntegrityError::Db {
-        reason: e.to_string(),
-    })?;
+    let rows = client
+        .query(&sql, &[])
+        .await
+        .map_err(|e| BootIntegrityError::Db {
+            reason: e.to_string(),
+        })?;
 
     if rows.is_empty() {
         tracing::debug!("boot integrity check: all component tables consistent");

@@ -43,8 +43,8 @@ use brassclaw_host_api::{
     SecretHandle, TenantId, ThreadId, TrustClass, UserId, VirtualPath,
 };
 use brassclaw_host_runtime::{
-    APPLY_PATCH_CAPABILITY_ID, BUILTIN_FIRST_PARTY_PROVIDER, CapabilitySurfacePolicy,
-    CapabilitySurfaceVersion as HostRuntimeCapabilitySurfaceVersion, COMPONENT_DB_CAPABILITY_ID,
+    APPLY_PATCH_CAPABILITY_ID, BUILTIN_FIRST_PARTY_PROVIDER, COMPONENT_DB_CAPABILITY_ID,
+    CapabilitySurfacePolicy, CapabilitySurfaceVersion as HostRuntimeCapabilitySurfaceVersion,
     ECHO_CAPABILITY_ID, GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID,
     HTTP_SAVE_CAPABILITY_ID, HostRuntime, HostRuntimeServices, JSON_CAPABILITY_ID,
     LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID,
@@ -114,9 +114,9 @@ use brassclaw_turns::{
     AgentLoopDriverResumeRequest, CancelRunRequest, FilesystemTurnStateStore, GateRef,
     GetLoopCheckpointRequest, GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore,
     LoopBlockedKind, LoopCheckpointKind, LoopCheckpointStore, LoopExit, LoopGateRef, LoopResultRef,
-    ReplyTargetBindingRef, ResumeTurnRequest, SanitizedCancelReason, SourceBindingRef,
-    TurnActor, TurnCoordinator, TurnError, TurnRunId, TurnRunRecord,
-    TurnRunState, TurnScope, TurnSpawnTreeStateStore, TurnStateStore, TurnStatus,
+    ReplyTargetBindingRef, ResumeTurnRequest, SanitizedCancelReason, SourceBindingRef, TurnActor,
+    TurnCoordinator, TurnError, TurnRunId, TurnRunRecord, TurnRunState, TurnScope,
+    TurnSpawnTreeStateStore, TurnStateStore, TurnStatus,
     run_profile::{
         AgentLoopDriver, AgentLoopDriverError, AgentLoopDriverHost, AgentLoopDriverRunRequest,
         AgentLoopHostError, AgentLoopHostErrorKind, CapabilityBatchInvocation,
@@ -1021,7 +1021,7 @@ impl RebornBinaryE2EHarness {
             interceptor_mode: None,
             proposal_sink: None,
             monty_driver: Some(HarnessPlannedMontyDriver::new(
-                turn_store.clone() as Arc<dyn TurnStateStore>,
+                turn_store.clone() as Arc<dyn TurnStateStore>
             )?),
         })?;
         let binding_service: Arc<dyn ConversationBindingService> =

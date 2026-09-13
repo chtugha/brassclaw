@@ -31,10 +31,10 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use brassclaw_engine::memory::template_extractor::parse_template;
 use brassclaw_engine::memory::{
     ComponentScope, FetchForTurnResult, PostgresSource, RetrievalSource,
 };
-use brassclaw_engine::memory::template_extractor::parse_template;
 use tokio_postgres::types::ToSql;
 use uuid::Uuid;
 

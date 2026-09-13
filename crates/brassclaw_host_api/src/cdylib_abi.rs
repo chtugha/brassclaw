@@ -118,7 +118,10 @@ mod tests {
     fn response_ok_round_trips_and_skips_none_fields() {
         let resp = CdylibResponse::ok(serde_json::json!({"echoed": true, "x": 2}));
         let json = serde_json::to_string(&resp).expect("serialize response");
-        assert!(!json.contains("\"error\""), "error field must be absent: {json}");
+        assert!(
+            !json.contains("\"error\""),
+            "error field must be absent: {json}"
+        );
         assert!(json.contains("\"result\""), "result field present: {json}");
         let back: CdylibResponse = serde_json::from_str(&json).expect("deserialize response");
         assert_eq!(back, resp);
@@ -129,7 +132,10 @@ mod tests {
         let resp = CdylibResponse::err("kaboom");
         let json = serde_json::to_string(&resp).expect("serialize error response");
         assert!(json.contains("\"ok\":false"), "ok must be false: {json}");
-        assert!(json.contains("\"error\":\"kaboom\""), "error message present: {json}");
+        assert!(
+            json.contains("\"error\":\"kaboom\""),
+            "error message present: {json}"
+        );
         let back: CdylibResponse = serde_json::from_str(&json).expect("deserialize error response");
         assert_eq!(back, resp);
     }

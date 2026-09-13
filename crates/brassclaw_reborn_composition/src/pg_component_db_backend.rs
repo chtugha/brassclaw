@@ -156,8 +156,7 @@ mod inner {
                 .await
                 .map_err(|e| ComponentDbError::Db(e.to_string()))?;
 
-            let consumer_tags: Vec<&str> =
-                row.consumer_tags.iter().map(String::as_str).collect();
+            let consumer_tags: Vec<&str> = row.consumer_tags.iter().map(String::as_str).collect();
 
             // Upsert — always sets validation_status='pending' (§7, Answer 2).
             let result_row = client
@@ -210,10 +209,7 @@ mod inner {
             })
         }
 
-        async fn mark_stale(
-            &self,
-            scope: &ComponentDbScope,
-        ) -> Result<(), ComponentDbError> {
+        async fn mark_stale(&self, scope: &ComponentDbScope) -> Result<(), ComponentDbError> {
             // Best-effort — log the error but don't propagate (the caller always
             // uses this in a non-fatal path).
             if let Err(e) = self

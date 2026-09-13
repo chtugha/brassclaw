@@ -394,11 +394,7 @@ mod tests {
     }
 
     /// Read the current `validation_status` of a `reborn_docus` row by id.
-    async fn read_status(
-        pool: &Arc<brassclaw_pg::PgPool>,
-        tenant: &str,
-        id: Uuid,
-    ) -> String {
+    async fn read_status(pool: &Arc<brassclaw_pg::PgPool>, tenant: &str, id: Uuid) -> String {
         let client = pool.get().await.expect("pool client");
         let row = client
             .query_one(
@@ -592,7 +588,10 @@ mod tests {
             .get_docus(Uuid::new_v4())
             .await
             .expect("get must not error on missing row");
-        assert!(result.is_none(), "get_docus must return None for an unknown id");
+        assert!(
+            result.is_none(),
+            "get_docus must return None for an unknown id"
+        );
     }
 
     // ── test: update_docus_content fails with NotFound for unknown id ────────

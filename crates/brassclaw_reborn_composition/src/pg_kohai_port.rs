@@ -45,9 +45,7 @@
 use brassclaw_engine::executor::kohai_port::{
     KohaiAnswer, KohaiCallCtx, KohaiPort, KohaiPortError, KohaiUsage as EngineKohaiUsage,
 };
-use brassclaw_interceptor::packet::{
-    CapturedPrompt, PromptSegment, TokenAccountingSnapshot,
-};
+use brassclaw_interceptor::packet::{CapturedPrompt, PromptSegment, TokenAccountingSnapshot};
 use brassclaw_interceptor::{ForensicPacket, KohaiUsage as InterceptorKohaiUsage};
 use brassclaw_loop_support::{
     HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
@@ -59,13 +57,13 @@ use brassclaw_turns::{
 };
 
 #[cfg(feature = "postgres")]
-use std::{future::Future, pin::Pin, sync::Arc};
+use crate::pg_basic_prompt_store::{PgBasicPromptStore, get_system_bundle};
 #[cfg(feature = "postgres")]
 use brassclaw_interceptor::InterceptorStore;
 #[cfg(feature = "postgres")]
 use brassclaw_loop_support::HostManagedModelGateway;
 #[cfg(feature = "postgres")]
-use crate::pg_basic_prompt_store::{PgBasicPromptStore, get_system_bundle};
+use std::{future::Future, pin::Pin, sync::Arc};
 
 // ── pure mapping helpers (ungated; unit-tested under both configs) ───────────
 
@@ -88,7 +86,10 @@ fn prompt_string(prompt: &serde_json::Value, key: &str) -> String {
 /// of `{"role","content"}` objects or `[role, content]` arrays; any other shape
 /// is skipped.
 fn prompt_chat_history(prompt: &serde_json::Value) -> Vec<(String, String)> {
-    let Some(arr) = prompt.get("chat_history").and_then(serde_json::Value::as_array) else {
+    let Some(arr) = prompt
+        .get("chat_history")
+        .and_then(serde_json::Value::as_array)
+    else {
         return Vec::new();
     };
     arr.iter()
@@ -218,11 +219,10 @@ fn build_gateway_request(
             "user" if idx == captured.messages.len() - 1 => "user".to_string(),
             _ => format!("h{idx}"),
         };
-        let content_ref = kohai_message_ref(run_str, &label).map_err(|e| {
-            KohaiPortError::InvalidPrompt {
+        let content_ref =
+            kohai_message_ref(run_str, &label).map_err(|e| KohaiPortError::InvalidPrompt {
                 reason: format!("message ref: {e}"),
-            }
-        })?;
+            })?;
         messages.push(HostManagedModelMessage {
             role: gateway_role_from_str(role),
             content: content.clone(),
@@ -352,19 +352,15 @@ impl PgKohaiPort {
         let run_id = TurnRunId::parse(&ctx.run_id).unwrap_or_else(|_| TurnRunId::new());
         let run_str = run_id.to_string();
         let turn_id = TurnId::new();
-        let request = build_gateway_request(
-            &packet.prompt,
-            model_profile_id,
-            run_id,
-            turn_id,
-            &run_str,
-        )?;
-        let response = kohai_gateway
-            .stream_model(request)
-            .await
-            .map_err(|e| KohaiPortError::LlmFailed {
-                reason: e.to_string(),
-            })?;
+        let request =
+            build_gateway_request(&packet.prompt, model_profile_id, run_id, turn_id, &run_str)?;
+        let response =
+            kohai_gateway
+                .stream_model(request)
+                .await
+                .map_err(|e| KohaiPortError::LlmFailed {
+                    reason: e.to_string(),
+                })?;
         let answer_text = gateway_response_text(&response);
 
         // 6. Close [Complete] → save.
@@ -480,7 +476,10 @@ mod tests {
             cap.messages[2],
             ("assistant".to_string(), "reply".to_string())
         );
-        assert_eq!(cap.messages[3], ("user".to_string(), "current q".to_string()));
+        assert_eq!(
+            cap.messages[3],
+            ("user".to_string(), "current q".to_string())
+        );
         assert_eq!(cap.token_accounting.message_count, 4);
         assert!(cap.token_accounting.total_input_estimated > 0);
         assert_eq!(cap.segments.len(), 3);
@@ -540,21 +539,24 @@ mod tests {
         let run_id = TurnRunId::new();
         let run_str = run_id.to_string();
         let profile = ModelProfileId::new("interactive_model").expect("profile id");
-        let request = build_gateway_request(
-            &captured,
-            profile.clone(),
-            run_id,
-            TurnId::new(),
-            &run_str,
-        )
-        .expect("request builds");
+        let request =
+            build_gateway_request(&captured, profile.clone(), run_id, TurnId::new(), &run_str)
+                .expect("request builds");
         assert_eq!(request.model_profile_id, profile);
         assert_eq!(request.messages.len(), 4);
-        assert_eq!(request.messages[0].role, HostManagedModelMessageRole::System);
+        assert_eq!(
+            request.messages[0].role,
+            HostManagedModelMessageRole::System
+        );
         assert_eq!(request.messages[0].content, "SYS");
         assert_eq!(request.messages[3].role, HostManagedModelMessageRole::User);
         assert_eq!(request.messages[3].content, "current q");
-        assert!(request.messages[0].content_ref.as_str().starts_with("msg:kohai-"));
+        assert!(
+            request.messages[0]
+                .content_ref
+                .as_str()
+                .starts_with("msg:kohai-")
+        );
     }
 
     #[test]

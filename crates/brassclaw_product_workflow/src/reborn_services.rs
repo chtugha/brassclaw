@@ -311,7 +311,9 @@ pub struct UpdateDocusRequest {
 /// `brassclaw_reborn_composition::pg_docus_store::PgDocusStore`.
 #[async_trait]
 pub trait DocusStore: Send + Sync {
-    async fn list_docus(&self) -> Result<DocusListResponse, Box<dyn std::error::Error + Send + Sync>>;
+    async fn list_docus(
+        &self,
+    ) -> Result<DocusListResponse, Box<dyn std::error::Error + Send + Sync>>;
     async fn get_docus(
         &self,
         id: uuid::Uuid,
@@ -4211,7 +4213,9 @@ impl RebornServicesApi for RebornServices {
         let svc = self.mcp_server_service.as_ref().ok_or_else(|| {
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
         })?;
-        svc.update_settings(request).await.map_err(map_mcp_server_error)
+        svc.update_settings(request)
+            .await
+            .map_err(map_mcp_server_error)
     }
 
     async fn get_mcp_server_status(
@@ -4290,9 +4294,7 @@ fn recipe_not_found(kind: &str, id: &str) -> RebornServicesError {
     RebornServicesError::from_status(RebornServicesErrorCode::NotFound, 404, false)
 }
 
-fn map_mcp_server_error(
-    error: crate::settings::McpServerServiceError,
-) -> RebornServicesError {
+fn map_mcp_server_error(error: crate::settings::McpServerServiceError) -> RebornServicesError {
     use crate::settings::McpServerServiceError;
     match error {
         McpServerServiceError::Invalid(_) => {

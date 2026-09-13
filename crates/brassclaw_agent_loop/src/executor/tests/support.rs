@@ -214,10 +214,7 @@ impl MockHost {
     /// (v3 plan §H7/H.13) so `TierZeroExecutionStage::process` calls
     /// `run_tier_zero` in tests. When unset, `orchestrator_lookup()` returns
     /// `None` (Tier-2 fall-through / degrade).
-    pub(super) fn with_orchestrator_lookup(
-        mut self,
-        lookup: Arc<dyn OrchestratorLookup>,
-    ) -> Self {
+    pub(super) fn with_orchestrator_lookup(mut self, lookup: Arc<dyn OrchestratorLookup>) -> Self {
         self.orchestrator_lookup = Some(lookup);
         self
     }
@@ -1380,10 +1377,7 @@ pub(super) struct StubOrchestratorLookup {
 impl StubOrchestratorLookup {
     /// Return `Some(TierZeroReply { text, matched_component_ids })` from
     /// `run_tier_zero`.
-    pub(super) fn returning(
-        text: impl Into<String>,
-        matched: Vec<String>,
-    ) -> Self {
+    pub(super) fn returning(text: impl Into<String>, matched: Vec<String>) -> Self {
         Self {
             calls: Arc::new(Mutex::new(Vec::new())),
             reply: Some(brassclaw_turns::run_profile::TierZeroReply {

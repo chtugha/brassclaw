@@ -1252,7 +1252,9 @@ mod inner {
             input.intent_examples = json!([{"input": long_input, "class": 2}]);
             let vr = validate_row(&input);
             assert!(
-                vr.errors.iter().any(|e| e.contains("exceeds") && e.contains("512")),
+                vr.errors
+                    .iter()
+                    .any(|e| e.contains("exceeds") && e.contains("512")),
                 "expected length rejection, got: {:?}",
                 vr.errors
             );
@@ -1265,7 +1267,11 @@ mod inner {
             let ok_input = "a".repeat(512);
             input.intent_examples = json!([{"input": ok_input, "class": 1}]);
             let vr = validate_row(&input);
-            assert!(vr.is_ok(), "expected ok at exactly 512 chars, got: {:?}", vr.errors);
+            assert!(
+                vr.is_ok(),
+                "expected ok at exactly 512 chars, got: {:?}",
+                vr.errors
+            );
         }
     }
 } // mod inner

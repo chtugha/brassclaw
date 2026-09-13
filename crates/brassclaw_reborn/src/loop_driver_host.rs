@@ -28,12 +28,11 @@ use brassclaw_loop_support::SystemBundleSource;
 use brassclaw_loop_support::{
     CapabilityResolveError, CapabilitySurfaceProfileFilter, CapabilitySurfaceProfileResolver,
     EmptyLoopCapabilityPort, GuardedSystemInferencePort, HostIdentityContextSource, HostInputQueue,
-    HostManagedModelGateway, HostQueueLoopInputPort, IdentityBudget,
-    LoopCapabilityInputResolver, LoopCapabilityPortFactory, ModelGatewayBackedSystemInferencePort,
-    RunCancellationFactory, RunCancellationObservationKind, RunStateLoopCancellationPort,
-    SubagentLoopPromptPort, SubagentPromptComposer, ThreadBackedLoopContextPort,
-    ThreadBackedLoopTranscriptPort, TurnStateRunCancellationFactory,
-    default_host_managed_loop_compaction_port,
+    HostManagedModelGateway, HostQueueLoopInputPort, IdentityBudget, LoopCapabilityInputResolver,
+    LoopCapabilityPortFactory, ModelGatewayBackedSystemInferencePort, RunCancellationFactory,
+    RunCancellationObservationKind, RunStateLoopCancellationPort, SubagentLoopPromptPort,
+    SubagentPromptComposer, ThreadBackedLoopContextPort, ThreadBackedLoopTranscriptPort,
+    TurnStateRunCancellationFactory, default_host_managed_loop_compaction_port,
 };
 use brassclaw_threads::{SessionThreadService, ThreadScope};
 use futures_util::FutureExt;

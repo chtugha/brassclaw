@@ -23,9 +23,9 @@
 use std::sync::Arc;
 
 use brassclaw_pg::PgPool;
-use tokio::time::{Duration, interval};
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 use chrono::Timelike as _;
+use tokio::time::{Duration, interval};
 
 const SWEEP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -250,14 +250,8 @@ pub fn spawn_idle_improvement_sweep(
         loop {
             ticker.tick().await;
 
-            let config = load_idle_sweep_config(
-                &pool,
-                &tenant_id,
-                &agent_id,
-                &user_id,
-                &project_id,
-            )
-            .await;
+            let config =
+                load_idle_sweep_config(&pool, &tenant_id, &agent_id, &user_id, &project_id).await;
 
             if !config.enabled {
                 continue;
@@ -309,8 +303,6 @@ pub fn spawn_idle_improvement_sweep(
         }
     })
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Chunk-cascade delete helper (§4.30.2)

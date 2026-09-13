@@ -1743,7 +1743,6 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             }
         }
     }
-
 }
 
 #[cfg(test)]
@@ -1765,7 +1764,11 @@ mod tests {
     fn recipe_select_round_trips_v3_authoring_columns() {
         let cols: Vec<&str> = RECIPE_SELECT.trim().split(',').map(|c| c.trim()).collect();
         // 29 original + 1 (validates_class_code, V079) = 30.
-        assert_eq!(cols.len(), 30, "RECIPE_SELECT must select 30 columns (29 + validates_class_code V079)");
+        assert_eq!(
+            cols.len(),
+            30,
+            "RECIPE_SELECT must select 30 columns (29 + validates_class_code V079)"
+        );
         assert_eq!(cols[0], "id");
         assert_eq!(cols[25], "updated_at");
         assert_eq!(cols[26], "step_descriptions");

@@ -273,7 +273,11 @@ mod tests {
     fn default_config_is_all_auto() {
         let cfg = SecurityModeConfig::default();
         for layer in ALL_SECURITY_LAYERS {
-            assert_eq!(cfg.override_for(layer), SecurityLayerOverride::Auto, "{layer:?}");
+            assert_eq!(
+                cfg.override_for(layer),
+                SecurityLayerOverride::Auto,
+                "{layer:?}"
+            );
         }
     }
 

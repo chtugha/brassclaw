@@ -206,12 +206,7 @@ mod inner {
     async fn handle_mcp_get() -> Response {
         // V.0: return a 200 with an empty SSE body. Future versions will
         // stream `listChanged` notifications here.
-        (
-            StatusCode::OK,
-            [("content-type", "text/event-stream")],
-            "",
-        )
-            .into_response()
+        (StatusCode::OK, [("content-type", "text/event-stream")], "").into_response()
     }
 
     // -----------------------------------------------------------------------
@@ -238,11 +233,7 @@ mod inner {
             }
             "tools/list" => handle_tools_list(&state).await,
             "tools/call" => handle_tools_call(&state, req.id.clone(), req.params).await,
-            other => JsonRpcResponse::err(
-                req.id,
-                -32601,
-                format!("method not found: {other}"),
-            ),
+            other => JsonRpcResponse::err(req.id, -32601, format!("method not found: {other}")),
         };
 
         Json(response)
@@ -287,9 +278,7 @@ mod inner {
     /// - `description` = Skill `description`, truncated to 1024 chars
     /// - `inputSchema` = JSON Schema from `variable_patterns` if present,
     ///   else `{ "type": "object", "properties": {} }`
-    async fn list_tools(
-        state: &McpServerState,
-    ) -> Result<Vec<Value>, OrchestratorMcpError> {
+    async fn list_tools(state: &McpServerState) -> Result<Vec<Value>, OrchestratorMcpError> {
         let scope = scope_from_thread_ids(
             state.scope.tenant_id.clone(),
             state.scope.user_id.clone(),
@@ -330,7 +319,11 @@ mod inner {
 
         // Build inputSchema from variable_patterns if present on the skill row.
         // The `variable_patterns` field is optional; fall back to an open schema.
-        let input_schema = build_input_schema(skill.get("metadata").and_then(|m| m.get("variable_patterns")));
+        let input_schema = build_input_schema(
+            skill
+                .get("metadata")
+                .and_then(|m| m.get("variable_patterns")),
+        );
 
         json!({
             "name": name,
@@ -547,7 +540,12 @@ mod inner {
         fn build_input_schema_empty_patterns_returns_open_schema() {
             let schema = build_input_schema(None);
             assert_eq!(schema["type"], "object");
-            assert!(schema["properties"].as_object().map(|m| m.is_empty()).unwrap_or(false));
+            assert!(
+                schema["properties"]
+                    .as_object()
+                    .map(|m| m.is_empty())
+                    .unwrap_or(false)
+            );
         }
 
         #[test]
@@ -560,12 +558,14 @@ mod inner {
 
             assert_eq!(schema["type"], "object");
             assert_eq!(schema["properties"]["slot0"]["type"], "string");
-            assert_eq!(schema["properties"]["slot0"]["description"], "directory path");
+            assert_eq!(
+                schema["properties"]["slot0"]["description"],
+                "directory path"
+            );
             assert_eq!(schema["properties"]["slot1"]["type"], "boolean");
 
             let required = schema["required"].as_array().expect("required is array");
-            let required_names: Vec<&str> =
-                required.iter().filter_map(|v| v.as_str()).collect();
+            let required_names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
             assert!(required_names.contains(&"slot0"));
             assert!(required_names.contains(&"slot1"));
         }
@@ -661,6 +661,4 @@ mod inner {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "skills-db")]
-pub use inner::{
-    OrchestratorMcpError, OrchestratorMcpServerConfig, orchestrator_mcp_router,
-};
+pub use inner::{OrchestratorMcpError, OrchestratorMcpServerConfig, orchestrator_mcp_router};

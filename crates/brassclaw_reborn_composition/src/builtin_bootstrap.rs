@@ -43,13 +43,11 @@ use std::sync::Arc;
 use brassclaw_engine::memory::retrieval_source::ComponentScope;
 use brassclaw_host_api::SYSTEM_RESERVED_ID;
 use brassclaw_pg::PgPool;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::pg_extension_catalogue_store::{
-    NewPgExtensionCatalogue, PgExtensionCatalogueStore,
-};
+use crate::pg_extension_catalogue_store::{NewPgExtensionCatalogue, PgExtensionCatalogueStore};
 use crate::pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore};
 use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
 use crate::pg_skill_store::{NewPgSkill, PgSkillStore};
@@ -122,12 +120,7 @@ impl BootstrapStores {
     ///
     /// Errors are logged at `debug!` and suppressed — a missing audit record
     /// must never block a seeder boot (the component itself is already valid).
-    async fn audit_builtin_graduation(
-        &self,
-        component_id: Uuid,
-        class_code: i32,
-        name: &str,
-    ) {
+    async fn audit_builtin_graduation(&self, component_id: Uuid, class_code: i32, name: &str) {
         let scope = ComponentScope {
             tenant_id: self.tenant.clone(),
             user_id: SEED_USER.to_string(),
@@ -135,7 +128,11 @@ impl BootstrapStores {
             project_id: SEED_PROJECT.to_string(),
         };
         // submit → state 1
-        match self.queue.submit(&scope, component_id, class_code, None).await {
+        match self
+            .queue
+            .submit(&scope, component_id, class_code, None)
+            .await
+        {
             Ok(()) => {}
             Err(crate::validation_queue::ValidationQueueError::AlreadyQueued { .. }) => {
                 // A stale queue row exists (e.g. crash-recovery left it). Skip
@@ -168,7 +165,11 @@ impl BootstrapStores {
             return;
         }
         // Q2 approve with actor = "builtin"
-        if let Err(e) = self.queue.approve(&scope, component_id, Some("builtin")).await {
+        if let Err(e) = self
+            .queue
+            .approve(&scope, component_id, Some("builtin"))
+            .await
+        {
             tracing::debug!(
                 component_id = %component_id,
                 class_code,
@@ -209,9 +210,10 @@ impl BootstrapStores {
         row: NewPgToolSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let map = |e: crate::pg_tool_skill_store::PgToolSkillStoreError| {
-            SeedBuiltinBootstrapError::Db { reason: e.to_string() }
-        };
+        let map =
+            |e: crate::pg_tool_skill_store::PgToolSkillStoreError| SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            };
         if let Some(id) = self.tool_skill.insert(row).await.map_err(map)? {
             // New insert — record the builtin audit graduation.
             self.audit_builtin_graduation(id, 13, name).await;
@@ -260,7 +262,9 @@ impl BootstrapStores {
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
         let map = |e: crate::pg_python_code_store::PgPythonCodeStoreError| {
-            SeedBuiltinBootstrapError::Db { reason: e.to_string() }
+            SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            }
         };
         if let Some(existing) = self
             .python_code
@@ -321,7 +325,9 @@ impl BootstrapStores {
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
         let map = |e: crate::pg_extension_catalogue_store::PgExtensionCatalogueStoreError| {
-            SeedBuiltinBootstrapError::Db { reason: e.to_string() }
+            SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            }
         };
         if let Some(existing) = self
             .catalogue
@@ -358,7 +364,9 @@ impl BootstrapStores {
         child_ids: &[Uuid],
     ) -> Result<(), SeedBuiltinBootstrapError> {
         let map = |e: crate::pg_extension_catalogue_store::PgExtensionCatalogueStoreError| {
-            SeedBuiltinBootstrapError::Db { reason: e.to_string() }
+            SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            }
         };
         self.catalogue
             .append_child_component_ids(
@@ -398,7 +406,9 @@ impl BootstrapStores {
             .pool
             .get()
             .await
-            .map_err(|e| SeedBuiltinBootstrapError::Pool { reason: e.to_string() })?;
+            .map_err(|e| SeedBuiltinBootstrapError::Pool {
+                reason: e.to_string(),
+            })?;
 
         let id = Uuid::new_v4();
         let tools: Vec<String> = allowed_tools.iter().map(|s| s.to_string()).collect();
@@ -430,7 +440,9 @@ impl BootstrapStores {
                 ],
             )
             .await
-            .map_err(|e| SeedBuiltinBootstrapError::Db { reason: e.to_string() })?;
+            .map_err(|e| SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            })?;
 
         if inserted == 1 {
             // New row — record builtin audit graduation.
@@ -444,16 +456,12 @@ impl BootstrapStores {
                 "SELECT id FROM reborn_actions \
                  WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 \
                  AND project_id=$4 AND name=$5",
-                &[
-                    &self.tenant,
-                    &SEED_USER,
-                    &SEED_AGENT,
-                    &SEED_PROJECT,
-                    &name,
-                ],
+                &[&self.tenant, &SEED_USER, &SEED_AGENT, &SEED_PROJECT, &name],
             )
             .await
-            .map_err(|e| SeedBuiltinBootstrapError::Db { reason: e.to_string() })?;
+            .map_err(|e| SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            })?;
 
         Ok(row.get(0))
     }
@@ -466,10 +474,7 @@ impl BootstrapStores {
     /// `tier = 'mature'` + `wilson_lower = 1.0` flips that to `false` so the
     /// doc's Tier-0 builtins run without an LLM call. Tier-1 recipes are left
     /// at the insert defaults. Idempotent (plain UPDATE on the seeded row).
-    async fn mark_recipe_tier0(
-        &self,
-        recipe_id: Uuid,
-    ) -> Result<(), SeedBuiltinBootstrapError> {
+    async fn mark_recipe_tier0(&self, recipe_id: Uuid) -> Result<(), SeedBuiltinBootstrapError> {
         let client = self
             .pool
             .get()
@@ -520,7 +525,14 @@ impl BootstrapStores {
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
         let id = self
             .upsert_recipe(
-                recipe_row(tenant, name, description, yaml_source, step_entries, intent_examples),
+                recipe_row(
+                    tenant,
+                    name,
+                    description,
+                    yaml_source,
+                    step_entries,
+                    intent_examples,
+                ),
                 name,
             )
             .await?;
@@ -597,9 +609,7 @@ const CAT_FILESYSTEM: &str = "builtin-filesystem";
 /// PythonCode, leaf Skills, the Domain Skill, and Recipes are added in
 /// subsequent chunks; their ids are appended to the catalogues'
 /// `child_component_ids` as they are minted (dedup makes this idempotent).
-async fn seed_filesystem_group(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
@@ -1308,7 +1318,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_READ_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-read-file ToolSkill binding",
+                    "component",
+                    &[ts_read_file],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1340,7 +1356,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_READ_RANGE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-read-file ToolSkill binding",
+                    "component",
+                    &[ts_read_file],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1376,7 +1398,11 @@ async fn seed_filesystem_group(
                     "orchestrator",
                     "Load read + write leaf skill context",
                     "component",
-                    &[skill_read_file, skill_write_file_replace, skill_write_file_new],
+                    &[
+                        skill_read_file,
+                        skill_write_file_replace,
+                        skill_write_file_new,
+                    ],
                 ),
                 step_entry(
                     2,
@@ -1392,7 +1418,13 @@ async fn seed_filesystem_group(
                     "text",
                     &[],
                 ),
-                step_entry(4, "rust", "Pre-load ts-write-file binding", "component", &[ts_write_file]),
+                step_entry(
+                    4,
+                    "rust",
+                    "Pre-load ts-write-file binding",
+                    "component",
+                    &[ts_write_file],
+                ),
             ],
             &[
                 json!({"input": "write a file", "class": 1}),
@@ -1416,7 +1448,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_WRITE_TEMPLATE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-write-file ToolSkill binding", "component", &[ts_write_file]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-write-file ToolSkill binding",
+                    "component",
+                    &[ts_write_file],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1446,7 +1484,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_LIST_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-list-dir ToolSkill binding",
+                    "component",
+                    &[ts_list_dir],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1475,7 +1519,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_LIST_RECURSIVE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-list-dir ToolSkill binding",
+                    "component",
+                    &[ts_list_dir],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1510,7 +1560,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GLOB_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-glob ToolSkill binding",
+                    "component",
+                    &[ts_glob],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1540,7 +1596,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GLOB_BY_EXTENSION_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-glob ToolSkill binding",
+                    "component",
+                    &[ts_glob],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1571,7 +1633,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GLOB_BY_NAME_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-glob ToolSkill binding",
+                    "component",
+                    &[ts_glob],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1602,7 +1670,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GLOB_IN_SUBDIR_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-glob ToolSkill binding",
+                    "component",
+                    &[ts_glob],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1633,7 +1707,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GLOB_RECENT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-glob ToolSkill binding", "component", &[ts_glob]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-glob ToolSkill binding",
+                    "component",
+                    &[ts_glob],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1668,7 +1748,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GREP_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-grep ToolSkill binding",
+                    "component",
+                    &[ts_grep],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1697,7 +1783,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GREP_FILES_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-grep ToolSkill binding",
+                    "component",
+                    &[ts_grep],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1728,7 +1820,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GREP_CONTENT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-grep ToolSkill binding",
+                    "component",
+                    &[ts_grep],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1759,7 +1857,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GREP_COUNT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-grep ToolSkill binding",
+                    "component",
+                    &[ts_grep],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1803,7 +1907,13 @@ async fn seed_filesystem_group(
                     "component",
                     &[skill_read_file, skill_apply_patch_single],
                 ),
-                step_entry(2, "rust", "Pre-load ts-read-file binding", "component", &[ts_read_file]),
+                step_entry(
+                    2,
+                    "rust",
+                    "Pre-load ts-read-file binding",
+                    "component",
+                    &[ts_read_file],
+                ),
                 step_entry(
                     3,
                     "orchestrator",
@@ -1881,7 +1991,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GREP_CASE_INSENSITIVE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-grep ToolSkill binding",
+                    "component",
+                    &[ts_grep],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1911,7 +2027,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GREP_TYPE_FILTERED_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-grep ToolSkill binding",
+                    "component",
+                    &[ts_grep],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1941,7 +2063,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_GREP_INVERT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-grep ToolSkill binding", "component", &[ts_grep]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-grep ToolSkill binding",
+                    "component",
+                    &[ts_grep],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -1972,7 +2100,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_LIST_FILES_ONLY_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-list-dir ToolSkill binding",
+                    "component",
+                    &[ts_list_dir],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -2002,7 +2136,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_LIST_DIRS_ONLY_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-list-dir ToolSkill binding",
+                    "component",
+                    &[ts_list_dir],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -2032,7 +2172,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_READ_HEAD_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-read-file ToolSkill binding",
+                    "component",
+                    &[ts_read_file],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -2063,7 +2209,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_READ_TAIL_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-read-file ToolSkill binding",
+                    "component",
+                    &[ts_read_file],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -2094,7 +2246,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_EXISTS_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding (used for existence probe)", "component", &[ts_read_file]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-read-file ToolSkill binding (used for existence probe)",
+                    "component",
+                    &[ts_read_file],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -2125,7 +2283,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_READ_AND_GREP_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-read-file ToolSkill binding", "component", &[ts_read_file]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-read-file ToolSkill binding",
+                    "component",
+                    &[ts_read_file],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -2156,7 +2320,13 @@ async fn seed_filesystem_group(
             true,
             RECIPE_FILE_LIST_AND_FILTER_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-list-dir ToolSkill binding", "component", &[ts_list_dir]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-list-dir ToolSkill binding",
+                    "component",
+                    &[ts_list_dir],
+                ),
                 step_entry(
                     2,
                     "orchestrator",
@@ -2644,7 +2814,8 @@ fn tool_write_file_row(tenant: &str) -> NewPgTool {
         param_template: Some(json!({"path": "{{path}}", "content": "{{content}}"})),
         effect_type: "write".to_string(),
         preconditions: Some(
-            "Path must resolve within a scoped mount with write permission. Content <= 6 MiB.".into(),
+            "Path must resolve within a scoped mount with write permission. Content <= 6 MiB."
+                .into(),
         ),
         error_handling: Some(
             "FilesystemDenied: path outside mounts. Resource limit: content too large.".into(),
@@ -2761,7 +2932,8 @@ fn tool_grep_row(tenant: &str) -> NewPgTool {
             "pattern required; path must be within the active workspace mount".into(),
         ),
         error_handling: Some(
-            "invalid regex -> tool error; empty results -> empty list; output truncated at 1 MiB".into(),
+            "invalid regex -> tool error; empty results -> empty list; output truncated at 1 MiB"
+                .into(),
         ),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
         source: "system".into(),
@@ -4229,9 +4401,7 @@ in the session scope before web search can be used.
 /// PythonCode, leaf/domain Skills, and Recipes are added in chunks 4b–4d;
 /// their ids are appended to the catalogues' `child_component_ids` as they
 /// are minted (dedup makes this idempotent).
-async fn seed_network_group(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_network_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
@@ -4640,8 +4810,20 @@ async fn seed_network_group(
             true,
             RECIPE_HTTP_GET_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-http-fetch ToolSkill binding", "component", &[ts_http_fetch]),
-                step_entry(2, "orchestrator", "PythonCode calls host.http(url, method=get)", "component", &[pc_exec_http_get]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-http-fetch ToolSkill binding",
+                    "component",
+                    &[ts_http_fetch],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.http(url, method=get)",
+                    "component",
+                    &[pc_exec_http_get],
+                ),
             ],
             &[
                 json!({"input": "fetch this URL", "class": 1}),
@@ -4688,9 +4870,27 @@ async fn seed_network_group(
             false,
             RECIPE_HTTP_POST_YAML,
             &[
-                step_entry(1, "orchestrator", "Load http-post + auth leaf skill context", "component", &[skill_http_post, skill_http_authenticated]),
-                step_entry(2, "orchestrator", "LLM constructs the POST URL, headers, and body from user instructions", "text", &[]),
-                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[ts_http_fetch]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load http-post + auth leaf skill context",
+                    "component",
+                    &[skill_http_post, skill_http_authenticated],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM constructs the POST URL, headers, and body from user instructions",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-http-fetch binding",
+                    "component",
+                    &[ts_http_fetch],
+                ),
             ],
             &[
                 json!({"input": "POST this data to the API", "class": 1}),
@@ -4712,8 +4912,20 @@ async fn seed_network_group(
             true,
             RECIPE_HTTP_SAVE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-http-save ToolSkill binding", "component", &[ts_http_save]),
-                step_entry(2, "orchestrator", "PythonCode calls host.http.save(url, save_to)", "component", &[pc_exec_http_save]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-http-save ToolSkill binding",
+                    "component",
+                    &[ts_http_save],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.http.save(url, save_to)",
+                    "component",
+                    &[pc_exec_http_save],
+                ),
             ],
             &[
                 json!({"input": "download this file and save it", "class": 1}),
@@ -4760,8 +4972,20 @@ async fn seed_network_group(
             true,
             RECIPE_HTTP_SAVE_LARGE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-http-save ToolSkill binding", "component", &[ts_http_save]),
-                step_entry(2, "orchestrator", "PythonCode calls host.http.save(url, save_to, response_body_limit=5242880)", "component", &[pc_exec_http_save]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-http-save ToolSkill binding",
+                    "component",
+                    &[ts_http_save],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.http.save(url, save_to, response_body_limit=5242880)",
+                    "component",
+                    &[pc_exec_http_save],
+                ),
             ],
             &[
                 json!({"input": "download a large file and save it", "class": 1}),
@@ -4783,8 +5007,20 @@ async fn seed_network_group(
             true,
             RECIPE_HTTP_HEAD_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-http-fetch ToolSkill binding", "component", &[ts_http_fetch]),
-                step_entry(2, "orchestrator", "PythonCode calls host.http(url, method='head')", "component", &[pc_exec_http_head]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-http-fetch ToolSkill binding",
+                    "component",
+                    &[ts_http_fetch],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.http(url, method='head')",
+                    "component",
+                    &[pc_exec_http_head],
+                ),
             ],
             &[
                 json!({"input": "check if this URL exists", "class": 1}),
@@ -4807,8 +5043,20 @@ async fn seed_network_group(
             true,
             RECIPE_HTTP_AUTHENTICATED_GET_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-http-fetch ToolSkill binding", "component", &[ts_http_fetch]),
-                step_entry(2, "orchestrator", "PythonCode calls host.http(url, method=get, headers={Authorization:...})", "component", &[pc_exec_http_get_authenticated]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-http-fetch ToolSkill binding",
+                    "component",
+                    &[ts_http_fetch],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.http(url, method=get, headers={Authorization:...})",
+                    "component",
+                    &[pc_exec_http_get_authenticated],
+                ),
             ],
             &[
                 json!({"input": "call this API with my bearer token", "class": 1}),
@@ -4925,30 +5173,69 @@ async fn seed_network_group(
 
     // 7. Append children to the per-tool catalogues (dedup-idempotent).
     let ext_http_children: Vec<Uuid> = vec![
-        tool_http, ts_http_fetch, pc_exec_http_get, pc_exec_http_get_authenticated,
-        pc_exec_http_post, pc_exec_http_head, pc_exec_http_put, pc_exec_http_patch,
-        pc_exec_http_delete, pc_http_status_check, pc_json_extract_field,
-        skill_http_get, skill_http_post, skill_http_authenticated, skill_http_head,
-        skill_http_put, skill_http_patch, skill_http_delete, recipe_http_get,
-        recipe_http_get_json, recipe_http_authenticated_get, recipe_http_head,
-        recipe_http_post, recipe_http_post_json_webhook, recipe_http_put,
-        recipe_http_patch, recipe_http_delete, skill_http,
+        tool_http,
+        ts_http_fetch,
+        pc_exec_http_get,
+        pc_exec_http_get_authenticated,
+        pc_exec_http_post,
+        pc_exec_http_head,
+        pc_exec_http_put,
+        pc_exec_http_patch,
+        pc_exec_http_delete,
+        pc_http_status_check,
+        pc_json_extract_field,
+        skill_http_get,
+        skill_http_post,
+        skill_http_authenticated,
+        skill_http_head,
+        skill_http_put,
+        skill_http_patch,
+        skill_http_delete,
+        recipe_http_get,
+        recipe_http_get_json,
+        recipe_http_authenticated_get,
+        recipe_http_head,
+        recipe_http_post,
+        recipe_http_post_json_webhook,
+        recipe_http_put,
+        recipe_http_patch,
+        recipe_http_delete,
+        skill_http,
     ];
     let ext_http_save_children: Vec<Uuid> = vec![
-        tool_http_save, ts_http_save, pc_exec_http_save, skill_http_save_download,
-        skill_http_save_api, recipe_http_save, recipe_http_save_large,
+        tool_http_save,
+        ts_http_save,
+        pc_exec_http_save,
+        skill_http_save_download,
+        skill_http_save_api,
+        recipe_http_save,
+        recipe_http_save_large,
     ];
     let ext_web_search_children: Vec<Uuid> = vec![
-        ts_web_search, pc_web_search_extract, pc_web_search_query_build, pc_url_encode,
-        skill_web_search, recipe_web_search,
+        ts_web_search,
+        pc_web_search_extract,
+        pc_web_search_query_build,
+        pc_url_encode,
+        skill_web_search,
+        recipe_web_search,
     ];
     stores.append_children(cat_http, &ext_http_children).await?;
-    stores.append_children(cat_http_save, &ext_http_save_children).await?;
-    stores.append_children(cat_web_search, &ext_web_search_children).await?;
+    stores
+        .append_children(cat_http_save, &ext_http_save_children)
+        .await?;
+    stores
+        .append_children(cat_web_search, &ext_web_search_children)
+        .await?;
     // Primary catalogue owns the union of all three per-tool child sets.
-    stores.append_children(cat_network, &ext_http_children).await?;
-    stores.append_children(cat_network, &ext_http_save_children).await?;
-    stores.append_children(cat_network, &ext_web_search_children).await?;
+    stores
+        .append_children(cat_network, &ext_http_children)
+        .await?;
+    stores
+        .append_children(cat_network, &ext_http_save_children)
+        .await?;
+    stores
+        .append_children(cat_network, &ext_web_search_children)
+        .await?;
 
     tracing::debug!(
         catalogue_id = %cat_network,
@@ -5794,9 +6081,7 @@ four tools; the orchestrator never touches the memory filesystem directly.
 /// PythonCode, leaf/domain Skills, and Recipes are added in chunks 5b-5d;
 /// their ids are appended to the catalogues' `child_component_ids` as they
 /// are minted (dedup makes this idempotent).
-async fn seed_memory_group(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_memory_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
@@ -6161,8 +6446,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_SEARCH_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-search ToolSkill binding", "component", &[ts_memory_search]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_search(query, limit)", "component", &[pc_exec_memory_search]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-search ToolSkill binding",
+                    "component",
+                    &[ts_memory_search],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_search(query, limit)",
+                    "component",
+                    &[pc_exec_memory_search],
+                ),
             ],
             &[
                 json!({"input": "what do you remember about this project", "class": 2}),
@@ -6186,8 +6483,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_SEARCH_BROAD_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-search ToolSkill binding", "component", &[ts_memory_search]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_search(query, limit=20)", "component", &[pc_exec_memory_search]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-search ToolSkill binding",
+                    "component",
+                    &[ts_memory_search],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_search(query, limit=20)",
+                    "component",
+                    &[pc_exec_memory_search],
+                ),
             ],
             &[
                 json!({"input": "recall everything you know about this project", "class": 2}),
@@ -6211,8 +6520,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_WRITE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-write ToolSkill binding", "component", &[ts_memory_write]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_write(content, target, append)", "component", &[pc_exec_memory_write]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-write ToolSkill binding",
+                    "component",
+                    &[ts_memory_write],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_write(content, target, append)",
+                    "component",
+                    &[pc_exec_memory_write],
+                ),
             ],
             &[
                 json!({"input": "save this to memory", "class": 2}),
@@ -6236,8 +6557,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_WRITE_LOG_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-write ToolSkill binding", "component", &[ts_memory_write]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_write(content, target='daily_log', append=true)", "component", &[pc_exec_memory_write]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-write ToolSkill binding",
+                    "component",
+                    &[ts_memory_write],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_write(content, target='daily_log', append=true)",
+                    "component",
+                    &[pc_exec_memory_write],
+                ),
             ],
             &[
                 json!({"input": "log this progress note", "class": 1}),
@@ -6261,8 +6594,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_WRITE_MAIN_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-write ToolSkill binding", "component", &[ts_memory_write]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_write(content, target='memory', append=true)", "component", &[pc_exec_memory_write]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-write ToolSkill binding",
+                    "component",
+                    &[ts_memory_write],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_write(content, target='memory', append=true)",
+                    "component",
+                    &[pc_exec_memory_write],
+                ),
             ],
             &[
                 json!({"input": "update MEMORY.md with this", "class": 1}),
@@ -6284,8 +6629,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_WRITE_PATCH_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-write ToolSkill binding", "component", &[ts_memory_write]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_write(target, old_string, new_string)", "component", &[pc_exec_memory_patch]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-write ToolSkill binding",
+                    "component",
+                    &[ts_memory_write],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_write(target, old_string, new_string)",
+                    "component",
+                    &[pc_exec_memory_patch],
+                ),
             ],
             &[
                 json!({"input": "patch a section in MEMORY.md", "class": 1}),
@@ -6307,9 +6664,27 @@ async fn seed_memory_group(
             false,
             RECIPE_MEMORY_WRITE_APPEND_YAML,
             &[
-                step_entry(1, "orchestrator", "Load append + read leaf skills", "component", &[skill_memory_write_append, skill_memory_read]),
-                step_entry(2, "orchestrator", "LLM composes the new text to append based on current context", "text", &[]),
-                step_entry(3, "rust", "Pre-load ts-memory-read and ts-memory-write ToolSkill bindings", "component", &[ts_memory_read, ts_memory_write]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load append + read leaf skills",
+                    "component",
+                    &[skill_memory_write_append, skill_memory_read],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM composes the new text to append based on current context",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-memory-read and ts-memory-write ToolSkill bindings",
+                    "component",
+                    &[ts_memory_read, ts_memory_write],
+                ),
             ],
             &[
                 json!({"input": "append to my memory document", "class": 2}),
@@ -6333,8 +6708,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_READ_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-read ToolSkill binding", "component", &[ts_memory_read]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_read(path)", "component", &[pc_exec_memory_read]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-read ToolSkill binding",
+                    "component",
+                    &[ts_memory_read],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_read(path)",
+                    "component",
+                    &[pc_exec_memory_read],
+                ),
             ],
             &[
                 json!({"input": "read MEMORY.md", "class": 1}),
@@ -6356,8 +6743,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_READ_MAIN_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-read ToolSkill binding", "component", &[ts_memory_read]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_read(path='MEMORY.md')", "component", &[pc_exec_memory_read]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-read ToolSkill binding",
+                    "component",
+                    &[ts_memory_read],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_read(path='MEMORY.md')",
+                    "component",
+                    &[pc_exec_memory_read],
+                ),
             ],
             &[
                 json!({"input": "read MEMORY.md", "class": 1}),
@@ -6381,8 +6780,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_READ_HEARTBEAT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-read ToolSkill binding", "component", &[ts_memory_read]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_read(path='HEARTBEAT.md')", "component", &[pc_exec_memory_read]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-read ToolSkill binding",
+                    "component",
+                    &[ts_memory_read],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_read(path='HEARTBEAT.md')",
+                    "component",
+                    &[pc_exec_memory_read],
+                ),
             ],
             &[
                 json!({"input": "read HEARTBEAT.md", "class": 1}),
@@ -6406,8 +6817,20 @@ async fn seed_memory_group(
             true,
             RECIPE_MEMORY_TREE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-tree ToolSkill binding", "component", &[ts_memory_tree]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_tree(path, depth)", "component", &[pc_exec_memory_tree]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-tree ToolSkill binding",
+                    "component",
+                    &[ts_memory_tree],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_tree(path, depth)",
+                    "component",
+                    &[pc_exec_memory_tree],
+                ),
             ],
             &[
                 json!({"input": "what files are in my memory", "class": 2}),
@@ -6431,10 +6854,34 @@ async fn seed_memory_group(
             false,
             RECIPE_MEMORY_SEARCH_AND_READ_YAML,
             &[
-                step_entry(1, "orchestrator", "Load search-and-read combined leaf skill body", "component", &[skill_memory_search_and_read]),
-                step_entry(2, "rust", "Pre-load both ToolSkill bindings", "component", &[ts_memory_search, ts_memory_read]),
-                step_entry(3, "orchestrator", "PythonCode: search memory, take top result path, read document", "component", &[pc_exec_memory_search, pc_exec_memory_read]),
-                step_entry(4, "orchestrator", "LLM interprets query intent, selects best result path, presents content", "text", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load search-and-read combined leaf skill body",
+                    "component",
+                    &[skill_memory_search_and_read],
+                ),
+                step_entry(
+                    2,
+                    "rust",
+                    "Pre-load both ToolSkill bindings",
+                    "component",
+                    &[ts_memory_search, ts_memory_read],
+                ),
+                step_entry(
+                    3,
+                    "orchestrator",
+                    "PythonCode: search memory, take top result path, read document",
+                    "component",
+                    &[pc_exec_memory_search, pc_exec_memory_read],
+                ),
+                step_entry(
+                    4,
+                    "orchestrator",
+                    "LLM interprets query intent, selects best result path, presents content",
+                    "text",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "recall what I know about this topic", "class": 2}),
@@ -6453,26 +6900,50 @@ async fn seed_memory_group(
 
     // 7. Append children to the per-tool catalogues (dedup-idempotent).
     let ext_memory_search_children: Vec<Uuid> = vec![
-        tool_memory_search, ts_memory_search, pc_exec_memory_search,
-        skill_memory_search, skill_memory_search_broad, skill_memory_search_and_read,
-        recipe_memory_search, recipe_memory_search_broad, recipe_memory_search_and_read,
+        tool_memory_search,
+        ts_memory_search,
+        pc_exec_memory_search,
+        skill_memory_search,
+        skill_memory_search_broad,
+        skill_memory_search_and_read,
+        recipe_memory_search,
+        recipe_memory_search_broad,
+        recipe_memory_search_and_read,
     ];
     let ext_memory_write_children: Vec<Uuid> = vec![
-        tool_memory_write, ts_memory_write, pc_exec_memory_write, pc_exec_memory_patch,
-        pc_exec_memory_append, pc_memory_format_entry,
-        skill_memory_write_log, skill_memory_write_main, skill_memory_write_patch,
-        skill_memory_write_append, skill_memory,
-        recipe_memory_write, recipe_memory_write_log, recipe_memory_write_main,
-        recipe_memory_write_patch, recipe_memory_write_append,
+        tool_memory_write,
+        ts_memory_write,
+        pc_exec_memory_write,
+        pc_exec_memory_patch,
+        pc_exec_memory_append,
+        pc_memory_format_entry,
+        skill_memory_write_log,
+        skill_memory_write_main,
+        skill_memory_write_patch,
+        skill_memory_write_append,
+        skill_memory,
+        recipe_memory_write,
+        recipe_memory_write_log,
+        recipe_memory_write_main,
+        recipe_memory_write_patch,
+        recipe_memory_write_append,
     ];
     let ext_memory_read_children: Vec<Uuid> = vec![
-        tool_memory_read, ts_memory_read, pc_exec_memory_read, pc_memory_extract_section,
+        tool_memory_read,
+        ts_memory_read,
+        pc_exec_memory_read,
+        pc_memory_extract_section,
         skill_memory_read,
-        recipe_memory_read, recipe_memory_read_main, recipe_memory_read_heartbeat,
+        recipe_memory_read,
+        recipe_memory_read_main,
+        recipe_memory_read_heartbeat,
     ];
     let ext_memory_tree_children: Vec<Uuid> = vec![
-        tool_memory_tree, ts_memory_tree, pc_exec_memory_tree,
-        skill_memory_tree, recipe_memory_tree,
+        tool_memory_tree,
+        ts_memory_tree,
+        pc_exec_memory_tree,
+        skill_memory_tree,
+        recipe_memory_tree,
     ];
     stores
         .append_children(cat_memory_search, &ext_memory_search_children)
@@ -7309,9 +7780,7 @@ Never pass unvalidated user input into a custom shell command.
 /// ToolSkill rows. PythonCode, leaf Skills, the 3 Domain Skills, and Recipes are
 /// added in subsequent chunks (6b-6g); their ids are appended to the catalogues'
 /// `child_component_ids` as they are minted (dedup makes this idempotent).
-async fn seed_process_group(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_process_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
@@ -7370,9 +7839,7 @@ async fn seed_process_group(
         .await?;
 
     // 2. Tool rows (class 0) — capability_id is the literal `builtin.X`.
-    let tool_shell = stores
-        .upsert_tool(tool_shell_row(&tenant), "shell")
-        .await?;
+    let tool_shell = stores.upsert_tool(tool_shell_row(&tenant), "shell").await?;
     let tool_spawn_subagent = stores
         .upsert_tool(tool_spawn_subagent_row(&tenant), "spawn_subagent")
         .await?;
@@ -8141,32 +8608,81 @@ async fn seed_process_group(
     // Append the shell tool + toolskill + 30 PythonCode ids to ext-shell and the
     // primary catalogue (dedup-idempotent). Recipes are appended in chunk 6d.
     let ext_shell_children: Vec<Uuid> = vec![
-        tool_shell, ts_shell_run, pc_exec_shell_git_status, pc_exec_shell_git_log,
-        pc_exec_shell_git_diff_stat, pc_exec_shell_git_branch, pc_exec_shell_git_stash_list,
-        pc_exec_shell_git_log_n, pc_exec_shell_git_remote, pc_exec_shell_git_show_stat,
-        pc_exec_shell_git_tag_list, pc_exec_shell_git_diff_name_only, pc_exec_shell_git_log_stat,
-        pc_exec_shell_git_stash_show, pc_exec_shell_git_config_list, pc_exec_shell_git_add,
-        pc_exec_shell_git_commit, pc_exec_shell_git_push, pc_exec_shell_git_pull,
-        pc_exec_shell_git_fetch, pc_exec_shell_pwd, pc_exec_shell_df, pc_exec_shell_ps,
-        pc_exec_shell_env, pc_exec_shell_uname, pc_exec_shell_which, pc_exec_shell_date,
-        pc_exec_shell_hostname, pc_exec_shell_whoami, pc_exec_shell_uptime, pc_exec_shell_free,
+        tool_shell,
+        ts_shell_run,
+        pc_exec_shell_git_status,
+        pc_exec_shell_git_log,
+        pc_exec_shell_git_diff_stat,
+        pc_exec_shell_git_branch,
+        pc_exec_shell_git_stash_list,
+        pc_exec_shell_git_log_n,
+        pc_exec_shell_git_remote,
+        pc_exec_shell_git_show_stat,
+        pc_exec_shell_git_tag_list,
+        pc_exec_shell_git_diff_name_only,
+        pc_exec_shell_git_log_stat,
+        pc_exec_shell_git_stash_show,
+        pc_exec_shell_git_config_list,
+        pc_exec_shell_git_add,
+        pc_exec_shell_git_commit,
+        pc_exec_shell_git_push,
+        pc_exec_shell_git_pull,
+        pc_exec_shell_git_fetch,
+        pc_exec_shell_pwd,
+        pc_exec_shell_df,
+        pc_exec_shell_ps,
+        pc_exec_shell_env,
+        pc_exec_shell_uname,
+        pc_exec_shell_which,
+        pc_exec_shell_date,
+        pc_exec_shell_hostname,
+        pc_exec_shell_whoami,
+        pc_exec_shell_uptime,
+        pc_exec_shell_free,
         pc_exec_shell_wc_l,
     ];
-    stores.append_children(cat_shell, &ext_shell_children).await?;
-    stores.append_children(cat_process, &ext_shell_children).await?;
+    stores
+        .append_children(cat_shell, &ext_shell_children)
+        .await?;
+    stores
+        .append_children(cat_process, &ext_shell_children)
+        .await?;
 
     // Append the 31 leaf skills + 1 domain skill to ext-shell and the primary
     // (recipes appended in chunk 6d).
     let ext_shell_skill_children: Vec<Uuid> = vec![
-        skill_shell_git_status, skill_shell_git_log, skill_shell_git_diff_stat,
-        skill_shell_git_branch, skill_shell_git_stash_list, skill_shell_git_remote,
-        skill_shell_git_show_stat, skill_shell_git_tag_list, skill_shell_git_diff_name_only,
-        skill_shell_git_log_stat, skill_shell_git_stash_show, skill_shell_git_config_list,
-        skill_shell_pwd, skill_shell_df, skill_shell_ps, skill_shell_env, skill_shell_uname,
-        skill_shell_which, skill_shell_date, skill_shell_hostname, skill_shell_whoami,
-        skill_shell_uptime, skill_shell_free, skill_shell_wc_l, skill_shell_run,
-        skill_shell_safe_check, skill_shell_git_add, skill_shell_git_commit,
-        skill_shell_git_push, skill_shell_git_pull, skill_shell_git_fetch, skill_shell,
+        skill_shell_git_status,
+        skill_shell_git_log,
+        skill_shell_git_diff_stat,
+        skill_shell_git_branch,
+        skill_shell_git_stash_list,
+        skill_shell_git_remote,
+        skill_shell_git_show_stat,
+        skill_shell_git_tag_list,
+        skill_shell_git_diff_name_only,
+        skill_shell_git_log_stat,
+        skill_shell_git_stash_show,
+        skill_shell_git_config_list,
+        skill_shell_pwd,
+        skill_shell_df,
+        skill_shell_ps,
+        skill_shell_env,
+        skill_shell_uname,
+        skill_shell_which,
+        skill_shell_date,
+        skill_shell_hostname,
+        skill_shell_whoami,
+        skill_shell_uptime,
+        skill_shell_free,
+        skill_shell_wc_l,
+        skill_shell_run,
+        skill_shell_safe_check,
+        skill_shell_git_add,
+        skill_shell_git_commit,
+        skill_shell_git_push,
+        skill_shell_git_pull,
+        skill_shell_git_fetch,
+        skill_shell,
     ];
     stores
         .append_children(cat_shell, &ext_shell_skill_children)
@@ -8194,8 +8710,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_STATUS_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git status') — fixed literal", "component", &[pc_exec_shell_git_status]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git status') — fixed literal",
+                    "component",
+                    &[pc_exec_shell_git_status],
+                ),
             ],
             &[
                 json!({"input": "git status", "class": 1}),
@@ -8219,8 +8747,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_LOG_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git log --oneline -20')", "component", &[pc_exec_shell_git_log]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git log --oneline -20')",
+                    "component",
+                    &[pc_exec_shell_git_log],
+                ),
             ],
             &[
                 json!({"input": "show me recent commits", "class": 1}),
@@ -8244,8 +8784,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_DIFF_STAT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git diff --stat')", "component", &[pc_exec_shell_git_diff_stat]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git diff --stat')",
+                    "component",
+                    &[pc_exec_shell_git_diff_stat],
+                ),
             ],
             &[
                 json!({"input": "what files changed", "class": 1}),
@@ -8268,8 +8820,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_BRANCH_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git branch -a')", "component", &[pc_exec_shell_git_branch]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git branch -a')",
+                    "component",
+                    &[pc_exec_shell_git_branch],
+                ),
             ],
             &[
                 json!({"input": "list git branches", "class": 1}),
@@ -8293,8 +8857,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_STASH_LIST_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git stash list')", "component", &[pc_exec_shell_git_stash_list]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git stash list')",
+                    "component",
+                    &[pc_exec_shell_git_stash_list],
+                ),
             ],
             &[
                 json!({"input": "list git stashes", "class": 1}),
@@ -8317,8 +8893,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_PWD_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='pwd')", "component", &[pc_exec_shell_pwd]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='pwd')",
+                    "component",
+                    &[pc_exec_shell_pwd],
+                ),
             ],
             &[
                 json!({"input": "what is the current directory", "class": 1}),
@@ -8340,8 +8928,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_DF_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='df -h')", "component", &[pc_exec_shell_df]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='df -h')",
+                    "component",
+                    &[pc_exec_shell_df],
+                ),
             ],
             &[
                 json!({"input": "check disk space", "class": 1}),
@@ -8364,8 +8964,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_PS_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='ps aux')", "component", &[pc_exec_shell_ps]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='ps aux')",
+                    "component",
+                    &[pc_exec_shell_ps],
+                ),
             ],
             &[
                 json!({"input": "list running processes", "class": 1}),
@@ -8388,8 +9000,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_ENV_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='env')", "component", &[pc_exec_shell_env]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='env')",
+                    "component",
+                    &[pc_exec_shell_env],
+                ),
             ],
             &[
                 json!({"input": "show environment variables", "class": 1}),
@@ -8412,8 +9036,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_UNAME_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='uname -a')", "component", &[pc_exec_shell_uname]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='uname -a')",
+                    "component",
+                    &[pc_exec_shell_uname],
+                ),
             ],
             &[
                 json!({"input": "what OS is this", "class": 1}),
@@ -8436,8 +9072,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_WHICH_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode validates tool name then calls host.shell(command='which <tool>')", "component", &[pc_exec_shell_which]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode validates tool name then calls host.shell(command='which <tool>')",
+                    "component",
+                    &[pc_exec_shell_which],
+                ),
             ],
             &[
                 json!({"input": "where is git installed", "class": 2}),
@@ -8461,8 +9109,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_DATE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='date -u +...')", "component", &[pc_exec_shell_date]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='date -u +...')",
+                    "component",
+                    &[pc_exec_shell_date],
+                ),
             ],
             &[
                 json!({"input": "what is today's date", "class": 1}),
@@ -8484,8 +9144,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_HOSTNAME_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='hostname')", "component", &[pc_exec_shell_hostname]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='hostname')",
+                    "component",
+                    &[pc_exec_shell_hostname],
+                ),
             ],
             &[
                 json!({"input": "what is this machine called", "class": 1}),
@@ -8507,8 +9179,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_WHOAMI_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='whoami')", "component", &[pc_exec_shell_whoami]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='whoami')",
+                    "component",
+                    &[pc_exec_shell_whoami],
+                ),
             ],
             &[
                 json!({"input": "who am I running as", "class": 1}),
@@ -8530,8 +9214,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_UPTIME_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='uptime')", "component", &[pc_exec_shell_uptime]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='uptime')",
+                    "component",
+                    &[pc_exec_shell_uptime],
+                ),
             ],
             &[
                 json!({"input": "how long has this server been running", "class": 1}),
@@ -8553,8 +9249,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_FREE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='free -h')", "component", &[pc_exec_shell_free]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='free -h')",
+                    "component",
+                    &[pc_exec_shell_free],
+                ),
             ],
             &[
                 json!({"input": "check memory usage", "class": 1}),
@@ -8576,8 +9284,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_REMOTE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git remote -v')", "component", &[pc_exec_shell_git_remote]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git remote -v')",
+                    "component",
+                    &[pc_exec_shell_git_remote],
+                ),
             ],
             &[
                 json!({"input": "list git remotes", "class": 1}),
@@ -8599,8 +9319,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_SHOW_STAT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git show --stat HEAD')", "component", &[pc_exec_shell_git_show_stat]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git show --stat HEAD')",
+                    "component",
+                    &[pc_exec_shell_git_show_stat],
+                ),
             ],
             &[
                 json!({"input": "what did the last commit change", "class": 1}),
@@ -8622,8 +9354,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_TAG_LIST_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git tag --list')", "component", &[pc_exec_shell_git_tag_list]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git tag --list')",
+                    "component",
+                    &[pc_exec_shell_git_tag_list],
+                ),
             ],
             &[
                 json!({"input": "list git tags", "class": 1}),
@@ -8645,8 +9389,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_WC_L_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode validates path then calls host.shell(command='wc -l <file>')", "component", &[pc_exec_shell_wc_l]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode validates path then calls host.shell(command='wc -l <file>')",
+                    "component",
+                    &[pc_exec_shell_wc_l],
+                ),
             ],
             &[
                 json!({"input": "how many lines in this file", "class": 1}),
@@ -8694,8 +9450,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_LOG_STAT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git log --stat --oneline -5')", "component", &[pc_exec_shell_git_log_stat]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git log --stat --oneline -5')",
+                    "component",
+                    &[pc_exec_shell_git_log_stat],
+                ),
             ],
             &[
                 json!({"input": "show recent commits with file changes", "class": 1}),
@@ -8719,8 +9487,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_STASH_SHOW_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git stash show')", "component", &[pc_exec_shell_git_stash_show]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git stash show')",
+                    "component",
+                    &[pc_exec_shell_git_stash_show],
+                ),
             ],
             &[
                 json!({"input": "what is in my git stash", "class": 1}),
@@ -8742,8 +9522,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_CONFIG_LIST_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git config --list')", "component", &[pc_exec_shell_git_config_list]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git config --list')",
+                    "component",
+                    &[pc_exec_shell_git_config_list],
+                ),
             ],
             &[
                 json!({"input": "show git configuration", "class": 1}),
@@ -8765,8 +9557,20 @@ async fn seed_process_group(
             true,
             RECIPE_SHELL_GIT_FETCH_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-shell-run ToolSkill binding", "component", &[ts_shell_run]),
-                step_entry(2, "orchestrator", "PythonCode calls host.shell(command='git fetch --all')", "component", &[pc_exec_shell_git_fetch]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-shell-run ToolSkill binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.shell(command='git fetch --all')",
+                    "component",
+                    &[pc_exec_shell_git_fetch],
+                ),
             ],
             &[
                 json!({"input": "git fetch", "class": 1}),
@@ -8793,9 +9597,27 @@ async fn seed_process_group(
             false,
             RECIPE_SHELL_RUN_YAML,
             &[
-                step_entry(1, "orchestrator", "Load shell domain + run + safety-check leaf skills", "component", &[skill_shell, skill_shell_run, skill_shell_safe_check]),
-                step_entry(2, "orchestrator", "LLM validates safety, composes the exact command, gets user approval", "text", &[]),
-                step_entry(3, "rust", "Executor pre-loads ts-shell-run binding", "component", &[ts_shell_run]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load shell domain + run + safety-check leaf skills",
+                    "component",
+                    &[skill_shell, skill_shell_run, skill_shell_safe_check],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM validates safety, composes the exact command, gets user approval",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Executor pre-loads ts-shell-run binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
             ],
             &[
                 json!({"input": "run a command", "class": 2}),
@@ -8819,9 +9641,27 @@ async fn seed_process_group(
             false,
             RECIPE_SHELL_SCRIPT_YAML,
             &[
-                step_entry(1, "orchestrator", "Load shell domain + safety-check context", "component", &[skill_shell, skill_shell_safe_check]),
-                step_entry(2, "orchestrator", "LLM writes the full script body, validates safety, gets user approval", "text", &[]),
-                step_entry(3, "rust", "Executor pre-loads ts-shell-run binding", "component", &[ts_shell_run]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load shell domain + safety-check context",
+                    "component",
+                    &[skill_shell, skill_shell_safe_check],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM writes the full script body, validates safety, gets user approval",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Executor pre-loads ts-shell-run binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
             ],
             &[
                 json!({"input": "run a bash script", "class": 2}),
@@ -8843,9 +9683,27 @@ async fn seed_process_group(
             false,
             RECIPE_SHELL_GIT_ADD_YAML,
             &[
-                step_entry(1, "orchestrator", "Load git-add + git-status leaf skills", "component", &[skill_shell_git_add, skill_shell_git_status]),
-                step_entry(2, "rust", "Pre-load ts-shell-run binding", "component", &[ts_shell_run]),
-                step_entry(3, "orchestrator", "LLM checks git status, confirms which files to stage, dispatches git add", "text", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load git-add + git-status leaf skills",
+                    "component",
+                    &[skill_shell_git_add, skill_shell_git_status],
+                ),
+                step_entry(
+                    2,
+                    "rust",
+                    "Pre-load ts-shell-run binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    3,
+                    "orchestrator",
+                    "LLM checks git status, confirms which files to stage, dispatches git add",
+                    "text",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "git add", "class": 1}),
@@ -8895,9 +9753,27 @@ async fn seed_process_group(
             false,
             RECIPE_SHELL_GIT_PUSH_YAML,
             &[
-                step_entry(1, "orchestrator", "Load git-push + git-log leaf skills", "component", &[skill_shell_git_push, skill_shell_git_log]),
-                step_entry(2, "rust", "Pre-load ts-shell-run binding", "component", &[ts_shell_run]),
-                step_entry(3, "orchestrator", "LLM shows recent commits, confirms remote/branch, dispatches push", "text", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load git-push + git-log leaf skills",
+                    "component",
+                    &[skill_shell_git_push, skill_shell_git_log],
+                ),
+                step_entry(
+                    2,
+                    "rust",
+                    "Pre-load ts-shell-run binding",
+                    "component",
+                    &[ts_shell_run],
+                ),
+                step_entry(
+                    3,
+                    "orchestrator",
+                    "LLM shows recent commits, confirms remote/branch, dispatches push",
+                    "text",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "git push", "class": 1}),
@@ -8944,16 +9820,37 @@ async fn seed_process_group(
     // (dedup-idempotent). Completes the ext-shell child set: tool + ts + 30 pc
     // + 31 leaf skills + 1 domain + 31 recipes.
     let ext_shell_recipe_children: Vec<Uuid> = vec![
-        recipe_shell_git_status, recipe_shell_git_log, recipe_shell_git_diff_stat,
-        recipe_shell_git_branch, recipe_shell_git_stash_list, recipe_shell_pwd,
-        recipe_shell_df, recipe_shell_ps, recipe_shell_env, recipe_shell_uname,
-        recipe_shell_which, recipe_shell_date, recipe_shell_hostname,
-        recipe_shell_whoami, recipe_shell_uptime, recipe_shell_free,
-        recipe_shell_git_remote, recipe_shell_git_show_stat, recipe_shell_git_tag_list,
-        recipe_shell_wc_l, recipe_shell_git_diff_name_only, recipe_shell_git_log_stat,
-        recipe_shell_git_stash_show, recipe_shell_git_config_list, recipe_shell_git_fetch,
-        recipe_shell_run, recipe_shell_script, recipe_shell_git_add,
-        recipe_shell_git_commit, recipe_shell_git_push, recipe_shell_git_pull,
+        recipe_shell_git_status,
+        recipe_shell_git_log,
+        recipe_shell_git_diff_stat,
+        recipe_shell_git_branch,
+        recipe_shell_git_stash_list,
+        recipe_shell_pwd,
+        recipe_shell_df,
+        recipe_shell_ps,
+        recipe_shell_env,
+        recipe_shell_uname,
+        recipe_shell_which,
+        recipe_shell_date,
+        recipe_shell_hostname,
+        recipe_shell_whoami,
+        recipe_shell_uptime,
+        recipe_shell_free,
+        recipe_shell_git_remote,
+        recipe_shell_git_show_stat,
+        recipe_shell_git_tag_list,
+        recipe_shell_wc_l,
+        recipe_shell_git_diff_name_only,
+        recipe_shell_git_log_stat,
+        recipe_shell_git_stash_show,
+        recipe_shell_git_config_list,
+        recipe_shell_git_fetch,
+        recipe_shell_run,
+        recipe_shell_script,
+        recipe_shell_git_add,
+        recipe_shell_git_commit,
+        recipe_shell_git_push,
+        recipe_shell_git_pull,
     ];
     stores
         .append_children(cat_shell, &ext_shell_recipe_children)
@@ -9146,9 +10043,27 @@ async fn seed_process_group(
             false,
             RECIPE_SUBAGENT_EXPLORATION_YAML,
             &[
-                step_entry(1, "orchestrator", "Load exploration delegation leaf skill body", "component", &[skill_spawn_exploration]),
-                step_entry(2, "orchestrator", "LLM defines exploration scope and output format, calls ts-spawn-subagent", "text", &[]),
-                step_entry(3, "rust", "Pre-load ts-spawn-subagent ToolSkill binding", "component", &[ts_spawn_subagent]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load exploration delegation leaf skill body",
+                    "component",
+                    &[skill_spawn_exploration],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM defines exploration scope and output format, calls ts-spawn-subagent",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-spawn-subagent ToolSkill binding",
+                    "component",
+                    &[ts_spawn_subagent],
+                ),
             ],
             &[
                 json!({"input": "have a subagent explore this codebase area", "class": 1}),
@@ -9190,17 +10105,29 @@ async fn seed_process_group(
     // Append the spawn tool + toolskill to ext-spawn-subagent and the primary
     // (dedup-idempotent; seeded in chunk 6a).
     let ext_spawn_children: Vec<Uuid> = vec![tool_spawn_subagent, ts_spawn_subagent];
-    stores.append_children(cat_spawn, &ext_spawn_children).await?;
-    stores.append_children(cat_process, &ext_spawn_children).await?;
+    stores
+        .append_children(cat_spawn, &ext_spawn_children)
+        .await?;
+    stores
+        .append_children(cat_process, &ext_spawn_children)
+        .await?;
 
     // Append the 6 spawn leaf skills + 1 domain + 5 recipes to ext-spawn-subagent
     // and the primary (dedup-idempotent). Completes the ext-spawn-subagent child
     // set: tool + ts + 6 leaf skills + 1 domain + 5 recipes.
     let ext_spawn_skill_recipe_children: Vec<Uuid> = vec![
-        skill_spawn_subagent, skill_spawn_named_procedure, skill_spawn_research,
-        skill_spawn_coding, skill_spawn_exploration, skill_spawn_query, skill_subagent,
-        recipe_subagent_spawn, recipe_subagent_research, recipe_subagent_coding,
-        recipe_subagent_exploration, recipe_subagent_query,
+        skill_spawn_subagent,
+        skill_spawn_named_procedure,
+        skill_spawn_research,
+        skill_spawn_coding,
+        skill_spawn_exploration,
+        skill_spawn_query,
+        skill_subagent,
+        recipe_subagent_spawn,
+        recipe_subagent_research,
+        recipe_subagent_coding,
+        recipe_subagent_exploration,
+        recipe_subagent_query,
     ];
     stores
         .append_children(cat_spawn, &ext_spawn_skill_recipe_children)
@@ -9357,8 +10284,20 @@ async fn seed_process_group(
             true,
             RECIPE_TRIGGER_LIST_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-trigger-list ToolSkill binding", "component", &[ts_trigger_list]),
-                step_entry(2, "orchestrator", "PythonCode calls host.trigger_list(scope)", "component", &[pc_exec_trigger_list]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-trigger-list ToolSkill binding",
+                    "component",
+                    &[ts_trigger_list],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.trigger_list(scope)",
+                    "component",
+                    &[pc_exec_trigger_list],
+                ),
             ],
             &[
                 json!({"input": "list my triggers", "class": 1}),
@@ -9380,8 +10319,20 @@ async fn seed_process_group(
             true,
             RECIPE_TRIGGER_LIST_ACTIVE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-trigger-list ToolSkill binding", "component", &[ts_trigger_list]),
-                step_entry(2, "orchestrator", "PythonCode calls host.trigger_list(scope='active')", "component", &[pc_exec_trigger_list_active]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-trigger-list ToolSkill binding",
+                    "component",
+                    &[ts_trigger_list],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.trigger_list(scope='active')",
+                    "component",
+                    &[pc_exec_trigger_list_active],
+                ),
             ],
             &[
                 json!({"input": "show active triggers", "class": 1}),
@@ -9405,8 +10356,20 @@ async fn seed_process_group(
             true,
             RECIPE_TRIGGER_LIST_SCHEDULED_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-trigger-list ToolSkill binding", "component", &[ts_trigger_list]),
-                step_entry(2, "orchestrator", "PythonCode calls host.trigger_list(scope='scheduled')", "component", &[pc_exec_trigger_list_scheduled]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-trigger-list ToolSkill binding",
+                    "component",
+                    &[ts_trigger_list],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.trigger_list(scope='scheduled')",
+                    "component",
+                    &[pc_exec_trigger_list_scheduled],
+                ),
             ],
             &[
                 json!({"input": "show scheduled triggers", "class": 1}),
@@ -9430,9 +10393,27 @@ async fn seed_process_group(
             false,
             RECIPE_TRIGGER_CREATE_YAML,
             &[
-                step_entry(1, "orchestrator", "Load skill-trigger-create leaf skill body (creation procedure)", "component", &[skill_trigger_create]),
-                step_entry(2, "orchestrator", "LLM translates schedule to cron, confirms with user, calls ts-trigger-create", "text", &[]),
-                step_entry(3, "rust", "Pre-load ToolSkill bindings for list (pre-check) and create", "component", &[ts_trigger_list, ts_trigger_create]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load skill-trigger-create leaf skill body (creation procedure)",
+                    "component",
+                    &[skill_trigger_create],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM translates schedule to cron, confirms with user, calls ts-trigger-create",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ToolSkill bindings for list (pre-check) and create",
+                    "component",
+                    &[ts_trigger_list, ts_trigger_create],
+                ),
             ],
             &[
                 json!({"input": "create a trigger to run X every morning", "class": 1}),
@@ -9503,22 +10484,40 @@ async fn seed_process_group(
     // Append the 3 trigger tools + 3 toolskills to ext-trigger-management and the
     // primary (dedup-idempotent; seeded in chunk 6a).
     let ext_trigger_children: Vec<Uuid> = vec![
-        tool_trigger_create, ts_trigger_create, tool_trigger_list, ts_trigger_list,
-        tool_trigger_remove, ts_trigger_remove,
+        tool_trigger_create,
+        ts_trigger_create,
+        tool_trigger_list,
+        ts_trigger_list,
+        tool_trigger_remove,
+        ts_trigger_remove,
     ];
-    stores.append_children(cat_trigger, &ext_trigger_children).await?;
-    stores.append_children(cat_process, &ext_trigger_children).await?;
+    stores
+        .append_children(cat_trigger, &ext_trigger_children)
+        .await?;
+    stores
+        .append_children(cat_process, &ext_trigger_children)
+        .await?;
 
     // Append the 4 trigger PythonCode + 5 leaf skills + 1 domain + 6 recipes to
     // ext-trigger-management and the primary (dedup-idempotent). Completes the
     // ext-trigger-management child set: 3 tools + 3 ts + 4 pc + 5 leaf skills
     // + 1 domain + 6 recipes.
     let ext_trigger_pc_skill_recipe_children: Vec<Uuid> = vec![
-        pc_exec_trigger_list, pc_exec_trigger_list_active, pc_exec_trigger_list_scheduled,
-        pc_exec_trigger_resolve_and_remove, skill_trigger_list, skill_trigger_create,
-        skill_trigger_remove, skill_trigger_list_active, skill_trigger_list_scheduled,
-        skill_triggers, recipe_trigger_list, recipe_trigger_list_active,
-        recipe_trigger_list_scheduled, recipe_trigger_create, recipe_trigger_remove,
+        pc_exec_trigger_list,
+        pc_exec_trigger_list_active,
+        pc_exec_trigger_list_scheduled,
+        pc_exec_trigger_resolve_and_remove,
+        skill_trigger_list,
+        skill_trigger_create,
+        skill_trigger_remove,
+        skill_trigger_list_active,
+        skill_trigger_list_scheduled,
+        skill_triggers,
+        recipe_trigger_list,
+        recipe_trigger_list_active,
+        recipe_trigger_list_scheduled,
+        recipe_trigger_create,
+        recipe_trigger_remove,
         recipe_trigger_remove_by_name,
     ];
     stores
@@ -9546,9 +10545,7 @@ async fn seed_process_group(
 ///
 /// Echo has no per-tool ext catalogue, so its tool, toolskill, pythoncode, and
 /// recipe are appended to the primary catalogue only.
-async fn seed_management_group(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // 1. Primary domain catalogue + per-tool catalogues (empty child_ids;
@@ -9959,8 +10956,20 @@ async fn seed_management_group(
             true,
             RECIPE_TIME_NOW_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-time-now ToolSkill binding", "component", &[ts_time_now]),
-                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=now)", "component", &[pc_exec_time_now]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-time-now ToolSkill binding",
+                    "component",
+                    &[ts_time_now],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.time(operation=now)",
+                    "component",
+                    &[pc_exec_time_now],
+                ),
             ],
             &[
                 json!({"input": "what time is it", "class": 1}),
@@ -9984,8 +10993,20 @@ async fn seed_management_group(
             true,
             RECIPE_TIME_NOW_TZ_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-time-now ToolSkill binding", "component", &[ts_time_now]),
-                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=now, timezone=<tz>)", "component", &[pc_exec_time_now]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-time-now ToolSkill binding",
+                    "component",
+                    &[ts_time_now],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.time(operation=now, timezone=<tz>)",
+                    "component",
+                    &[pc_exec_time_now],
+                ),
             ],
             &[
                 json!({"input": "what time is it in Tokyo", "class": 1}),
@@ -10011,8 +11032,20 @@ async fn seed_management_group(
             true,
             RECIPE_TIME_PARSE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-time-parse ToolSkill binding", "component", &[ts_time_parse]),
-                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=parse, input)", "component", &[pc_exec_time_parse]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-time-parse ToolSkill binding",
+                    "component",
+                    &[ts_time_parse],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.time(operation=parse, input)",
+                    "component",
+                    &[pc_exec_time_parse],
+                ),
             ],
             &[
                 json!({"input": "parse this date string", "class": 1}),
@@ -10034,8 +11067,20 @@ async fn seed_management_group(
             true,
             RECIPE_TIME_CONVERT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-time-convert ToolSkill binding", "component", &[ts_time_convert]),
-                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=convert, input, to_timezone)", "component", &[pc_exec_time_convert]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-time-convert ToolSkill binding",
+                    "component",
+                    &[ts_time_convert],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.time(operation=convert, input, to_timezone)",
+                    "component",
+                    &[pc_exec_time_convert],
+                ),
             ],
             &[
                 json!({"input": "convert this time to New York timezone", "class": 2}),
@@ -10057,8 +11102,20 @@ async fn seed_management_group(
             true,
             RECIPE_TIME_DIFF_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-time-diff ToolSkill binding", "component", &[ts_time_diff]),
-                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=diff, input, timestamp2)", "component", &[pc_exec_time_diff]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-time-diff ToolSkill binding",
+                    "component",
+                    &[ts_time_diff],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.time(operation=diff, input, timestamp2)",
+                    "component",
+                    &[pc_exec_time_diff],
+                ),
             ],
             &[
                 json!({"input": "how many days between these two dates", "class": 2}),
@@ -10080,8 +11137,20 @@ async fn seed_management_group(
             true,
             RECIPE_TIME_FORMAT_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-time-format ToolSkill binding", "component", &[ts_time_format]),
-                step_entry(2, "orchestrator", "PythonCode calls host.time(operation=format, input, format_string?)", "component", &[pc_exec_time_format]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-time-format ToolSkill binding",
+                    "component",
+                    &[ts_time_format],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.time(operation=format, input, format_string?)",
+                    "component",
+                    &[pc_exec_time_format],
+                ),
             ],
             &[
                 json!({"input": "format this date as day month year", "class": 2}),
@@ -10103,8 +11172,20 @@ async fn seed_management_group(
             true,
             RECIPE_JSON_QUERY_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-json-query ToolSkill binding", "component", &[ts_json_query]),
-                step_entry(2, "orchestrator", "PythonCode calls host.json(operation=query, data, path)", "component", &[pc_exec_json_query]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-json-query ToolSkill binding",
+                    "component",
+                    &[ts_json_query],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.json(operation=query, data, path)",
+                    "component",
+                    &[pc_exec_json_query],
+                ),
             ],
             &[
                 json!({"input": "extract the user name from this JSON", "class": 2}),
@@ -10126,8 +11207,20 @@ async fn seed_management_group(
             true,
             RECIPE_JSON_STRINGIFY_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-json-stringify ToolSkill binding", "component", &[ts_json_stringify]),
-                step_entry(2, "orchestrator", "PythonCode calls host.json(operation, data)", "component", &[pc_exec_json_stringify]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-json-stringify ToolSkill binding",
+                    "component",
+                    &[ts_json_stringify],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.json(operation, data)",
+                    "component",
+                    &[pc_exec_json_stringify],
+                ),
             ],
             &[
                 json!({"input": "format this as JSON", "class": 1}),
@@ -10149,8 +11242,20 @@ async fn seed_management_group(
             true,
             RECIPE_JSON_PARSE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-json-stringify ToolSkill binding (handles parse operation)", "component", &[ts_json_stringify]),
-                step_entry(2, "orchestrator", "PythonCode calls host.json(operation='parse', data)", "component", &[pc_exec_json_stringify]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-json-stringify ToolSkill binding (handles parse operation)",
+                    "component",
+                    &[ts_json_stringify],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.json(operation='parse', data)",
+                    "component",
+                    &[pc_exec_json_stringify],
+                ),
             ],
             &[
                 json!({"input": "parse this JSON", "class": 1}),
@@ -10172,8 +11277,20 @@ async fn seed_management_group(
             true,
             RECIPE_JSON_VALIDATE_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-json-validate ToolSkill binding", "component", &[ts_json_validate]),
-                step_entry(2, "orchestrator", "PythonCode calls host.json(operation='validate', data)", "component", &[pc_exec_json_validate]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-json-validate ToolSkill binding",
+                    "component",
+                    &[ts_json_validate],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.json(operation='validate', data)",
+                    "component",
+                    &[pc_exec_json_validate],
+                ),
             ],
             &[
                 json!({"input": "is this valid JSON", "class": 1}),
@@ -10222,8 +11339,20 @@ async fn seed_management_group(
             true,
             RECIPE_SKILL_LIST_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-skill-list ToolSkill binding", "component", &[ts_skill_list]),
-                step_entry(2, "orchestrator", "PythonCode calls host.skill_list(scope)", "component", &[pc_exec_skill_list]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-skill-list ToolSkill binding",
+                    "component",
+                    &[ts_skill_list],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.skill_list(scope)",
+                    "component",
+                    &[pc_exec_skill_list],
+                ),
             ],
             &[
                 json!({"input": "list my skills", "class": 1}),
@@ -10245,8 +11374,20 @@ async fn seed_management_group(
             true,
             RECIPE_SKILL_LIST_USER_ONLY_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-skill-list ToolSkill binding", "component", &[ts_skill_list]),
-                step_entry(2, "orchestrator", "PythonCode calls host.skill_list(scope='user')", "component", &[pc_exec_skill_list]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-skill-list ToolSkill binding",
+                    "component",
+                    &[ts_skill_list],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.skill_list(scope='user')",
+                    "component",
+                    &[pc_exec_skill_list],
+                ),
             ],
             &[
                 json!({"input": "what skills have I installed", "class": 1}),
@@ -10269,8 +11410,20 @@ async fn seed_management_group(
             true,
             RECIPE_SKILL_LIST_SYSTEM_ONLY_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-skill-list ToolSkill binding", "component", &[ts_skill_list]),
-                step_entry(2, "orchestrator", "PythonCode calls host.skill_list(scope='system')", "component", &[pc_exec_skill_list]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-skill-list ToolSkill binding",
+                    "component",
+                    &[ts_skill_list],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.skill_list(scope='system')",
+                    "component",
+                    &[pc_exec_skill_list],
+                ),
             ],
             &[
                 json!({"input": "what built-in skills are available", "class": 1}),
@@ -10293,9 +11446,27 @@ async fn seed_management_group(
             false,
             RECIPE_SKILL_INSTALL_YAML,
             &[
-                step_entry(1, "orchestrator", "Load skill-skill-install leaf skill body (install procedure)", "component", &[skill_skill_install]),
-                step_entry(2, "orchestrator", "LLM confirms URL with user, explains pending state, calls ts-skill-install", "text", &[]),
-                step_entry(3, "rust", "Pre-load ToolSkill bindings for list (pre-check) and install", "component", &[ts_skill_list, ts_skill_install]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load skill-skill-install leaf skill body (install procedure)",
+                    "component",
+                    &[skill_skill_install],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM confirms URL with user, explains pending state, calls ts-skill-install",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ToolSkill bindings for list (pre-check) and install",
+                    "component",
+                    &[ts_skill_list, ts_skill_install],
+                ),
             ],
             &[
                 json!({"input": "install a skill from this URL", "class": 1}),
@@ -10317,9 +11488,27 @@ async fn seed_management_group(
             false,
             RECIPE_SKILL_REMOVE_YAML,
             &[
-                step_entry(1, "orchestrator", "Load skill-skill-remove leaf skill body (removal procedure)", "component", &[skill_skill_remove]),
-                step_entry(2, "orchestrator", "LLM confirms skill name, warns about irreversibility, calls ts-skill-remove", "text", &[]),
-                step_entry(3, "rust", "Pre-load ToolSkill bindings for list (pre-check) and remove", "component", &[ts_skill_list, ts_skill_remove]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load skill-skill-remove leaf skill body (removal procedure)",
+                    "component",
+                    &[skill_skill_remove],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM confirms skill name, warns about irreversibility, calls ts-skill-remove",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ToolSkill bindings for list (pre-check) and remove",
+                    "component",
+                    &[ts_skill_list, ts_skill_remove],
+                ),
             ],
             &[
                 json!({"input": "remove skill X", "class": 1}),
@@ -10341,8 +11530,20 @@ async fn seed_management_group(
             true,
             RECIPE_ECHO_PING_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-echo ToolSkill binding", "component", &[ts_echo]),
-                step_entry(2, "orchestrator", "PythonCode calls host.echo(message) — returned verbatim", "component", &[pc_exec_echo]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-echo ToolSkill binding",
+                    "component",
+                    &[ts_echo],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.echo(message) — returned verbatim",
+                    "component",
+                    &[pc_exec_echo],
+                ),
             ],
             &[
                 json!({"input": "echo test", "class": 1}),
@@ -10365,34 +11566,72 @@ async fn seed_management_group(
     //    since echo has no per-tool ext catalogue). append_children deduplicates
     //    on re-run, so this is idempotent.
     let ext_time_children: Vec<Uuid> = vec![
-        tool_time, ts_time_now, ts_time_parse, ts_time_convert, ts_time_diff, ts_time_format,
-        pc_exec_time_now, pc_exec_time_parse, pc_exec_time_convert, pc_exec_time_diff,
-        pc_exec_time_format, skill_time_now, skill_time_parse, skill_time_convert,
-        skill_time_diff, skill_time_format, skill_time, recipe_time_now, recipe_time_now_tz,
-        recipe_time_parse, recipe_time_convert, recipe_time_diff, recipe_time_format,
+        tool_time,
+        ts_time_now,
+        ts_time_parse,
+        ts_time_convert,
+        ts_time_diff,
+        ts_time_format,
+        pc_exec_time_now,
+        pc_exec_time_parse,
+        pc_exec_time_convert,
+        pc_exec_time_diff,
+        pc_exec_time_format,
+        skill_time_now,
+        skill_time_parse,
+        skill_time_convert,
+        skill_time_diff,
+        skill_time_format,
+        skill_time,
+        recipe_time_now,
+        recipe_time_now_tz,
+        recipe_time_parse,
+        recipe_time_convert,
+        recipe_time_diff,
+        recipe_time_format,
     ];
     let ext_json_children: Vec<Uuid> = vec![
-        tool_json, ts_json_query, ts_json_stringify, ts_json_validate,
-        pc_exec_json_query, pc_exec_json_stringify, pc_exec_json_validate,
-        skill_json_query, skill_json_stringify, skill_json_parse, skill_json_validate,
-        skill_json_parse_and_query, skill_json, recipe_json_query, recipe_json_stringify,
-        recipe_json_parse, recipe_json_validate, recipe_json_parse_and_query,
+        tool_json,
+        ts_json_query,
+        ts_json_stringify,
+        ts_json_validate,
+        pc_exec_json_query,
+        pc_exec_json_stringify,
+        pc_exec_json_validate,
+        skill_json_query,
+        skill_json_stringify,
+        skill_json_parse,
+        skill_json_validate,
+        skill_json_parse_and_query,
+        skill_json,
+        recipe_json_query,
+        recipe_json_stringify,
+        recipe_json_parse,
+        recipe_json_validate,
+        recipe_json_parse_and_query,
     ];
     let ext_skill_management_children: Vec<Uuid> = vec![
-        tool_skill_list, tool_skill_install, tool_skill_remove,
-        ts_skill_list, ts_skill_install, ts_skill_remove,
-        pc_exec_skill_list, skill_skill_list, skill_skill_install, skill_skill_remove,
-        skill_skills, recipe_skill_list, recipe_skill_list_user_only,
-        recipe_skill_list_system_only, recipe_skill_install, recipe_skill_remove,
+        tool_skill_list,
+        tool_skill_install,
+        tool_skill_remove,
+        ts_skill_list,
+        ts_skill_install,
+        ts_skill_remove,
+        pc_exec_skill_list,
+        skill_skill_list,
+        skill_skill_install,
+        skill_skill_remove,
+        skill_skills,
+        recipe_skill_list,
+        recipe_skill_list_user_only,
+        recipe_skill_list_system_only,
+        recipe_skill_install,
+        recipe_skill_remove,
     ];
     let echo_children: Vec<Uuid> = vec![tool_echo, ts_echo, pc_exec_echo, recipe_echo_ping];
 
-    stores
-        .append_children(cat_time, &ext_time_children)
-        .await?;
-    stores
-        .append_children(cat_json, &ext_json_children)
-        .await?;
+    stores.append_children(cat_time, &ext_time_children).await?;
+    stores.append_children(cat_json, &ext_json_children).await?;
     stores
         .append_children(cat_skill_management, &ext_skill_management_children)
         .await?;
@@ -10448,9 +11687,7 @@ async fn seed_management_group(
 // fresh `ThreadExecutionContext` + `persisted_state = {}` per call, so globals
 // do NOT persist across steplist steps and a 2-step assemble-then-call recipe
 // cannot pass the assembled prompt to the call step.
-async fn seed_host_group(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_host_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // 1. PythonCode formatter (class 22) — pure-logic, no host call, no I/O.
@@ -10647,9 +11884,7 @@ fn validator_recipe_row(
 ///     with `validates_class_code = Some(N)` and `consumer_tags = ["05:validator"]`.
 ///  3. Mark the Recipe Tier-0 eligible (`tier = 'mature'`, `wilson_lower = 1.0`).
 ///  4. Explicitly set `validation_status = 'validated'` (builtins bypass Q1).
-async fn seed_validator_recipes(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_validator_recipes(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // (class_code, class_label) pairs for every class the seeder covers.
@@ -10725,8 +11960,6 @@ async fn seed_validator_recipes(
 
     Ok(())
 }
-
-
 
 fn process_primary_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
     NewPgExtensionCatalogue {
@@ -12316,7 +13549,9 @@ fn tool_time_row(tenant: &str) -> NewPgTool {
         param_template: Some(json!({"operation": "now"})),
         effect_type: "read_only".to_string(),
         preconditions: Some("invalid timezone → tool error; invalid timestamp → tool error".into()),
-        error_handling: Some("invalid timezone → tool error; invalid timestamp → tool error".into()),
+        error_handling: Some(
+            "invalid timezone → tool error; invalid timestamp → tool error".into(),
+        ),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
         source: "system".into(),
         validation_status: "validated".into(),
@@ -12348,7 +13583,9 @@ fn tool_json_row(tenant: &str) -> NewPgTool {
         param_template: Some(json!({"operation": "{{operation}}", "data": "{{data}}"})),
         effect_type: "read_only".to_string(),
         preconditions: Some("operation required; data required".into()),
-        error_handling: Some("invalid JSON for parse/query → tool error; path not found → null".into()),
+        error_handling: Some(
+            "invalid JSON for parse/query → tool error; path not found → null".into(),
+        ),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
         source: "system".into(),
         validation_status: "validated".into(),
@@ -12586,7 +13823,9 @@ fn ts_time_diff_row(tenant: &str) -> NewPgToolSkill {
             {"name": "timezone",      "param_type": "string", "required": false, "description": "IANA timezone for both inputs"},
             {"name": "from_timezone", "param_type": "string", "required": false, "description": "Alias for timezone in diff context"}
         ])),
-        param_template: Some(json!({"operation": "diff", "input": "{{input}}", "timestamp2": "{{timestamp2}}"})),
+        param_template: Some(
+            json!({"operation": "diff", "input": "{{input}}", "timestamp2": "{{timestamp2}}"}),
+        ),
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
         intent_examples: None,
         source: "system".into(),
@@ -14127,9 +15366,7 @@ best-practice constraints automatically.
 ///
 /// `web-browse` (Playwright MCP) and `portfolio` (needs a new Rust Tool) are
 /// deferred — see `docs/agents-v3/subplan_P1_skill_migration.md`.
-async fn seed_workflow_skills(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // ------------------------------------------------------------------
@@ -14166,9 +15403,7 @@ async fn seed_workflow_skills(
 
     stores.append_children(cat_coding, &[skill_coding]).await?;
 
-    tracing::debug!(
-        "seeded workflow skills Pass 8: coding domain skill + ext-coding catalogue"
-    );
+    tracing::debug!("seeded workflow skills Pass 8: coding domain skill + ext-coding catalogue");
 
     // ------------------------------------------------------------------
     // Pass 9 — commit-workflow domain skill + recipe + ext-commit catalogue
@@ -14297,31 +15532,103 @@ async fn seed_workflow_skills(
 
     // 10b. Leaf skills
     let skill_github_list_issues = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-list-issues", "List open issues for a GitHub repo.", SKILL_GITHUB_LIST_ISSUES_BODY), "skill-github-list-issues")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-list-issues",
+                "List open issues for a GitHub repo.",
+                SKILL_GITHUB_LIST_ISSUES_BODY,
+            ),
+            "skill-github-list-issues",
+        )
         .await?;
     let skill_github_list_prs = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-list-prs", "List open pull requests for a GitHub repo.", SKILL_GITHUB_LIST_PRS_BODY), "skill-github-list-prs")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-list-prs",
+                "List open pull requests for a GitHub repo.",
+                SKILL_GITHUB_LIST_PRS_BODY,
+            ),
+            "skill-github-list-prs",
+        )
         .await?;
     let skill_github_get_pr = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-get-pr", "Get metadata for a specific GitHub PR.", SKILL_GITHUB_GET_PR_BODY), "skill-github-get-pr")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-get-pr",
+                "Get metadata for a specific GitHub PR.",
+                SKILL_GITHUB_GET_PR_BODY,
+            ),
+            "skill-github-get-pr",
+        )
         .await?;
     let skill_github_get_pr_diff = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-get-pr-diff", "Get the unified diff for a GitHub PR.", SKILL_GITHUB_GET_PR_DIFF_BODY), "skill-github-get-pr-diff")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-get-pr-diff",
+                "Get the unified diff for a GitHub PR.",
+                SKILL_GITHUB_GET_PR_DIFF_BODY,
+            ),
+            "skill-github-get-pr-diff",
+        )
         .await?;
     let skill_github_get_pr_files = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-get-pr-files", "Get per-file summaries for a GitHub PR.", SKILL_GITHUB_GET_PR_FILES_BODY), "skill-github-get-pr-files")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-get-pr-files",
+                "Get per-file summaries for a GitHub PR.",
+                SKILL_GITHUB_GET_PR_FILES_BODY,
+            ),
+            "skill-github-get-pr-files",
+        )
         .await?;
     let skill_github_get_authenticated_user = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-get-authenticated-user", "Get the authenticated GitHub user (resolves @me).", SKILL_GITHUB_GET_AUTHENTICATED_USER_BODY), "skill-github-get-authenticated-user")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-get-authenticated-user",
+                "Get the authenticated GitHub user (resolves @me).",
+                SKILL_GITHUB_GET_AUTHENTICATED_USER_BODY,
+            ),
+            "skill-github-get-authenticated-user",
+        )
         .await?;
     let skill_github_search_issues = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-search-issues", "Search issues and PRs via /search/issues.", SKILL_GITHUB_SEARCH_ISSUES_BODY), "skill-github-search-issues")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-search-issues",
+                "Search issues and PRs via /search/issues.",
+                SKILL_GITHUB_SEARCH_ISSUES_BODY,
+            ),
+            "skill-github-search-issues",
+        )
         .await?;
     let skill_github_add_comment = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-add-comment", "Post a PR-level or issue comment on GitHub.", SKILL_GITHUB_ADD_COMMENT_BODY), "skill-github-add-comment")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-add-comment",
+                "Post a PR-level or issue comment on GitHub.",
+                SKILL_GITHUB_ADD_COMMENT_BODY,
+            ),
+            "skill-github-add-comment",
+        )
         .await?;
     let skill_github_create_pr = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-github-create-pr", "Create a GitHub pull request (always draft unless told otherwise).", SKILL_GITHUB_CREATE_PR_BODY), "skill-github-create-pr")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-github-create-pr",
+                "Create a GitHub pull request (always draft unless told otherwise).",
+                SKILL_GITHUB_CREATE_PR_BODY,
+            ),
+            "skill-github-create-pr",
+        )
         .await?;
 
     // 10c. Domain skill
@@ -14349,8 +15656,20 @@ async fn seed_workflow_skills(
             true,
             RECIPE_GITHUB_LIST_ISSUES_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
-                step_entry(2, "orchestrator", "PythonCode calls host.http_fetch GET /repos/{owner}/{repo}/issues", "component", &[pc_github_list_issues]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-http-fetch binding",
+                    "component",
+                    &[],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.http_fetch GET /repos/{owner}/{repo}/issues",
+                    "component",
+                    &[pc_github_list_issues],
+                ),
             ],
             &[
                 json!({"input": "list issues for owner/repo", "class": 1}),
@@ -14375,8 +15694,20 @@ async fn seed_workflow_skills(
             true,
             RECIPE_GITHUB_LIST_PRS_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
-                step_entry(2, "orchestrator", "PythonCode calls host.http_fetch GET /repos/{owner}/{repo}/pulls", "component", &[pc_github_list_prs]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-http-fetch binding",
+                    "component",
+                    &[],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.http_fetch GET /repos/{owner}/{repo}/pulls",
+                    "component",
+                    &[pc_github_list_prs],
+                ),
             ],
             &[
                 json!({"input": "list PRs for owner/repo", "class": 1}),
@@ -14400,8 +15731,20 @@ async fn seed_workflow_skills(
             true,
             RECIPE_GITHUB_GET_AUTHENTICATED_USER_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
-                step_entry(2, "orchestrator", "PythonCode calls host.http_fetch GET /user", "component", &[pc_github_get_authenticated_user]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-http-fetch binding",
+                    "component",
+                    &[],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.http_fetch GET /user",
+                    "component",
+                    &[pc_github_get_authenticated_user],
+                ),
             ],
             &[
                 json!({"input": "who am I on github", "class": 1}),
@@ -14423,9 +15766,27 @@ async fn seed_workflow_skills(
             false,
             RECIPE_GITHUB_SEARCH_ISSUES_YAML,
             &[
-                step_entry(1, "orchestrator", "Load github-search-issues leaf skill (query syntax, URL encoding)", "component", &[skill_github_search_issues]),
-                step_entry(2, "orchestrator", "LLM builds the search query string and URL-encodes it", "text", &[]),
-                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load github-search-issues leaf skill (query syntax, URL encoding)",
+                    "component",
+                    &[skill_github_search_issues],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM builds the search query string and URL-encodes it",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-http-fetch binding",
+                    "component",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "search github issues", "class": 1}),
@@ -14449,9 +15810,27 @@ async fn seed_workflow_skills(
             false,
             RECIPE_GITHUB_CREATE_PR_YAML,
             &[
-                step_entry(1, "orchestrator", "Load github-create-pr + github domain skill context", "component", &[skill_github_create_pr, skill_github]),
-                step_entry(2, "orchestrator", "LLM reads git log for branch, asks for title/body, confirms draft", "text", &[]),
-                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load github-create-pr + github domain skill context",
+                    "component",
+                    &[skill_github_create_pr, skill_github],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM reads git log for branch, asks for title/body, confirms draft",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-http-fetch binding",
+                    "component",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "create a pull request", "class": 1}),
@@ -14475,9 +15854,27 @@ async fn seed_workflow_skills(
             false,
             RECIPE_GITHUB_ADD_COMMENT_YAML,
             &[
-                step_entry(1, "orchestrator", "Load github-add-comment leaf skill context", "component", &[skill_github_add_comment]),
-                step_entry(2, "orchestrator", "LLM composes comment body and confirms with user", "text", &[]),
-                step_entry(3, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load github-add-comment leaf skill context",
+                    "component",
+                    &[skill_github_add_comment],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM composes comment body and confirms with user",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-http-fetch binding",
+                    "component",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "comment on issue 42", "class": 1}),
@@ -14511,15 +15908,26 @@ async fn seed_workflow_skills(
         .await?;
 
     let github_children: Vec<Uuid> = vec![
-        pc_github_list_issues, pc_github_list_prs,
-        pc_github_get_authenticated_user, pc_github_search_issues,
-        skill_github_list_issues, skill_github_list_prs,
-        skill_github_get_pr, skill_github_get_pr_diff, skill_github_get_pr_files,
-        skill_github_get_authenticated_user, skill_github_search_issues,
-        skill_github_add_comment, skill_github_create_pr, skill_github,
-        recipe_github_list_issues, recipe_github_list_prs,
-        recipe_github_get_authenticated_user, recipe_github_search_issues,
-        recipe_github_create_pr, recipe_github_add_comment,
+        pc_github_list_issues,
+        pc_github_list_prs,
+        pc_github_get_authenticated_user,
+        pc_github_search_issues,
+        skill_github_list_issues,
+        skill_github_list_prs,
+        skill_github_get_pr,
+        skill_github_get_pr_diff,
+        skill_github_get_pr_files,
+        skill_github_get_authenticated_user,
+        skill_github_search_issues,
+        skill_github_add_comment,
+        skill_github_create_pr,
+        skill_github,
+        recipe_github_list_issues,
+        recipe_github_list_prs,
+        recipe_github_get_authenticated_user,
+        recipe_github_search_issues,
+        recipe_github_create_pr,
+        recipe_github_add_comment,
     ];
     stores.append_children(cat_github, &github_children).await?;
 
@@ -14535,25 +15943,34 @@ async fn seed_workflow_skills(
     // 11a. PythonCode executors
     let pc_git_diff_unstaged = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-git-diff-unstaged",
+            pc_row(
+                &tenant,
+                "pc-git-diff-unstaged",
                 "Orchestrator executor: git diff (unstaged changes). Tier 0, fixed command.",
-                PC_GIT_DIFF_UNSTAGED_CONTENT),
+                PC_GIT_DIFF_UNSTAGED_CONTENT,
+            ),
             "pc-git-diff-unstaged",
         )
         .await?;
     let pc_git_diff_staged = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-git-diff-staged",
+            pc_row(
+                &tenant,
+                "pc-git-diff-staged",
                 "Orchestrator executor: git diff --cached (staged changes). Tier 0, fixed command.",
-                PC_GIT_DIFF_STAGED_CONTENT),
+                PC_GIT_DIFF_STAGED_CONTENT,
+            ),
             "pc-git-diff-staged",
         )
         .await?;
     let pc_git_diff_head = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-git-diff-head",
+            pc_row(
+                &tenant,
+                "pc-git-diff-head",
                 "Orchestrator executor: git diff HEAD~1 (last commit). Tier 0, fixed command.",
-                PC_GIT_DIFF_HEAD_CONTENT),
+                PC_GIT_DIFF_HEAD_CONTENT,
+            ),
             "pc-git-diff-head",
         )
         .await?;
@@ -14565,23 +15982,40 @@ async fn seed_workflow_skills(
             SKILL_CODE_REVIEW_LOCAL_BODY), "skill-code-review-local")
         .await?;
     let skill_code_review_pr = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-code-review-pr",
-            "Leaf skill: fetch GitHub PR metadata, unified diff, and per-file summaries.",
-            SKILL_CODE_REVIEW_PR_BODY), "skill-code-review-pr")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-code-review-pr",
+                "Leaf skill: fetch GitHub PR metadata, unified diff, and per-file summaries.",
+                SKILL_CODE_REVIEW_PR_BODY,
+            ),
+            "skill-code-review-pr",
+        )
         .await?;
     let skill_code_review_post_comments = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-code-review-post-comments",
-            "Leaf skill: post line-level or PR-level review comments on GitHub.",
-            SKILL_CODE_REVIEW_POST_COMMENTS_BODY), "skill-code-review-post-comments")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-code-review-post-comments",
+                "Leaf skill: post line-level or PR-level review comments on GitHub.",
+                SKILL_CODE_REVIEW_POST_COMMENTS_BODY,
+            ),
+            "skill-code-review-post-comments",
+        )
         .await?;
 
     // 11c. Domain skill
     let skill_code_review = stores
         .upsert_skill(
-            skill_row(&tenant, "skill-code-review",
+            skill_row(
+                &tenant,
+                "skill-code-review",
                 "Domain skill: paranoid architect code review — six lenses, two modes \
                  (local diff / GitHub PR), severity scale, post comments.",
-                SKILL_CODE_REVIEW_BODY, 2, LEAF_SKILL_TAGS),
+                SKILL_CODE_REVIEW_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
             "skill-code-review",
         )
         .await?;
@@ -14641,14 +16075,33 @@ async fn seed_workflow_skills(
         .await?;
     let recipe_code_review_pr_post_comments = stores
         .seed_recipe(
-            &tenant, "code-review-pr-post-comments",
+            &tenant,
+            "code-review-pr-post-comments",
             "Post code-review findings as line-level or PR-level comments on a GitHub PR.",
             false,
             RECIPE_CODE_REVIEW_PR_POST_COMMENTS_YAML,
             &[
-                step_entry(1, "orchestrator", "Load code-review-post-comments leaf skill", "component", &[skill_code_review_post_comments]),
-                step_entry(2, "rust", "Pre-load ts-http-fetch binding", "component", &[]),
-                step_entry(3, "orchestrator", "LLM posts findings as line-level or PR-level comments", "text", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load code-review-post-comments leaf skill",
+                    "component",
+                    &[skill_code_review_post_comments],
+                ),
+                step_entry(
+                    2,
+                    "rust",
+                    "Pre-load ts-http-fetch binding",
+                    "component",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "orchestrator",
+                    "LLM posts findings as line-level or PR-level comments",
+                    "text",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "post review comments on the PR", "class": 1}),
@@ -14679,12 +16132,20 @@ async fn seed_workflow_skills(
         .await?;
 
     let code_review_children: Vec<Uuid> = vec![
-        pc_git_diff_unstaged, pc_git_diff_staged, pc_git_diff_head,
-        skill_code_review_local, skill_code_review_pr, skill_code_review_post_comments,
+        pc_git_diff_unstaged,
+        pc_git_diff_staged,
+        pc_git_diff_head,
+        skill_code_review_local,
+        skill_code_review_pr,
+        skill_code_review_post_comments,
         skill_code_review,
-        recipe_code_review_local, recipe_code_review_pr, recipe_code_review_pr_post_comments,
+        recipe_code_review_local,
+        recipe_code_review_pr,
+        recipe_code_review_pr_post_comments,
     ];
-    stores.append_children(cat_code_review, &code_review_children).await?;
+    stores
+        .append_children(cat_code_review, &code_review_children)
+        .await?;
 
     tracing::debug!(
         "seeded workflow skills Pass 11: code-review (3 PC + 3 leaf + 1 domain + 3 recipes + ext-code-review)"
@@ -14698,9 +16159,12 @@ async fn seed_workflow_skills(
     // 12a. PythonCode executors
     let pc_glob_test_files_rust = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-glob-test-files-rust",
+            pc_row(
+                &tenant,
+                "pc-glob-test-files-rust",
                 "Orchestrator executor: glob **/*_test.rs — find all Rust test files. Tier 0.",
-                PC_GLOB_TEST_FILES_RUST_CONTENT),
+                PC_GLOB_TEST_FILES_RUST_CONTENT,
+            ),
             "pc-glob-test-files-rust",
         )
         .await?;
@@ -14714,9 +16178,12 @@ async fn seed_workflow_skills(
         .await?;
     let pc_glob_test_files_py = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-glob-test-files-py",
+            pc_row(
+                &tenant,
+                "pc-glob-test-files-py",
                 "Orchestrator executor: glob **/*_test.py — find all Python test files. Tier 0.",
-                PC_GLOB_TEST_FILES_PY_CONTENT),
+                PC_GLOB_TEST_FILES_PY_CONTENT,
+            ),
             "pc-glob-test-files-py",
         )
         .await?;
@@ -14731,9 +16198,15 @@ async fn seed_workflow_skills(
 
     // 12b. Leaf skills
     let skill_qa_coverage_analysis = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-qa-coverage-analysis",
-            "Leaf skill: identify changed functions, find test files, flag untested paths.",
-            SKILL_QA_COVERAGE_ANALYSIS_BODY), "skill-qa-coverage-analysis")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-qa-coverage-analysis",
+                "Leaf skill: identify changed functions, find test files, flag untested paths.",
+                SKILL_QA_COVERAGE_ANALYSIS_BODY,
+            ),
+            "skill-qa-coverage-analysis",
+        )
         .await?;
     let skill_qa_edge_cases = stores
         .upsert_skill(leaf_skill(&tenant, "skill-qa-edge-cases",
@@ -14754,10 +16227,15 @@ async fn seed_workflow_skills(
     // 12c. Domain skill
     let skill_qa_review = stores
         .upsert_skill(
-            skill_row(&tenant, "skill-qa-review",
+            skill_row(
+                &tenant,
+                "skill-qa-review",
                 "Domain skill: QA review — coverage analysis, edge cases, regression risks, \
                  test plan generation, health score.",
-                SKILL_QA_REVIEW_BODY, 2, LEAF_SKILL_TAGS),
+                SKILL_QA_REVIEW_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
             "skill-qa-review",
         )
         .await?;
@@ -14832,13 +16310,21 @@ async fn seed_workflow_skills(
         .await?;
 
     let qa_review_children: Vec<Uuid> = vec![
-        pc_glob_test_files_rust, pc_glob_test_files_ts,
-        pc_glob_test_files_py, pc_grep_fn_tests,
-        skill_qa_coverage_analysis, skill_qa_edge_cases,
-        skill_qa_test_plan, skill_qa_regression_risk, skill_qa_review,
-        recipe_qa_review_local, recipe_qa_generate_test_plan,
+        pc_glob_test_files_rust,
+        pc_glob_test_files_ts,
+        pc_glob_test_files_py,
+        pc_grep_fn_tests,
+        skill_qa_coverage_analysis,
+        skill_qa_edge_cases,
+        skill_qa_test_plan,
+        skill_qa_regression_risk,
+        skill_qa_review,
+        recipe_qa_review_local,
+        recipe_qa_generate_test_plan,
     ];
-    stores.append_children(cat_qa_review, &qa_review_children).await?;
+    stores
+        .append_children(cat_qa_review, &qa_review_children)
+        .await?;
 
     tracing::debug!(
         "seeded workflow skills Pass 12: qa-review (4 PC + 4 leaf + 1 domain + 2 recipes + ext-qa-review)"
@@ -14868,9 +16354,12 @@ async fn seed_workflow_skills(
         .await?;
     let pc_grep_env_files = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-grep-env-files",
+            pc_row(
+                &tenant,
+                "pc-grep-env-files",
                 "Orchestrator executor: glob **/.env* — find all .env files. Tier 0.",
-                PC_GREP_ENV_FILES_CONTENT),
+                PC_GREP_ENV_FILES_CONTENT,
+            ),
             "pc-grep-env-files",
         )
         .await?;
@@ -14892,28 +16381,51 @@ async fn seed_workflow_skills(
             SKILL_SECURITY_DATA_EXPOSURE_BODY), "skill-security-data-exposure")
         .await?;
     let skill_security_crypto = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-security-crypto",
-            "Leaf skill: crypto review — TLS, encryption algorithms, key management, RNG.",
-            SKILL_SECURITY_CRYPTO_BODY), "skill-security-crypto")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-security-crypto",
+                "Leaf skill: crypto review — TLS, encryption algorithms, key management, RNG.",
+                SKILL_SECURITY_CRYPTO_BODY,
+            ),
+            "skill-security-crypto",
+        )
         .await?;
     let skill_security_supply_chain = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-security-supply-chain",
-            "Leaf skill: supply chain review — CVEs, lock files, build scripts.",
-            SKILL_SECURITY_SUPPLY_CHAIN_BODY), "skill-security-supply-chain")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-security-supply-chain",
+                "Leaf skill: supply chain review — CVEs, lock files, build scripts.",
+                SKILL_SECURITY_SUPPLY_CHAIN_BODY,
+            ),
+            "skill-security-supply-chain",
+        )
         .await?;
     let skill_security_secrets = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-security-secrets",
-            "Leaf skill: secrets scan — grep patterns, .env gitignore, log scanning.",
-            SKILL_SECURITY_SECRETS_BODY), "skill-security-secrets")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-security-secrets",
+                "Leaf skill: secrets scan — grep patterns, .env gitignore, log scanning.",
+                SKILL_SECURITY_SECRETS_BODY,
+            ),
+            "skill-security-secrets",
+        )
         .await?;
 
     // 13c. Domain skill
     let skill_security_review = stores
         .upsert_skill(
-            skill_row(&tenant, "skill-security-review",
+            skill_row(
+                &tenant,
+                "skill-security-review",
                 "Domain skill: OWASP security review — six categories, fix-first model, \
                  severity scale P1/P2/P3.",
-                SKILL_SECURITY_REVIEW_BODY, 2, LEAF_SKILL_TAGS),
+                SKILL_SECURITY_REVIEW_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
             "skill-security-review",
         )
         .await?;
@@ -14945,14 +16457,37 @@ async fn seed_workflow_skills(
         .await?;
     let recipe_security_review_full = stores
         .seed_recipe(
-            &tenant, "security-review-full",
+            &tenant,
+            "security-review-full",
             "Full security review: git diff + grep scans + LLM six-category OWASP analysis.",
             false,
             RECIPE_SECURITY_REVIEW_FULL_YAML,
             &[
-                step_entry(1, "orchestrator", "Load security-review domain + injection + secrets leaf skills", "component", &[skill_security_review, skill_security_injection, skill_security_secrets]),
-                step_entry(2, "rust", "Pre-load ts-shell-run + ts-grep + ts-glob + ts-read-file bindings", "component", &[]),
-                step_entry(3, "orchestrator", "LLM six-category OWASP analysis", "text", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load security-review domain + injection + secrets leaf skills",
+                    "component",
+                    &[
+                        skill_security_review,
+                        skill_security_injection,
+                        skill_security_secrets,
+                    ],
+                ),
+                step_entry(
+                    2,
+                    "rust",
+                    "Pre-load ts-shell-run + ts-grep + ts-glob + ts-read-file bindings",
+                    "component",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "orchestrator",
+                    "LLM six-category OWASP analysis",
+                    "text",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "security review", "class": 1}),
@@ -15009,13 +16544,23 @@ async fn seed_workflow_skills(
         .await?;
 
     let security_review_children: Vec<Uuid> = vec![
-        pc_grep_hardcoded_secrets, pc_grep_injection_patterns, pc_grep_env_files,
-        skill_security_injection, skill_security_auth, skill_security_data_exposure,
-        skill_security_crypto, skill_security_supply_chain, skill_security_secrets,
+        pc_grep_hardcoded_secrets,
+        pc_grep_injection_patterns,
+        pc_grep_env_files,
+        skill_security_injection,
+        skill_security_auth,
+        skill_security_data_exposure,
+        skill_security_crypto,
+        skill_security_supply_chain,
+        skill_security_secrets,
         skill_security_review,
-        recipe_security_review_scan, recipe_security_review_full, recipe_security_review_local,
+        recipe_security_review_scan,
+        recipe_security_review_full,
+        recipe_security_review_local,
     ];
-    stores.append_children(cat_security_review, &security_review_children).await?;
+    stores
+        .append_children(cat_security_review, &security_review_children)
+        .await?;
 
     tracing::debug!(
         "seeded workflow skills Pass 13: security-review (3 PC + 6 leaf + 1 domain + 3 recipes + ext-security-review)"
@@ -15029,28 +16574,37 @@ async fn seed_workflow_skills(
     // 14a. PythonCode executors
     let pc_plan_create = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-plan-create",
+            pc_row(
+                &tenant,
+                "pc-plan-create",
                 "Orchestrator executor: write plan document to plans/{slug}.md via memory_write. \
                  slot0=slug, slot1=plan body. Tier 1 (LLM composes body in prior step).",
-                PC_PLAN_CREATE_CONTENT),
+                PC_PLAN_CREATE_CONTENT,
+            ),
             "pc-plan-create",
         )
         .await?;
     let pc_plan_read = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-plan-read",
+            pc_row(
+                &tenant,
+                "pc-plan-read",
                 "Orchestrator executor: read plan document from plans/{slug}.md via memory_read. \
                  slot0=slug. Tier 0.",
-                PC_PLAN_READ_CONTENT),
+                PC_PLAN_READ_CONTENT,
+            ),
             "pc-plan-read",
         )
         .await?;
     let pc_plan_search = stores
         .upsert_python_code(
-            pc_row(&tenant, "pc-plan-search",
+            pc_row(
+                &tenant,
+                "pc-plan-search",
                 "Orchestrator executor: memory_search query='plan_id:' — find all plan documents. \
                  Tier 0 (fixed query).",
-                PC_PLAN_SEARCH_CONTENT),
+                PC_PLAN_SEARCH_CONTENT,
+            ),
             "pc-plan-search",
         )
         .await?;
@@ -15066,33 +16620,62 @@ async fn seed_workflow_skills(
 
     // 14b. Leaf skills
     let skill_plan_create = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-plan-create",
-            "Leaf skill: format and write a plan document to plans/<slug>.md.",
-            SKILL_PLAN_CREATE_BODY), "skill-plan-create")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-plan-create",
+                "Leaf skill: format and write a plan document to plans/<slug>.md.",
+                SKILL_PLAN_CREATE_BODY,
+            ),
+            "skill-plan-create",
+        )
         .await?;
     let skill_plan_track_progress = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-plan-track-progress",
-            "Leaf skill: read plan, patch step marker ([ ] → [x] or [-]), write back.",
-            SKILL_PLAN_TRACK_PROGRESS_BODY), "skill-plan-track-progress")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-plan-track-progress",
+                "Leaf skill: read plan, patch step marker ([ ] → [x] or [-]), write back.",
+                SKILL_PLAN_TRACK_PROGRESS_BODY,
+            ),
+            "skill-plan-track-progress",
+        )
         .await?;
     let skill_plan_list = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-plan-list",
-            "Leaf skill: memory_search for plan_id: prefix, list plans with status.",
-            SKILL_PLAN_LIST_BODY), "skill-plan-list")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-plan-list",
+                "Leaf skill: memory_search for plan_id: prefix, list plans with status.",
+                SKILL_PLAN_LIST_BODY,
+            ),
+            "skill-plan-list",
+        )
         .await?;
     let skill_plan_revise = stores
-        .upsert_skill(leaf_skill(&tenant, "skill-plan-revise",
-            "Leaf skill: read plan, apply feedback, reset failed steps, rewrite.",
-            SKILL_PLAN_REVISE_BODY), "skill-plan-revise")
+        .upsert_skill(
+            leaf_skill(
+                &tenant,
+                "skill-plan-revise",
+                "Leaf skill: read plan, apply feedback, reset failed steps, rewrite.",
+                SKILL_PLAN_REVISE_BODY,
+            ),
+            "skill-plan-revise",
+        )
         .await?;
 
     // 14c. Domain skill
     let skill_plan_mode = stores
         .upsert_skill(
-            skill_row(&tenant, "skill-plan-mode",
+            skill_row(
+                &tenant,
+                "skill-plan-mode",
                 "Domain skill: structured task planning via memory docs — create, read, list, \
                  update steps, revise plans. v3 only (no mission/keeper).",
-                SKILL_PLAN_MODE_BODY, 2, LEAF_SKILL_TAGS),
+                SKILL_PLAN_MODE_BODY,
+                2,
+                LEAF_SKILL_TAGS,
+            ),
             "skill-plan-mode",
         )
         .await?;
@@ -15126,13 +16709,26 @@ async fn seed_workflow_skills(
         .await?;
     let recipe_plan_read = stores
         .seed_recipe(
-            &tenant, "plan-read",
+            &tenant,
+            "plan-read",
             "Read an existing plan document from plans/<slug>.md.",
             true,
             RECIPE_PLAN_READ_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-read binding", "component", &[]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_read for the plan doc", "component", &[pc_plan_read]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-read binding",
+                    "component",
+                    &[],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_read for the plan doc",
+                    "component",
+                    &[pc_plan_read],
+                ),
             ],
             &[
                 json!({"input": "show plan slug", "class": 1}),
@@ -15147,13 +16743,26 @@ async fn seed_workflow_skills(
         .await?;
     let recipe_plan_list = stores
         .seed_recipe(
-            &tenant, "plan-list",
+            &tenant,
+            "plan-list",
             "List all plan documents in memory.",
             true,
             RECIPE_PLAN_LIST_YAML,
             &[
-                step_entry(1, "rust", "Pre-load ts-memory-search binding", "component", &[]),
-                step_entry(2, "orchestrator", "PythonCode calls host.memory_search for plan_id:", "component", &[pc_plan_search]),
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-memory-search binding",
+                    "component",
+                    &[],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "PythonCode calls host.memory_search for plan_id:",
+                    "component",
+                    &[pc_plan_search],
+                ),
             ],
             &[
                 json!({"input": "list my plans", "class": 1}),
@@ -15168,14 +16777,33 @@ async fn seed_workflow_skills(
         .await?;
     let recipe_plan_update_step = stores
         .seed_recipe(
-            &tenant, "plan-update-step",
+            &tenant,
+            "plan-update-step",
             "Update a plan step's status marker (pending → in-progress → done).",
             false,
             RECIPE_PLAN_UPDATE_STEP_YAML,
             &[
-                step_entry(1, "orchestrator", "Load plan-track-progress leaf skill", "component", &[skill_plan_track_progress]),
-                step_entry(2, "orchestrator", "LLM reads plan, identifies step, patches marker", "text", &[]),
-                step_entry(3, "rust", "Pre-load ts-memory-read + ts-memory-write bindings", "component", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load plan-track-progress leaf skill",
+                    "component",
+                    &[skill_plan_track_progress],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM reads plan, identifies step, patches marker",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-memory-read + ts-memory-write bindings",
+                    "component",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "mark step 2 as done", "class": 2}),
@@ -15190,14 +16818,33 @@ async fn seed_workflow_skills(
         .await?;
     let recipe_plan_revise = stores
         .seed_recipe(
-            &tenant, "plan-revise",
+            &tenant,
+            "plan-revise",
             "Revise an existing plan: apply feedback, reset failed steps, rewrite.",
             false,
             RECIPE_PLAN_REVISE_YAML,
             &[
-                step_entry(1, "orchestrator", "Load plan-revise + plan-mode domain skill context", "component", &[skill_plan_revise, skill_plan_mode]),
-                step_entry(2, "orchestrator", "LLM reads plan, applies revision, resets failed steps", "text", &[]),
-                step_entry(3, "rust", "Pre-load ts-memory-read + ts-memory-write bindings", "component", &[]),
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load plan-revise + plan-mode domain skill context",
+                    "component",
+                    &[skill_plan_revise, skill_plan_mode],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM reads plan, applies revision, resets failed steps",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-memory-read + ts-memory-write bindings",
+                    "component",
+                    &[],
+                ),
             ],
             &[
                 json!({"input": "revise the plan", "class": 1}),
@@ -15229,13 +16876,24 @@ async fn seed_workflow_skills(
         .await?;
 
     let plan_mode_children: Vec<Uuid> = vec![
-        pc_plan_create, pc_plan_read, pc_plan_search, pc_plan_status_update,
-        skill_plan_create, skill_plan_track_progress, skill_plan_list,
-        skill_plan_revise, skill_plan_mode,
-        recipe_plan_create, recipe_plan_read, recipe_plan_list,
-        recipe_plan_update_step, recipe_plan_revise,
+        pc_plan_create,
+        pc_plan_read,
+        pc_plan_search,
+        pc_plan_status_update,
+        skill_plan_create,
+        skill_plan_track_progress,
+        skill_plan_list,
+        skill_plan_revise,
+        skill_plan_mode,
+        recipe_plan_create,
+        recipe_plan_read,
+        recipe_plan_list,
+        recipe_plan_update_step,
+        recipe_plan_revise,
     ];
-    stores.append_children(cat_plan_mode, &plan_mode_children).await?;
+    stores
+        .append_children(cat_plan_mode, &plan_mode_children)
+        .await?;
 
     tracing::debug!(
         "seeded workflow skills Pass 14: plan-mode (4 PC + 4 leaf + 1 domain + 5 recipes + ext-plan-mode)"
@@ -15265,9 +16923,7 @@ async fn seed_workflow_skills(
 // steps are completed. The function is idempotent: safe to call on every boot.
 
 /// Seed the doc-sync PythonCode leaves for `tenant_id`.
-async fn seed_doc_sync_group(
-    stores: &BootstrapStores,
-) -> Result<(), SeedBuiltinBootstrapError> {
+async fn seed_doc_sync_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
     let tenant = stores.tenant.clone();
 
     // 1. PythonCode: pc-hash-changed
@@ -15492,7 +17148,9 @@ async fn seed_doc_sync_group(
         .tool_skill
         .get_id_by_name(&tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, "ts-read-file")
         .await
-        .map_err(|e| SeedBuiltinBootstrapError::Db { reason: e.to_string() })?
+        .map_err(|e| SeedBuiltinBootstrapError::Db {
+            reason: e.to_string(),
+        })?
         .unwrap_or_else(Uuid::new_v4); // fallback: won't match at runtime but won't panic
 
     let recipe_steps = vec![

@@ -48,7 +48,7 @@ pub(crate) use self::schemas::resolve_builtin_input_schema_ref;
 pub use component_db::{
     COMPONENT_DB_CAPABILITY_ID, ComponentDbBackend, ComponentDbError, ComponentDbRow,
     ComponentDbScope, ComponentDbState, ComponentDbUpsert, ComponentDbUpsertResult,
-    sha256_hex, extract_md_section,
+    extract_md_section, sha256_hex,
 };
 pub use echo::ECHO_CAPABILITY_ID;
 pub use http::{HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID};
@@ -375,10 +375,7 @@ impl BuiltinFirstPartyTools {
     /// Without this the `builtin.component_db` capability returns an error for
     /// all ops that require DB access. `compute_hash` and `extract_section`
     /// remain available without a wired backend (pure Rust, no DB).
-    pub fn with_component_db(
-        mut self,
-        backend: Arc<dyn component_db::ComponentDbBackend>,
-    ) -> Self {
+    pub fn with_component_db(mut self, backend: Arc<dyn component_db::ComponentDbBackend>) -> Self {
         self.component_db_state = component_db::ComponentDbState::with_backend(backend);
         self
     }
@@ -437,11 +434,8 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
             }
             SPAWN_SUBAGENT_CAPABILITY_ID => (spawn_subagent::dispatch(), None),
             COMPONENT_DB_CAPABILITY_ID => {
-                let output = component_db::dispatch(
-                    &self.component_db_state,
-                    &request.input,
-                )
-                .await?;
+                let output =
+                    component_db::dispatch(&self.component_db_state, &request.input).await?;
                 (output, None)
             }
             capability_id => {

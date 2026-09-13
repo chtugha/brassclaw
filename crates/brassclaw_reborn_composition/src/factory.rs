@@ -775,10 +775,8 @@ async fn build_local_dev(
         build_local_dev_root_filesystem(&root, &workspace_root, host_home_root.as_ref()).await?;
     let filesystem = filesystem_bundle.filesystem;
     let trigger_repository = local_dev_trigger_repository();
-    let runtime_workspace_mounts = build_workspace_mounts(
-        &workspace_root,
-        host_home_root.as_ref(),
-    )?;
+    let runtime_workspace_mounts =
+        build_workspace_mounts(&workspace_root, host_home_root.as_ref())?;
     let http_body_filesystem = Arc::new(ScopedFilesystem::with_fixed_view(
         Arc::clone(&filesystem),
         runtime_workspace_mounts.clone(),
@@ -1024,12 +1022,11 @@ async fn build_local_dev(
                     effective_tenant,
                     "default",
                 );
-                let backend =
-                    crate::pg_component_db_backend::build_pg_component_db_backend(
-                        Arc::clone(pool),
-                        effective_tenant,
-                        basic_prompt_store,
-                    );
+                let backend = crate::pg_component_db_backend::build_pg_component_db_backend(
+                    Arc::clone(pool),
+                    effective_tenant,
+                    basic_prompt_store,
+                );
                 Some(Arc::new(backend) as Arc<dyn brassclaw_host_runtime::ComponentDbBackend>)
             }
             #[cfg(not(feature = "postgres"))]
@@ -1736,8 +1733,8 @@ fn builtin_first_party_registry_with_trigger_create_hook(
         reason: format!("built-in first-party handlers are invalid: {error}"),
     };
     if let Some(backend) = component_db_backend {
-        let tools = brassclaw_host_runtime::BuiltinFirstPartyTools::default()
-            .with_component_db(backend);
+        let tools =
+            brassclaw_host_runtime::BuiltinFirstPartyTools::default().with_component_db(backend);
         brassclaw_host_runtime::builtin_first_party_handlers_from_tools_with_trigger(
             tools,
             trigger_repository,
@@ -1745,8 +1742,11 @@ fn builtin_first_party_registry_with_trigger_create_hook(
         )
         .map_err(map_err)
     } else {
-        builtin_first_party_handlers_with_trigger_create_hook(trigger_repository, trigger_create_hook)
-            .map_err(map_err)
+        builtin_first_party_handlers_with_trigger_create_hook(
+            trigger_repository,
+            trigger_create_hook,
+        )
+        .map_err(map_err)
     }
 }
 

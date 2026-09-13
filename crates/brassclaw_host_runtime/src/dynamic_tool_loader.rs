@@ -97,13 +97,14 @@ impl DynamicToolLoader {
         let path_string = directive.artifact_path.display().to_string();
         // SAFETY: dlopen executes the library's init code; the artifact is a Q2+
         // validated cdylib Tool from the composition-mechanism (trusted path).
-        let library = unsafe { libloading::Library::new(&directive.artifact_path) }.map_err(|e| {
-            DynamicToolLoaderError::Load {
-                tool: directive.tool_name.clone(),
-                path: path_string.clone(),
-                reason: e.to_string(),
-            }
-        })?;
+        let library =
+            unsafe { libloading::Library::new(&directive.artifact_path) }.map_err(|e| {
+                DynamicToolLoaderError::Load {
+                    tool: directive.tool_name.clone(),
+                    path: path_string.clone(),
+                    reason: e.to_string(),
+                }
+            })?;
 
         // SAFETY: `library` is a freshly-opened handle; the symbol names are the
         // exact exported strings and the fn-pointer types match the cdylib_abi
@@ -154,23 +155,25 @@ impl DynamicToolLoader {
     /// Invoke a loaded cdylib Tool by name with JSON `args`; returns the JSON
     /// `result` the cdylib produced.
     pub fn invoke(&self, tool_name: &str, args: Value) -> Result<Value, DynamicToolLoaderError> {
-        let loaded = self
-            .loaded
-            .get(tool_name)
-            .ok_or_else(|| DynamicToolLoaderError::NotLoaded {
-                tool: tool_name.to_string(),
-            })?;
+        let loaded =
+            self.loaded
+                .get(tool_name)
+                .ok_or_else(|| DynamicToolLoaderError::NotLoaded {
+                    tool: tool_name.to_string(),
+                })?;
         let req = CdylibRequest {
             tool: tool_name.to_string(),
             args,
         };
-        let payload = serde_json::to_vec(&req).map_err(|e| DynamicToolLoaderError::RequestSerialization {
-            tool: tool_name.to_string(),
-            reason: e.to_string(),
-        })?;
+        let payload =
+            serde_json::to_vec(&req).map_err(|e| DynamicToolLoaderError::RequestSerialization {
+                tool: tool_name.to_string(),
+                reason: e.to_string(),
+            })?;
         // SAFETY: `invoke_fn`/`drop_fn` were bound from a currently-loaded cdylib
         // honoring the cdylib_abi contract; `payload` is valid UTF-8 JSON bytes.
-        let result = unsafe { invoke_via_abi(loaded.invoke_fn, loaded.drop_fn, &payload, tool_name) }?;
+        let result =
+            unsafe { invoke_via_abi(loaded.invoke_fn, loaded.drop_fn, &payload, tool_name) }?;
         Ok(result)
     }
 
@@ -213,7 +216,8 @@ impl DynamicToolLoader {
         symbol: &[u8],
     ) -> Result<T, String> {
         // SAFETY: covered by the fn-level safety contract.
-        let sym: libloading::Symbol<T> = unsafe { library.get(symbol) }.map_err(|e| e.to_string())?;
+        let sym: libloading::Symbol<T> =
+            unsafe { library.get(symbol) }.map_err(|e| e.to_string())?;
         Ok(*sym)
     }
 }
@@ -295,10 +299,12 @@ unsafe fn invoke_via_abi(
                 .unwrap_or_else(|| "unknown cdylib tool error".to_string()),
         });
     }
-    response.result.ok_or_else(|| CdylibAbiError::ResponseInvalidJson {
-        tool: tool.to_string(),
-        reason: "ok=true but result missing".to_string(),
-    })
+    response
+        .result
+        .ok_or_else(|| CdylibAbiError::ResponseInvalidJson {
+            tool: tool.to_string(),
+            reason: "ok=true but result missing".to_string(),
+        })
 }
 
 #[cfg(test)]
@@ -430,9 +436,15 @@ pub extern "C" fn brassclaw_tool_drop_out(buf: *mut c_char, len: usize) {
             .expect("invoke fixture echo");
 
         assert_eq!(result["echoed"], serde_json::json!(true));
-        assert_eq!(result["request"]["tool"], serde_json::json!("host.fixture_echo"));
+        assert_eq!(
+            result["request"]["tool"],
+            serde_json::json!("host.fixture_echo")
+        );
         assert_eq!(result["request"]["args"]["x"], serde_json::json!(2));
-        assert_eq!(result["request"]["args"]["name"], serde_json::json!("monty"));
+        assert_eq!(
+            result["request"]["args"]["name"],
+            serde_json::json!("monty")
+        );
 
         loader.unload("host.fixture_echo").expect("unload fixture");
         assert!(!loader.is_loaded("host.fixture_echo"));

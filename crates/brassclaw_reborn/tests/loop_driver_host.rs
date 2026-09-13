@@ -71,13 +71,13 @@ use brassclaw_reborn::text_loop_driver::TextOnlyModelReplyDriver;
 use brassclaw_reborn::turn_runner::{
     HostFactory, TurnRunnerWakeReceiver, TurnRunnerWorker, TurnRunnerWorkerConfig,
 };
-use brassclaw_turns::run_profile::MontyTurnDriverPort;
 use brassclaw_threads::{
     AcceptInboundMessageRequest, EnsureThreadRequest, InMemorySessionThreadService, MessageContent,
     MessageKind, MessageStatus, SessionThreadService, SummaryModelContextPolicy,
     ThreadHistoryRequest, ThreadMessageId, ThreadScope,
 };
 use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
+use brassclaw_turns::run_profile::MontyTurnDriverPort;
 use brassclaw_turns::{
     AcceptedMessageRef, AgentLoopDriver, AgentLoopDriverDescriptor, AgentLoopDriverError,
     AgentLoopDriverResumeRequest, AgentLoopDriverRunRequest, CancelRunRequest, CancelRunResponse,
@@ -107,9 +107,8 @@ use brassclaw_turns::{
         LoopModelPort, LoopModelRequest, LoopModelRouteSnapshot, LoopProgressEvent,
         LoopPromptBundleRequest, LoopPromptPort, LoopRunContext, LoopSafeSummary, ModelWorkKind,
         ModelWorkOutcome, ModelWorkRequest, NoOpBudgetAccountant, NoOpPolicyGuard,
-        ParentLoopOutput, PersonalContextPolicy, PromptMode,
-        StageCheckpointPayloadRequest, SystemInferenceTaskId, VisibleCapabilityRequest,
-        VisibleCapabilitySurface,
+        ParentLoopOutput, PersonalContextPolicy, PromptMode, StageCheckpointPayloadRequest,
+        SystemInferenceTaskId, VisibleCapabilityRequest, VisibleCapabilitySurface,
     },
     runner::{ClaimRunRequest, ClaimedTurnRun, TurnRunTransitionPort},
 };
@@ -1280,7 +1279,8 @@ async fn turn_runner_rejects_driver_fabricated_approval_block_without_durable_ga
     )
     .await;
 
-    let monty = WrappingMontyDriver::new(Arc::new(ApprovalBlockThenFinalReplyDriver { descriptor }));
+    let monty =
+        WrappingMontyDriver::new(Arc::new(ApprovalBlockThenFinalReplyDriver { descriptor }));
 
     let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
     let worker = TurnRunnerWorker::new(
@@ -1356,7 +1356,8 @@ async fn turn_runner_blocks_on_approval_then_coordinator_resume_completes_same_r
     )
     .await;
 
-    let monty = WrappingMontyDriver::new(Arc::new(ApprovalBlockThenFinalReplyDriver { descriptor }));
+    let monty =
+        WrappingMontyDriver::new(Arc::new(ApprovalBlockThenFinalReplyDriver { descriptor }));
 
     let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
     let worker = TurnRunnerWorker::new(
@@ -5711,7 +5712,6 @@ impl LoopCapabilityPortFactory for TestHostRuntimeCapabilityFactory {
         Ok(Arc::new(port))
     }
 }
-
 
 /// In-memory capability I/O fixture.
 ///

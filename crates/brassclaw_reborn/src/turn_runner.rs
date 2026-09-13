@@ -35,8 +35,7 @@ use brassclaw_turns::{
 };
 
 use crate::{
-    failure_categories::MODEL_CREDITS_EXHAUSTED_CATEGORY,
-    loop_exit_applier::LoopExitApplier,
+    failure_categories::MODEL_CREDITS_EXHAUSTED_CATEGORY, loop_exit_applier::LoopExitApplier,
 };
 
 /// Create a `SanitizedFailure` from a known-valid static category.

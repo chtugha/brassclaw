@@ -64,12 +64,12 @@ pub use host::{
     LoopOrchestratorPort, LoopProcessRef, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
     LoopPromptBundleAuthority, LoopPromptBundleGrant, LoopPromptBundleRef, LoopPromptBundleRequest,
     LoopPromptPort, LoopRecipePort, LoopRetrievalPort, LoopRunContext, LoopRunInfoPort,
-    LoopSafeSummary, LoopSecurityPort, LoopTranscriptPort, ModelStreamChunk, NoInterceptor, NoOrchestrator,
-    NoRecipeLookup, NoRetrieval, NoSecurityConfig, ParentLoopOutput, ProcessHandleSummary, PromptMode,
-    ProviderToolCall, ProviderToolCallCapabilityIds, ProviderToolCallReference,
-    ProviderToolCallReplay, ProviderToolDefinition, StageCheckpointPayloadRequest,
-    UpdateAssistantDraft, VisibleCapabilityRequest, VisibleCapabilitySurface,
-    sanitize_model_visible_text, validate_model_route_component_value,
+    LoopSafeSummary, LoopSecurityPort, LoopTranscriptPort, ModelStreamChunk, NoInterceptor,
+    NoOrchestrator, NoRecipeLookup, NoRetrieval, NoSecurityConfig, ParentLoopOutput,
+    ProcessHandleSummary, PromptMode, ProviderToolCall, ProviderToolCallCapabilityIds,
+    ProviderToolCallReference, ProviderToolCallReplay, ProviderToolDefinition,
+    StageCheckpointPayloadRequest, UpdateAssistantDraft, VisibleCapabilityRequest,
+    VisibleCapabilitySurface, sanitize_model_visible_text, validate_model_route_component_value,
 };
 pub use instruction_bundle::{
     InMemoryInstructionMaterializationStore, InstructionBundle, InstructionBundleBuilder,
@@ -81,10 +81,6 @@ pub use memory_context::{
     EmptyMemoryPromptContextService, MemoryPromptContextRequest, MemoryPromptContextService,
 };
 pub use message_text_resolver::MessageTextResolver;
-pub use security::{
-    ALL_SECURITY_LAYERS, ResolvedSecurityLayers, SecurityConfigError, SecurityConfigSource,
-    SecurityLayer, SecurityLayerOverride, SecurityMode, SecurityModeConfig,
-};
 pub use milestones::{
     HookDecisionSummary, HookMilestoneSink, InMemoryHookMilestoneSink,
     InMemoryLoopHostMilestoneSink, LoopHostMilestone, LoopHostMilestoneEmitter,
@@ -124,6 +120,10 @@ pub use resolver::{
     RunProfileRegistryError, RunProfileResolutionRequest, RunProfileResolver,
 };
 pub use retrieval_lookup::{RetrievalLookup, RetrievalLookupError, RetrievalTurnResult};
+pub use security::{
+    ALL_SECURITY_LAYERS, ResolvedSecurityLayers, SecurityConfigError, SecurityConfigSource,
+    SecurityLayer, SecurityLayerOverride, SecurityMode, SecurityModeConfig,
+};
 pub use skill_context::{
     InstalledSkillSnapshot, NoopSkillContextSource, SkillContextBudget, SkillContextError,
     SkillContextService, SkillContextSnippet, SkillContextSource, SkillRunSnapshot,

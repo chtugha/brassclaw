@@ -162,10 +162,9 @@ pub use settings::{
     McpServerSettingsResponse, McpServerStartRequest, McpServerState, McpServerStatusResponse,
     MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsError,
     MontyVmSettingsResponse, MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse,
-    SecuritySettingsError, SecuritySettingsStore, SettingsComponentSummary,
-    SettingsListResponse, UpdateChatPreferenceRequest, UpdateChatPreferenceResponse,
-    UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest, UpsertIntentInputRequest,
-    default_monty_vm_settings,
+    SecuritySettingsError, SecuritySettingsStore, SettingsComponentSummary, SettingsListResponse,
+    UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateMcpServerSettingsRequest,
+    UpdateMontyVmSettingsRequest, UpsertIntentInputRequest, default_monty_vm_settings,
 };
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;
@@ -179,24 +178,24 @@ pub use brassclaw_llm::ProviderRole;
 // `brassclaw_webui_v2` consumes turns types through this facade crate (it only
 // depends on `brassclaw_turns` as a dev-dependency). Re-export so the route
 // handler can name the same type the `RebornServicesApi` methods return.
-pub use brassclaw_turns::run_profile::SecurityModeConfig;
 pub use brassclaw_product_adapters::{
     AuthPromptView, CapabilityActivityStatusView, CapabilityActivityView,
     CapabilityDisplayPreviewView, FinalReplyView, GatePromptView, ProductOutboundEnvelope,
     ProductOutboundPayload, ProductProjectionItem, ProductProjectionState, ProductWorkSummaryPhase,
     ProgressKind, ProgressUpdateView, ProjectionCursor,
 };
+pub use brassclaw_turns::run_profile::SecurityModeConfig;
 pub use reborn_services::{
     AUTOMATION_LIST_DEFAULT_PAGE_SIZE, AUTOMATION_LIST_MAX_PAGE_SIZE, AutomationProductFacade,
-    CodexLoginStart, ConnectableChannelsProductFacade, ExtensionCredentialSetupService,
-    ExtensionCredentialStatusRequest, ExtensionCredentialSubmitRequest, LlmActiveSelection,
-    LlmConfigService, LlmConfigServiceError, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest,
-    LlmProbeResult, LlmProviderView, NearAiAuthProvider, NearAiLoginRequest, NearAiLoginStart,
-    NearAiWalletLoginRequest, NearAiWalletLoginResult, OutboundPreferencesProductFacade,
-    ProductAgentBoundCaller, ProviderTokenBudgetView, RebornAutomationInfo,
-    RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
-    RebornCancelRunResponse, RebornCapabilityInfo, RebornChannelConnectAction,
-    RebornChannelConnectStrategy, RebornConnectableChannelInfo,
+    CodexLoginStart, ConnectableChannelsProductFacade, DocusItem, DocusListResponse, DocusStore,
+    ExtensionCredentialSetupService, ExtensionCredentialStatusRequest,
+    ExtensionCredentialSubmitRequest, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
+    LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
+    NearAiAuthProvider, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
+    NearAiWalletLoginResult, OutboundPreferencesProductFacade, ProductAgentBoundCaller,
+    ProviderTokenBudgetView, RebornAutomationInfo, RebornAutomationRunStatus,
+    RebornAutomationSource, RebornAutomationState, RebornCancelRunResponse, RebornCapabilityInfo,
+    RebornChannelConnectAction, RebornChannelConnectStrategy, RebornConnectableChannelInfo,
     RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
     RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionCredentialSetup,
     RebornExtensionInfo, RebornExtensionListResponse, RebornExtensionOnboardingPayload,
@@ -209,7 +208,6 @@ pub use reborn_services::{
     RebornOutboundDeliveryTargetId, RebornOutboundDeliveryTargetListResponse,
     RebornOutboundDeliveryTargetOption, RebornOutboundDeliveryTargetSummary,
     RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
-    DocusItem, DocusListResponse, DocusStore, UpdateDocusRequest,
     RebornServices, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
     RebornServicesErrorKind, RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse,
     RebornSkillInfo, RebornSkillInstallResult, RebornSkillRemoveResult, RebornStreamEventsRequest,
@@ -217,7 +215,7 @@ pub use reborn_services::{
     RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, SetActiveLlmRequest,
     StaticConnectableChannelsProductFacade, UnsupportedAutomationProductFacade,
-    UnsupportedOutboundPreferencesProductFacade, UpsertLlmProviderRequest,
+    UnsupportedOutboundPreferencesProductFacade, UpdateDocusRequest, UpsertLlmProviderRequest,
 };
 
 pub use webui_inbound::{

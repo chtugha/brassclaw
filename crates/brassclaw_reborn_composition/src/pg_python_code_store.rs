@@ -208,10 +208,11 @@ fn decode_python_code_row(
         dependency_registry: row.get(22),
         created_at: row.get(23),
         updated_at: row.get(24),
-        includes: serde_json::from_value(row.get::<_, Value>(25))
-            .map_err(|e| PgPythonCodeStoreError::Db {
+        includes: serde_json::from_value(row.get::<_, Value>(25)).map_err(|e| {
+            PgPythonCodeStoreError::Db {
                 reason: format!("includes JSONB malformed: {e}"),
-            })?,
+            }
+        })?,
     })
 }
 
@@ -241,11 +242,10 @@ impl PgPythonCodeStore {
         &self,
         row: NewPgPythonCode,
     ) -> Result<Uuid, PgPythonCodeStoreError> {
-        let includes_json = serde_json::to_value(&row.includes).map_err(|e| {
-            PgPythonCodeStoreError::Db {
+        let includes_json =
+            serde_json::to_value(&row.includes).map_err(|e| PgPythonCodeStoreError::Db {
                 reason: format!("includes encode failed: {e}"),
-            }
-        })?;
+            })?;
         let client = self.pool.get().await.map_err(map_pool)?;
         let db_row = client
             .query_one(

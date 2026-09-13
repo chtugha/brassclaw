@@ -68,7 +68,10 @@ async fn pg_rig_or_skip() -> Option<PgRig> {
     brassclaw_pg::migrations::run_migrations(&pool)
         .await
         .expect("migrations");
-    Some(PgRig { _container: container, pool })
+    Some(PgRig {
+        _container: container,
+        pool,
+    })
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -286,7 +289,10 @@ async fn skill_intent_examples_seed_and_resolve() {
         .expect("resolve word");
     match word_result {
         IntentResolution::Match { component_id, .. } => {
-            assert_eq!(component_id, skill_id, "word query must resolve to skill_id");
+            assert_eq!(
+                component_id, skill_id,
+                "word query must resolve to skill_id"
+            );
         }
         other => panic!("expected Match for word query, got {other:?}"),
     }
@@ -381,9 +387,27 @@ async fn resolve_deps_selective_indices() {
     let scope = unique_scope();
     let comp_scope = component_scope_from(&scope);
 
-    let c2 = insert_validated_spec(&pool, &scope, &format!("c2-{}", Uuid::new_v4().simple()), None).await;
-    let c4 = insert_validated_spec(&pool, &scope, &format!("c4-{}", Uuid::new_v4().simple()), None).await;
-    let c6 = insert_validated_spec(&pool, &scope, &format!("c6-{}", Uuid::new_v4().simple()), None).await;
+    let c2 = insert_validated_spec(
+        &pool,
+        &scope,
+        &format!("c2-{}", Uuid::new_v4().simple()),
+        None,
+    )
+    .await;
+    let c4 = insert_validated_spec(
+        &pool,
+        &scope,
+        &format!("c4-{}", Uuid::new_v4().simple()),
+        None,
+    )
+    .await;
+    let c6 = insert_validated_spec(
+        &pool,
+        &scope,
+        &format!("c6-{}", Uuid::new_v4().simple()),
+        None,
+    )
+    .await;
 
     let root_dep_reg = serde_json::json!([
         {"idx": 2, "component_id": c2, "class_code": 12, "label": "c2"},
@@ -425,9 +449,13 @@ async fn resolve_deps_deduplication() {
     let scope = unique_scope();
     let comp_scope = component_scope_from(&scope);
 
-    let dep_id =
-        insert_validated_spec(&pool, &scope, &format!("dep-{}", Uuid::new_v4().simple()), None)
-            .await;
+    let dep_id = insert_validated_spec(
+        &pool,
+        &scope,
+        &format!("dep-{}", Uuid::new_v4().simple()),
+        None,
+    )
+    .await;
     let root_dep_reg = serde_json::json!([
         {"idx": 0, "component_id": dep_id, "class_code": 12, "label": "dep"}
     ]);
@@ -470,13 +498,13 @@ async fn resolve_deps_cycle_guard() {
     let b_id = Uuid::new_v4();
 
     // A→B and B→A (cycle).
-    let a_dep = serde_json::json!([{"idx": 0, "component_id": b_id, "class_code": 12, "label": "b"}]);
-    let b_dep = serde_json::json!([{"idx": 0, "component_id": a_id, "class_code": 12, "label": "a"}]);
+    let a_dep =
+        serde_json::json!([{"idx": 0, "component_id": b_id, "class_code": 12, "label": "b"}]);
+    let b_dep =
+        serde_json::json!([{"idx": 0, "component_id": a_id, "class_code": 12, "label": "a"}]);
 
     let client = pool.get().await.expect("pool client");
-    for (id, name_suffix, dep) in
-        [(a_id, "a", &a_dep), (b_id, "b", &b_dep)]
-    {
+    for (id, name_suffix, dep) in [(a_id, "a", &a_dep), (b_id, "b", &b_dep)] {
         let name = format!("{name_suffix}-{}", Uuid::new_v4().simple());
         client
             .execute(
@@ -530,7 +558,10 @@ async fn resolve_deps_cycle_guard() {
     let (orch, _) = result.unwrap();
     let ids: Vec<Uuid> = orch.iter().map(|i| i.id).collect();
     assert!(ids.contains(&b_id), "B must appear in results");
-    assert!(!ids.contains(&a_id), "A must not re-appear (cycle guard via visited)");
+    assert!(
+        !ids.contains(&a_id),
+        "A must not re-appear (cycle guard via visited)"
+    );
 }
 
 /// J.3: class-13 ToolSkill dependencies route to `rust_items`;

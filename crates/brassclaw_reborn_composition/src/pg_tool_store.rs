@@ -101,10 +101,7 @@ impl PgToolStore {
     /// is left untouched and `Ok(None)` is returned; the caller resolves the
     /// existing id via [`Self::get_id_by_name`]. `class_code` defaults to 0,
     /// `prompt_uid` to the sequence, `validation_errors` to `'{}'`.
-    pub(crate) async fn insert(
-        &self,
-        row: NewPgTool,
-    ) -> Result<Option<Uuid>, PgToolStoreError> {
+    pub(crate) async fn insert(&self, row: NewPgTool) -> Result<Option<Uuid>, PgToolStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
         let row = client
             .query_opt(

@@ -729,13 +729,11 @@ impl ValidationQueueStore {
         class_code: i32,
         reason: &str,
     ) -> Result<(), ValidationQueueError> {
-        let class_i16: i16 =
-            class_code
-                .try_into()
-                .map_err(|_| ValidationQueueError::UnknownClass { class_code })?;
-        let table = resolve_component_table(class_code).ok_or(
-            ValidationQueueError::UnknownClass { class_code },
-        )?;
+        let class_i16: i16 = class_code
+            .try_into()
+            .map_err(|_| ValidationQueueError::UnknownClass { class_code })?;
+        let table = resolve_component_table(class_code)
+            .ok_or(ValidationQueueError::UnknownClass { class_code })?;
 
         let set_pending_sql = format!(
             "UPDATE {table}
@@ -891,7 +889,10 @@ async fn apply_upgrade_payload(
     scope: &ComponentScope,
     payload: &Value,
 ) -> Result<u64, ValidationQueueError> {
-    let name: Option<String> = payload.get("name").and_then(|v| v.as_str()).map(str::to_owned);
+    let name: Option<String> = payload
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
     let description: Option<String> = payload
         .get("description")
         .and_then(|v| v.as_str())
@@ -1121,7 +1122,9 @@ mod tests {
 
     #[test]
     fn v077_migration_populates_queue_and_drops_legacy_columns() {
-        let sql = include_str!("../../brassclaw_pg/migrations/V077__reborn_validation_queue_populate.sql");
+        let sql = include_str!(
+            "../../brassclaw_pg/migrations/V077__reborn_validation_queue_populate.sql"
+        );
         // Must NOT re-create the queue table (that's V051).
         // Use a newline-anchored check so the comment "-- Step 1: CREATE TABLE is NOT here"
         // (which contains the substring but is not DDL) does not trigger the assertion.
@@ -1133,18 +1136,48 @@ mod tests {
             "V077 must not CREATE TABLE — table is in V051"
         );
         // Step 2: populate arms present for all 15 component tables.
-        assert!(sql.contains("FROM reborn_recipes"), "V077 must populate from reborn_recipes");
-        assert!(sql.contains("FROM reborn_skills"), "V077 must populate from reborn_skills");
-        assert!(sql.contains("FROM reborn_tools"), "V077 must populate from reborn_tools");
-        assert!(sql.contains("FROM reborn_tool_skills"), "V077 must populate from reborn_tool_skills");
-        assert!(sql.contains("FROM reborn_actions"), "V077 must populate from reborn_actions");
-        assert!(sql.contains("FROM reborn_python_code"), "V077 must populate from reborn_python_code");
-        assert!(sql.contains("FROM reborn_extension_catalogues"), "V077 must populate from reborn_extension_catalogues");
+        assert!(
+            sql.contains("FROM reborn_recipes"),
+            "V077 must populate from reborn_recipes"
+        );
+        assert!(
+            sql.contains("FROM reborn_skills"),
+            "V077 must populate from reborn_skills"
+        );
+        assert!(
+            sql.contains("FROM reborn_tools"),
+            "V077 must populate from reborn_tools"
+        );
+        assert!(
+            sql.contains("FROM reborn_tool_skills"),
+            "V077 must populate from reborn_tool_skills"
+        );
+        assert!(
+            sql.contains("FROM reborn_actions"),
+            "V077 must populate from reborn_actions"
+        );
+        assert!(
+            sql.contains("FROM reborn_python_code"),
+            "V077 must populate from reborn_python_code"
+        );
+        assert!(
+            sql.contains("FROM reborn_extension_catalogues"),
+            "V077 must populate from reborn_extension_catalogues"
+        );
         // ON CONFLICT DO NOTHING — idempotent.
-        assert!(sql.contains("ON CONFLICT") && sql.contains("DO NOTHING"), "V077 populate must be idempotent");
+        assert!(
+            sql.contains("ON CONFLICT") && sql.contains("DO NOTHING"),
+            "V077 populate must be idempotent"
+        );
         // Step 3: last_graduation_at column.
-        assert!(sql.contains("last_graduation_at"), "V077 must add last_graduation_at");
-        assert!(sql.contains("ADD COLUMN IF NOT EXISTS last_graduation_at"), "last_graduation_at must be IF NOT EXISTS");
+        assert!(
+            sql.contains("last_graduation_at"),
+            "V077 must add last_graduation_at"
+        );
+        assert!(
+            sql.contains("ADD COLUMN IF NOT EXISTS last_graduation_at"),
+            "last_graduation_at must be IF NOT EXISTS"
+        );
         // Step 4: graduation trigger.
         assert!(
             sql.contains("reborn_validation_queue_graduation"),
@@ -1155,12 +1188,30 @@ mod tests {
             "V077 must create the AFTER DELETE trigger"
         );
         // Step 5: the only real DROP is on reborn_recipes (FIND-N-03).
-        assert!(sql.contains("ALTER TABLE reborn_recipes"), "V077 must drop columns from reborn_recipes");
-        assert!(sql.contains("DROP COLUMN IF EXISTS queue_code"), "V077 must drop queue_code");
-        assert!(sql.contains("DROP COLUMN IF EXISTS review_attempts"), "V077 must drop review_attempts");
-        assert!(sql.contains("DROP COLUMN IF EXISTS review_feedback"), "V077 must drop review_feedback");
-        assert!(sql.contains("DROP COLUMN IF EXISTS rejected_at"), "V077 must drop rejected_at");
-        assert!(sql.contains("DROP COLUMN IF EXISTS validation_errors"), "V077 must drop validation_errors");
+        assert!(
+            sql.contains("ALTER TABLE reborn_recipes"),
+            "V077 must drop columns from reborn_recipes"
+        );
+        assert!(
+            sql.contains("DROP COLUMN IF EXISTS queue_code"),
+            "V077 must drop queue_code"
+        );
+        assert!(
+            sql.contains("DROP COLUMN IF EXISTS review_attempts"),
+            "V077 must drop review_attempts"
+        );
+        assert!(
+            sql.contains("DROP COLUMN IF EXISTS review_feedback"),
+            "V077 must drop review_feedback"
+        );
+        assert!(
+            sql.contains("DROP COLUMN IF EXISTS rejected_at"),
+            "V077 must drop rejected_at"
+        );
+        assert!(
+            sql.contains("DROP COLUMN IF EXISTS validation_errors"),
+            "V077 must drop validation_errors"
+        );
         // validation_status is NOT dropped.
         assert!(
             !sql.contains("DROP COLUMN IF EXISTS validation_status"),
@@ -1427,7 +1478,10 @@ mod tests {
             let cid = insert_pending_note(&rig.pool, &scope).await;
             store.submit(&scope, cid, 20, None).await.expect("submit");
             store.gate1_pass(&scope, cid, &[]).await.expect("pass");
-            let returned = store.approve(&scope, cid, Some("human")).await.expect("approve");
+            let returned = store
+                .approve(&scope, cid, Some("human"))
+                .await
+                .expect("approve");
             assert_eq!(returned, cid, "approve returns the component id");
             // Queue row deleted.
             let rows = store.list(&scope, None).await.unwrap();
@@ -1542,7 +1596,10 @@ mod tests {
 
             // Approve — should succeed and apply the upgrade (Phase N).
             let result = store.approve(&scope, note_id, Some("human")).await;
-            assert!(result.is_ok(), "upgrade graduation must succeed: {result:?}");
+            assert!(
+                result.is_ok(),
+                "upgrade graduation must succeed: {result:?}"
+            );
 
             // Queue row deleted.
             let queue_rows = store.list(&scope, None).await.unwrap();
@@ -1562,7 +1619,10 @@ mod tests {
             let vs: String = row.get(0);
             let content: String = row.get(1);
             assert_eq!(vs, "validated", "validation_status must stay 'validated'");
-            assert_eq!(content, "upgraded content text", "content must be updated from payload");
+            assert_eq!(
+                content, "upgraded content text",
+                "content must be updated from payload"
+            );
         }
 
         /// Phase N: run_q1_validation defers when no validation Recipe is seeded.
@@ -1624,7 +1684,10 @@ mod tests {
                 .gate1_pass(&scope, cid, &[])
                 .await
                 .expect("gate1_pass");
-            store.approve(&scope, cid, Some("human")).await.expect("approve");
+            store
+                .approve(&scope, cid, Some("human"))
+                .await
+                .expect("approve");
             assert!(
                 store
                     .list(&scope, None)

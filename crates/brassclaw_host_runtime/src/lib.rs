@@ -60,9 +60,7 @@ pub use capability_catalog::{
     HotCapabilityCatalog, HotCapabilityRecord, MAX_HOT_PROMPT_BYTES, MAX_HOT_SCHEMA_BYTES,
     publish_hot_capability_catalog,
 };
-pub use dynamic_tool_loader::{
-    CdylibLoadDirective, DynamicToolLoader, DynamicToolLoaderError,
-};
+pub use dynamic_tool_loader::{CdylibLoadDirective, DynamicToolLoader, DynamicToolLoaderError};
 pub use egress::{
     HostHttpEgressService, HostRuntimeCredentialMaterial, HostRuntimeHttpEgressPort,
     HostRuntimeHttpEgressRequest, RuntimeSecretMaterialStager, RuntimeSecretStageError,
@@ -89,7 +87,7 @@ pub use first_party_tools::{
     TRIGGER_REMOVE_CAPABILITY_ID, TriggerCreateHook, WRITE_FILE_CAPABILITY_ID,
     builtin_first_party_handlers, builtin_first_party_handlers_from_tools_with_trigger,
     builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
-    sha256_hex, extract_md_section,
+    extract_md_section, sha256_hex,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use first_party_tools::{

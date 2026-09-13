@@ -36,14 +36,14 @@ use std::time::Duration;
 
 use brassclaw_host_api::{AgentId, SYSTEM_RESERVED_ID, TenantId, UserId};
 use brassclaw_triggers::{
-    TriggerCompletionPolicy, TriggerRecord, TriggerRepository, TriggerSchedule, TriggerSourceKind,
-    TriggerState, TriggerId,
+    TriggerCompletionPolicy, TriggerId, TriggerRecord, TriggerRepository, TriggerSchedule,
+    TriggerSourceKind, TriggerState,
 };
 use notify::{Event, RecursiveMode, Watcher};
 use tokio_postgres::NoTls;
 
 /// Fixed ULID for the file-change trigger. Deterministic → idempotent upsert.
-const FILE_CHANGE_TRIGGER_ULID: &str  = "00000000000000000000000001";
+const FILE_CHANGE_TRIGGER_ULID: &str = "00000000000000000000000001";
 /// Fixed ULID for the docus-change trigger.
 const DOCUS_CHANGE_TRIGGER_ULID: &str = "00000000000000000000000002";
 
@@ -51,7 +51,7 @@ const DOCUS_CHANGE_TRIGGER_ULID: &str = "00000000000000000000000002";
 /// freshly-generated random id (non-deduplicating but non-panicking).
 fn trigger_id_for(name: &str) -> TriggerId {
     let ulid = match name {
-        "doc-sync::file-change"  => FILE_CHANGE_TRIGGER_ULID,
+        "doc-sync::file-change" => FILE_CHANGE_TRIGGER_ULID,
         "doc-sync::docus-change" => DOCUS_CHANGE_TRIGGER_ULID,
         _ => return TriggerId::new(),
     };
@@ -71,10 +71,7 @@ pub(crate) struct DocSyncWatcher {
 }
 
 impl DocSyncWatcher {
-    pub(crate) fn new(
-        trigger_repo: Arc<dyn TriggerRepository>,
-        tenant_id: TenantId,
-    ) -> Self {
+    pub(crate) fn new(trigger_repo: Arc<dyn TriggerRepository>, tenant_id: TenantId) -> Self {
         Self {
             trigger_repo,
             tenant_id,
@@ -151,8 +148,7 @@ pub(crate) fn spawn_doc_sync_file_watcher(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         // Channel from notify's OS thread → tokio async task.
-        let (tx, mut rx) =
-            tokio::sync::mpsc::channel::<Result<Event, notify::Error>>(32);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<Event, notify::Error>>(32);
 
         let tx_clone = tx.clone();
         let mut fs_watcher = match notify::RecommendedWatcher::new(
@@ -229,8 +225,7 @@ fn is_md_change_event(event: &Event, docs_dir: &Path) -> bool {
         _ => return false,
     }
     event.paths.iter().any(|p| {
-        p.parent() == Some(docs_dir)
-            && p.extension().and_then(|e| e.to_str()) == Some("md")
+        p.parent() == Some(docs_dir) && p.extension().and_then(|e| e.to_str()) == Some("md")
     })
 }
 
@@ -388,7 +383,10 @@ mod tests {
         assert_eq!(t.name, "doc-sync::file-change");
         assert_eq!(t.prompt, "run doc-sync");
         assert_eq!(t.state, TriggerState::Scheduled);
-        assert_eq!(t.completion_policy, TriggerCompletionPolicy::CompleteAfterFirstFire);
+        assert_eq!(
+            t.completion_policy,
+            TriggerCompletionPolicy::CompleteAfterFirstFire
+        );
     }
 
     #[tokio::test]

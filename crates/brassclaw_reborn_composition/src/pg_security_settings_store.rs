@@ -72,7 +72,9 @@ mod inner {
                 leases_override: SecurityLayerOverride::from_str(r.get::<_, &str>(1))?,
                 gate_override: SecurityLayerOverride::from_str(r.get::<_, &str>(2))?,
                 event_emission_override: SecurityLayerOverride::from_str(r.get::<_, &str>(3))?,
-                sensitive_tool_scoping_override: SecurityLayerOverride::from_str(r.get::<_, &str>(4))?,
+                sensitive_tool_scoping_override: SecurityLayerOverride::from_str(
+                    r.get::<_, &str>(4),
+                )?,
                 namespace_filtering_override: SecurityLayerOverride::from_str(r.get::<_, &str>(5))?,
             })
         }
@@ -141,9 +143,7 @@ mod inner {
             &self,
             config: &SecurityModeConfig,
         ) -> Result<SecurityModeConfig, brassclaw_product_workflow::SecuritySettingsError> {
-            self.save(config)
-                .await
-                .map_err(map_security_settings_error)
+            self.save(config).await.map_err(map_security_settings_error)
         }
     }
 

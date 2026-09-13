@@ -43,7 +43,7 @@ struct PgRig {
 /// Start an isolated Postgres-16 testcontainer, build a pool, and run every
 /// migration. Returns `None` (skip) when docker is unavailable.
 async fn pg_rig_or_skip() -> Option<PgRig> {
-    use testcontainers_modules::testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
 
     let image = testcontainers_modules::postgres::Postgres::default()
         .with_db_name("brassclaw_test")
@@ -105,10 +105,7 @@ async fn count_validated_system(pool: &PgPool, table: &str, tenant: &str) -> i64
            AND validation_status = 'validated'"
     );
     let params: &[&(dyn ToSql + Sync)] = &[&tenant, &user_id];
-    let row = client
-        .query_one(&sql, params)
-        .await
-        .expect("count query");
+    let row = client.query_one(&sql, params).await.expect("count query");
     row.get(0)
 }
 
