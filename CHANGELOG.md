@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-09-14
+
+### Added
+
+- *(settings / agent+networking tabs)* **`GET /api/settings/config` + `PUT /api/settings/config/{key}`** — new endpoints backed by `PgConfigStore` read/write through the `brassclaw_config` table. `CONFIG_ALLOWED_PREFIXES` allowlist gates which keys are exposed (`agent.*`, `heartbeat.*`, `sandbox.*`, `routines.*`, `safety.*`, `skills.*`, `search.*`, `channels.*`, `tunnel.*`, `keys.*`). `ConfigStore` trait + `SettingsConfigResponse` / `UpdateSettingRequest` DTOs added to `brassclaw_product_workflow::settings`. Wired in `RebornServices` and `webui.rs`. Frontend `fetchSettingsExport`, `fetchSetting`, `updateSetting` stubs in `settings-api.js` replaced with real API calls.
+- *(settings / recipes tab)* **`GET /api/settings/recipes`** — new settings listing endpoint backed by `PgSettingsListingService` reading `reborn_recipes`. `RecipesTab` component added to the WebUI settings page. `SettingsListingService::list_recipes` trait method added.
+- *(settings / listings)* **`WEBUI_V2_ROUTE_GET_SETTINGS_RECIPES`** descriptor, handler, and router mount wired end-to-end. Previously the descriptor and handler existed but the router mount was missing (undefined constant); now fully functional.
+- *(migrations)* **V082** — adds `prior_knowledge_content TEXT` and `override_prompt_creation BOOLEAN NOT NULL DEFAULT false` to `reborn_skills` and `reborn_tools`. V046 added these columns to the eight V036–V043 component tables but skipped these two earlier tables, causing `do_assemble_bundle` to silently skip all validated skill and tool rows when building the prefix bundle.
+
+### Fixed
+
+- *(prefix / bundle assembly)* **Regenerate button produced empty bundle for skills and tools** — `do_assemble_bundle` queries `COALESCE(NULLIF(prior_knowledge_content,''), body)` on `reborn_skills` and `COALESCE(prior_knowledge_content, description)` on `reborn_tools`, but neither table had a `prior_knowledge_content` column. Both queries failed silently (caught and skipped at `debug!`), so the assembled bundle contained no skill or tool rows. V082 migration adds the missing columns.
+- *(router)* **Stale `WEBUI_V2_PATTERN_SETTINGS_RECIPES` router stub prevented workspace from compiling** — a broken router entry referenced an undefined constant and handler; removed and replaced with the correct mount after the constant was properly defined in `descriptors.rs`.
+- *(descriptors)* `get_settings_config_descriptor` used `AllowedEffectPath::ProductWorkflow` for a read-only GET; corrected to `AllowedEffectPath::ProjectionOnly`. `put_settings_config_key_descriptor` body limit corrected from 16 KiB to 4 KiB.
+
 ## [0.9.3] - 2026-09-13
 
 ### Fixed
