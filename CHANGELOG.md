@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-09-15
+
+### Fixed
+
+- *(host_runtime / trigger capabilities)* **`visible_capabilities` rejected all 4 new trigger capability descriptors** — `builtin.trigger_get`, `builtin.trigger_update`, `builtin.trigger_set_state`, and `builtin.trigger_run_history` were registered in `trigger_management.rs` but their input schema refs (`schemas/builtin/trigger_get.input.v1.json` etc.) were absent from `resolve_builtin_input_schema_ref` in `schemas.rs`. The surface resolver returned `InvalidRequest` for every call that included these capabilities in the execution context, breaking all agent-loop contexts that granted the new trigger permissions. Added the 4 missing JSON Schema entries.
+- *(host_runtime / tests)* **4 `first_party_builtin_tools` tests were failing** after trigger output was extended to include `prompt` in v0.9.4: three tests asserted `trigger.get("prompt").is_none()` (stale check from before prompt was added to `trigger_output()`), one asserted the list output had no prompt. All 4 updated to assert the correct positive value or `is_string()`.
+- *(host_runtime / tests)* **`builtin_first_party_package_declares_expected_capabilities` failed** — `all_builtin_capability_ids()` test helper listed only the original 3 trigger capabilities; the 4 new ones were missing. Test now lists all 7. Permission-mode match arm updated to include `TRIGGER_UPDATE_CAPABILITY_ID` and `TRIGGER_SET_STATE_CAPABILITY_ID` in the `Ask` branch, consistent with their `ExternalWrite` effect declarations.
+
 ## [0.9.4] - 2026-09-14
 
 ### Added
