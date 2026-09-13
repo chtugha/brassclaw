@@ -200,23 +200,16 @@ fn render_index_with_nonce() -> Response {
     // `SetResponseHeaderLayer::if_not_present`, which honors the
     // header we set here instead of overwriting it.
     //
-    // The CDN origins below match `index.html`: React + react-router
-    // + react-query + htm + react-hook-form from esm.sh, Tailwind
-    // browser runtime from jsdelivr, dompurify + marked + highlight.js
-    // from cdnjs, Google Fonts CSS + woff files. Those origins are
-    // allowed under `script-src` / `style-src` (the directives module
-    // loading actually consults) but NOT under `connect-src`. The
-    // SPA itself only `fetch`es from the same-origin v2 API; leaving
-    // the CDNs out of `connect-src` cuts off the most direct path
-    // for any XSS-injected script to use those origins as
-    // exfiltration channels.
+    // All scripts, styles, and fonts are served locally from /vendor/
+    // and /styles/ — no external CDN origins needed. The SPA only
+    // fetches from the same-origin v2 API.
     let csp = format!(
         "default-src 'self'; \
-         script-src 'self' 'nonce-{nonce}' https://esm.sh https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; \
-         script-src-elem 'self' 'nonce-{nonce}' https://esm.sh https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; \
-         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; \
-         style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; \
-         font-src 'self' https://fonts.gstatic.com data:; \
+         script-src 'self' 'nonce-{nonce}'; \
+         script-src-elem 'self' 'nonce-{nonce}'; \
+         style-src 'self' 'unsafe-inline'; \
+         style-src-elem 'self' 'unsafe-inline'; \
+         font-src 'self' data:; \
          img-src 'self' data:; \
          connect-src 'self'; \
          object-src 'none'; \

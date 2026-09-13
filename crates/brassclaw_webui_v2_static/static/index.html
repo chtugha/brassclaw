@@ -22,14 +22,6 @@
     />
     <meta name="apple-mobile-web-app-title" content="BrassClaw" />
     <link rel="manifest" href="/assets/site.webmanifest" />
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-    <link rel="preconnect" href="https://esm.sh" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
-      rel="stylesheet"
-    />
     <script nonce="__BRASSCLAW_CSP_NONCE__">
       (() => {
         try {
@@ -51,26 +43,25 @@
     <script type="importmap" nonce="__BRASSCLAW_CSP_NONCE__">
       {
         "imports": {
-          "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.87.4?external=react,react-dom",
-          "htm": "https://esm.sh/htm@3.1.1",
-          "react": "https://esm.sh/react@19.1.0",
-          "react/jsx-runtime": "https://esm.sh/react@19.1.0/jsx-runtime",
-          "react-dom": "https://esm.sh/react-dom@19.1.0?external=react",
-          "react-dom/client": "https://esm.sh/react-dom@19.1.0/client?external=react",
-          "react-router": "https://esm.sh/react-router@7?external=react,react-dom",
-          "react-hook-form": "https://esm.sh/react-hook-form@7.62.0?external=react,react-dom"
+          "@tanstack/react-query": "/vendor/esm/react-query.js",
+          "htm": "/vendor/esm/htm.js",
+          "react": "/vendor/esm/react.js",
+          "react/jsx-runtime": "/vendor/esm/react-jsx-runtime.js",
+          "react-dom": "/vendor/esm/react-dom.js",
+          "react-dom/client": "/vendor/esm/react-dom-client.js",
+          "react-router": "/vendor/esm/react-router.js",
+          "react-hook-form": "/vendor/esm/react-hook-form.js"
         }
       }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="/vendor/tailwindcss-browser.js" nonce="__BRASSCLAW_CSP_NONCE__"></script>
     <style type="text/tailwindcss">
       @theme {
         /* ── Fonts ─────────────────────────────────────────────────── */
-        --font-sans: "Geist", "Inter", "SF Pro Display", "Helvetica Neue",
+        --font-sans: "Inter", "SF Pro Display", "Helvetica Neue",
           ui-sans-serif, system-ui, sans-serif;
-        --font-serif: "Newsreader", "Lyon Text", "Instrument Serif", Georgia,
-          serif;
-        --font-mono: "Geist Mono", "SF Mono", "JetBrains Mono", ui-monospace,
+        --font-serif: Georgia, serif;
+        --font-mono: "SF Mono", "JetBrains Mono", ui-monospace,
           monospace;
 
         /* ── Colour palette (iron-* / signal / copper utilities) ─── */
@@ -89,9 +80,9 @@
       }
     </style>
     <link rel="stylesheet" href="/styles/app.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.3/purify.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@17.0.2/lib/marked.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script src="/vendor/purify.min.js" nonce="__BRASSCLAW_CSP_NONCE__"></script>
+    <script src="/vendor/marked.umd.min.js" nonce="__BRASSCLAW_CSP_NONCE__"></script>
+    <script src="/vendor/highlight.min.js" nonce="__BRASSCLAW_CSP_NONCE__"></script>
   </head>
   <body class="min-h-[100dvh] bg-iron-950 text-iron-100 antialiased">
     <div id="v2-root"></div>
