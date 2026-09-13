@@ -17,9 +17,7 @@
   <a href="#philosophy">Philosophy</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#local-llm-setup">Local LLM Setup</a> •
   <a href="#configuration">Configuration</a> •
-  <a href="#skills">Skills</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#heritage">Heritage</a>
 </p>
@@ -31,13 +29,11 @@
 BrassClaw is built on a simple principle: **your AI assistant should work for you, not against you**.
 
 - **100% local operation** — runs on your own hardware with vLLM, Ollama, or any OpenAI-compatible server; no cloud account required
-- **Your data stays yours** — all information stored locally, encrypted, never leaves your control
-- **Fits consumer hardware** — tuned to work within an 8,192-token context window; 7B models work well with 4 GB VRAM
-- **Defense in depth** — process sandbox, capability leases, prompt injection defense, and endpoint allowlisting
+- **Your data stays yours** — all state stored locally in embedded Postgres, encrypted, never leaving your control
+- **Fits consumer hardware** — tuned to work within small context windows; 7B models work well with 4 GB VRAM
+- **Defense in depth** — process sandbox, capability leases, hook framework with four trust tiers, prompt injection defense, and endpoint allowlisting
 - **Open source** — fully auditable, no telemetry or data harvesting
-- **Self learning mechanism** — the design aims to leave more and more tasks to the agent, and to reduce the involvement of an llm
-
-- **The beast at home** - brassclaw is momentarily tailored for kv-caching - and will in the future concentrate to have a certain set of basic-prompts via lmcache that will be tailored together with the users query and some context to enables a small ornith 9b model, running on a budget 16bg vram RTX, to process a prompt with 200k tokens very fast (bc it actually just processes the few tokens you add as information, all the rest was already precalculated and can be accessed - like this you and can make a tiny system very powerful. And even more if you mainly use that power to get rid of as many llm calls as possible and empower the agent to perform tasks on its own.
+- **Orchestrator-first** — the Monty Python orchestrator is the execution engine; the LLM is consulted only when genuinely needed, leaving as many tasks as possible to deterministic Tier-0 recipes
 
 ---
 
@@ -45,13 +41,15 @@ BrassClaw is built on a simple principle: **your AI assistant should work for yo
 
 ### Home-Use Optimised
 
-- **Token-aware engine** — hard budget of 8,192 total prompt tokens; automatically trims skill context, memory docs, and history to fit any local model
-- **Knowledge-driven tools** — Skills (markdown files) teach the LLM how to use APIs via the `http` tool; no compilation needed for new integrations
-- **Skill budgets** — each skill declares its token cost; the selector fits within the 2,048-token skill budget
+- **Orchestrator-first engine** — Monty (Python VM) sequences steps and calls tools directly; the LLM is involved only for creative reasoning, content composition, or irreversible decisions
+- **Tier-0 recipes** — fully deterministic execution paths with zero LLM calls for known task patterns
+- **Knowledge-driven integrations** — Skills (markdown files) teach the system how to use APIs; no Rust compilation needed for new integrations
+- **Self-expanding** — Sempai/Kohai review loop automatically authors new components (Recipes, Skills, ToolSkills) and queues them for validation
 
 ### Security First
 
-- **Process Sandbox** — untrusted tool subprocesses (shell, docker-exec, git) run in `brassclaw_process_sandbox` with capability leases, scoped filesystems, and endpoint allowlists (replaces the v1 WebAssembly sandbox removed in Phase 4)
+- **Process Sandbox** — untrusted tool subprocesses (shell, docker-exec, git) run in `brassclaw_process_sandbox` with capability leases, scoped filesystems, and endpoint allowlists
+- **Hook Framework** — four trust tiers (Builtin, Trusted, Installed, SelfAuthored) for `before_capability` and `before_prompt` gates; self-authored hooks let the agent restrict its own future behavior at runtime
 - **Capability Leases** — fine-grained, revocable authority grants for every tool call
 - **Credential Protection** — secrets never exposed to tools; injected at the host boundary with leak detection
 - **Prompt Injection Defense** — pattern detection, content sanitisation, and policy enforcement
@@ -61,20 +59,24 @@ BrassClaw is built on a simple principle: **your AI assistant should work for yo
 
 - **Multi-channel** — REPL, WebUI (React SPA at `/v2`), Slack, Telegram, HTTP webhooks, and API server
 - **Routines** — cron schedules, event triggers, webhook handlers for background automation
-- **Persistent memory** — hybrid full-text + vector search with Reciprocal Rank Fusion
+- **Persistent memory** — hybrid full-text + vector search with Reciprocal Rank Fusion, backed by embedded Postgres
 - **Sub-agents** — spawn specialised child agents for complex tasks
-
-### Self-Expanding
-
-- **Knowledge-driven integrations** — add new API integrations by writing a `SKILL.md` file (no code required)
 - **MCP Protocol** — connect to any Model Context Protocol server
-- **Learning missions** — automatic skill extraction, repair, and self-improvement
+
+### Validation Pipeline
+
+All user-authored and agent-authored components go through a two-gate validation pipeline:
+
+- **Q1** — automated orchestrated sandbox check
+- **Q2** — human review (operator only; never automated)
+
+System builtins (seeded at boot) are exempt and insert as `validated` directly.
 
 ---
 
 ## Quick Start
 
-**Minimum requirements:** any machine with ~8 GB RAM, a modern 64-bit CPU, and about 4 GB of free disk space for models.
+**Minimum requirements:** any machine with ~8 GB RAM, a modern 64-bit CPU, and about 4 GB of free disk space.
 
 ### Option A: Linux Server — one-line install (recommended)
 
@@ -96,13 +98,13 @@ The installer will:
 - Detect your platform (Linux x86\_64, macOS ARM64, macOS x86\_64)
 - Download the latest binary from GitHub Releases and verify its SHA256 checksum
 - Install to `/usr/local/bin/brassclaw-reborn`
-- Create a systemd service at `/etc/systemd/system/brassclaw.service` (when run as root)
+- Create a systemd service (when run as root)
 - Preserve your WebUI token and user ID on upgrades
 
 Pin to a specific version with `-v`:
 
 ```bash
-sudo bash install.sh -v 0.41.3
+sudo bash install.sh -v 0.9.0
 ```
 
 **Uninstallation:**
@@ -110,8 +112,6 @@ sudo bash install.sh -v 0.41.3
 ```bash
 curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh | sudo bash
 ```
-
-The uninstaller stops and disables the service, removes the binary, and optionally removes your configuration (you will be prompted).
 
 To completely wipe everything (binary, service, config, and all data) without any prompts:
 
@@ -135,7 +135,7 @@ All release artifacts are listed on the [GitHub Releases page](https://github.co
 
 ### Option C: Build from source
 
-Requires [Rust 1.92+](https://rustup.rs).
+Requires [Rust 1.94+](https://rustup.rs).
 
 ```bash
 git clone https://github.com/chtugha/brassclaw.git
@@ -145,33 +145,86 @@ cargo build --release --bin brassclaw
 
 The binary is at `target/release/brassclaw`.
 
-### Option D: Interactive REPL
+---
+
+## Configuration
+
+### Config file
+
+Primary configuration lives at `~/.brassclaw/reborn/config.toml`. On first run an example is created.
+
+```toml
+[llm.default]
+provider_id = "openai_compatible"
+model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+api_key_env = "MY_LLM_KEY"
+base_url = "http://localhost:8000/v1"
+
+[identity]
+tenant = "my-instance"
+```
+
+### Environment variables (bootstrap tier)
+
+These are fixed at startup, read before the database initialises, and set in the systemd unit's `Environment=` block:
+
+| Variable | Description |
+|----------|-------------|
+| `BRASSCLAW_REBORN_HOME` | Data directory (default: `~/.brassclaw/reborn`) |
+| `BRASSCLAW_RUNTIME_PROFILE` | Per-invocation capability/security policy (default: `local_dev`). Valid values: `local_dev`, `local_safe`, `local_yolo`, `hosted_safe`. Controls security posture only — Postgres is always the storage backend. **`BRASSCLAW_REBORN_PROFILE` is a hard startup error — do not set it.** |
+| `BRASSCLAW_REBORN_LOG` | Log level filter (e.g. `brassclaw=debug`) |
+| `BRASSCLAW_PG_URL` | External Postgres URL. Optional for single-host local deployments (embedded Postgres used when absent). Required for all non-local runtime profiles. |
+| `BRASSCLAW_EMBEDDED_PG_PORT` | Override embedded Postgres port (default: `5434`) |
+| `BRASSCLAW_SECRETS_PASSPHRASE_FILE` | Path to master-key file when using passphrase-wrapped ceremony |
+
+### Environment variables (operator-trusted tier)
+
+These are read by name from the environment after the database is up. Set them in a `secrets.env` file loaded via the systemd `EnvironmentFile=` directive:
+
+| Variable | Description |
+|----------|-------------|
+| `BRASSCLAW_REBORN_WEBUI_TOKEN` | Bearer token for WebUI authentication |
+| `BRASSCLAW_REBORN_WEBUI_USER_ID` | User identity injected into sessions |
+| LLM provider API keys | Named in `config.toml` via `api_key_env = "MY_KEY"` |
+
+### Runtime Profiles
+
+| Profile | Best for | Notes |
+|---------|----------|-------|
+| `local_dev` | Home use (default) | Tool confirmations enabled, trusted laptop host access |
+| `local_safe` | Home use, restricted | More conservative capability grants |
+| `local_yolo` | Home use, no confirmations | Tools execute without prompting |
+| `hosted_safe` | Server deployments | Requires `BRASSCLAW_PG_URL`. Sandbox enforced. |
+
+### WebUI
+
+The React SPA is served at the `/v2` path. Authenticate with a bearer token:
 
 ```bash
-export LLM_BACKEND=openai_compatible
-export LLM_BASE_URL=http://localhost:8000/v1
-export LLM_API_KEY=none
-export LLM_MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ
-
-./target/release/brassclaw repl
+BRASSCLAW_REBORN_WEBUI_TOKEN=mytoken brassclaw-reborn serve --host 0.0.0.0 --port 3000
 ```
+
+Then open `http://localhost:3000/v2` in your browser.
 
 ---
 
-## Local LLM Setup
+## LLM Provider Setup
+
+LLM providers are configured via the WebUI (`Settings → Providers`) or directly in `config.toml`. BrassClaw supports any OpenAI-compatible API endpoint.
 
 ### vLLM (recommended for GPU servers)
 
 ```bash
 pip install vllm
-vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --host 0.0.0.0 --port 8000 --max-model-len 8192
+vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --host 0.0.0.0 --port 8000
 ```
 
-```env
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=http://localhost:8000/v1
-LLM_API_KEY=none
-LLM_MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ
+In `config.toml`:
+```toml
+[llm.default]
+provider_id = "openai_compatible"
+model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+base_url = "http://localhost:8000/v1"
 ```
 
 ### Ollama (recommended for home use)
@@ -181,18 +234,11 @@ ollama serve
 ollama pull qwen2.5:7b
 ```
 
-```env
-LLM_BACKEND=ollama
-OLLAMA_MODEL=qwen2.5:7b
-```
-
-### Any OpenAI-compatible server (llama.cpp, LM Studio, etc.)
-
-```env
-LLM_BACKEND=openai_compatible
-LLM_BASE_URL=http://localhost:1234/v1
-LLM_API_KEY=none
-LLM_MODEL=my-model-name
+In `config.toml`:
+```toml
+[llm.default]
+provider_id = "ollama"
+model = "qwen2.5:7b"
 ```
 
 ### Model Recommendations
@@ -201,138 +247,15 @@ LLM_MODEL=my-model-name
 |-------|------|------------|-------|
 | `Qwen/Qwen2.5-7B-Instruct-AWQ` | 7B | 4 GB | **Recommended** — AWQ quantized, best for vLLM |
 | `qwen2.5:7b` | 7B | 6 GB | Recommended minimum for Ollama |
-| `qwen2.5:14b` | 14B | 10 GB | Best quality within 8,192 tokens |
+| `qwen2.5:14b` | 14B | 10 GB | Best quality |
 | `phi4` | 14B | 10 GB | Strong at coding and reasoning |
 | `llama3.2` | 3B | 4 GB | Fast, good for simple tasks |
-
-BrassClaw's default token budget is **8,192 total tokens** (including 2,048 for skill context). All models above fit comfortably.
-
----
-
-## Configuration
-
-### Config file
-
-Primary configuration lives at `~/.brassclaw/reborn/config.toml`:
-
-```toml
-[llm.default]
-provider_id = "openai_compatible"
-model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
-api_key_env = "BRASSCLAW_VLLM_KEY"
-base_url = "http://localhost:8000/v1"
-```
-
-Environment variables override config file values — see the table below.
-
-### Environment variables
-
-| Variable | Description |
-|----------|-------------|
-| `BRASSCLAW_REBORN_HOME` | Data directory (default: `~/.brassclaw/reborn`) |
-| `BRASSCLAW_RUNTIME_PROFILE` | Per-invocation capability/security policy (default: `local_dev`). Valid values: `local_dev`, `local_safe`, `local_yolo`, `hosted_safe`. Controls security posture only — Postgres is always the storage backend. **`BRASSCLAW_REBORN_PROFILE` is a hard startup error — do not set it.** |
-| `BRASSCLAW_REBORN_LOG` | Log level (`info`, `debug`, `trace`) |
-| `BRASSCLAW_PG_URL` | External Postgres URL. Optional for local deployments (embedded Postgres used when absent). Required for hosted deployments. |
-| `BRASSCLAW_REBORN_WEBUI_TOKEN` | Bearer token for WebUI authentication |
-| `BRASSCLAW_REBORN_WEBUI_USER_ID` | User identity injected into sessions |
-
-### Runtime Profiles
-
-Runtime profiles control the per-invocation capability and security policy. They do **not** affect storage — Postgres is always used.
-
-| Profile | Best for | Notes |
-|---------|----------|-------|
-| `local_dev` | Home use (default) | Tool confirmations enabled, trusted laptop host access |
-| `local_safe` | Home use, restricted | More conservative capability grants |
-| `local_yolo` | Home use, no confirmations | Tools execute without prompting. Requires `--confirm-host-access` |
-| `hosted_safe` | Server deployments | Requires `BRASSCLAW_PG_URL`. Sandbox enforced. |
-
-### Token budget
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `agent.max_prompt_tokens` | 8,192 | Total prompt token budget |
-| `skills.max_context_tokens` | 2,048 | Skill injection budget |
-
-The **Token Guard** automatically drops content in priority order when budget is exceeded:
-1. Low-scoring memory docs
-2. Low-scoring skills
-3. Tool descriptions (truncated)
-4. Droppable system-prompt sections
-5. Old conversation history
-
-### WebUI
-
-The React SPA is served at the `/v2` path. Authenticate with a bearer token:
-
-```bash
-# Start the server
-BRASSCLAW_REBORN_WEBUI_TOKEN=mytoken ./brassclaw serve --host 0.0.0.0 --port 3000
-
-# Access the UI
-open http://localhost:3000/v2
-```
-
----
-
-## Skills
-
-Skills are markdown files that teach the LLM how to perform tasks. They live in the `skills/` directory and are injected into context only when relevant keywords are detected.
-
-### Bundled skills
-
-| Skill | Budget | Description |
-|-------|--------|-------------|
-| `caldav` | 384 tokens | CalDAV calendar management via HTTP |
-| `notes` | 192 tokens | Local note storage in `~/.brassclaw/notes.md` |
-| `local-search` | 256 tokens | Workspace file search |
-| `web-browse` | 320 tokens | Playwright browser automation |
-| `github` | 2,000 tokens | GitHub API integration |
-| `plan-mode` | 2,500 tokens | Structured planning and execution |
-| `coding` | varies | Code review and development |
-
-35+ additional skills are bundled covering databases, cloud providers, messaging platforms, and more.
-
-### Creating a skill
-
-Create `skills/my-skill/SKILL.md` with a YAML frontmatter header:
-
-```markdown
----
-name: my-skill
-version: "1.0.0"
-description: What this skill does
-activation:
-  keywords: ["keyword1", "keyword2"]
-  max_context_tokens: 256
----
-
-# My Skill
-
-Instructions for the LLM on how to use this skill.
-```
-
-The `activation.keywords` list controls when the skill is automatically injected. The `max_context_tokens` value is deducted from the 2,048-token skill budget.
-
-### Built-in tools
-
-Skills interact with the LLM through built-in tools including `echo`, `time`, `http`, `shell`, `memory`, and more. The `http` tool is the primary integration mechanism — skills teach the LLM which endpoints to call and how to format requests.
 
 ---
 
 ## Architecture
 
-### V2 Architecture (Current)
-
-BrassClaw v0.29.3 features the **Reborn V2** architecture with complete V1 to V2 transition:
-
-- **47 capabilities** across 13 domains (filesystem, memory, network, processes, etc.)
-- **WebUI v2** - Modern React-based interface at `/v2` endpoint
-- **Enhanced LLM provider management** - Improved configuration and testing
-- **Path validation** - Restored security checks for file operations
-- **Skill installation** - Re-enabled with proper validation
-
-The architecture uses a layered design of ~70 Rust crates with clear authority boundaries:
+BrassClaw uses a three-layer model with ~70 Rust crates:
 
 ```mermaid
 graph TD
@@ -343,52 +266,74 @@ graph TD
         Telegram["Telegram"]
     end
 
-    subgraph Agents["Agent Loops (behavior ownership)"]
-        AL["Agent Loop\n8,192 token budget"]
-        TG["Token Guard"]
-        SS["Skill Selector"]
+    subgraph Loops["Agent Loops (behavior ownership)"]
+        Monty["Monty Orchestrator\n(Python VM — sole executor)"]
+        Intent["Intent System\nTier 0 · Tier 1 · No-Match"]
+        Hooks["Hook Framework\nBuiltin · Trusted · Installed · SelfAuthored"]
     end
 
-    subgraph Kernel["Kernel Boundary (authority, recovery, side-effects)"]
+    subgraph Kernel["Kernel (authority ownership)"]
         LLM["LLM Dispatch\nvLLM · Ollama · OpenAI-compat"]
-        Tools["Tool Executor"]
-        Sec["Security Layer\nProcess Sandbox · Capability Leases · Allowlist"]
+        Tools["Rust Tools (Executioner)\nprecompiled, called by Monty"]
+        Sec["Security Layer\nProcess Sandbox · Leases · Allowlist"]
     end
 
     subgraph Substrates["Substrates (durable primitives)"]
-        DB["Database\nPostgreSQL"]
+        DB["PostgreSQL\n(embedded or external)"]
         Mem["Memory\nFull-text + Vector + RRF"]
-        Skills["Skills\n35+ SKILL.md files"]
+        Comp["Component Catalog\nRecipes · Skills · ToolSkills · PythonCode"]
         MCP["MCP Servers"]
     end
 
-    CLI & WebUI & Slack & Telegram --> AL
-    AL --> TG --> SS
-    AL --> LLM
-    AL --> Tools --> Sec
+    CLI & WebUI & Slack & Telegram --> Monty
+    Monty --> Intent
+    Monty --> LLM
+    Monty --> Tools --> Sec
+    Monty --> Hooks
     Sec --> MCP
-    AL --> DB & Mem & Skills
+    Monty --> DB & Mem & Comp
 ```
 
 ### Layer responsibilities
 
 - **Products** — own the user experience: CLI renders output, WebUI serves the React SPA, Slack/Telegram handle messaging channels
-- **Agent loops** — own behavior: the step loop, tool dispatch, Token Guard trimming, and skill selection
-- **Kernel boundary** — owns authority: LLM provider abstraction, sandboxed subprocess execution (`brassclaw_process_sandbox`), credential injection, and security policy enforcement
-- **Substrates** — own durable primitives: database persistence, hybrid memory search, skill knowledge files, and MCP server connections
+- **Loops** — Monty is the sole execution authority. It sequences recipe steps, assembles LLM prompts, and calls host tools by name. The hook framework gates capability invocations and prompt mutations across four trust tiers
+- **Kernel** — owns authority: LLM provider abstraction, sandboxed subprocess execution, credential injection, and security policy enforcement. Rust Tools are the Executioner — they only run when Monty calls them
+- **Substrates** — own durable primitives: embedded or external Postgres, hybrid memory search, the component catalog (Recipes, Skills, ToolSkills, PythonCode, ExtensionCatalogues), and MCP server connections
+
+### Component Catalog
+
+BrassClaw stores all reusable knowledge artifacts in Postgres by class code:
+
+| Class | Type | Description |
+|-------|------|-------------|
+| 1–3 | Skill | Orchestrator-facing prose describing a task pattern |
+| 13 | ToolSkill | Binding descriptor — param schema, preconditions, error handling |
+| 21 | Recipe | Complete turn script: `RecipeVariant`s, intent examples, step links |
+| 22 | PythonCode | Executor — calls `host.<tool>(...)` to dispatch Rust |
+| 23 | ExtensionCatalogue | Domain overview: task groups pointing to recipe names |
+
+All user-authored and Sempai-authored components enter the two-gate validation pipeline (Q1 automated → Q2 human-only) before activation. System builtins are seeded at boot and exempt.
+
+### Orchestrator + Executioner model
+
+- **Monty (Orchestrator)** — the Python VM that runs one long-persisting process per user input. It reads Recipes, sequences steps, and calls tools by name (`host.<tool>(...)`). Never executes Rust directly.
+- **Rust (Executioner)** — precompiled Tools and ToolSkills. Executes exactly when Monty calls; does no step sequencing.
+- **Tier 0** — deterministic, no LLM. Tool calls baked into `PythonCode` leaves.
+- **Tier 1** — LLM-guided. Recipe hands the LLM prior-knowledge; post-LLM steps run by Monty.
 
 ---
 
 ## Heritage
 
-BrassClaw is a fork of [IronClaw](https://github.com/nearai/ironclaw), optimised for local-first, privacy-respecting operation on consumer hardware. Key differences from upstream:
+BrassClaw is a fork of [IronClaw](https://github.com/nearai/ironclaw), optimised for local-first, privacy-respecting operation on consumer hardware.
 
 | | IronClaw | BrassClaw |
 |---|---|---|
-| **Context window** | 128K tokens | 8,192 tokens |
-| **Primary deployment** | Cloud / high-end GPU | vLLM on consumer hardware |
-| **Tool extensions** | WASM-only | Knowledge-driven Skills + process sandbox |
-| **Server deployment** | Manual | DietPi automated setup |
+| **Primary deployment** | Cloud / high-end GPU | vLLM / Ollama on consumer hardware |
+| **Execution model** | LLM-centric agent loop | Orchestrator-first (Monty + Tier-0 recipes) |
+| **Tool extensions** | WASM-only | Process sandbox + host tools + MCP |
+| **Storage** | SQLite / libSQL | Embedded or external Postgres |
 | **Recommended model** | Large frontier models | Qwen2.5-7B-Instruct-AWQ (4 GB VRAM) |
 
 ---

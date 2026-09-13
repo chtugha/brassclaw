@@ -62,17 +62,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Build and Test
 
-> **Mandatory:** All `cargo build`, `cargo test`, `cargo clippy`, and `cargo check` invocations
-> **must** be launched in a `screen` session so the terminal is not blocked and implementation
-> can continue while compilation runs.
->
-> ```bash
-> screen -dmS <name> bash -c 'cd /Volumes/SSDE/brassclaw && <cargo command> 2>&1 | tee /tmp/<name>.log; echo "EXIT:$?" >> /tmp/<name>.log'
-> # Check progress / result at any time:
-> tail -f /tmp/<name>.log
-> grep "^EXIT:" /tmp/<name>.log   # non-empty = finished
-> ```
-
 > **Mandatory:** Every `cargo build`/`test`/`clippy`/`check` **must** set
 > `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` (NVMe) — never build in-place on the
 > slow external repo drive. **Before** compiling, check free space on that volume and clean
@@ -120,67 +109,6 @@ Before invoking `cargo build` a second time, check whether `build.log` (or any p
 
 E2E tests: see `tests/e2e/CLAUDE.md`.
 
-## Testing Configuration
-
-### LLM Configuration for Tests
-
-When running Playwright tests or manual testing, use the following LLM configuration:
-
-**OpenAI-Compatible Provider:**
-- **Name:** Qwen-Test (or any name)
-- **Type:** openai-compatible
-- **Base URL:** http://192.168.10.223:8000/v1
-- **Model:** Qwen/Qwen2.5-7B-Instruct-AWQ
-- **API Key:** None required (leave empty)
-
-**Gateway Token:**
-```bash
-export BRASSCLAW_GATEWAY_TOKEN=your-token-here
-```
-
-This token is required for authentication with the brassclaw server during testing. Set it to your actual gateway token value.
-
-### Quick Test Setup
-
-```bash
-# Set gateway token
-export BRASSCLAW_GATEWAY_TOKEN=your-token-here
-
-# Start server
-cd /Volumes/SSDE/brassclaw
-cargo run --release -- serve --host 127.0.0.1 --port 3000
-
-# In another terminal, run tests
-cd /Volumes/SSDE/brassclaw/tests/playwright-agent
-npm test
-```
-
-### Manual Testing via WebUI
-
-1. Start the server with gateway token:
-   ```bash
-   export BRASSCLAW_GATEWAY_TOKEN=your-token-here
-   cargo run --release -- serve --host 127.0.0.1 --port 3000
-   ```
-
-2. Open browser to http://127.0.0.1:3000
-
-3. Configure LLM provider:
-   - Go to Settings → Providers
-   - Add new provider with above configuration
-   - Test connection
-
-4. Start chatting with the agent
-
-### Playwright Agent Tests
-
-The Playwright test suite in `tests/playwright-agent/` includes:
-- **01-connection.spec.ts** - Connection and authentication tests
-- **02-llm-config.spec.ts** - LLM configuration tests
-- **03-agent-interaction.spec.ts** - Agent interaction and conversation tests
-
-See `tests/playwright-agent/README.md` for detailed test documentation.
-
 ## Creating Releases
 
 ### Automated Release Process
@@ -192,8 +120,8 @@ This project uses GitHub Actions for automated releases. **Do not build binaries
 Simply push a version tag:
 
 ```bash
-git tag v0.29.9
-git push origin v0.29.9
+git tag v0.9.0
+git push origin v0.9.0
 ```
 
 GitHub Actions will automatically:
