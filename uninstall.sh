@@ -32,17 +32,13 @@ done
 # of how stdin is redirected (curl|bash, curl|sudo bash, sudo bash file, etc.).
 # If /dev/tty cannot be opened we are non-interactive and proceed automatically.
 if exec 3>/dev/tty 2>/dev/null; then
-    # /dev/tty is available — interactive prompts can be shown on fd 3
     :
 else
-    # No controlling terminal (piped, daemonised, etc.) — auto-proceed.
     YES=true
     exec 3</dev/null 2>/dev/null || true
 fi
 
-# The canonical installed binary name (same as install.sh uses)
 BINARY_NAME="brassclaw-reborn"
-# Legacy binary name from installs prior to the brassclaw-reborn rename
 LEGACY_BINARY_NAME="brassclaw"
 SERVICE_NAME="brassclaw"
 SERVICE_USER="brassclaw"
@@ -58,37 +54,38 @@ else
 fi
 
 # ── resolve all data dirs ─────────────────────────────────────────────────────
-# In system mode the service may run as the 'brassclaw' system user whose home
-# is /var/lib/brassclaw — not $HOME (which is /root when running sudo).
+# In system mode the service runs as the 'brassclaw' system user whose home is
+# /var/lib/brassclaw — not $HOME (which is /root when running sudo).
 # Collect every candidate data root so --wipe removes them all.
 WIPE_DIRS=()
 if [[ $INSTALL_MODE == "system" ]]; then
-    # Home of the dedicated system user (if it exists)
+    # Home of the dedicated system user (if it exists).
     if id "$SERVICE_USER" &>/dev/null; then
         svc_home=$(eval echo "~$SERVICE_USER" 2>/dev/null || true)
-        if [[ -n "$svc_home" && -d "$svc_home" ]]; then
+        if [[ -n "$svc_home" && "$svc_home" != "~$SERVICE_USER" && -d "$svc_home" ]]; then
             WIPE_DIRS+=("$svc_home")
         fi
-        # Also cover the fallback home used by install.sh
-        if [[ -d "/var/lib/brassclaw" ]]; then
-            WIPE_DIRS+=("/var/lib/brassclaw")
-        fi
     fi
-    # Also cover any root-owned data from early installs
+    # Fallback home used by install.sh for system users without a real home.
+    if [[ -d "/var/lib/brassclaw" ]]; then
+        WIPE_DIRS+=("/var/lib/brassclaw")
+    fi
+    # Cover any root-owned data from early installs.
     if [[ -d "/root/.brassclaw" ]]; then
         WIPE_DIRS+=("/root/.brassclaw")
     fi
-    # Cover SUDO_USER's home if invoked via sudo
-    if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+    # Cover SUDO_USER's home if invoked via sudo.
+    if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
         sudo_home=$(eval echo "~$SUDO_USER" 2>/dev/null || true)
         if [[ -n "$sudo_home" && -d "$sudo_home/.brassclaw" ]]; then
             WIPE_DIRS+=("$sudo_home/.brassclaw")
         fi
     fi
 else
-    # User-local install
-    DATA_DIR="$HOME/.brassclaw"
-    WIPE_DIRS=("$DATA_DIR")
+    # User-local install.
+    if [[ -d "$HOME/.brassclaw" ]]; then
+        WIPE_DIRS+=("$HOME/.brassclaw")
+    fi
 fi
 
 # ── colours ───────────────────────────────────────────────────────────────────
@@ -117,6 +114,7 @@ if [[ "$WIPE" == "true" ]]; then
     fi
 fi
 echo ""
+
 if [[ "$YES" == "true" ]]; then
     if [[ "$WIPE" == "true" ]]; then
         echo "Proceeding non-interactively (--wipe: all data will be deleted)"
@@ -143,7 +141,7 @@ if [[ $INSTALL_MODE == "system" ]] && command -v systemctl &>/dev/null; then
         systemctl daemon-reload
         log_info "Service removed."
     else
-        # Kill any lingering process even without a unit file
+        # Kill any lingering process even without a unit file.
         for proc in "$BINARY_NAME" "$LEGACY_BINARY_NAME"; do
             if pgrep -x "$proc" &>/dev/null; then
                 log_step "Killing lingering $proc process..."
@@ -156,8 +154,11 @@ fi
 # ── remove binaries ───────────────────────────────────────────────────────────
 log_step "Removing binaries from $INSTALL_DIR..."
 removed_any=0
-for candidate in "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME.bak" \
-                 "$INSTALL_DIR/$LEGACY_BINARY_NAME" "$INSTALL_DIR/$LEGACY_BINARY_NAME.bak"; do
+for candidate in \
+    "$INSTALL_DIR/$BINARY_NAME" \
+    "$INSTALL_DIR/$BINARY_NAME.bak" \
+    "$INSTALL_DIR/$LEGACY_BINARY_NAME" \
+    "$INSTALL_DIR/$LEGACY_BINARY_NAME.bak"; do
     if [[ -f "$candidate" ]]; then
         rm -f "$candidate"
         log_info "Removed: $candidate"
@@ -178,26 +179,27 @@ if [[ "$WIPE" == "true" ]]; then
             log_info "Removed: $d"
         fi
     done
-    # Remove the /var/lib/brassclaw parent itself if it exists
+    # Remove /var/lib/brassclaw itself if it exists (may not be in WIPE_DIRS
+    # if the system user was never created).
     if [[ $INSTALL_MODE == "system" ]] && [[ -d "/var/lib/brassclaw" ]]; then
         rm -rf "/var/lib/brassclaw"
         log_info "Removed: /var/lib/brassclaw"
     fi
-    # Delete the dedicated system user and its home
+    # Delete the dedicated system user and its home.
     if [[ $INSTALL_MODE == "system" ]] && id "$SERVICE_USER" &>/dev/null; then
         log_step "Removing system user '$SERVICE_USER'..."
         userdel -r "$SERVICE_USER" 2>/dev/null || userdel "$SERVICE_USER" 2>/dev/null || true
         log_info "System user '$SERVICE_USER' removed."
     fi
 else
-    # Interactive / -y: offer to keep or remove
+    # Interactive / -y: offer to keep or remove each data dir.
     for d in "${WIPE_DIRS[@]+"${WIPE_DIRS[@]}"}"; do
         if [[ -d "$d" ]]; then
-            echo -e "Data dir ${BLUE}$d${NC} contains your config/data and will be kept."
+            echo -e "Data dir ${BLUE}$d${NC} contains your config and Postgres data."
             if [[ "$YES" == "true" ]]; then
-                log_info "Data preserved at: $d (use --wipe to remove)"
+                log_info "Data preserved at: $d  (re-run with --wipe to remove)"
             else
-                read -rp "Remove $d? [y/N] " reply </dev/tty
+                read -rp "Remove $d? [y/N] " reply </dev/tty || reply=""
                 if [[ "$reply" =~ ^[Yy]$ ]]; then
                     log_step "Removing $d..."
                     rm -rf "$d"
