@@ -46,8 +46,10 @@ use brassclaw_host_runtime::{
     RuntimeCapabilityOutcome, RuntimeCapabilityRequest, RuntimeFailureKind, RuntimeProcessError,
     RuntimeProcessPort, SHELL_CAPABILITY_ID, SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID,
     SKILL_REMOVE_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID, SandboxCommandTransport, SurfaceKind,
-    TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID,
-    TRIGGER_REMOVE_CAPABILITY_ID, TenantSandboxProcessPort, ToolCallHttpEgress, TriggerCreateHook,
+    TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_GET_CAPABILITY_ID,
+    TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID, TRIGGER_RUN_HISTORY_CAPABILITY_ID,
+    TRIGGER_SET_STATE_CAPABILITY_ID, TRIGGER_UPDATE_CAPABILITY_ID, TenantSandboxProcessPort,
+    ToolCallHttpEgress, TriggerCreateHook,
     VisibleCapabilityAccess, VisibleCapabilityRequest, WRITE_FILE_CAPABILITY_ID,
     builtin_first_party_handlers, builtin_first_party_handlers_with_trigger_create_hook,
     builtin_first_party_package,
@@ -96,7 +98,9 @@ async fn builtin_first_party_package_declares_expected_capabilities() {
             | SKILL_INSTALL_CAPABILITY_ID
             | SKILL_REMOVE_CAPABILITY_ID
             | TRIGGER_CREATE_CAPABILITY_ID
-            | TRIGGER_REMOVE_CAPABILITY_ID => PermissionMode::Ask,
+            | TRIGGER_REMOVE_CAPABILITY_ID
+            | TRIGGER_UPDATE_CAPABILITY_ID
+            | TRIGGER_SET_STATE_CAPABILITY_ID => PermissionMode::Ask,
             _ => PermissionMode::Allow,
         };
         assert_eq!(descriptor.default_permission, expected_permission);
@@ -308,7 +312,7 @@ async fn builtin_trigger_create_stamps_caller_scope_and_persists_record() {
 
     let trigger = &output["trigger"];
     assert_eq!(trigger["name"], json!("Daily summary"));
-    assert!(trigger.get("prompt").is_none());
+    assert_eq!(trigger["prompt"], json!("Summarize yesterday"));
     assert_eq!(trigger["source"], json!("schedule"));
     assert_eq!(trigger["completion_policy"], json!("recurring"));
     assert_eq!(trigger["state"], json!("scheduled"));
@@ -670,7 +674,7 @@ async fn builtin_trigger_list_and_remove_are_caller_scoped() {
     )
     .await
     .unwrap();
-    assert!(created["trigger"].get("prompt").is_none());
+    assert_eq!(created["trigger"]["prompt"], json!("Run owned work"));
     let trigger_id = created["trigger"]["trigger_id"].as_str().unwrap();
 
     let foreign_list = invoke_with_context(
@@ -704,7 +708,7 @@ async fn builtin_trigger_list_and_remove_are_caller_scoped() {
     assert_eq!(owner_list["triggers"].as_array().unwrap().len(), 1);
     assert!(owner_list["triggers"][0].get("last_status").is_some());
     assert_eq!(owner_list["triggers"][0]["is_active"], json!(false));
-    assert!(owner_list["triggers"][0].get("prompt").is_none());
+    assert!(owner_list["triggers"][0]["prompt"].is_string());
     assert!(owner_list["triggers"][0].get("tenant_id").is_none());
     assert!(owner_list["triggers"][0].get("creator_user_id").is_none());
     assert!(owner_list["triggers"][0].get("last_fired_slot").is_none());
@@ -821,7 +825,7 @@ async fn builtin_trigger_create_list_and_remove_use_full_request_scope() {
     assert_eq!(trigger["agent_id"], json!("scoped-agent"));
     assert_eq!(trigger["project_id"], json!("scoped-project"));
     assert_eq!(trigger["is_active"], json!(false));
-    assert!(trigger.get("prompt").is_none());
+    assert!(trigger["prompt"].is_string());
     assert!(trigger.get("last_fired_slot").is_none());
     assert!(trigger.get("active_fire_slot").is_none());
     assert!(trigger.get("active_run_ref").is_none());
@@ -6718,6 +6722,10 @@ fn all_builtin_capability_ids() -> Vec<&'static str> {
         TRIGGER_CREATE_CAPABILITY_ID,
         TRIGGER_LIST_CAPABILITY_ID,
         TRIGGER_REMOVE_CAPABILITY_ID,
+        TRIGGER_GET_CAPABILITY_ID,
+        TRIGGER_UPDATE_CAPABILITY_ID,
+        TRIGGER_SET_STATE_CAPABILITY_ID,
+        TRIGGER_RUN_HISTORY_CAPABILITY_ID,
     ]
 }
 

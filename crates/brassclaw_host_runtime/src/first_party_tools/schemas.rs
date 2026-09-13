@@ -339,6 +339,59 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
             "required": ["trigger_id"],
             "additionalProperties": false
         }),
+        "schemas/builtin/trigger_get.input.v1.json" => json!({
+            "type": "object",
+            "properties": {
+                "trigger_id": { "type": "string", "description": "Trigger id to retrieve" }
+            },
+            "required": ["trigger_id"],
+            "additionalProperties": false
+        }),
+        "schemas/builtin/trigger_update.input.v1.json" => json!({
+            "type": "object",
+            "properties": {
+                "trigger_id": { "type": "string", "description": "Trigger id to update" },
+                "name": { "type": "string", "description": "New human-readable trigger name" },
+                "cron": { "type": "string", "description": "New five-, six-, or seven-field cron expression" },
+                "prompt": { "type": "string", "description": "New prompt submitted when the trigger fires" },
+                "completion_policy": {
+                    "type": "string",
+                    "enum": ["recurring", "complete_after_first_fire"],
+                    "description": "Completion policy for the trigger"
+                }
+            },
+            "required": ["trigger_id"],
+            "additionalProperties": false
+        }),
+        "schemas/builtin/trigger_set_state.input.v1.json" => json!({
+            "type": "object",
+            "properties": {
+                "trigger_id": { "type": "string", "description": "Trigger id to update" },
+                "state": {
+                    "type": "string",
+                    "enum": ["paused", "scheduled"],
+                    "description": "Target state: paused or scheduled (resume)"
+                }
+            },
+            "required": ["trigger_id", "state"],
+            "additionalProperties": false
+        }),
+        "schemas/builtin/trigger_run_history.input.v1.json" => json!({
+            "type": "object",
+            "properties": {
+                "trigger_id": { "type": "string", "description": "Trigger id to retrieve run history for" },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 20,
+                    "description": "Maximum number of run records to return"
+                }
+            },
+            "required": ["trigger_id"],
+            "additionalProperties": false
+        }),
+
         // Phase P §0.22 — generic component-DB tool (pure ops: compute_hash,
         // extract_section; DB-backed ops: read_hash, read_row, upsert, mark_stale).
         "schemas/builtin/component_db.input.v1.json" => json!({
