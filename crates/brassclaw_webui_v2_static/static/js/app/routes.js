@@ -38,23 +38,23 @@ export const SETTINGS_SUB_ROUTES = [
   // { id: "agent", labelKey: "settings.agent", icon: "bolt" },
   // { id: "channels", labelKey: "settings.channels", icon: "send" },
   // { id: "networking", labelKey: "settings.networking", icon: "pulse" },
-  { id: "tools", labelKey: "settings.tools", icon: "tool" },
-  { id: "skills", labelKey: "settings.skills", icon: "file" },
+  { id: "tools",            labelKey: "settings.tools",           icon: "tool"     },
+  { id: "skills",           labelKey: "settings.skills",          icon: "list"     },
   // Phase 6 — 10-tab Settings UI editor tabs.
-  { id: "actions", labelKey: "settings.actions", icon: "bolt" },
-  { id: "orchestrator", labelKey: "settings.orchestrator", icon: "pulse" },
-  { id: "scaffold", labelKey: "settings.scaffold", icon: "file" },
-  { id: "monty-vm", labelKey: "settings.montyVm", icon: "spark" },
-  { id: "validation-queue", labelKey: "settings.validationQueue", icon: "shield" },
-  { id: "reliability", labelKey: "settings.reliability", icon: "pulse" },
-  { id: "interceptor", labelKey: "settings.interceptor", icon: "spark" },
-  { id: "prefix",      labelKey: "settings.prefix",      icon: "layers" },
-  { id: "safety", labelKey: "settings.safety", icon: "shield" },
-  // { id: "tokens", labelKey: "settings.tokens", icon: "bolt" },
+  { id: "actions",          labelKey: "settings.actions",         icon: "bolt"     },
+  { id: "orchestrator",     labelKey: "settings.orchestrator",    icon: "layers"   },
+  { id: "scaffold",         labelKey: "settings.scaffold",        icon: "folder"   },
+  { id: "monty-vm",         labelKey: "settings.montyVm",         icon: "pulse"    },
+  { id: "validation-queue", labelKey: "settings.validationQueue", icon: "check"    },
+  { id: "reliability",      labelKey: "settings.reliability",     icon: "clock"    },
+  { id: "interceptor",      labelKey: "settings.interceptor",     icon: "flag"     },
+  { id: "prefix",           labelKey: "settings.prefix",          icon: "moon"     },
+  { id: "safety",           labelKey: "settings.safety",          icon: "lock"     },
+  // { id: "tokens", labelKey: "settings.tokens", icon: "calendar" },
   // Removed: global token settings are superseded by per-provider token
   // settings in the provider dialog. The global endpoint has been removed.
-  // { id: "users", labelKey: "settings.users", icon: "lock" },
-  { id: "language", labelKey: "settings.language", icon: "globe" },
+  // { id: "users", labelKey: "settings.users", icon: "logout" },
+  { id: "language",         labelKey: "settings.language",        icon: "sun"      },
 ];
 
 export const EXTENSIONS_SUB_ROUTES = [

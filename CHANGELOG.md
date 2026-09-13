@@ -15,12 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(settings / recipes tab)* **`GET /api/settings/recipes`** — new settings listing endpoint backed by `PgSettingsListingService` reading `reborn_recipes`. `RecipesTab` component added to the WebUI settings page. `SettingsListingService::list_recipes` trait method added.
 - *(settings / listings)* **`WEBUI_V2_ROUTE_GET_SETTINGS_RECIPES`** descriptor, handler, and router mount wired end-to-end. Previously the descriptor and handler existed but the router mount was missing (undefined constant); now fully functional.
 - *(migrations)* **V082** — adds `prior_knowledge_content TEXT` and `override_prompt_creation BOOLEAN NOT NULL DEFAULT false` to `reborn_skills` and `reborn_tools`. V046 added these columns to the eight V036–V043 component tables but skipped these two earlier tables, causing `do_assemble_bundle` to silently skip all validated skill and tool rows when building the prefix bundle.
+- *(i18n)* Added missing keys: `common.refresh`, `prefix.generate`, `prefix.generating`, `prefix.neverGenerated`, `prefix.regenerateError`.
 
 ### Fixed
 
 - *(prefix / bundle assembly)* **Regenerate button produced empty bundle for skills and tools** — `do_assemble_bundle` queries `COALESCE(NULLIF(prior_knowledge_content,''), body)` on `reborn_skills` and `COALESCE(prior_knowledge_content, description)` on `reborn_tools`, but neither table had a `prior_knowledge_content` column. Both queries failed silently (caught and skipped at `debug!`), so the assembled bundle contained no skill or tool rows. V082 migration adds the missing columns.
 - *(router)* **Stale `WEBUI_V2_PATTERN_SETTINGS_RECIPES` router stub prevented workspace from compiling** — a broken router entry referenced an undefined constant and handler; removed and replaced with the correct mount after the constant was properly defined in `descriptors.rs`.
 - *(descriptors)* `get_settings_config_descriptor` used `AllowedEffectPath::ProductWorkflow` for a read-only GET; corrected to `AllowedEffectPath::ProjectionOnly`. `put_settings_config_key_descriptor` body limit corrected from 16 KiB to 4 KiB.
+- *(prefix tab / UX)* **"Regenerate" shown for entries that have never been generated** — on first run the `base-prompt` entry has no `assembled_at` or `fingerprint`, so the button now shows **Generate** / **Generating…** and the badge shows **never generated** instead of the misleading `stale`. After a successful generate/regenerate call, `is_stale` is set to `false` in the local entry immediately (instead of waiting for a refresh).
+- *(prefix tab / UX)* **Error banner showed raw JSON** — API error payloads such as `{"error":"Unavailable","kind":"ServiceUnavailable",...}` are now parsed and displayed as `Unavailable (ServiceUnavailable)` instead of the raw JSON string.
+- *(prefix tab / UX)* **`is_stale` not cleared after successful regeneration** — `handleRegenerate` merged the `PrefixRegenerateResponse` into the entry but did not set `is_stale: false` (the response type omits that field). Now explicitly set.
+
+### Changed
+
+- *(docs)* Rewrote `README.md` as a concise install + first-run guide. Architecture/features/heritage sections moved to `docs/agents-v3/`.
+- *(docs)* `docs/agents-v3/README.md` — replaced references to archived planning documents with a pointer to `docs/archive/`.
 
 ## [0.9.3] - 2026-09-13
 

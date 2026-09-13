@@ -1,4 +1,7 @@
-// Routine endpoints depend on v1 `/api/routines/*`. Known tech-debt stubs.
+// DEPRECATED: /routines is now redirected to /automations (see app.js §12).
+// These stubs are retained so the page files compile, but none of these
+// functions are called in production — the routines route redirects before
+// the page mounts.
 
 export function fetchRoutines() {
   return Promise.resolve({ routines: [], todo: true });

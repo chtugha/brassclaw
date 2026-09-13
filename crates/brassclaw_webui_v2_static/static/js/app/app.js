@@ -10,7 +10,8 @@ import { WorkspacePage } from "../pages/workspace/workspace-page.js";
 import { ProjectsPage } from "../pages/projects/projects-page.js";
 import { MissionsPage } from "../pages/missions/missions-page.js";
 import { JobsPage } from "../pages/jobs/jobs-page.js";
-import { RoutinesPage } from "../pages/routines/routines-page.js";
+// RoutinesPage intentionally not imported: /routines now redirects to /automations.
+// The routines page files are kept to avoid breaking cached browser URLs.
 import { AutomationsPage } from "../pages/automations/automations-page.js";
 import { ExtensionsPage } from "../pages/extensions/extensions-page.js";
 import { SettingsPage } from "../pages/settings/settings-page.js";
@@ -115,8 +116,8 @@ export function App() {
           <${Route} path="missions/:missionId" element=${html`<${MissionsPage} />`} />
           <${Route} path="jobs" element=${html`<${JobsPage} />`} />
           <${Route} path="jobs/:jobId" element=${html`<${JobsPage} />`} />
-          <${Route} path="routines" element=${html`<${RoutinesPage} />`} />
-          <${Route} path="routines/:routineId" element=${html`<${RoutinesPage} />`} />
+          <${Route} path="routines" element=${html`<${Navigate} to="/automations" replace />`} />
+          <${Route} path="routines/:routineId" element=${html`<${Navigate} to="/automations" replace />`} />
           <${Route} path="automations" element=${html`<${AutomationsPage} />`} />
           <${Route} path="automations/:automationId" element=${html`<${AutomationsPage} />`} />
           <${Route} path="extensions" element=${html`<${ExtensionsPage} />`} />
