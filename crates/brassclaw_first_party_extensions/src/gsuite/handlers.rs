@@ -809,7 +809,7 @@ fn map_credential_error(error: GoogleCredentialError) -> GsuiteDispatchError {
     match error {
         GoogleCredentialError::Recovery(recovery) => {
             GsuiteDispatchError::new(map_recovery_kind(&recovery))
-                .with_reason(GsuiteCredentialDispatchReason::Recovery(Box::new(recovery)))
+                .with_reason(GsuiteCredentialDispatchReason::Recovery(recovery))
         }
         GoogleCredentialError::MissingScopes { missing_scopes } => {
             GsuiteDispatchError::new(RuntimeDispatchErrorKind::Client)
@@ -1103,23 +1103,23 @@ mod tests {
     #[test]
     fn map_credential_error_tests() {
         assert_eq!(
-            map_credential_error(GoogleCredentialError::Recovery(
+            map_credential_error(GoogleCredentialError::Recovery(Box::new(
                 brassclaw_auth::CredentialRecoveryProjection::setup_required(
                     brassclaw_auth::AuthProviderId::new("google").unwrap(),
                     brassclaw_auth::CredentialRecoveryReason::NoAccount,
                     Vec::new(),
                 ),
-            ))
+            )))
             .kind(),
             RuntimeDispatchErrorKind::Client
         );
         assert_eq!(
-            map_credential_error(GoogleCredentialError::Recovery(
+            map_credential_error(GoogleCredentialError::Recovery(Box::new(
                 brassclaw_auth::CredentialRecoveryProjection::account_selection_required(
                     brassclaw_auth::AuthProviderId::new("google").unwrap(),
                     Vec::new(),
                 ),
-            ))
+            )))
             .kind(),
             RuntimeDispatchErrorKind::Client
         );
@@ -1166,7 +1166,7 @@ mod tests {
             Some(&GsuiteCredentialDispatchReason::HostApi)
         );
 
-        let configured_recovery = map_credential_error(GoogleCredentialError::Recovery(
+        let configured_recovery = map_credential_error(GoogleCredentialError::Recovery(Box::new(
             brassclaw_auth::CredentialRecoveryProjection::configured(
                 brassclaw_auth::AuthProviderId::new("google").unwrap(),
                 brassclaw_auth::CredentialAccountProjection {
@@ -1180,7 +1180,7 @@ mod tests {
                     secret_handle_count: 1,
                 },
             ),
-        ));
+        )));
         assert_eq!(
             configured_recovery.kind(),
             RuntimeDispatchErrorKind::Backend

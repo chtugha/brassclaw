@@ -29,6 +29,7 @@ pub(super) fn decode_text(
         FileEncoding::Utf8 => String::from_utf8(bytes.to_vec()).map_err(|_| operation_error())?,
         FileEncoding::Utf16Le => {
             let data = bytes.get(2..).unwrap_or_default();
+            #[allow(clippy::chunks_exact_to_as_chunks)] // as_chunks / array_chunks not yet stable
             let units = data
                 .chunks_exact(2)
                 .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
