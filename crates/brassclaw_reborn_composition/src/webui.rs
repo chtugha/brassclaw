@@ -155,11 +155,14 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             // via the DB (e.g. direct DB write or a previous WebUI session),
             // hot-swap it into the running gateway immediately so the runtime
             // does not start with the placeholder provider.
-            if let Err(e) = trigger.reload().await {
-                tracing::warn!(
+            match trigger.reload().await {
+                Ok(()) => tracing::debug!(
+                    "boot-time LLM reload from DB succeeded; provider is now live"
+                ),
+                Err(e) => tracing::warn!(
                     error = %e,
                     "boot-time LLM reload from DB failed; starting with placeholder provider"
-                );
+                ),
             }
             llm_config = llm_config.with_reload_trigger(trigger);
         }

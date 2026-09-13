@@ -21,7 +21,7 @@ integration = []
 # postgresql_embedded is kept only for the Settings / VersionReq types; the
 # actual download is now done at compile time in build.rs so the runtime never
 # makes outbound HTTP connections for Postgres binaries.
-postgresql_embedded = { version = "0.21", features = ["tokio"] }
+postgresql_embedded = { version = "0.21", default-features = false, features = ["tokio", "tls-rustls-ring"] }
 target-triple = "1"
 sha2 = "0.10"
 hex = "0.4"
