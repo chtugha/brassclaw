@@ -1,5 +1,5 @@
 import { Button } from "../../../design-system/button.js";
-import { Input, Select } from "../../../design-system/input.js";
+import { Input } from "../../../design-system/input.js";
 import { Modal, ModalBody, ModalFooter } from "../../../design-system/modal.js";
 import { html } from "../../../lib/html.js";
 import { useT } from "../../../lib/i18n.js";
@@ -92,18 +92,17 @@ export function ProviderDialog({
         <label className="block space-y-2 text-sm text-[var(--v2-text-strong)]">
           ${t("llm.defaultModel")}
           <div className="flex gap-2">
-            ${models.length > 0
-              ? html`
-                  <${Select}
-                    value=${form.model}
-                    onChange=${(e) => formState.update("model", e.target.value)}
-                    className="flex-1"
-                  >
-                    ${models.map((model) => html`<option key=${model} value=${model}>${model}</option>`)}
-                  <//>
-                `
-              : html`<${Input} value=${form.model} onChange=${(e) => formState.update("model", e.target.value)} />`
-            }
+            <${Input}
+              list="provider-model-list"
+              value=${form.model}
+              onChange=${(e) => formState.update("model", e.target.value)}
+              className="flex-1"
+            />
+            ${models.length > 0 && html`
+              <datalist id="provider-model-list">
+                ${models.map((model) => html`<option key=${model} value=${model} />`)}
+              </datalist>
+            `}
             <${Button} type="button" variant="secondary" size="sm" disabled=${busy !== ""} onClick=${formState.fetchModels}>
               ${busy === "models" ? t("llm.fetchingModels") : t("llm.fetchModels")}
             <//>
