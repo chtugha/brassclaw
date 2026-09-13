@@ -1861,12 +1861,15 @@ pub async fn build_reborn_runtime(
     // Extract broadcast_budget_event_sink for the budget projection task.
     // Uses the substrate variable already extracted above (broadcast_budget_event_sink_for_accountant).
 
-    // Load max_duration_secs from reborn_monty_vm_settings (Step 6.3 live wiring).
-    // Uses the system-scope row ("default" / "default") which holds the global
-    // wall-clock budget for all turns. Non-fatal: falls back to None (unconstrained)
-    // when no pool, no DB row, or query unavailable — the compiled-in env-var
-    // fallback in orchestrator.rs still applies at the orchestrator level.
-    let resolved_max_turn_duration: Option<std::time::Duration> = {
+    // Load max_duration_secs and token_budgets_enabled from reborn_monty_vm_settings
+    // (Step 6.3 live wiring). Uses the system-scope row ("default" / "default") which
+    // holds the global wall-clock budget for all turns. Non-fatal: falls back to
+    // None/false when no pool, no DB row, or query unavailable — the compiled-in
+    // env-var fallback in orchestrator.rs still applies at the orchestrator level.
+    let (resolved_max_turn_duration, resolved_token_budgets_enabled): (
+        Option<std::time::Duration>,
+        bool,
+    ) = {
         #[cfg(feature = "postgres")]
         {
             use brassclaw_product_workflow::MontyVmSettingsStore as _;
@@ -1877,18 +1880,19 @@ pub async fn build_reborn_runtime(
                     "default",
                 );
                 match store.get("default", "default").await {
-                    Ok(settings) => {
-                        Some(std::time::Duration::from_secs(settings.max_duration_secs))
-                    }
-                    Err(_) => None,
+                    Ok(settings) => (
+                        Some(std::time::Duration::from_secs(settings.max_duration_secs)),
+                        settings.token_budgets_enabled,
+                    ),
+                    Err(_) => (None, false),
                 }
             } else {
-                None
+                (None, false)
             }
         }
         #[cfg(not(feature = "postgres"))]
         {
-            None
+            (None, false)
         }
     };
 
@@ -2154,11 +2158,13 @@ pub async fn build_reborn_runtime(
     // re-read by the wiring helper).
     let model_budget_accountant: Option<
         Arc<dyn brassclaw_turns::run_profile::LoopModelBudgetAccountant>,
-    > = match (trusted_laptop_access, resolved_cost_table) {
+    > = match (trusted_laptop_access, resolved_token_budgets_enabled, resolved_cost_table) {
         // Skip budget enforcement for trusted-laptop-access (yolo) profiles —
         // the local user has full host access and budget limits are counterproductive.
-        (true, _) => None,
-        (false, Some(cost_table)) => {
+        (true, _, _) => None,
+        // Kill switch: budgeting disabled via MontyVmSettings — skip accountant entirely.
+        (_, false, _) => None,
+        (false, true, Some(cost_table)) => {
             let resolved_budget_defaults = match budget_defaults {
                 Some(defaults) => {
                     defaults
@@ -2197,7 +2203,7 @@ pub async fn build_reborn_runtime(
             );
             Some(accountant)
         }
-        (_, None) => None,
+        (_, _, None) => None,
     };
 
     let loop_exit_evidence = Arc::new(ThreadCheckpointLoopExitEvidencePort::new_with_thread_scope(

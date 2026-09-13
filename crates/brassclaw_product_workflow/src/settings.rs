@@ -55,8 +55,8 @@ pub struct MontyVmSettings {
     /// Global kill switch for all token budgets (§0.21 / Phase O).
     /// When `false`, every token-budget check in the system is bypassed —
     /// the VM runs as if every cap is `usize::MAX`.  Time and USD limits
-    /// remain enforced regardless.  Defaults to `true`.
-    #[serde(default = "default_true")]
+    /// remain enforced regardless.  Defaults to `false`.
+    #[serde(default = "default_false")]
     pub token_budgets_enabled: bool,
 }
 
@@ -191,8 +191,8 @@ pub trait MontyVmSettingsStore: Send + Sync {
     ) -> Result<MontyVmSettings, MontyVmSettingsError>;
 }
 
-fn default_true() -> bool {
-    true
+fn default_false() -> bool {
+    false
 }
 
 /// Compiled-in defaults, used when no DB row exists or in DB-less mode.
@@ -206,7 +206,7 @@ pub fn default_monty_vm_settings() -> MontyVmSettings {
         q4_retention_days: 30,
         forensic_packet_retention_days: 90,
         active_orchestrator_id: None,
-        token_budgets_enabled: true,
+        token_budgets_enabled: false,
     }
 }
 
