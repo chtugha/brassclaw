@@ -38,30 +38,34 @@ use brassclaw_product_adapters::{
     ProgressKind, ProgressUpdateView, ProjectionCursor,
 };
 use brassclaw_product_workflow::{
-    AuthorReductionRuleRequest, AuthorReductionRuleResponse, InterceptorConfigSnapshot,
-    LifecyclePackageRef, LifecyclePhase, LlmActiveSelection, LlmConfigSnapshot, LlmModelsResult,
-    LlmProbeRequest, LlmProbeResult, LlmProviderView, MontyVmRestartRequest,
-    MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsResponse, MontyVmState,
-    MontyVmStatusResponse, RebornAutomationInfo, RebornAutomationSource, RebornAutomationState,
-    RebornCancelRunResponse, RebornChannelConnectAction, RebornChannelConnectStrategy,
-    RebornConnectableChannelInfo, RebornConnectableChannelListResponse, RebornCreateThreadResponse,
-    RebornDeleteThreadRequest, RebornDeleteThreadResponse, RebornExtensionActionResponse,
-    RebornExtensionListResponse, RebornExtensionRegistryResponse, RebornGetRunStateRequest,
+    AuthorReductionRuleRequest, AuthorReductionRuleResponse,
+    InterceptorConfigSnapshot, LifecyclePackageRef, LifecyclePhase, LlmActiveSelection,
+    LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
+    MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsResponse,
+    MontyVmState, MontyVmStatusResponse, RebornAutomationInfo, RebornAutomationRunHistoryResponse,
+    RebornAutomationSource, RebornAutomationState, RebornCancelRunResponse,
+    RebornChannelConnectAction, RebornChannelConnectStrategy, RebornConnectableChannelInfo,
+    RebornConnectableChannelListResponse, RebornCreateAutomationResponse, RebornCreateThreadResponse,
+    RebornDeleteAutomationResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
+    RebornExtensionActionResponse, RebornExtensionListResponse, RebornExtensionRegistryResponse,
+    RebornFireAutomationNowResponse, RebornGetAutomationResponse, RebornGetRunStateRequest,
     RebornGetRunStateResponse, RebornListAutomationsResponse, RebornListThreadsResponse,
     RebornOutboundDeliveryTargetListResponse, RebornOutboundPreferencesResponse,
     RebornResolveGateResponse, RebornResumeGateResponse, RebornServicesApi, RebornServicesError,
     RebornServicesErrorCode, RebornServicesErrorKind, RebornSetOutboundPreferencesRequest,
     RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
-    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse, RecordOutcomeRequest,
-    RecordOutcomeResponse, ReductionRuleConfigView, ReductionRulesRequest, ReductionRulesResponse,
-    RuleType, SetActiveLlmRequest, SettingsListResponse, TokenSettingsResponse, ToolSkillDetail,
-    UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateInterceptorConfigRequest,
-    UpdateMontyVmSettingsRequest, UpdateTokenSettingsRequest, UpdateValidationStatusRequest,
-    UpdateValidationStatusResponse, UpsertLlmProviderRequest, ValidationQueueCountResponse,
-    ValidationQueueFilter, ValidationQueueItem, ValidationQueueListResponse,
-    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
+    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse, RebornUpdateAutomationResponse,
+    RecordOutcomeRequest, RecordOutcomeResponse, ReductionRuleConfigView, ReductionRulesRequest,
+    ReductionRulesResponse, RuleType, SetActiveLlmRequest, SettingsListResponse,
+    TokenSettingsResponse, ToolSkillDetail, UpdateChatPreferenceRequest,
+    UpdateChatPreferenceResponse, UpdateInterceptorConfigRequest, UpdateMontyVmSettingsRequest,
+    UpdateTokenSettingsRequest, UpdateValidationStatusRequest, UpdateValidationStatusResponse,
+    UpsertLlmProviderRequest, ValidationQueueCountResponse, ValidationQueueFilter,
+    ValidationQueueItem, ValidationQueueListResponse, WebUiAuthenticatedCaller,
+    WebUiCancelRunRequest, WebUiCreateAutomationRequest, WebUiCreateThreadRequest,
     WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
-    WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    WebUiSendMessageRequest, WebUiSetAutomationStateRequest, WebUiSetupExtensionRequest,
+    WebUiUpdateAutomationRequest,
 };
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
@@ -1082,6 +1086,80 @@ impl RebornServicesApi for StubServices {
         _skill_id: String,
     ) -> Result<String, RebornServicesError> {
         Ok("---\nname: stub-skill\n---\n\nStub body.".to_string())
+    }
+
+    async fn create_automation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: WebUiCreateAutomationRequest,
+    ) -> Result<RebornCreateAutomationResponse, RebornServicesError> {
+        Ok(RebornCreateAutomationResponse {
+            automation: automation_info("stub-automation", "Stub", "0 9 * * *"),
+        })
+    }
+
+    async fn get_automation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _automation_id: String,
+    ) -> Result<RebornGetAutomationResponse, RebornServicesError> {
+        Ok(RebornGetAutomationResponse {
+            automation: Some(automation_info("stub-automation", "Stub", "0 9 * * *")),
+        })
+    }
+
+    async fn update_automation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _automation_id: String,
+        _request: WebUiUpdateAutomationRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        Ok(RebornUpdateAutomationResponse {
+            automation: Some(automation_info("stub-automation", "Stub", "0 9 * * *")),
+        })
+    }
+
+    async fn set_automation_state(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _automation_id: String,
+        _request: WebUiSetAutomationStateRequest,
+    ) -> Result<RebornUpdateAutomationResponse, RebornServicesError> {
+        Ok(RebornUpdateAutomationResponse { automation: None })
+    }
+
+    async fn delete_automation(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _automation_id: String,
+    ) -> Result<RebornDeleteAutomationResponse, RebornServicesError> {
+        Ok(RebornDeleteAutomationResponse { deleted: true })
+    }
+
+    async fn fire_automation_now(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _automation_id: String,
+    ) -> Result<RebornFireAutomationNowResponse, RebornServicesError> {
+        Ok(RebornFireAutomationNowResponse {
+            run_ref: "stub-run-ref".to_string(),
+        })
+    }
+
+    async fn get_automation_run_history(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _automation_id: String,
+        _limit: Option<u32>,
+    ) -> Result<RebornAutomationRunHistoryResponse, RebornServicesError> {
+        Ok(RebornAutomationRunHistoryResponse { runs: vec![] })
+    }
+
+    async fn list_settings_recipes(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<SettingsListResponse, RebornServicesError> {
+        Ok(SettingsListResponse { items: Vec::new() })
     }
 }
 
