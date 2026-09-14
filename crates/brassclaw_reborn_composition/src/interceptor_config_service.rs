@@ -224,7 +224,7 @@ impl RebornInterceptorConfigService {
         with_prewarm: bool,
     ) -> Result<(String, String, i64), InterceptorConfigServiceError> {
         let assembly_start = std::time::Instant::now();
-        tracing::warn!(user_id, project_id, "do_assemble_bundle: starting");
+        tracing::debug!(user_id, project_id, "do_assemble_bundle: starting");
         let client = self.pool.get().await.map_err(|e| {
             tracing::warn!(error = %e, "do_assemble_bundle: db pool unavailable");
             InterceptorConfigServiceError::Unavailable
@@ -311,7 +311,7 @@ impl RebornInterceptorConfigService {
         let fingerprint = compute_fingerprint(&bundle);
         let generation_ms = assembly_start.elapsed().as_millis() as i64;
 
-        tracing::warn!(
+        tracing::debug!(
             user_id, project_id,
             parts = parts.len(),
             generation_ms,
@@ -330,7 +330,7 @@ impl RebornInterceptorConfigService {
                     tracing::warn!(error = %e, user_id, project_id, "do_assemble_bundle: store() FAILED — bundle not persisted");
                     InterceptorConfigServiceError::Unavailable
                 })?;
-            tracing::warn!(user_id, project_id, generation_ms, "do_assemble_bundle: bundle stored successfully");
+            tracing::debug!(user_id, project_id, generation_ms, "do_assemble_bundle: bundle stored successfully");
         }
 
         Ok((bundle, fingerprint, generation_ms))

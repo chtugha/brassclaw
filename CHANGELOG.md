@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-09-14
+
+### Fixed
+
+- *(webui / prefix-tab)* **Generate now persists the bundle** — `store()` in `pg_basic_prompt_store` was silently failing because the `$8` parameter for `generation_ms` lacked an explicit `::BIGINT` cast; tokio-postgres could not infer the wire OID for `Option<i64>` and rejected every INSERT. Adding `::BIGINT` resolves the serialisation error. This was the root cause of "Generate does nothing / never generated" on a fresh install.
+- *(webui / prefix-tab)* Skeleton flash on successful regeneration eliminated — `reload()` was called on success, forcing a full re-fetch that briefly rendered the skeleton. Removed; the optimistic row-merge already updates the UI.
+- *(webui / prefix-tab)* Rate-limit double-click error now shows a human-readable message instead of the raw `rate_limited (busy)` code.
+- *(webui / llm-providers)* Fetch Models auto-select now works when the field contains a placeholder like `"default"` — fixed with an inclusion check instead of a falsy guard.
+- *(internal)* Diagnostic `warn!` log calls in `do_assemble_bundle` downgraded to `debug!`; only genuine failures remain at `warn` level.
+
 ## [1.2.3] - 2026-09-16
 
 ### Changed
