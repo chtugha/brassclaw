@@ -7,15 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.5] - 2026-09-15
+<!-- Version mapping: the v0.9.x series was re-tagged as v1.x.y for SemVer correctness.
+     v0.9.0 → v1.0.0 | v0.9.1 → v1.0.1 | v0.9.2 → v1.0.2 | v0.9.3 → v1.0.3
+     v0.9.4 → v1.1.0 | v0.9.5 → v1.1.1
+     The v0.9.x tags remain in the repo as-is; the v1.x.y tags point to the same commits. -->
+
+## [1.1.1] - 2026-09-15
+<!-- was v0.9.5 -->
 
 ### Fixed
 
 - *(host_runtime / trigger capabilities)* **`visible_capabilities` rejected all 4 new trigger capability descriptors** — `builtin.trigger_get`, `builtin.trigger_update`, `builtin.trigger_set_state`, and `builtin.trigger_run_history` were registered in `trigger_management.rs` but their input schema refs (`schemas/builtin/trigger_get.input.v1.json` etc.) were absent from `resolve_builtin_input_schema_ref` in `schemas.rs`. The surface resolver returned `InvalidRequest` for every call that included these capabilities in the execution context, breaking all agent-loop contexts that granted the new trigger permissions. Added the 4 missing JSON Schema entries.
-- *(host_runtime / tests)* **4 `first_party_builtin_tools` tests were failing** after trigger output was extended to include `prompt` in v0.9.4: three tests asserted `trigger.get("prompt").is_none()` (stale check from before prompt was added to `trigger_output()`), one asserted the list output had no prompt. All 4 updated to assert the correct positive value or `is_string()`.
+- *(host_runtime / tests)* **4 `first_party_builtin_tools` tests were failing** after trigger output was extended to include `prompt` in v1.1.0: three tests asserted `trigger.get("prompt").is_none()` (stale check from before prompt was added to `trigger_output()`), one asserted the list output had no prompt. All 4 updated to assert the correct positive value or `is_string()`.
 - *(host_runtime / tests)* **`builtin_first_party_package_declares_expected_capabilities` failed** — `all_builtin_capability_ids()` test helper listed only the original 3 trigger capabilities; the 4 new ones were missing. Test now lists all 7. Permission-mode match arm updated to include `TRIGGER_UPDATE_CAPABILITY_ID` and `TRIGGER_SET_STATE_CAPABILITY_ID` in the `Ask` branch, consistent with their `ExternalWrite` effect declarations.
 
-## [0.9.4] - 2026-09-14
+## [1.1.0] - 2026-09-14
+<!-- was v0.9.4 — MINOR bump: new HTTP endpoints, new SPA page, new DB migration -->
 
 ### Added
 
@@ -39,7 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(docs)* Rewrote `README.md` as a concise install + first-run guide. Architecture/features/heritage sections moved to `docs/agents-v3/`.
 - *(docs)* `docs/agents-v3/README.md` — replaced references to archived planning documents with a pointer to `docs/archive/`.
 
-## [0.9.3] - 2026-09-13
+### Changed
+
+- *(routing)* `/routines` and `/routines/:routineId` now redirect to `/automations`; routines-api.js marked deprecated.
+- *(settings)* All 21 Settings tab icons deduplicated across `settings-schema.js` and `routes.js`.
+- *(docs)* Rewrote `README.md` as a concise install + first-run guide. Architecture/features/heritage sections moved to `docs/agents-v3/`.
+- *(docs)* `docs/agents-v3/README.md` — replaced references to archived planning documents with a pointer to `docs/archive/`.
+
+## [1.0.3] - 2026-09-13
+<!-- was v0.9.3 -->
 
 ### Fixed
 
@@ -47,7 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(prefix-cache / Phase K.1)* **Bundle always assembled empty — wrong content column for most tables** (`crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`): `COMPONENT_TABLES` used `COALESCE(content, '') AS content` for every table, but `reborn_skills` uses the `body` column, and `reborn_tools`, `reborn_actions`, `reborn_recipes`, `reborn_extensions_unified` have no `content` column at all. Every affected table query failed silently (caught at `debug!` and skipped), so the assembled bundle was always empty. Fixed: `COMPONENT_TABLES` now carries a `content_expr` per entry matching the canonical mapping in `retrieval_source::class_code_to_table`.
 - *(prefix-cache / Phase K.1 §12)* **`mark_stale` never called after Q2 graduation** (`crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`, `crates/brassclaw_reborn_composition/src/webui.rs`): `PgRecipeStoreFacade` constructed its internal `ValidationQueueStore` without a `PgBasicPromptStore`, so `queue_store.approve()` never reached the `mark_stale` branch. The bundle stayed permanently fresh after the operator validated a component, and the Prefix Tab never showed the Regenerate prompt. Fixed by adding `PgRecipeStoreFacade::with_basic_prompt_store()` and calling it in `webui.rs` during facade construction.
 
-## [0.9.2] - 2026-09-13
+## [1.0.2] - 2026-09-13
+<!-- was v0.9.2 -->
 
 ### Fixed
 
@@ -62,6 +78,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(recipe-system / v3 Phase F.5)* **`orchestrator_content` field + full §0.9 routing dict in the `Components` arm** (`crates/brassclaw_engine/src/executor/orchestrator.rs`): the `Components` broad-scan arm of `handle_assemble_prior_knowledge` now emits the complete §0.9 dict — `orchestrator_content` (prose; all retrieved classes labelled with Capitalized `StepContextSpec` category headings; class 13 ToolSkill and class 11 reserved skipped per the §0.9 invariant), `formatted_content` (alias), `content` (raw plain-text), `override_prompt_creation`, `matched_component_ids`, `action_short_circuit`, `disambiguation`. The Solution Override sub-path emits the verbatim body as `orchestrator_content` / `formatted_content` / `content`. `StepContextSpec` (`crates/brassclaw_engine/src/memory/instruction_builder.rs`) is extended from the plan's 6 orchestrator-channel variants to cover every component class, with `from_class_code(i32) -> Option<Self>` (`None` for class 13/11) + `heading() -> &'static str`; a thin `step_context_label` helper and the `format_orchestrator_content` prose formatter live in `orchestrator.rs`.
+
+## [1.0.1] - 2026-09-12
+<!-- was v0.9.1 -->
+
+### Fixed
+
+- *(ci)* Resolve Rust 1.98.1 clippy lints (`chunks_exact_to_as_chunks`, `result_large_err`).
+- *(ci)* Remove committed Homebrew `ld64.lld` cargo config — broke macOS CI release builds.
+- *(install)* Remove dead PG/pgvector download from `install.sh`; binary is self-contained.
+- *(deps)* Update `chacha20`/`h2` to patched versions; ignore `h2@0.3` advisory via libsql.
+
+### Changed
+
+- *(ci)* Update all GitHub Actions pins to current SHAs (checkout v6, rust-toolchain stable, rust-cache v2, cargo-deny-action v2, install-action v2, cache v4). Remove push-to-main triggers — tests run on PR, merge-group, and release only.
+- *(docs)* Rewrite all READMEs and CONTRIBUTING for current Reborn codebase.
+
+## [1.0.0] - 2026-09-11
+<!-- was v0.9.0 — MAJOR: ground-up Reborn v3 rewrite; all v1 src/ removed -->
+
+### Added
+
+- *(reborn-v3)* Ground-up Reborn architecture: Monty VM Python orchestrator (`basic_mode.py`), PythonCode/Recipe/Intent engine (classes 0–23), Postgres-only persistence (embedded + external), WebUI v2 SPA, first-party capability system with 28 builtin capabilities, validation queue (Q1 orchestrated + Q2 human), builtin bootstrap seeder (full component stack at boot), `PersistentMontyDriver` with `SessionGuard` RAII, IBS (Instruction-Building-System), `fetch_for_turn` intent-driven retrieval, `SelfAuthoredBeforeCapabilityHook`, Phase V Orchestrator MCP Server settings tab.
+- *(builtin-bootstrap)* Seeded full v3 component stack (Tools + ToolSkills + Skills + PythonCode + Recipes + ExtensionCatalogues) for all first-party tools at boot. Idempotent.
+- *(migrations)* V050–V081: recipes authoring columns, intent inputs, python_code table, component import, session registry, security settings, dynamic tool loader ABI, token budget kill-switch, and all component catalog tables.
+
+### Removed
+
+- All v1 `src/` tree (mission system, WASM sandbox, libSQL backend, script lane, NEAR wallet).
 
 ## [0.64.0] - 2026-08-12
 
