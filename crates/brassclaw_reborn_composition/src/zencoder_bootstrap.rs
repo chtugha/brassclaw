@@ -586,6 +586,70 @@ pub async fn seed_zencoder_extension(
         r_get_plan, r_check_status, r_auth_setup, r_solve, r_update, r_automation,
     ]).await?;
 
+    // ---- Step 6 (plan): Skill Amendments ----
+    // Prepend Zencoder routing preambles to three existing builtin skills.
+    // Idempotent: the UPDATE is guarded by `body NOT LIKE '%Zencoder Routing%'`.
+    amend_builtin_skills(&s).await?;
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Skill amendments (Step 6)
+// ---------------------------------------------------------------------------
+
+/// Prepend a one-paragraph Zencoder routing preamble to three existing
+/// builtin skills:
+///
+/// - `skill-coding`         — check Zencoder task status before local edits
+/// - `skill-commit-workflow` — block commits while a task is inprogress/inreview
+/// - `skill-spawn-coding`   — route coding delegation to Zencoder
+///
+/// The preamble only references `skill-zencoder` by name; it does not duplicate
+/// content. The guard `body NOT LIKE '%Zencoder Routing%'` makes the UPDATE
+/// idempotent so re-seeding does not double-prepend.
+async fn amend_builtin_skills(s: &ZencoderStores) -> Result<(), SeedBuiltinBootstrapError> {
+    let client = s.pool.get().await.map_err(|e| SeedBuiltinBootstrapError::Pool { reason: e.to_string() })?;
+
+    // Each amendment is a (skill_name, preamble) pair.
+    let amendments: &[(&str, &str)] = &[
+        (
+            "skill-coding",
+            AMEND_CODING,
+        ),
+        (
+            "skill-commit-workflow",
+            AMEND_COMMIT,
+        ),
+        (
+            "skill-spawn-coding",
+            AMEND_SPAWN_CODING,
+        ),
+    ];
+
+    for (name, preamble) in amendments {
+        client
+            .execute(
+                "UPDATE reborn_skills \
+                 SET body = $1 || body \
+                 WHERE name         = $2 \
+                   AND tenant_id    = $3 \
+                   AND user_id      = $4 \
+                   AND agent_id     = $5 \
+                   AND project_id   = $6 \
+                   AND body NOT LIKE '%Zencoder Routing%'",
+                &[
+                    preamble,
+                    name,
+                    &s.tenant,
+                    &SEED_USER,
+                    &SEED_AGENT,
+                    &SEED_PROJECT,
+                ],
+            )
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Db { reason: format!("amend {name}: {e}") })?;
+    }
     Ok(())
 }
 
@@ -1207,4 +1271,35 @@ Token lifetime: ~24 hours.
 
 ### Setup
 - zencoder-auth-setup — display authentication instructions (Tier 0)
+"#;
+
+// ---------------------------------------------------------------------------
+// Skill amendment preamble bodies (Step 6)
+// ---------------------------------------------------------------------------
+
+/// Prepended to `skill-coding`.
+const AMEND_CODING: &str = r#"## Zencoder Routing (see skill-zencoder for full rules)
+If task_id is present in conversation → call zencoder-check-solution-status before
+editing locally. If the user explicitly delegates coding work → call
+zencoder-solve-coding-problem to create a Zencoder task. Otherwise → native coding
+behavior below.
+---
+
+"#;
+
+/// Prepended to `skill-commit-workflow`.
+const AMEND_COMMIT: &str = r#"## Zencoder Routing (see skill-zencoder for full rules)
+If task_id is in context AND the Zencoder task status is inprogress or inreview →
+block the commit and warn the user once. Otherwise → native commit behavior below.
+---
+
+"#;
+
+/// Prepended to `skill-spawn-coding`.
+const AMEND_SPAWN_CODING: &str = r#"## Zencoder Routing (see skill-zencoder for full rules)
+Coding delegation (code / file / function / API / test / build / refactor / bug /
+PR / branch) → prefer zencoder-solve-coding-problem to delegate to the remote
+Zencoder pipeline. Non-coding tasks → native spawn-coding delegation below.
+---
+
 "#;
