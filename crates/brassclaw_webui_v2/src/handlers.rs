@@ -1200,11 +1200,12 @@ pub async fn record_recipe_outcome(
     Ok(Json(response))
 }
 
-/// Query parameters for the list endpoints. `project_id` is required
-/// — the wire enforces it so the engine can scope queries by
-/// `(user_id, project_id)` without guessing.
+/// Query parameters for the list endpoints. `project_id` defaults to
+/// `"default"` when omitted so settings-tab callers that operate in the
+/// default scope don't have to pass it explicitly.
 #[derive(Debug, Deserialize)]
 pub struct RecipeListQuery {
+    #[serde(default = "default_project_id")]
     pub project_id: String,
 }
 
@@ -1212,14 +1213,20 @@ pub struct RecipeListQuery {
 /// `q` selects the queue bucket; omitting it defaults to `manual` (Q2).
 #[derive(Debug, Deserialize)]
 pub struct ValidationQueueQuery {
+    #[serde(default = "default_project_id")]
     pub project_id: String,
     pub q: Option<ValidationQueueFilter>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ValidationCountQuery {
+    #[serde(default = "default_project_id")]
     pub project_id: String,
     pub status: String,
+}
+
+fn default_project_id() -> String {
+    "default".to_string()
 }
 
 #[derive(Debug, Deserialize)]

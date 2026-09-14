@@ -814,17 +814,27 @@ registerPack("en", {
   "automations.runs_empty": "No runs recorded yet.",
   "automations.run_started": "Started",
   "automations.run_finished": "Finished",
+  "automations.run_duration": "Duration",
+  "automations.run_status": "Status",
+
+  // Automation run status labels
+  "automations.status_ok": "Done",
+  "automations.status_error": "Error",
 
   // Automation errors
   "automations.error_not_found": "Automation not found.",
+  "automations.error_has_active_fire": "Automation is running — pause it first, then try again.",
   "automations.error.name_required": "Name is required.",
   "automations.error.invalid_cron": "Invalid cron expression.",
   "automations.error.prompt_required": "Prompt is required.",
+  "automations.error.has_active_fire": "Automation is running — pause it first, then try again.",
 
   // Automation state labels
   "automations.state_active": "Active",
+  "automations.state_scheduled": "Scheduled",
   "automations.state_paused": "Paused",
   "automations.state_completed": "Completed",
+  "automations.state_unknown": "Unknown",
 
   // Routines page
   "routines.explorer": "Tasks",

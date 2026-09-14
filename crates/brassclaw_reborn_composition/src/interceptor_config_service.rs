@@ -500,7 +500,7 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                     reason: format!("model profile id: {e}"),
                 }
             })?;
-            let content_ref = LoopMessageRef::new("interceptor:regenerate_prefix".to_string())
+            let content_ref = LoopMessageRef::new("msg:interceptor.regenerate-prefix")
                 .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
                     reason: format!("message ref: {e}"),
                 })?;
@@ -654,5 +654,19 @@ mod tests {
         assert!(bundle.contains("Skill"));
         assert!(bundle.contains("test-skill"));
         assert!(bundle.contains("content"));
+    }
+
+    #[test]
+    fn prewarm_content_ref_literal_is_a_valid_loop_message_ref() {
+        // Regression: the literal used for the Sempai pre-warm HostManagedModelRequest
+        // must satisfy LoopMessageRef validation (prefix "msg:" + alphanumeric/._-).
+        // Previously "interceptor:regenerate_prefix" was used which fails with
+        // `loop_message_ref must start with msg:`, producing the 400 invalid_request
+        // error shown in the WebUI prefix tab.
+        use brassclaw_turns::LoopMessageRef;
+        assert!(
+            LoopMessageRef::new("msg:interceptor.regenerate-prefix").is_ok(),
+            "prewarm content_ref literal must be a valid LoopMessageRef"
+        );
     }
 }

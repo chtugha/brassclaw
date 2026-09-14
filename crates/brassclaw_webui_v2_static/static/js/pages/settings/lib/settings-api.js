@@ -247,25 +247,26 @@ export function updateChatPreference(key, value) {
 
 // Phase 6 — Validation queue (operator review surface).
 // Reuses the existing v2 recipe/tool-skill validation-queue endpoints.
+// project_id defaults to "default" for the global settings scope.
 export function fetchValidationQueue() {
-  return apiFetch("/api/webchat/v2/validation-queue");
+  return apiFetch("/api/webchat/v2/validation-queue?project_id=default");
 }
 export function fetchValidationQueueCount() {
-  return apiFetch("/api/webchat/v2/validation-queue/count");
+  return apiFetch("/api/webchat/v2/validation-queue/count?project_id=default&status=pending");
 }
 // Move a component from auto_passed → validated (Q2 manual approve).
 // For class_code 10 (Orchestrator) and 50 (Scaffold) the backend enforces
 // an LLM audit-clean guard; the frontend mirrors that with a disabled state.
 export function validateComponent(classCode, componentId) {
   return apiFetch(
-    `/api/webchat/v2/components/${encodeURIComponent(classCode)}/${encodeURIComponent(componentId)}/validate`,
+    `/api/webchat/v2/components/${encodeURIComponent(classCode)}/${encodeURIComponent(componentId)}/validate?project_id=default`,
     { method: "PUT", body: JSON.stringify({}) }
   );
 }
 // Move a component to rejected (Q3 / Q4 depending on review_attempts).
 export function rejectComponent(classCode, componentId, feedback) {
   return apiFetch(
-    `/api/webchat/v2/components/${encodeURIComponent(classCode)}/${encodeURIComponent(componentId)}/reject`,
+    `/api/webchat/v2/components/${encodeURIComponent(classCode)}/${encodeURIComponent(componentId)}/reject?project_id=default`,
     { method: "PUT", body: JSON.stringify({ feedback: feedback ?? null }) }
   );
 }

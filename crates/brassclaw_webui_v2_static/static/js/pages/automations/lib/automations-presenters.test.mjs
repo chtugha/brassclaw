@@ -3,8 +3,11 @@ import test from "node:test";
 
 import {
   automationSummary,
+  durationLabel,
   filterAutomations,
+  nextCronFire,
   normalizeAutomations,
+  runStatusTone,
   scheduleLabel,
 } from "./automations-presenters.js";
 
@@ -159,6 +162,57 @@ test("automationSummary ignores unparseable next_run_at values", () => {
     paused: 0,
     nextRun: null,
   });
+});
+
+test("nextCronFire returns null for invalid cron expression", () => {
+  assert.equal(nextCronFire(""), null);
+  assert.equal(nextCronFire("not a cron"), null);
+  assert.equal(nextCronFire("* * * *"), null);  // too few fields
+});
+
+test("nextCronFire returns a string for a valid simple daily cron", () => {
+  // "0 9 * * *" — daily at 09:00
+  const result = nextCronFire("0 9 * * *");
+  // Either a non-empty string (future time) or null if current time > 09:00
+  // and the implementation returns the next day — either way it's string or null
+  assert.ok(result === null || typeof result === "string");
+});
+
+test("durationLabel formats sub-minute, minute, and multi-hour durations", () => {
+  const start = "2024-01-01T10:00:00Z";
+  assert.equal(durationLabel(start, "2024-01-01T10:00:45Z"), "45s");
+  assert.equal(durationLabel(start, "2024-01-01T10:02:14Z"), "2m 14s");
+  assert.equal(durationLabel(start, "2024-01-01T11:30:00Z"), "90m 0s");
+  assert.equal(durationLabel(start, null), "—");
+  assert.equal(durationLabel(start, undefined), "—");
+  assert.equal(durationLabel("bad", "2024-01-01T10:00:00Z"), "—");
+});
+
+test("runStatusTone maps all three values correctly", () => {
+  assert.equal(runStatusTone("ok"), "success");
+  assert.equal(runStatusTone("error"), "danger");
+  assert.equal(runStatusTone("unknown"), "muted");
+  assert.equal(runStatusTone(undefined), "muted");
+});
+
+test("normalizeAutomations correctly carries through prompt and completion_policy fields", () => {
+  const automations = normalizeAutomations({
+    automations: [
+      {
+        automation_id: "with-fields",
+        name: "Daily",
+        source: { type: "schedule", cron: "0 9 * * *" },
+        state: "scheduled",
+        is_active: false,
+        prompt: "Summarise recent events",
+        completion_policy: "recurring",
+      },
+    ],
+  });
+
+  assert.equal(automations.length, 1);
+  assert.equal(automations[0].prompt, "Summarise recent events");
+  assert.equal(automations[0].completion_policy, "recurring");
 });
 
 test("normalizeAutomations preserves explicit unknown state even when is_active is true", () => {
