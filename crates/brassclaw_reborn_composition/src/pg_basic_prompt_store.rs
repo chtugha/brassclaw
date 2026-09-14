@@ -114,27 +114,50 @@ mod inner {
             project_id: &str,
         ) -> Result<Option<BasicPromptEntry>, BasicPromptStoreError> {
             let client = self.pool.get().await?;
-            let row = client
-                .query_opt(
-                    "SELECT id, bundle_json::text, fingerprint,
-                            is_stale, assembled_at, prewarm_last_at, updated_at,
-                            -- generation_ms added by V083; NULL-coalesced for pre-V083 installs
-                            CASE WHEN EXISTS (
-                                SELECT 1 FROM information_schema.columns
-                                WHERE table_name = 'reborn_basic_prompt_store'
-                                  AND column_name = 'generation_ms'
-                            ) THEN generation_ms ELSE NULL END AS generation_ms
-                     FROM reborn_basic_prompt_store
-                     WHERE tenant_id = $1 AND user_id = $2
-                       AND agent_id  = $3 AND project_id = $4",
-                    &[
-                        &self.tenant_id.as_str(),
-                        &user_id,
-                        &self.agent_id.as_str(),
-                        &project_id,
-                    ],
-                )
-                .await?;
+            // Try to read generation_ms (V083). If the column doesn't exist on
+            // an older schema, fall back to a query without it.
+            let row = {
+                let full_row = client
+                    .query_opt(
+                        "SELECT id, bundle_json::text, fingerprint,
+                                is_stale, assembled_at, prewarm_last_at, updated_at,
+                                generation_ms
+                         FROM reborn_basic_prompt_store
+                         WHERE tenant_id = $1 AND user_id = $2
+                           AND agent_id  = $3 AND project_id = $4",
+                        &[
+                            &self.tenant_id.as_str(),
+                            &user_id,
+                            &self.agent_id.as_str(),
+                            &project_id,
+                        ],
+                    )
+                    .await;
+
+                match full_row {
+                    Ok(row) => (row, true),
+                    Err(_) => {
+                        // V083 column absent — fall back to the pre-V083 query.
+                        let row = client
+                            .query_opt(
+                                "SELECT id, bundle_json::text, fingerprint,
+                                        is_stale, assembled_at, prewarm_last_at, updated_at
+                                 FROM reborn_basic_prompt_store
+                                 WHERE tenant_id = $1 AND user_id = $2
+                                   AND agent_id  = $3 AND project_id = $4",
+                                &[
+                                    &self.tenant_id.as_str(),
+                                    &user_id,
+                                    &self.agent_id.as_str(),
+                                    &project_id,
+                                ],
+                            )
+                            .await?;
+                        (row, false)
+                    }
+                }
+            };
+            let (row, has_generation_ms) = row;
 
             Ok(row.map(|r| {
                 // bundle_json is a JSONB string value — extract the inner string.
@@ -148,7 +171,7 @@ mod inner {
                     assembled_at: r.get(4),
                     prewarm_last_at: r.get(5),
                     updated_at: r.get(6),
-                    generation_ms: r.get(7),
+                    generation_ms: if has_generation_ms { r.get(7) } else { None },
                 }
             }))
         }
