@@ -212,11 +212,13 @@ def main(context, goal, actions, state, config):
         signal = host.check_signals()
         if signal == "stop":
             FINAL({"outcome": "stopped", "state": state})
+            continue
 
         # 2. Park until the driver feeds this turn's user input.
         user_input = host.await_next_turn()
         if user_input == "":
             FINAL({"outcome": "completed", "response": "", "state": state})
+            continue
         history.append({"role": "User", "content": user_input})
 
         # 3. Resolve intent + dispatch.

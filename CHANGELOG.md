@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      v0.9.4 → v1.1.0 | v0.9.5 → v1.1.1
      The v0.9.x tags remain in the repo as-is; the v1.x.y tags point to the same commits. -->
 
+## [1.1.2] - 2026-09-14
+
+### Fixed
+
+- *(engine / orchestrator)* **`basic_mode.py` fell through past `FINAL(...)` on stop and empty-input paths** — `FINAL(...)` in Monty registers the final result but does not halt execution; without an explicit `continue` after each call the script continued into intent resolution with an empty `user_input`, sending empty-string queries to the LLM every turn. Added `continue` after both `FINAL(...)` calls in the `while True` loop.
+- *(composition / persistent-monty-driver)* **Every turn received an empty user input** — `PersistentMontyDriver::drive_turn` read the current turn's user message from `Thread.messages`, but `PgThreadEngineStore::map_record` always returns an empty messages vec (it maps only thread metadata, not transcript rows). Result: `host.await_next_turn()` received `""` every turn, causing the VM to take the empty-input termination path. Fixed by loading the last `Submitted` `User` message directly from `SessionThreadService::latest_thread_message` instead.
+
 ## [1.1.1] - 2026-09-15
 <!-- was v0.9.5 -->
 

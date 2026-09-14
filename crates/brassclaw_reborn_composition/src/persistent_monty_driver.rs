@@ -44,8 +44,16 @@
 //! The trusted applier accepts empty-ref completed exits (the orchestrator owns
 //! the durable reply artifact). C6-4=C: full e2e "drives a turn" verification is
 //! CI/Docker; local verification = unit tests for the signal broker, the
-//! last-user-input extraction, the exit-id construction, and a `Send + Sync`
-//! assert on the driver.
+//! exit-id construction, and a `Send + Sync` assert on the driver.
+//!
+//! ## User-input source
+//!
+//! The current turn's user input is loaded from the `SessionThreadService` via
+//! `latest_thread_message` (last finalized `User` message). The engine `Thread`
+//! returned by `PgThreadEngineStore::load_thread` carries an empty `messages`
+//! vec — it only maps metadata — so reading from `thread.messages` would always
+//! produce `""`, causing the VM to take the empty-input `FINAL(...)` path on
+//! every turn.
 
 #![forbid(unsafe_code)]
 
@@ -80,13 +88,14 @@ use brassclaw_engine::{
     traits::effect::EffectExecutor,
     types::{
         event::ThreadEvent,
-        message::{MessageRole, ThreadMessage},
+        message::MessageRole,
         thread::{Thread, ThreadId as EngineThreadId},
     },
 };
 #[cfg(feature = "skills-db")]
 use brassclaw_threads::{
-    AppendAssistantDraftRequest, MessageContent, SessionThreadService, ThreadScope,
+    AppendAssistantDraftRequest, LatestThreadMessageRequest, MessageContent, MessageKind,
+    MessageStatus, SessionThreadService, ThreadScope,
 };
 #[cfg(feature = "skills-db")]
 use brassclaw_turns::{
@@ -533,34 +542,6 @@ fn completed_exit_id(run_id: &TurnRunId) -> Result<LoopExitId, AgentLoopDriverEr
     })
 }
 
-/// The content of the last `User` message in `messages`, or `""` when there is
-/// none. Mirrors `basic_mode.py::_last_user_input`.
-#[cfg(feature = "skills-db")]
-fn last_user_input_from_messages(messages: &[ThreadMessage]) -> String {
-    let mut last = String::new();
-    for msg in messages {
-        if msg.role == MessageRole::User {
-            last = msg.content.clone();
-        }
-    }
-    last
-}
-
-/// The current turn's user input: the last `User` message in the bootstrap
-/// transcript the orchestrator consults (`internal_messages` when non-empty,
-/// else the user-visible `messages`). Mirrors `build_orchestrator_inputs`'
-/// `bootstrap_messages` choice so the input delivered via
-/// `host.await_next_turn()` is the same message `_seed_history` dropped.
-#[cfg(feature = "skills-db")]
-fn last_user_input_string(thread: &Thread) -> String {
-    let messages = if thread.internal_messages.is_empty() {
-        &thread.messages
-    } else {
-        &thread.internal_messages
-    };
-    last_user_input_from_messages(messages)
-}
-
 /// Build a [`ThreadScope`] from a [`TurnScope`] for use with
 /// [`SessionThreadService`] calls. `agent_id` falls back to `"default"` when
 /// the `TurnScope` does not carry an explicit agent (tenant-level turns).
@@ -597,7 +578,42 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
                 })?;
         let mut thread = thread;
 
-        let user_input = last_user_input_string(&thread);
+        // Load the last finalized User message from the session thread service.
+        // `PgThreadEngineStore::map_record` always returns an empty `messages`
+        // vec (it only maps metadata, not transcript rows), so reading
+        // `last_user_input_string` from `thread.messages` returns `""` on every
+        // turn — causing the VM to hit the empty-input `FINAL(...)` path instead
+        // of processing the actual user message.
+        let thread_scope = thread_scope_from_turn_scope(&context.scope);
+        let user_input = match self
+            .session_thread_service
+            .latest_thread_message(LatestThreadMessageRequest {
+                scope: thread_scope,
+                thread_id: context.scope.thread_id.clone(),
+                kind: MessageKind::User,
+                // By the time the driver runs the inbound turn coordinator has
+                // transitioned the User message from Accepted → Submitted.
+                status: MessageStatus::Submitted,
+            })
+            .await
+        {
+            Ok(Some(record)) => record.content.unwrap_or_default(),
+            Ok(None) => {
+                debug!(
+                    run_id = %context.run_id,
+                    "PersistentMontyDriver: no finalized user message found; using empty input"
+                );
+                String::new()
+            }
+            Err(error) => {
+                debug!(
+                    run_id = %context.run_id,
+                    %error,
+                    "PersistentMontyDriver: failed to load last user message; using empty input"
+                );
+                String::new()
+            }
+        };
         let max_duration_override = self.max_duration_secs.map(std::time::Duration::from_secs);
 
         // Per-turn signal channel: the broker holds the sender so the turn
@@ -627,7 +643,6 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
 #[cfg(all(test, feature = "skills-db"))]
 mod tests {
     use super::*;
-    use brassclaw_engine::types::message::ThreadMessage;
     use brassclaw_host_api::{ProjectId, TenantId, ThreadId};
 
     fn test_scope(suffix: &str) -> TurnScope {
@@ -675,31 +690,6 @@ mod tests {
         // No `set` — send must not panic and must not block.
         broker.send(&scope, ThreadSignal::Stop).await;
         assert!(broker.senders.lock().await.is_empty());
-    }
-
-    #[test]
-    fn last_user_input_from_messages_returns_last_user_content() {
-        let messages = vec![
-            ThreadMessage::system("system prompt"),
-            ThreadMessage::user("first question"),
-            ThreadMessage::system("assistant answer"),
-            ThreadMessage::user("second question"),
-        ];
-        assert_eq!(last_user_input_from_messages(&messages), "second question");
-    }
-
-    #[test]
-    fn last_user_input_from_messages_returns_empty_when_no_user_messages() {
-        let messages = vec![
-            ThreadMessage::system("system prompt"),
-            ThreadMessage::system("assistant answer"),
-        ];
-        assert_eq!(last_user_input_from_messages(&messages), "");
-    }
-
-    #[test]
-    fn last_user_input_from_messages_returns_empty_for_empty_transcript() {
-        assert_eq!(last_user_input_from_messages(&[]), "");
     }
 
     #[test]
