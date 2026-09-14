@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-15
+
+### Added
+
+- *(webui / prefix-tab)* **"Generated X days ago" and "Generation time" counters in the Prefix Cache tab** — each prefix entry now shows how long ago the last bundle was assembled (today / 1 day ago / N days ago) and the wall-clock time the assembly took (< 1 min / N min). Both fields replace the previous raw ISO-8601 `assembled_at` timestamp line.
+- *(db / V083)* New `generation_ms BIGINT` column on `reborn_basic_prompt_store` — records assembly wall-clock time in milliseconds. `NULL` for rows written before V083; no back-fill needed.
+- *(api)* `PrefixEntry` and `PrefixRegenerateResponse` now include a `generation_ms` field (omitted from JSON when `null`).
+
+### Fixed
+
+- *(webui / prefix-tab)* Rate-limit error on double-click now shows **"Already in progress — please wait a moment before trying again."** instead of the raw `rate_limited (busy)` error code.
+- *(webui / prefix-tab)* Added a **spinning indicator** next to the badge while generation is in progress, making it clear the first click was accepted.
+
 <!-- Version mapping: the v0.9.x series was re-tagged as v1.x.y for SemVer correctness.
      v0.9.0 → v1.0.0 | v0.9.1 → v1.0.1 | v0.9.2 → v1.0.2 | v0.9.3 → v1.0.3
      v0.9.4 → v1.1.0 | v0.9.5 → v1.1.1

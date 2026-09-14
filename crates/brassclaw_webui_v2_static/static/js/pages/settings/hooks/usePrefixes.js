@@ -61,14 +61,24 @@ export function usePrefixes() {
       // Reload the full list so the tab reflects the latest DB state.
       reload();
     } catch (err) {
-      // Try to surface a human-readable message from the API error payload.
-      let msg = err.message || String(err);
-      try {
-        const parsed = typeof msg === "string" ? JSON.parse(msg) : null;
-        if (parsed?.error) {
-          msg = `${parsed.error}${parsed.kind && parsed.kind !== parsed.error ? ` (${parsed.kind})` : ""}`;
-        }
-      } catch (_) {}
+      // Use the structured payload from ApiError when available.
+      // For a 429 rate-limit the payload is { code: "rate_limited", kind: "busy", retryable: true }.
+      // Fall back to raw message parsing for non-ApiError throws.
+      let msg;
+      const payload = err?.payload;
+      if (payload?.code === "rate_limited") {
+        msg = "rate_limited_cooldown";
+      } else if (payload?.code) {
+        msg = `${payload.code}${payload.kind && payload.kind !== payload.code ? ` (${payload.kind})` : ""}`;
+      } else {
+        msg = err.message || String(err);
+        try {
+          const parsed = typeof msg === "string" ? JSON.parse(msg) : null;
+          if (parsed?.error) {
+            msg = `${parsed.error}${parsed.kind && parsed.kind !== parsed.error ? ` (${parsed.kind})` : ""}`;
+          }
+        } catch (_) {}
+      }
       setRegenerateError(msg);
     } finally {
       setRegenerating((prev) => {

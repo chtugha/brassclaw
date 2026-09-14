@@ -1077,6 +1077,7 @@ impl RebornServicesApi for StubServices {
             fingerprint: String::new(),
             assembled_at: "2024-01-01T00:00:00Z".to_string(),
             prewarm_last_at: None,
+            generation_ms: None,
         })
     }
 

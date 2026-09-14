@@ -211,7 +211,7 @@ impl RebornInterceptorConfigService {
     }
 
     /// Assemble the bundle from component tables, store it in `PgBasicPromptStore`,
-    /// and return `(bundle_text, fingerprint)`.
+    /// and return `(bundle_text, fingerprint, generation_ms)`.
     ///
     /// Checks `information_schema.tables` before querying each table so
     /// future-phase tables (not yet deployed) are skipped gracefully.
@@ -222,7 +222,8 @@ impl RebornInterceptorConfigService {
         user_id: &str,
         project_id: &str,
         with_prewarm: bool,
-    ) -> Result<(String, String), InterceptorConfigServiceError> {
+    ) -> Result<(String, String, i64), InterceptorConfigServiceError> {
+        let assembly_start = std::time::Instant::now();
         let client = self.pool.get().await.map_err(|e| {
             tracing::debug!(error = %e, "do_assemble_bundle: db pool unavailable");
             InterceptorConfigServiceError::Unavailable
@@ -307,18 +308,19 @@ impl RebornInterceptorConfigService {
 
         let bundle = Self::do_format_bundle(&parts);
         let fingerprint = compute_fingerprint(&bundle);
+        let generation_ms = assembly_start.elapsed().as_millis() as i64;
 
         // Store the bundle text so per-turn calls can read it cheaply.
         #[cfg(feature = "postgres")]
         if let Some(store) = &self.pg_basic_prompt_store
             && let Err(e) = store
-                .store(user_id, project_id, &bundle, with_prewarm)
+                .store(user_id, project_id, &bundle, with_prewarm, Some(generation_ms))
                 .await
         {
             tracing::debug!(error = %e, "do_assemble_bundle: store() failed (non-fatal)");
         }
 
-        Ok((bundle, fingerprint))
+        Ok((bundle, fingerprint, generation_ms))
     }
 
     /// Convert the sorted row set into the final bundle string.
@@ -452,6 +454,7 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                     .as_ref()
                     .and_then(|e| e.prewarm_last_at)
                     .map(|t| t.to_rfc3339()),
+                generation_ms: entry.as_ref().and_then(|e| e.generation_ms),
             }];
             return Ok(PrefixListResponse { prefixes });
         }
@@ -463,6 +466,7 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                 is_stale: true,
                 assembled_at: None,
                 prewarm_last_at: None,
+                generation_ms: None,
             }],
         })
     }
@@ -485,7 +489,7 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             .await?;
 
         // Assemble and store the bundle (with_prewarm=false initially; updated below if gateway succeeds).
-        let (bundle, fingerprint) = self.do_assemble_bundle(user_id, project_id, false).await?;
+        let (bundle, fingerprint, generation_ms) = self.do_assemble_bundle(user_id, project_id, false).await?;
 
         // Pre-warm the Sempai gateway so vLLM allocates KV blocks.
         let mut with_prewarm = false;
@@ -532,10 +536,11 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             }
 
             // Re-store with prewarm=true to update prewarm_last_at.
+            // generation_ms is not re-measured here — it was captured during assembly above.
             #[cfg(feature = "postgres")]
             if let Some(store) = &self.pg_basic_prompt_store
                 && let Ok(Some(entry)) = store.get_for_scope(user_id, project_id).await
-                && let Err(e) = store.store(user_id, project_id, &entry.bundle, true).await
+                && let Err(e) = store.store(user_id, project_id, &entry.bundle, true, entry.generation_ms).await
             {
                 // Re-assemble is not needed; re-read the already-stored bundle and call store() with prewarm=true.
                 tracing::debug!(error = %e, "regenerate_prefix: re-store with prewarm failed");
@@ -575,6 +580,7 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             fingerprint,
             assembled_at,
             prewarm_last_at: prewarm_last_at_str,
+            generation_ms: Some(generation_ms),
         })
     }
 }

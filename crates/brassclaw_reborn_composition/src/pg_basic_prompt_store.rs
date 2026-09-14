@@ -72,6 +72,9 @@ mod inner {
         pub prewarm_last_at: Option<chrono::DateTime<chrono::Utc>>,
         #[allow(dead_code)]
         pub updated_at: chrono::DateTime<chrono::Utc>,
+        /// Wall-clock milliseconds the last bundle assembly took (V083).
+        /// `None` for rows written before V083 was applied.
+        pub generation_ms: Option<i64>,
     }
 
     // -----------------------------------------------------------------------
@@ -114,7 +117,8 @@ mod inner {
             let row = client
                 .query_opt(
                     "SELECT id, bundle_json::text, fingerprint,
-                            is_stale, assembled_at, prewarm_last_at, updated_at
+                            is_stale, assembled_at, prewarm_last_at, updated_at,
+                            generation_ms
                      FROM reborn_basic_prompt_store
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id  = $3 AND project_id = $4",
@@ -139,6 +143,7 @@ mod inner {
                     assembled_at: r.get(4),
                     prewarm_last_at: r.get(5),
                     updated_at: r.get(6),
+                    generation_ms: r.get(7),
                 }
             }))
         }
@@ -148,12 +153,14 @@ mod inner {
         /// - Always sets `is_stale = false` and `assembled_at = now()`.
         /// - Sets `prewarm_last_at = now()` when `with_prewarm = true`.
         /// - Computes `fingerprint = sha256(bundle)` before writing.
+        /// - Persists `generation_ms` when provided (V083).
         pub(crate) async fn store(
             &self,
             user_id: &str,
             project_id: &str,
             bundle: &str,
             with_prewarm: bool,
+            generation_ms: Option<i64>,
         ) -> Result<BasicPromptEntry, BasicPromptStoreError> {
             let fp = compute_fingerprint(bundle);
             // Encode bundle as a JSON string value for the JSONB column.
@@ -166,10 +173,10 @@ mod inner {
                     "INSERT INTO reborn_basic_prompt_store
                          (tenant_id, user_id, agent_id, project_id,
                           bundle_json, fingerprint, is_stale,
-                          assembled_at, prewarm_last_at, updated_at)
+                          assembled_at, prewarm_last_at, updated_at, generation_ms)
                      VALUES ($1, $2, $3, $4, $5::JSONB, $6, false, now(),
                              CASE WHEN $7 THEN now() ELSE NULL END,
-                             now())
+                             now(), $8)
                      ON CONFLICT ON CONSTRAINT reborn_basic_prompt_store_scope_unique
                      DO UPDATE SET
                          bundle_json     = EXCLUDED.bundle_json,
@@ -180,7 +187,8 @@ mod inner {
                              WHEN $7 THEN now()
                              ELSE reborn_basic_prompt_store.prewarm_last_at
                          END,
-                         updated_at      = now()",
+                         updated_at      = now(),
+                         generation_ms   = EXCLUDED.generation_ms",
                     &[
                         &self.tenant_id.as_str(),
                         &user_id,
@@ -189,6 +197,7 @@ mod inner {
                         &bundle_json_str,
                         &fp,
                         &with_prewarm,
+                        &generation_ms,
                     ],
                 )
                 .await?;

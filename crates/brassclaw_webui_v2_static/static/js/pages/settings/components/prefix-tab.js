@@ -40,7 +40,9 @@ export function PrefixTab() {
       ${regenerateError &&
         html`
           <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            ${t("prefix.regenerateError", { message: regenerateError })}
+            ${regenerateError === "rate_limited_cooldown"
+              ? t("prefix.rateLimitError")
+              : t("prefix.regenerateError", { message: regenerateError })}
           </div>
         `}
 
@@ -83,6 +85,33 @@ export function PrefixTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers for human-readable time display.
+// ---------------------------------------------------------------------------
+
+/** Return whole days elapsed since an ISO-8601 timestamp string, or null. */
+function daysAgo(isoString) {
+  if (!isoString) return null;
+  const then = new Date(isoString);
+  if (isNaN(then.getTime())) return null;
+  return Math.floor((Date.now() - then.getTime()) / 86_400_000);
+}
+
+/** Format generation_ms (integer ms) as a rounded-minute string, or null. */
+function fmtGenerationTime(ms, t) {
+  if (ms == null) return null;
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return t("prefix.generationTimeSub1Min");
+  return t("prefix.generationTime", { minutes });
+}
+
+/** Format days-ago label using the right singular/plural key. */
+function fmtGeneratedAgo(days, t) {
+  if (days === 0) return t("prefix.generatedToday");
+  if (days === 1) return t("prefix.generatedAgo", { days });
+  return t("prefix.generatedAgoDays", { days });
+}
+
+// ---------------------------------------------------------------------------
 // PrefixEntryRow — one row per named prefix bundle.
 // ---------------------------------------------------------------------------
 
@@ -105,6 +134,10 @@ function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
     ? t("prefix.regenerating")
     : t("prefix.regenerate");
 
+  const days = daysAgo(entry.assembled_at);
+  const generatedAgoLabel = days != null ? fmtGeneratedAgo(days, t) : null;
+  const generationTimeLabel = fmtGenerationTime(entry.generation_ms, t);
+
   return html`
     <div className="flex items-center justify-between gap-4 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-3">
       <div className="min-w-0 flex-1">
@@ -113,6 +146,11 @@ function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
             ${entry.name}
           </span>
           <${Badge} tone=${staleTone} label=${staleLabel} size="sm" />
+          ${isRegenerating &&
+            html`<span
+              className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[var(--v2-accent-text)] border-t-transparent"
+              aria-label="Generating"
+            />`}
         </div>
         ${entry.fingerprint &&
           html`
@@ -120,10 +158,11 @@ function PrefixEntryRow({ entry, isRegenerating, onRegenerate, t }) {
               ${t("prefix.fingerprint")}: ${entry.fingerprint}
             </div>
           `}
-        ${entry.assembled_at &&
+        ${(generatedAgoLabel || generationTimeLabel) &&
           html`
-            <div className="mt-0.5 text-[11px] text-[var(--v2-text-muted)]">
-              ${t("prefix.assembledAt")}: ${entry.assembled_at}
+            <div className="mt-1 flex gap-3 text-[11px] text-[var(--v2-text-muted)]">
+              ${generatedAgoLabel && html`<span>${generatedAgoLabel}</span>`}
+              ${generationTimeLabel && html`<span>${generationTimeLabel}</span>`}
             </div>
           `}
       </div>

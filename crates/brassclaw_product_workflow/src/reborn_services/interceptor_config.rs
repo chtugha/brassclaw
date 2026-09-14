@@ -47,6 +47,10 @@ pub struct PrefixEntry {
     pub assembled_at: Option<String>,
     /// ISO-8601 timestamp of the last pre-warm gateway call, or `None`.
     pub prewarm_last_at: Option<String>,
+    /// Wall-clock milliseconds the last assembly took (V083).
+    /// `None` for entries written before V083 was applied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_ms: Option<i64>,
 }
 
 /// Response body for `GET /api/prefixes`.
@@ -67,6 +71,9 @@ pub struct PrefixRegenerateResponse {
     /// ISO-8601 timestamp of the pre-warm gateway call, or `None` if no
     /// Sempai gateway is configured.
     pub prewarm_last_at: Option<String>,
+    /// Wall-clock milliseconds this assembly took (V083).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_ms: Option<i64>,
 }
 
 /// Interceptor configuration + control service (product-layer port).
