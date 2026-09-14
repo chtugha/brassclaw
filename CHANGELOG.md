@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      v0.9.4 → v1.1.0 | v0.9.5 → v1.1.1
      The v0.9.x tags remain in the repo as-is; the v1.x.y tags point to the same commits. -->
 
+## [1.1.3] - 2026-09-14
+
+### Fixed
+
+- *(embedded_postgres / config)* **Double-nested postgres bin directory on first install** — `bin_cache_dir` was set to `home/postgres/bin`. The tarball extractor strips one top-level path component and writes into `bin_cache_dir`, so `pg_ctl` landed at `postgres/bin/bin/pg_ctl`. The runtime then computed `pg_bin_dir = install_dir.join("bin")` = `postgres/bin/bin` — a path that never existed — and failed to spawn any postgres process with "No such file or directory". Fixed by setting `bin_cache_dir = home.join("postgres")` so extraction produces `postgres/bin/pg_ctl` and the existing `pg_bin_dir` derivation resolves correctly.
+- *(uninstall.sh)* Hardened wipe path: remove systemd drop-in dir, run `systemctl reset-failed`, `pkill` any lingering brassclaw-user child processes, attempt graceful `pg_ctl stop` for both old and new pg binary paths, and remove leftover Unix socket files.
+
 ## [1.1.2] - 2026-09-14
 
 ### Fixed
