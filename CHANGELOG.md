@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-09-14
+
+### Fixed
+
+- *(webui / prefix-tab)* **Regenerate on fresh install now succeeds** — `store()` in `pg_basic_prompt_store` was failing with *"error serializing parameter 4"* because `$5::JSONB` caused `tokio-postgres` to infer the wire OID as JSONB (3802) for a Rust `String` parameter; `String`'s `ToSql` impl only handles text-family OIDs and rejected the bind. Changed to `$5::text::jsonb` so the parameter is inferred as TEXT (which `String` serialises correctly) and Postgres casts `text → jsonb` inline. Also removed the now-redundant `$8::BIGINT` cast on `generation_ms`.
+
 ## [1.2.4] - 2026-09-14
 
 ### Fixed

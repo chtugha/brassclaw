@@ -202,9 +202,9 @@ mod inner {
                          (tenant_id, user_id, agent_id, project_id,
                           bundle_json, fingerprint, is_stale,
                           assembled_at, prewarm_last_at, updated_at, generation_ms)
-                     VALUES ($1, $2, $3, $4, $5::JSONB, $6, false, now(),
+                     VALUES ($1, $2, $3, $4, $5::text::jsonb, $6, false, now(),
                              CASE WHEN $7 THEN now() ELSE NULL END,
-                             now(), $8::BIGINT)
+                             now(), $8)
                      ON CONFLICT ON CONSTRAINT reborn_basic_prompt_store_scope_unique
                      DO UPDATE SET
                          bundle_json     = EXCLUDED.bundle_json,

@@ -1,3 +1,5 @@
 {
-    "local.model.provider.serverUrl": "http://192.168.10.171:8000/v1"
+    "local.model.provider.serverUrl": "http://192.168.10.171:8000/v1",
+    "terminal.explorerKind": "both",
+    "terminal.integrated.accessibleViewFocusOnCommandExecution": true
 }
