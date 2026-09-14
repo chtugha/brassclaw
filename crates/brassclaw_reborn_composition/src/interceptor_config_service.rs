@@ -311,13 +311,17 @@ impl RebornInterceptorConfigService {
         let generation_ms = assembly_start.elapsed().as_millis() as i64;
 
         // Store the bundle text so per-turn calls can read it cheaply.
+        // This is fatal — a bundle that isn't persisted will appear to succeed
+        // to the caller but won't survive a page reload.
         #[cfg(feature = "postgres")]
-        if let Some(store) = &self.pg_basic_prompt_store
-            && let Err(e) = store
+        if let Some(store) = &self.pg_basic_prompt_store {
+            store
                 .store(user_id, project_id, &bundle, with_prewarm, Some(generation_ms))
                 .await
-        {
-            tracing::debug!(error = %e, "do_assemble_bundle: store() failed (non-fatal)");
+                .map_err(|e| {
+                    tracing::debug!(error = %e, "do_assemble_bundle: store() failed");
+                    InterceptorConfigServiceError::Unavailable
+                })?;
         }
 
         Ok((bundle, fingerprint, generation_ms))

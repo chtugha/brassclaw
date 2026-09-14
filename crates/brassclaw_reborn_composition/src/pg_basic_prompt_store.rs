@@ -118,7 +118,12 @@ mod inner {
                 .query_opt(
                     "SELECT id, bundle_json::text, fingerprint,
                             is_stale, assembled_at, prewarm_last_at, updated_at,
-                            generation_ms
+                            -- generation_ms added by V083; NULL-coalesced for pre-V083 installs
+                            CASE WHEN EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'reborn_basic_prompt_store'
+                                  AND column_name = 'generation_ms'
+                            ) THEN generation_ms ELSE NULL END AS generation_ms
                      FROM reborn_basic_prompt_store
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id  = $3 AND project_id = $4",
