@@ -285,7 +285,7 @@ mod tests {
         let config = EmbeddedPostgresConfig::from_reborn_home(home);
         assert_eq!(config.port, 5434);
         assert_eq!(config.data_dir, home.join("postgres/data"));
-        assert_eq!(config.bin_cache_dir, home.join("postgres/bin"));
+        assert_eq!(config.bin_cache_dir, home.join("postgres"));
         assert_eq!(config.database, "brassclaw");
         assert_eq!(
             config.connection_url(),

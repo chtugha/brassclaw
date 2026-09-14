@@ -138,7 +138,10 @@ if [[ $INSTALL_MODE == "system" ]] && command -v systemctl &>/dev/null; then
         systemctl stop "$SERVICE_NAME" 2>/dev/null || true
         systemctl disable "$SERVICE_NAME" 2>/dev/null || true
         rm -f "$SYSTEMD_DIR/$SERVICE_NAME.service"
+        # Remove drop-in override directory if present.
+        rm -rf "$SYSTEMD_DIR/$SERVICE_NAME.service.d"
         systemctl daemon-reload
+        systemctl reset-failed "$SERVICE_NAME" 2>/dev/null || true
         log_info "Service removed."
     else
         # Kill any lingering process even without a unit file.
@@ -150,6 +153,33 @@ if [[ $INSTALL_MODE == "system" ]] && command -v systemctl &>/dev/null; then
         done
     fi
 fi
+
+# ── kill any lingering child processes (embedded postgres, etc.) ──────────────
+# This runs in both modes: embedded postgres children survive a service stop
+# if the main process was killed hard (e.g. SIGKILL / OOM).  Kill them before
+# wiping the data dir so postgres doesn't recreate files after we remove them.
+if [[ $INSTALL_MODE == "system" ]] && id "$SERVICE_USER" &>/dev/null; then
+    if pkill -u "$SERVICE_USER" 2>/dev/null; then
+        log_info "Killed lingering processes owned by '$SERVICE_USER'."
+        sleep 1
+        # Hard-kill any survivors.
+        pkill -9 -u "$SERVICE_USER" 2>/dev/null || true
+    fi
+fi
+# Also try to stop any postgres listening on the embedded port (5434) via
+# pg_ctl, so it flushes WAL before we wipe the data dir.
+for candidate_pgctl in \
+    "/var/lib/brassclaw/.brassclaw/reborn/postgres/bin/pg_ctl" \
+    "/var/lib/brassclaw/.brassclaw/reborn/postgres/bin/bin/pg_ctl"; do
+    if [[ -x "$candidate_pgctl" ]]; then
+        "$candidate_pgctl" stop \
+            -D "/var/lib/brassclaw/.brassclaw/reborn/postgres/data" \
+            -m fast -w 2>/dev/null || true
+        break
+    fi
+done
+# Remove any Unix socket files left by embedded postgres.
+rm -f /tmp/.s.PGSQL.5434 /tmp/.s.PGSQL.5434.lock 2>/dev/null || true
 
 # ── remove binaries ───────────────────────────────────────────────────────────
 log_step "Removing binaries from $INSTALL_DIR..."

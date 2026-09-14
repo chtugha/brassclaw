@@ -13,8 +13,9 @@ pub struct EmbeddedPostgresConfig {
     /// Default: `$REBORN_HOME/postgres/data`
     pub data_dir: PathBuf,
 
-    /// Directory where the downloaded PostgreSQL binaries are cached.
-    /// Default: `$REBORN_HOME/postgres/bin`
+    /// Directory where the extracted PostgreSQL installation lives (the root
+    /// containing `bin/`, `lib/`, `share/`, etc.).
+    /// Default: `$REBORN_HOME/postgres`
     pub bin_cache_dir: PathBuf,
 
     /// Name of the Postgres database and role created on first run.
@@ -50,7 +51,7 @@ impl EmbeddedPostgresConfig {
         Self {
             port,
             data_dir: home.join("postgres").join("data"),
-            bin_cache_dir: home.join("postgres").join("bin"),
+            bin_cache_dir: home.join("postgres"),
             database: "brassclaw".to_string(),
             superuser: "brassclaw".to_string(),
         }
