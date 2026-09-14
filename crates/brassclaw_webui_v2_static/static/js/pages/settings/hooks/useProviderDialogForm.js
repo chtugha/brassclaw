@@ -114,9 +114,13 @@ export function useProviderDialogForm({
         setMessage({ tone: "error", text: result.message || t("llm.modelsFetchFailed") });
       } else {
         setModels(result.models);
-        // Auto-select the first model when the field is still empty so the
-        // user can save immediately without manually picking a value.
-        setForm((prev) => ({ ...prev, model: prev.model || result.models[0] }));
+        // Auto-select the first model when the current value is empty or is a
+        // placeholder ("default") that is not itself a real model ID in the list.
+        setForm((prev) => {
+          const current = prev.model.trim();
+          const isPlaceholder = !current || !result.models.includes(current);
+          return { ...prev, model: isPlaceholder ? result.models[0] : prev.model };
+        });
         setMessage({ tone: "success", text: t("llm.modelsFetched", { count: result.models.length }) });
       }
     } catch (err) {
