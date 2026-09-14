@@ -118,11 +118,48 @@ One PythonCode step = one `__execute_action__()` call. Pure-logic helpers (zero 
 - **§body-scan**: PythonCode bodies are scanned at Q1 for `import os`, `import subprocess`, `exec(`, `eval(`, `open(`, and similar patterns — hard rejection on any match.
 - **§channel-isolation**: A ToolSkill UUID must never appear in `orchestrator_steps`. A Skill UUID must never appear in `rust_steps`. Channels must not overlap.
 
+### Recipe Tier Lifecycle — LLM as One-Time Cost
+
+**The LLM is a one-time cost. Recipes are the permanent return.**
+
+Each user-facing operation goes through exactly one of three tiers per turn:
+
+| Tier | Trigger | LLM call | Token cost |
+|------|---------|----------|------------|
+| **0** | Recipe matched, `llm_call_required: false` | ❌ Never | Zero |
+| **1** | Recipe matched, `llm_call_required: true` | ✅ Guided by recipe context | Low |
+| **2** | No recipe match (Non-Matching-Mode) | ✅ Full reasoning | Full |
+
+**Tier 2 is the seed.** The first time a user asks something new, no recipe matches. The LLM reasons through it (Tier 2). The **Sempai interceptor** watches every Tier-2 turn, evaluates the outcome, and proposes new Recipes + intent examples. Those proposals enter the **validation queue** (Q1 automated → Q2 human review). Once validated, the recipe is live — every future match for that intent pattern costs zero LLM calls.
+
+**Pre-seeded extensions skip the discovery cost.** An extension authored as `source: "system"` (via `builtin_bootstrap.rs`) bootstraps directly to `validated` state. All operations are Tier 0 from day one, without waiting for the system to encounter them.
+
+**The Sempai continues growing the library at runtime.** Novel combinations the author didn't anticipate — e.g. "list tasks filtered by assignee" for a task-management extension — emerge from Tier-2 turns, get proposed by the Sempai, and graduate to Tier 0 after Q1+Q2. The library compounds with use.
+
+**Step_descriptions structure (canonical — matches `builtin_stuff_v3.md`):**
+```json
+[
+  { "step_id": "step-0", "type": "component", "channel": "orchestrator",
+    "include": ["<uuid:skill-X>"], "label": "Load skill X as LLM context" },
+  { "step_id": "step-1", "type": "llm",
+    "label": "LLM reasons / composes (Tier-1 only)" },
+  { "step_id": "step-2", "type": "component", "channel": "rust",
+    "include": ["<uuid:ts-tool-Y>"], "label": "Pre-load ToolSkill binding" },
+  { "step_id": "step-3", "type": "component", "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-Y>"], "label": "Execute: host.tool_y(...)" }
+]
+```
+
+Valid `type` values: `component` (fetch+route a component), `llm` (LLM turn — Tier-1 only), `text` (WebUI annotation, never emitted to runtime), `snippet` (rejected at Q1 — promotes to `component` after Q1+Q2).
+
+**Posting output without an LLM:** use `host.post_reply(answer="...")` via `ts-host-post-reply` + `pc-host-post-reply`. This is the correct pattern for fixed-text Tier-0 responses. `builtin.echo` is diagnostic-only and must not be used in user-facing recipes.
+
 ### Extension Authoring Reference
 
 Extension component stacks (Tools, ToolSkills, PythonCode, Leaf Skills, Domain Skills, Recipes, ExtensionCatalogues) are fully specified in:
 - `builtin_stuff_v3.md` — built-in capabilities
 - `tomedo_v3.md` — tomedo EMR integration example (reference implementation)
+- `docs/plans/zencoder-extension-plan.md` — Zencoder REST API extension (worked example with full step_descriptions JSONB)
 
 ## Where to Work
 

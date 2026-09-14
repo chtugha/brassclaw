@@ -87,6 +87,8 @@ pub mod skill_import;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 #[cfg(feature = "postgres")]
 pub mod builtin_bootstrap;
+#[cfg(feature = "postgres")]
+pub mod zencoder_bootstrap;
 /// Phase P Step 9: doc-sync file-watcher + PG listener.
 pub(crate) mod doc_sync_watcher;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]

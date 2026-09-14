@@ -593,6 +593,12 @@ pub async fn seed_builtin_components(
     // in Steps 4–8.
     seed_doc_sync_group(&stores).await?;
 
+    // Pass 16 — Zencoder extension (REST API delegation to AI coding agents).
+    // Tool + ToolSkills + PythonCode + Skills + Recipes + ExtensionCatalogue.
+    // ts-host-post-reply (seeded in seed_host_group above) must exist before
+    // this pass runs — the auth-setup recipe references it by name lookup.
+    crate::zencoder_bootstrap::seed_zencoder_extension(stores.pool.clone(), tenant_id).await?;
+
     Ok(())
 }
 

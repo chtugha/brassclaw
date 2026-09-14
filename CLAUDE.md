@@ -444,7 +444,44 @@ only the recipe is altered.
     WebUI recipe-authoring route yet (future work).
 
 Full specification: `builtin_stuff_v3.md` (built-in capabilities),
-`tomedo_v3.md` (reference implementation for an extension).
+`tomedo_v3.md` (reference implementation for an extension),
+`docs/plans/zencoder-extension-plan.md` (worked example with full `step_descriptions` JSONB).
+
+### Recipe Tier Lifecycle — LLM as One-Time Cost
+
+**The LLM is a one-time cost per pattern. Recipes are the permanent return.**
+
+The three tiers map directly to what happens on a given turn:
+
+| Tier | Condition | LLM call | Typical cost |
+|------|-----------|----------|--------------|
+| **0** | Recipe matched; `llm_call_required: false` | ❌ never | Zero tokens |
+| **1** | Recipe matched; `llm_call_required: true` | ✅ guided by recipe prior-knowledge | Low |
+| **2** | No match — Non-Matching-Mode | ✅ full reasoning over base-prompt | Full |
+
+**Why Tier 2 matters:** The first time a user asks something new, no recipe matches. The LLM reasons through it. The **Sempai interceptor** reviews the completed turn, evaluates the outcome, and `proposed_recipe_updates` + `proposed_intent_examples` enter the validation queue via `PgSempaiProposalSink`. After **Q1** (automated, sandboxed) and **Q2** (human review — mandatory, never automated), the recipe graduates to `validated`. Every subsequent identical or closely-matched request runs at Tier 0 — no LLM, no latency, no tokens.
+
+**Why pre-seeded extensions exist:** An extension seeded via `builtin_bootstrap.rs` with `source: "system"` bootstraps directly to `validated` — Q2 is not required because builtins are exempt. All operations are Tier 0 from day one. Pre-seeding is not just a performance optimisation — it encodes domain knowledge (error handling, auth recovery, resilience state machine) that would take many Tier-2 turns to accumulate organically.
+
+**The Sempai grows the library.** Patterns the extension author didn't anticipate — novel combinations, edge-case filters, multi-step flows — emerge from Tier-2 turns. The Sempai proposes them; Q1+Q2 graduates them. The library compounds with real usage, with zero engineering effort after the initial seed.
+
+**`step_descriptions` canonical structure:**
+```json
+[
+  { "step_id": "step-0", "type": "component", "channel": "orchestrator",
+    "include": ["<uuid:skill-X>"],   "label": "Load Skill X as LLM context (Tier-1 step-0 only)" },
+  { "step_id": "step-1", "type": "llm",
+    "label": "LLM reasons / composes (Tier-1 only — absent in Tier-0 recipes)" },
+  { "step_id": "step-2", "type": "component", "channel": "rust",
+    "include": ["<uuid:ts-tool-Y>"], "label": "Pre-load ToolSkill binding" },
+  { "step_id": "step-3", "type": "component", "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-Y>"], "label": "Execute: host.tool_y(...)" }
+]
+```
+
+Valid `type` values: `component` (fetch + route a component body), `llm` (LLM turn, Tier-1 only), `text` (WebUI annotation only — never emitted to runtime), `snippet` (rejected at Q1; inline PythonCode shortcut that must be promoted to `component` after Q1+Q2).
+
+**Posting deterministic output without an LLM:** call `host.post_reply(answer="<fixed text>")` via the builtin `ts-host-post-reply` ToolSkill + `pc-host-post-reply` PythonCode. This is the correct Tier-0 pattern for fixed-text responses (e.g. auth-setup instructions). `builtin.echo` is diagnostic-only and must not appear in user-facing recipes.
 
 ### Consumer-Tag Gating (§3.9)
 
