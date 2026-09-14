@@ -1,12 +1,10 @@
 export const EXTENSIONS_TABS = [
   { id: "installed", label: "Installed", icon: "bolt" },
   { id: "channels", label: "Channels", icon: "send" },
-  { id: "mcp", label: "MCP Servers", icon: "pulse" },
   { id: "registry", label: "Registry", icon: "plus" },
 ];
 
 export const KIND_LABELS = {
-  mcp_server: "MCP Server",
   first_party: "First-party",
   system: "System",
 };

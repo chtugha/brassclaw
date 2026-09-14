@@ -45,6 +45,7 @@ export const SETTINGS_SUB_ROUTES = [
   { id: "orchestrator",     labelKey: "settings.orchestrator",    icon: "layers"   },
   { id: "scaffold",         labelKey: "settings.scaffold",        icon: "folder"   },
   { id: "monty-vm",         labelKey: "settings.montyVm",         icon: "pulse"    },
+  { id: "mcp-server",       labelKey: "settings.mcpServer",       icon: "pulse"    },
   { id: "validation-queue", labelKey: "settings.validationQueue", icon: "check"    },
   { id: "reliability",      labelKey: "settings.reliability",     icon: "clock"    },
   { id: "interceptor",      labelKey: "settings.interceptor",     icon: "flag"     },
@@ -60,7 +61,6 @@ export const SETTINGS_SUB_ROUTES = [
 export const EXTENSIONS_SUB_ROUTES = [
   { id: "installed", labelKey: "extensions.installed", icon: "bolt" },
   { id: "channels", labelKey: "extensions.channels", icon: "send" },
-  { id: "mcp", labelKey: "extensions.mcp", icon: "pulse" },
   { id: "registry", labelKey: "extensions.registry", icon: "plus" },
 ];
 

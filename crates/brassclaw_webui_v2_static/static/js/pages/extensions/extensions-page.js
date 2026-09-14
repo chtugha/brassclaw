@@ -4,7 +4,6 @@ import { ActionToast } from "./components/action-toast.js";
 import { ChannelsTab } from "./components/channels-tab.js";
 import { ConfigureModal } from "./components/configure-modal.js";
 import { InstalledTab } from "./components/installed-tab.js";
-import { McpTab } from "./components/mcp-tab.js";
 import { RegistryTab } from "./components/registry-tab.js";
 import { useExtensions } from "./hooks/useExtensions.js";
 
@@ -14,12 +13,8 @@ export function ExtensionsPage() {
 
   const {
     status,
-    extensions,
     channels,
-    mcpServers,
-    tools,
     channelRegistry,
-    mcpRegistry,
     toolRegistry,
     connectableChannels,
     isLoading,
@@ -70,13 +65,7 @@ export function ExtensionsPage() {
   }
 
   const tabContent = {
-    installed: html`<${InstalledTab}
-      extensions=${extensions}
-      onActivate=${activate}
-      onConfigure=${handleConfigure}
-      onRemove=${remove}
-      isBusy=${isBusy}
-    />`,
+    installed: html`<${InstalledTab} />`,
     channels: html`<${ChannelsTab}
       status=${status}
       channels=${channels}
@@ -88,19 +77,9 @@ export function ExtensionsPage() {
       onInstall=${install}
       isBusy=${isBusy}
     />`,
-    mcp: html`<${McpTab}
-      mcpServers=${mcpServers}
-      mcpRegistry=${mcpRegistry}
-      onActivate=${activate}
-      onConfigure=${handleConfigure}
-      onRemove=${remove}
-      onInstall=${install}
-      isBusy=${isBusy}
-    />`,
     registry: html`<${RegistryTab}
       toolRegistry=${toolRegistry}
       channelRegistry=${channelRegistry}
-      mcpRegistry=${mcpRegistry}
       onInstall=${install}
       isBusy=${isBusy}
     />`,

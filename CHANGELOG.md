@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-09-16
+
+### Changed
+
+- *(webui / extensions)* **MCP Extensions tab removed** — the old "MCP Servers" tab (Notion, NEAR AI) is gone from the Extensions sidebar. The orchestrator's built-in MCP interface replaces the legacy external-server model.
+- *(webui / settings)* **MCP Server tab added to Settings sidebar** — the Orchestrator MCP Server settings (port, auto-start, start/stop lifecycle) now appear in Settings between Monty VM and Validation Queue. All `mcpServer.*` i18n keys are wired.
+- *(webui / extensions / installed)* **Installed tab rewritten** — replaces the old lifecycle-extension card list with a grouped view of the recipe-system `ExtensionCatalogue` entries (class 23) seeded at boot. Three sections: *Core Capabilities* (Filesystem, Network, Memory, Process, Management), *Workflow Domains* (Coding, Git Commit, GitHub, Code Review, QA Review, Security Review, Plan Mode), and *Integrations* (Zencoder / Zenflow, Doc Sync). Data sourced from `GET /api/settings/extensions`.
+
+## [1.2.2] - 2026-09-16
+
 ## [1.2.0] - 2026-09-15
 
 ### Added

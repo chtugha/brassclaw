@@ -191,6 +191,7 @@ registerPack("en", {
   "settings.scaffold": "Scaffold",
   "settings.recipes": "Recipes",
   "settings.montyVm": "Monty VM",
+  "settings.mcpServer": "MCP Server",
   "settings.security": "Security",
   "settings.validationQueue": "Validation Queue",
   "settings.docs": "Agent Docs",
@@ -209,6 +210,24 @@ registerPack("en", {
   "settings.docs.status.auto_passed": "Auto passed",
 
   "settings.reliability": "Reliability",
+
+  // Settings — MCP Server tab (Phase V).
+  "mcpServer.status": "Status",
+  "mcpServer.state": "State",
+  "mcpServer.boundPort": "Bound port",
+  "mcpServer.polling": "Updating…",
+  "mcpServer.settings": "Settings",
+  "mcpServer.port": "Port",
+  "mcpServer.portDesc": "TCP port the orchestrator MCP server listens on.",
+  "mcpServer.autoStart": "Auto-start",
+  "mcpServer.autoStartDesc": "Start the MCP server automatically when the agent boots.",
+  "mcpServer.lifecycle": "Lifecycle",
+  "mcpServer.start": "Start",
+  "mcpServer.starting": "Starting…",
+  "mcpServer.stop": "Stop",
+  "mcpServer.stopConfirm": "Stop the MCP server? Any connected MCP clients will be disconnected.",
+  "mcpServer.stopConfirmYes": "Yes, stop",
+  "mcpServer.failedLoad": "Failed to load MCP server settings: {message}",
 
   // Settings — toolbar
   "settings.back": "Back",
@@ -847,6 +866,15 @@ registerPack("en", {
   "ext.channels": "Channels",
   "ext.mcp": "MCP",
   "ext.registry": "Registry",
+
+  // Extensions — installed tab
+  "ext.installed.active": "active",
+  "ext.installed.emptyTitle": "No extensions found",
+  "ext.installed.emptyDesc": "The orchestrator extensions are seeded at boot. If this list is empty, the system may still be initialising.",
+  "ext.installed.failedLoad": "Failed to load extensions: {message}",
+  "ext.installed.section.core": "Core Capabilities",
+  "ext.installed.section.workflow": "Workflow Domains",
+  "ext.installed.section.integration": "Integrations",
 
   // Extensions — registry
   "ext.registry.searchPlaceholder": "Search extensions…",

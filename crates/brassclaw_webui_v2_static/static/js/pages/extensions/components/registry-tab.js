@@ -9,12 +9,11 @@ function packageId(entry) {
 export function RegistryTab({
   toolRegistry,
   channelRegistry,
-  mcpRegistry,
   onInstall,
   isBusy,
 }) {
   const t = useT();
-  const allAvailable = [...toolRegistry, ...channelRegistry, ...mcpRegistry];
+  const allAvailable = [...toolRegistry, ...channelRegistry];
   const [filter, setFilter] = React.useState("");
 
   const filtered = filter

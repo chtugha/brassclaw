@@ -123,16 +123,12 @@ export function useExtensions() {
   });
 
   const status = statusQuery.data || {};
-  const extensions = extensionsQuery.data?.extensions || [];
   const registry = registryQuery.data?.entries || [];
   const connectableChannels = connectableChannelsQuery.data?.channels || [];
 
   const channels = [];
-  const mcpServers = extensions.filter((e) => e.kind === "mcp_server");
-  const tools = extensions.filter((e) => e.kind !== "mcp_server");
 
   const channelRegistry = [];
-  const mcpRegistry = registry.filter((e) => e.kind === "mcp_server" && !e.installed);
   const toolRegistry = registry.filter(
     (e) => e.kind !== "mcp_server" && !e.installed
   );
@@ -142,12 +138,8 @@ export function useExtensions() {
 
   return {
     status,
-    extensions,
     channels,
-    mcpServers,
-    tools,
     channelRegistry,
-    mcpRegistry,
     toolRegistry,
     registry,
     connectableChannels,
