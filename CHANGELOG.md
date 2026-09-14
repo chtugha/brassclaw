@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-09-14
+
+### Fixed
+
+- *(ci / release)* Remove hardcoded `/Users/ollama/.local/bin/x86_64-linux-gnu-zig-cc` linker entry for `x86_64-unknown-linux-gnu` from `.cargo/config.toml` — it broke the GitHub Actions release build which compiles that target natively on `ubuntu-latest` and has no zig wrapper. Cross-compile linker config now lives only in the local gitignored `.cargo/config.local.toml`.
+
 ## [1.2.5] - 2026-09-14
 
 ### Fixed
