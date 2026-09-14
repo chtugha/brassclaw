@@ -46,10 +46,6 @@
 //!
 //! Compiles behind the `postgres` feature (mirrors the `pg_*` stores).
 
-// Built out incrementally across slices 2–12; the insert/lookup surface is
-// exercised by the boot wiring in `webui.rs`. Mirrors the `pg_*` store
-// allow(dead_code) pattern.
-#![allow(dead_code)]
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
@@ -1397,16 +1393,28 @@ async fn seed_host_assemble_prior_knowledge(
                               ONLY when no prefix is present. Adds basic 'what is going \
                               on' context. Calls NO retrieval verbs."
                     .to_string(),
-                content: r###"# Channel: orchestrator | Class: 22 | No I/O, no imports.
-# FALLBACK prior-knowledge bundle (used ONLY when no prefix is present).
-# Calls NO retrieval verbs (retrieve_docs / get_reduction_rules are dropped).
-user_query = "{{vars.slot0}}"
-_now = host.time(operation="now")
-bundle = {
-  "context": "You are running inside BrassClaw's orchestrator. Answer the user's request.",
-  "user_query": user_query,
-  "assembled_at": _now
-}
+                content: r###"# Pure-logic formatter (class 22). No I/O, no imports, no host calls.
+# Builds the no-prefix fallback prior-knowledge bundle (§27.10.1): a minimal
+# system-context preamble + the catalogue of deeper context the LLM can gather
+# over the Orchestrator MCP Server (Phase V — live). The caller (basic-mode
+# _non_match_answer) injects this text into the Kohai-mediated prompt as the
+# `prior_knowledge` field. No retrieval verbs (retrieve_docs /
+# get_reduction_rules are dropped). The bundle is static — user_query is already
+# a separate prompt field, so it is not duplicated here.
+_lines = []
+_lines.append("You are running inside BrassClaw's orchestrator. Answer the user's request directly.")
+_lines.append("")
+_lines.append("Deeper context is available over the orchestrator MCP server:")
+_lines.append("  endpoint: http://<brassclaw-host>:<port>/mcp  (MCP JSON-RPC 2025-06-18)")
+_lines.append("  protocol: POST /mcp — JSON-RPC 2.0; methods: initialize, tools/list, tools/call")
+_lines.append("")
+_lines.append("Available tool categories (call tools/list for the full schema):")
+_lines.append("- component store: fetch a component by name or UUID")
+_lines.append("- intent history: prior disambiguation choices for this thread")
+_lines.append("- memory: persisted notes and decisions")
+_lines.append("- skills: exact tool-usage narratives for bound host.* callables")
+_lines.append("- tools: the bound host.* callables and their param schemas")
+result = "\n".join(_lines)
 "###
                 .to_string(),
                 prior_knowledge_content: None,
@@ -1431,17 +1439,15 @@ bundle = {
                 name: "host-assemble-prior-knowledge".to_string(),
                 description: "FALLBACK prior-knowledge bundle, used ONLY when no prefix \
                               is present. Adds basic 'what is going on' context so the \
-                              LLM understands the run. Calls NO retrieval verbs. \
-                              Recipe-only — one PythonCode formatter; binds builtin.time \
-                              to stamp assembled_at."
+                              LLM understands the run, including the MCP server catalogue. \
+                              Calls NO retrieval verbs. Pure-logic formatter, no rust \
+                              bindings required."
                     .to_string(),
                 trigger: None,
                 steps: json!({
                     "llm_call_required": false,
                     "tier": 1,
-                    "rust_steps": [
-                        {"tool": "time", "tool_skill": "ts-time-now"}
-                    ],
+                    "rust_steps": [],
                     "orchestrator_steps": [
                         {"python_code": "pc-host-fallback-prior-knowledge"}
                     ]

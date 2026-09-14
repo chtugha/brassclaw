@@ -571,8 +571,12 @@ pub async fn seed_builtin_components(
     // Pass 5 — management group (time, json, echo, skill-management).
     seed_management_group(&stores).await?;
 
-    // Pass 6 — host group (K4: the no-prefix fallback prior-knowledge recipe).
-    seed_host_group(&stores).await?;
+    // Pass 6 — host group (Step 27 — all host.* Tools + Recipes).
+    // The full Step 27 component stack is seeded by
+    // `seed_builtin_host::seed_builtin_host_components`, which runs in
+    // `webui.rs` BEFORE `seed_builtin_components` is called. No duplicate
+    // seeding needed here — the bootstrap pass is intentionally a no-op.
+    seed_host_group_noop();
 
     // Pass 7 — validation-system trusted-root (Phase L §0.23.3): one minimal
     // Tier-0 structural validator Recipe per component class.  Seeds `05:validator`
@@ -595,8 +599,11 @@ pub async fn seed_builtin_components(
 
     // Pass 16 — Zencoder extension (REST API delegation to AI coding agents).
     // Tool + ToolSkills + PythonCode + Skills + Recipes + ExtensionCatalogue.
-    // ts-host-post-reply (seeded in seed_host_group above) must exist before
-    // this pass runs — the auth-setup recipe references it by name lookup.
+    // ts-host-post-reply must exist before this pass runs (the auth-setup
+    // recipe references it by name lookup). It is seeded by Pass 6
+    // (`seed_builtin_host::seed_builtin_host_components`) which runs in
+    // `webui.rs` BEFORE `seed_builtin_components` is called, so the
+    // dependency is always satisfied.
     crate::zencoder_bootstrap::seed_zencoder_extension(stores.pool.clone(), tenant_id).await?;
 
     Ok(())
@@ -11693,73 +11700,13 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
 // fresh `ThreadExecutionContext` + `persisted_state = {}` per call, so globals
 // do NOT persist across steplist steps and a 2-step assemble-then-call recipe
 // cannot pass the assembled prompt to the call step.
-async fn seed_host_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
-    let tenant = stores.tenant.clone();
-
-    // 1. PythonCode formatter (class 22) — pure-logic, no host call, no I/O.
-    let pc_host_fallback_prior_knowledge = stores
-        .upsert_python_code(
-            pc_row(
-                &tenant,
-                "pc-host-fallback-prior-knowledge",
-                "Pure-logic formatter: builds the no-prefix fallback prior-knowledge \
-                 bundle (minimal system-context preamble + the Orchestrator MCP Server \
-                 catalogue, Phase V). Returns the bundle text for the caller to inject \
-                 into the Kohai-mediated prompt. No retrieval verbs, no host calls.",
-                PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT,
-            ),
-            "pc-host-fallback-prior-knowledge",
-        )
-        .await?;
-
-    // 2. Recipe (class 21, Tier-0-eligible — the bundle builds with no LLM call).
-    //    `seed_recipe` inserts at `validation_status='pending'` (the DDL default)
-    //    + `mark_recipe_tier0` sets tier/wilson — neither graduates the row, so
-    //    do it explicitly here (mirrors `upsert_python_code`/`upsert_catalogue`).
-    let recipe_host_assemble_prior_knowledge = stores
-        .seed_recipe(
-            &tenant,
-            "host-assemble-prior-knowledge",
-            "FALLBACK prior-knowledge bundle, used ONLY when no prefix is present. \
-             Adds basic 'what is going on' context so the LLM understands the run \
-             (no retrieval verbs). Single pure-logic formatter step; the caller does \
-             the Kohai-mediated LLM call.",
-            true,
-            RECIPE_HOST_ASSEMBLE_PRIOR_KNOWLEDGE_YAML,
-            &[step_entry(
-                1,
-                "orchestrator",
-                "Add basic 'what is going on' context so the LLM understands (no retrieval).",
-                "component",
-                &[pc_host_fallback_prior_knowledge],
-            )],
-            &[json!({"input": "(internal Tier-1 prior-knowledge fallback — not user-routed)", "class": 2})],
-        )
-        .await?;
-    stores
-        .recipe
-        .update_validation_status(
-            &tenant,
-            SEED_USER,
-            SEED_AGENT,
-            SEED_PROJECT,
-            recipe_host_assemble_prior_knowledge,
-            crate::pg_recipe_store::RecipeValidationStatusUpdate {
-                validation_status: "validated",
-            },
-        )
-        .await
-        .map_err(|e| SeedBuiltinBootstrapError::Db {
-            reason: e.to_string(),
-        })?;
-
-    tracing::debug!(
-        "seeded host group: 1 PythonCode + 1 recipe (host-assemble-prior-knowledge, K4 \
-         no-prefix fallback) - host group PARTIAL (K4 fallback only; full builtin-host \
-         catalogue is a future slice)"
-    );
-
-    Ok(())
+/// Pass 6 placeholder — the full Step 27 `host.*` component stack is seeded by
+/// [`crate::seed_builtin_host::seed_builtin_host_components`] in `webui.rs`
+/// BEFORE [`seed_builtin_components`] runs. This function is intentionally a
+/// synchronous no-op so the pass numbering in `seed_builtin_components` stays
+/// stable without introducing an unnecessary async await point.
+fn seed_host_group_noop() {
+    // Nothing to do — see seed_builtin_host::seed_builtin_host_components.
 }
 
 // ---------------------------------------------------------------------------
@@ -15269,45 +15216,6 @@ const RECIPE_ECHO_PING_YAML: &str = r#"step_descriptions: [
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-echo>"],
     "label":   "PythonCode calls host.echo(message) — returned verbatim"
-  }
-]
-"#;
-
-// ---------------------------------------------------------------------------
-// Host group (K4) — the no-prefix fallback prior-knowledge recipe components
-// ---------------------------------------------------------------------------
-
-const PC_HOST_FALLBACK_PRIOR_KNOWLEDGE_CONTENT: &str = r#"# Pure-logic formatter (class 22). No I/O, no imports, no host calls.
-# Builds the no-prefix fallback prior-knowledge bundle (§27.10.1): a minimal
-# system-context preamble + the catalogue of deeper context the LLM can gather
-# over the Orchestrator MCP Server (Phase V — live). The caller (basic-mode
-# _non_match_answer) injects this text into the Kohai-mediated prompt as the
-# `prior_knowledge` field. No retrieval verbs (retrieve_docs /
-# get_reduction_rules are dropped). The bundle is static — user_query is already
-# a separate prompt field, so it is not duplicated here.
-_lines = []
-_lines.append("You are running inside BrassClaw's orchestrator. Answer the user's request directly.")
-_lines.append("")
-_lines.append("Deeper context is available over the orchestrator MCP server:")
-_lines.append("  endpoint: http://<brassclaw-host>:<port>/mcp  (MCP JSON-RPC 2025-06-18)")
-_lines.append("  protocol: POST /mcp — JSON-RPC 2.0; methods: initialize, tools/list, tools/call")
-_lines.append("")
-_lines.append("Available tool categories (call tools/list for the full schema):")
-_lines.append("- component store: fetch a component by name or UUID")
-_lines.append("- intent history: prior disambiguation choices for this thread")
-_lines.append("- memory: persisted notes and decisions")
-_lines.append("- skills: exact tool-usage narratives for bound host.* callables")
-_lines.append("- tools: the bound host.* callables and their param schemas")
-result = "\n".join(_lines)
-"#;
-
-const RECIPE_HOST_ASSEMBLE_PRIOR_KNOWLEDGE_YAML: &str = r#"step_descriptions: [
-  {
-    "step_id": "step-1",
-    "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:pc-host-fallback-prior-knowledge>"],
-    "label":   "Add basic 'what is going on' context so the LLM understands (no retrieval)."
   }
 ]
 "#;
