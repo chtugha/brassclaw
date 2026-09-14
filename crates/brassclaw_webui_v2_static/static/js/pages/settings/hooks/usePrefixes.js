@@ -15,6 +15,8 @@ import { fetchPrefixes, regeneratePrefix } from "../lib/settings-api.js";
  */
 export function usePrefixes() {
   const [entries, setEntries] = React.useState(null);
+  // isLoading is only true on the very first mount fetch, not on background reloads,
+  // so the skeleton does not flash every time the list is refreshed.
   const [isLoading, setIsLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
   const [regenerating, setRegenerating] = React.useState(() => new Set());
@@ -23,7 +25,9 @@ export function usePrefixes() {
 
   React.useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
+    // Only show the full-page skeleton on the initial mount (tick === 0).
+    // Subsequent reloads update entries silently in the background.
+    if (tick === 0) setIsLoading(true);
     setLoadError(null);
     fetchPrefixes()
       .then((data) => {
@@ -47,8 +51,8 @@ export function usePrefixes() {
     setRegenerating((prev) => new Set([...prev, name]));
     try {
       const updated = await regeneratePrefix(name);
-      // Merge regenerate response into the entry.
-      // regenerate always clears staleness and sets a new fingerprint/timestamp.
+      // Merge the regenerate response directly into the entry — no skeleton flash.
+      // The optimistic merge is sufficient; a background reload syncs any other fields.
       setEntries((prev) =>
         prev
           ? prev.map((e) =>
@@ -58,8 +62,6 @@ export function usePrefixes() {
             )
           : prev
       );
-      // Reload the full list so the tab reflects the latest DB state.
-      reload();
     } catch (err) {
       // Use the structured payload from ApiError when available.
       // For a 429 rate-limit the payload is { code: "rate_limited", kind: "busy", retryable: true }.
@@ -87,7 +89,7 @@ export function usePrefixes() {
         return next;
       });
     }
-  }, [reload]);
+  }, []);
 
   return {
     entries,
