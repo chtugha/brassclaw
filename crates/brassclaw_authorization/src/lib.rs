@@ -467,7 +467,7 @@ where
         scope: &ResourceScope,
         lease_id: CapabilityGrantId,
     ) -> Result<Option<(CapabilityLease, RecordVersion)>, CapabilityLeaseError> {
-        let path = lease_path(scope, lease_id)?;
+        let path = lease_path(scope, lease_id);
         let Some(versioned) = self
             .filesystem
             .get(scope, &path)
@@ -502,7 +502,7 @@ where
         lease: &CapabilityLease,
         expectation: CasExpectation,
     ) -> Result<(), CapabilityLeaseError> {
-        let path = lease_path(&lease.scope, lease.grant.id)?;
+        let path = lease_path(&lease.scope, lease.grant.id);
         let body = serialize_pretty(lease)?;
         // Defense-in-depth: tag the entry with the tenant id so admin-tier
         // queries can filter by tenant and a path-rewriting bug surfaces as a
@@ -517,7 +517,7 @@ where
         ensure_tenant_id_index(
             &self.filesystem,
             &lease.scope,
-            &lease_owner_prefix(&lease.scope)?,
+            &lease_owner_prefix(&lease.scope),
         )
         .await?;
         // Byte-only backends (LocalFilesystem) reject BOTH non-`Any` CAS
@@ -600,7 +600,7 @@ where
         &self,
         scope: &ResourceScope,
     ) -> Result<Option<Vec<ScopedPath>>, CapabilityLeaseError> {
-        let path = lease_index_path(scope)?;
+        let path = lease_index_path(scope);
         let Some(versioned) = self
             .filesystem
             .get(scope, &path)
@@ -620,7 +620,7 @@ where
     ) -> Result<(), CapabilityLeaseError> {
         paths.sort_by(|left, right| left.as_str().cmp(right.as_str()));
         paths.dedup_by(|left, right| left.as_str() == right.as_str());
-        let path = lease_index_path(scope)?;
+        let path = lease_index_path(scope);
         let body = serialize_pretty(&CapabilityLeaseIndex { paths })?;
         // Defense-in-depth tenant projection on the per-owner lease index;
         // see `write_lease_raw` for the rationale and design plan.
@@ -630,7 +630,7 @@ where
                 index_key_tenant_id(),
                 IndexValue::Text(scope.tenant_id.as_str().to_string()),
             );
-        ensure_tenant_id_index(&self.filesystem, scope, &lease_owner_prefix(scope)?).await?;
+        ensure_tenant_id_index(&self.filesystem, scope, &lease_owner_prefix(scope)).await?;
         // Byte-only backends (LocalFilesystem) reject entries with a
         // populated `indexed` projection. Fall back to the plain-bytes
         // shape for those — the tenant projection is best-effort defense
@@ -681,7 +681,7 @@ where
         &self,
         scope: &ResourceScope,
     ) -> Result<Vec<ScopedPath>, CapabilityLeaseError> {
-        let owner_prefix = lease_owner_prefix(scope)?;
+        let owner_prefix = lease_owner_prefix(scope);
         let invocation_subdirs = self.list_subdir_names(scope, &owner_prefix).await?;
         let mut paths = Vec::new();
         for subdir in invocation_subdirs {
@@ -761,7 +761,7 @@ where
     async fn issue(&self, lease: CapabilityLease) -> Result<CapabilityLease, CapabilityLeaseError> {
         let lock = self.mutation_lock(&lease.scope);
         let _guard = lock.lock().await;
-        self.index_lease_path(&lease.scope, lease_path(&lease.scope, lease.grant.id)?)
+        self.index_lease_path(&lease.scope, lease_path(&lease.scope, lease.grant.id))
             .await?;
         self.write_lease(&lease).await?;
         Ok(lease)
@@ -1529,53 +1529,29 @@ pub(crate) fn same_scope_owner(left: &ResourceScope, right: &ResourceScope) -> b
 
 const LEASES_PREFIX: &str = "/authorization/leases";
 
-fn lease_path(
-    scope: &ResourceScope,
-    lease_id: CapabilityGrantId,
-) -> Result<ScopedPath, CapabilityLeaseError> {
-    ScopedPath::new(format!(
+fn lease_path(scope: &ResourceScope, lease_id: CapabilityGrantId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/{}/{}/{lease_id}.json",
         LEASES_PREFIX,
-        within_tenant_scope(scope),
+        scope.within_tenant_segment(),
         scope.invocation_id,
     ))
-    .map_err(lease_host_api_error)
 }
 
-fn lease_index_path(scope: &ResourceScope) -> Result<ScopedPath, CapabilityLeaseError> {
-    ScopedPath::new(format!(
+fn lease_index_path(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/{}/_lease_index.json",
         LEASES_PREFIX,
-        within_tenant_scope(scope),
+        scope.within_tenant_segment(),
     ))
-    .map_err(lease_host_api_error)
 }
 
-fn lease_owner_prefix(scope: &ResourceScope) -> Result<ScopedPath, CapabilityLeaseError> {
-    ScopedPath::new(format!("{}/{}", LEASES_PREFIX, within_tenant_scope(scope),))
-        .map_err(lease_host_api_error)
-}
-
-/// Within-tenant path segment carrying the parts of the resource scope that
-/// are *not* the tenant/user identity (those move to the MountView). Always
-/// renders at least one segment (`scope`) so the lease prefix stays a
-/// non-empty directory the backend can `list_dir`.
-fn within_tenant_scope(scope: &ResourceScope) -> String {
-    let mut segments = Vec::new();
-    if let Some(agent_id) = &scope.agent_id {
-        segments.push(format!("agents/{agent_id}"));
-    }
-    if let Some(project_id) = &scope.project_id {
-        segments.push(format!("projects/{project_id}"));
-    }
-    if let Some(thread_id) = &scope.thread_id {
-        segments.push(format!("threads/{thread_id}"));
-    }
-    if segments.is_empty() {
-        "scope".to_string()
-    } else {
-        segments.join("/")
-    }
+fn lease_owner_prefix(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
+        "{}/{}",
+        LEASES_PREFIX,
+        scope.within_tenant_segment(),
+    ))
 }
 
 /// Join a leaf segment onto a [`ScopedPath`] prefix. Used when reconstructing

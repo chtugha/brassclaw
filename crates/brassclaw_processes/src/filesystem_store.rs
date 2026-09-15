@@ -90,7 +90,7 @@ where
     }
 
     async fn write_record(&self, record: &ProcessRecord) -> Result<(), ProcessError> {
-        let path = process_record_path(&record.scope, record.process_id)?;
+        let path = process_record_path(&record.scope, record.process_id);
         let body = serialize_pretty(record)?;
         self.ensure_indexes(&record.scope).await?;
         let entry = process_record_entry(body, record);
@@ -110,7 +110,7 @@ where
     /// Tolerates `Unsupported` for byte-only backends (e.g. LocalFilesystem)
     /// so the existing list+get fallback path is still reachable.
     async fn ensure_indexes(&self, scope: &ResourceScope) -> Result<(), ProcessError> {
-        let prefix = process_records_root(scope)?;
+        let prefix = process_records_root(scope);
         ensure_exact_index(
             &self.filesystem,
             scope,
@@ -176,7 +176,7 @@ where
         error_kind: Option<String>,
     ) -> Result<ProcessRecord, ProcessError> {
         let _guard = self.transition_lock.lock().await;
-        let path = process_record_path(scope, process_id)?;
+        let path = process_record_path(scope, process_id);
         for _ in 0..MAX_CAS_RETRIES {
             let Some(versioned) = self.filesystem.get(scope, &path).await? else {
                 return Err(ProcessError::UnknownProcess { process_id });
@@ -231,7 +231,7 @@ where
 {
     async fn start(&self, start: ProcessStart) -> Result<ProcessRecord, ProcessError> {
         let _guard = self.transition_lock.lock().await;
-        let path = process_record_path(&start.scope, start.process_id)?;
+        let path = process_record_path(&start.scope, start.process_id);
         // Existence check uses `get` (unified read) so it works regardless of
         // whether the backend has native put. Atomicity is provided by the
         // transition_lock per the single-instance invariant in this struct's
@@ -299,7 +299,7 @@ where
         scope: &ResourceScope,
         process_id: ProcessId,
     ) -> Result<Option<ProcessRecord>, ProcessError> {
-        let path = process_record_path(scope, process_id)?;
+        let path = process_record_path(scope, process_id);
         let Some(versioned) = self.filesystem.get(scope, &path).await? else {
             return Ok(None);
         };
@@ -316,7 +316,7 @@ where
         &self,
         scope: &ResourceScope,
     ) -> Result<Vec<ProcessRecord>, ProcessError> {
-        let root = process_records_root(scope)?;
+        let root = process_records_root(scope);
         // Try the indexed query path first. The `tenant_id` + `user_id`
         // pair is still projected onto each record so a backend serving
         // a shared root (e.g. tests reusing one InMemoryBackend across
@@ -434,7 +434,7 @@ where
     }
 
     async fn write_result(&self, record: &ProcessResultRecord) -> Result<(), ProcessError> {
-        let path = process_result_path(&record.scope, record.process_id)?;
+        let path = process_result_path(&record.scope, record.process_id);
         let body = serialize_pretty(record)?;
         let entry = Entry::bytes(body).with_content_type(ContentType::json());
         self.filesystem
@@ -449,7 +449,7 @@ where
         process_id: ProcessId,
         output: &Value,
     ) -> Result<VirtualPath, ProcessError> {
-        let path = process_output_path(scope, process_id)?;
+        let path = process_output_path(scope, process_id);
         let body = serialize_pretty(output)?;
         let entry = Entry::bytes(body).with_content_type(ContentType::json());
         self.filesystem
@@ -547,7 +547,7 @@ where
         scope: &ResourceScope,
         process_id: ProcessId,
     ) -> Result<Option<ProcessResultRecord>, ProcessError> {
-        let path = process_result_path(scope, process_id)?;
+        let path = process_result_path(scope, process_id);
         let Some(versioned) = self.filesystem.get(scope, &path).await? else {
             return Ok(None);
         };
@@ -582,7 +582,7 @@ where
         // scoped path (going through the per-op ACL) rather than the raw
         // `VirtualPath` so backends with stricter scopes still apply
         // their checks.
-        let expected_scoped = process_output_path(scope, process_id)?;
+        let expected_scoped = process_output_path(scope, process_id);
         let expected_virtual = self
             .filesystem
             .resolve(scope, &expected_scoped)
@@ -613,39 +613,30 @@ where
 
 const PROCESSES_PREFIX: &str = "/processes";
 
-fn process_record_path(
-    scope: &ResourceScope,
-    process_id: ProcessId,
-) -> Result<ScopedPath, ProcessError> {
-    scoped_path(&format!(
+fn process_record_path(scope: &ResourceScope, process_id: ProcessId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/{process_id}.json",
         process_records_root_string(scope)
     ))
 }
 
-fn process_records_root(scope: &ResourceScope) -> Result<ScopedPath, ProcessError> {
-    scoped_path(&process_records_root_string(scope))
+fn process_records_root(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(process_records_root_string(scope))
 }
 
 fn process_records_root_string(scope: &ResourceScope) -> String {
     format!("{}/records", scope_owner_root_string(scope))
 }
 
-fn process_result_path(
-    scope: &ResourceScope,
-    process_id: ProcessId,
-) -> Result<ScopedPath, ProcessError> {
-    scoped_path(&format!(
+fn process_result_path(scope: &ResourceScope, process_id: ProcessId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/results/{process_id}.json",
         scope_owner_root_string(scope)
     ))
 }
 
-fn process_output_path(
-    scope: &ResourceScope,
-    process_id: ProcessId,
-) -> Result<ScopedPath, ProcessError> {
-    scoped_path(&format!(
+fn process_output_path(scope: &ResourceScope, process_id: ProcessId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/outputs/{process_id}/output.json",
         scope_owner_root_string(scope)
     ))
@@ -655,24 +646,7 @@ fn process_output_path(
 /// `/processes`. The tenant/user prefix is supplied by the caller's
 /// MountView at op time and intentionally absent here.
 fn scope_owner_root_string(scope: &ResourceScope) -> String {
-    let mut base = String::from(PROCESSES_PREFIX);
-    if let Some(agent_id) = &scope.agent_id {
-        base.push_str("/agents/");
-        base.push_str(agent_id.as_str());
-    }
-    if let Some(project_id) = &scope.project_id {
-        base.push_str("/projects/");
-        base.push_str(project_id.as_str());
-    }
-    if let Some(thread_id) = &scope.thread_id {
-        base.push_str("/threads/");
-        base.push_str(thread_id.as_str());
-    }
-    base
-}
-
-fn scoped_path(raw: &str) -> Result<ScopedPath, ProcessError> {
-    ScopedPath::new(raw).map_err(invalid_path)
+    format!("{}/{}", PROCESSES_PREFIX, scope.within_tenant_segment())
 }
 
 /// Join a leaf segment onto a [`ScopedPath`] prefix. Used when

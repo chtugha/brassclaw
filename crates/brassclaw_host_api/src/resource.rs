@@ -75,6 +75,54 @@ impl ResourceScope {
     pub fn is_system(&self) -> bool {
         self.tenant_id.as_str() == SYSTEM_RESERVED_ID && self.user_id.as_str() == SYSTEM_RESERVED_ID
     }
+
+    /// Build the within-tenant path segment for agent/project-scoped stores
+    /// (secrets, product auth) where records are shared across threads.
+    ///
+    /// Returns `agents/{id}/projects/{id}` for whichever axes are present,
+    /// or `"scope"` when both are absent. Thread identity is intentionally
+    /// excluded — these stores keep records at the project granularity so
+    /// cross-thread reads land on the same path.
+    pub fn within_agent_project_segment(&self) -> String {
+        let mut segments = Vec::new();
+        if let Some(id) = &self.agent_id {
+            segments.push(format!("agents/{id}"));
+        }
+        if let Some(id) = &self.project_id {
+            segments.push(format!("projects/{id}"));
+        }
+        if segments.is_empty() {
+            "scope".to_string()
+        } else {
+            segments.join("/")
+        }
+    }
+
+    /// Build the within-tenant path segment for filesystem path isolation.
+    ///
+    /// Returns `agents/{id}/projects/{id}/threads/{id}` for whichever axes
+    /// are present, or `"scope"` when all are absent so the caller's
+    /// alias-relative path is always a non-empty directory component.
+    ///
+    /// Tenant and user identity are intentionally absent — they live in the
+    /// caller's [`MountView`] grant, not in the alias-relative path.
+    pub fn within_tenant_segment(&self) -> String {
+        let mut segments = Vec::new();
+        if let Some(id) = &self.agent_id {
+            segments.push(format!("agents/{id}"));
+        }
+        if let Some(id) = &self.project_id {
+            segments.push(format!("projects/{id}"));
+        }
+        if let Some(id) = &self.thread_id {
+            segments.push(format!("threads/{id}"));
+        }
+        if segments.is_empty() {
+            "scope".to_string()
+        } else {
+            segments.join("/")
+        }
+    }
 }
 
 /// Origin of a background reservation. Distinguishes heartbeats, routines,

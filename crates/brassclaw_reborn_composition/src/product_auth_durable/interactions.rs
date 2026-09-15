@@ -49,7 +49,7 @@ where
         };
         self.write_record(
             &interaction.scope.resource,
-            &interaction_path(&interaction.scope, interaction.id)?,
+            &interaction_path(&interaction.scope, interaction.id),
             &interaction,
             CasExpectation::Absent,
         )
@@ -70,7 +70,7 @@ where
         validate_secret(&request)?;
         let lock = self.lock_for(format!("interaction:{}", request.interaction_id));
         let _guard = lock.lock().await;
-        let path = interaction_path(scope, request.interaction_id)?;
+        let path = interaction_path(scope, request.interaction_id);
         let (mut pending, version): (StoredManualTokenInteraction, RecordVersion) = self
             .read_record(&scope.resource, &path)
             .await?
@@ -106,7 +106,7 @@ where
         scope: &brassclaw_auth::AuthProductScope,
         interaction_id: AuthInteractionId,
     ) -> Result<bool, AuthProductError> {
-        let path = interaction_path(scope, interaction_id)?;
+        let path = interaction_path(scope, interaction_id);
         match self.filesystem.delete(&scope.resource, &path).await {
             Ok(()) => Ok(true),
             Err(FilesystemError::NotFound { .. }) => Ok(false),

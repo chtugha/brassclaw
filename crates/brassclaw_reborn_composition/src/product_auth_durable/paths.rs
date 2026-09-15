@@ -8,24 +8,19 @@ use brassclaw_auth::{
 pub(super) fn flow_path(
     scope: &brassclaw_auth::AuthProductScope,
     flow_id: AuthFlowId,
-) -> Result<ScopedPath, AuthProductError> {
-    scoped_path(&format!(
+) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/flows/{flow_id}.json",
         product_auth_root(scope)
     ))
 }
 
-pub(super) fn flow_root(
-    scope: &brassclaw_auth::AuthProductScope,
-) -> Result<ScopedPath, AuthProductError> {
-    scoped_path(&format!("{}/flows", product_auth_root(scope)))
+pub(super) fn flow_root(scope: &brassclaw_auth::AuthProductScope) -> ScopedPath {
+    ScopedPath::from_trusted(format!("{}/flows", product_auth_root(scope)))
 }
 
-pub(super) fn surface_sessions_root(
-    resource: &ResourceScope,
-    surface: AuthSurface,
-) -> Result<ScopedPath, AuthProductError> {
-    scoped_path(&format!(
+pub(super) fn surface_sessions_root(resource: &ResourceScope, surface: AuthSurface) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/{}/sessions",
         product_auth_base_root(resource),
         surface_path_segment(surface)
@@ -35,8 +30,8 @@ pub(super) fn surface_sessions_root(
 pub(super) fn interaction_path(
     scope: &brassclaw_auth::AuthProductScope,
     interaction_id: AuthInteractionId,
-) -> Result<ScopedPath, AuthProductError> {
-    scoped_path(&format!(
+) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/interactions/{interaction_id}.json",
         product_auth_root(scope)
     ))
@@ -45,17 +40,15 @@ pub(super) fn interaction_path(
 pub(super) fn account_path(
     scope: &brassclaw_auth::AuthProductScope,
     account_id: CredentialAccountId,
-) -> Result<ScopedPath, AuthProductError> {
-    scoped_path(&format!(
+) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/accounts/{account_id}.json",
         product_auth_root(scope)
     ))
 }
 
-pub(super) fn account_root(
-    scope: &brassclaw_auth::AuthProductScope,
-) -> Result<ScopedPath, AuthProductError> {
-    scoped_path(&format!("{}/accounts", product_auth_root(scope)))
+pub(super) fn account_root(scope: &brassclaw_auth::AuthProductScope) -> ScopedPath {
+    ScopedPath::from_trusted(format!("{}/accounts", product_auth_root(scope)))
 }
 
 fn product_auth_root(scope: &brassclaw_auth::AuthProductScope) -> String {
@@ -70,17 +63,14 @@ fn product_auth_root(scope: &brassclaw_auth::AuthProductScope) -> String {
 }
 
 fn product_auth_base_root(resource: &ResourceScope) -> String {
-    let mut base = String::from("/secrets");
-    if let Some(agent_id) = &resource.agent_id {
-        base.push_str("/agents/");
-        base.push_str(agent_id.as_str());
-    }
-    if let Some(project_id) = &resource.project_id {
-        base.push_str("/projects/");
-        base.push_str(project_id.as_str());
-    }
-    base.push_str("/product-auth");
-    base
+    // Uses `within_agent_project_segment` (not the full within-tenant segment)
+    // so product-auth accounts are shared across threads within the same
+    // (agent, project) owner scope — a `UserReusable` account created in a
+    // setup thread must be visible to any runtime thread under the same owner.
+    format!(
+        "/secrets/{}/product-auth",
+        resource.within_agent_project_segment()
+    )
 }
 
 fn surface_path_segment(surface: AuthSurface) -> &'static str {

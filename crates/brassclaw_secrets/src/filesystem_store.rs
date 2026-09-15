@@ -241,7 +241,7 @@ where
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<Option<StoredSecret>, SecretStoreError> {
-        let path = secret_path(scope, handle)?;
+        let path = secret_path(scope, handle);
         let Some(versioned) = self
             .filesystem
             .get(scope, &path)
@@ -258,7 +258,7 @@ where
     }
 
     async fn write_secret(&self, secret: &StoredSecret) -> Result<(), SecretStoreError> {
-        let path = secret_path(&secret.scope, &secret.handle)?;
+        let path = secret_path(&secret.scope, &secret.handle);
         let body = serialize_secret(secret)?;
         let entry = tag_entry_with_tenant(
             Entry::bytes(body).with_content_type(ContentType::json()),
@@ -267,7 +267,7 @@ where
         ensure_tenant_id_index_secret(
             &self.filesystem,
             &secret.scope,
-            &secret_owner_root(&secret.scope)?,
+            &secret_owner_root(&secret.scope),
         )
         .await?;
         self.filesystem
@@ -278,13 +278,13 @@ where
     }
 
     async fn write_lease(&self, lease: &StoredLease) -> Result<(), SecretStoreError> {
-        let path = lease_path(&lease.scope, lease.lease_id)?;
+        let path = lease_path(&lease.scope, lease.lease_id);
         let body = serialize_secret(lease)?;
         let entry = tag_entry_with_tenant(
             Entry::bytes(body).with_content_type(ContentType::json()),
             &lease.scope,
         );
-        ensure_tenant_id_index_secret(&self.filesystem, &lease.scope, &lease_root(&lease.scope)?)
+        ensure_tenant_id_index_secret(&self.filesystem, &lease.scope, &lease_root(&lease.scope))
             .await?;
         self.filesystem
             .put(&lease.scope, &path, entry, CasExpectation::Any)
@@ -370,7 +370,7 @@ where
         scope: &ResourceScope,
         handle: &SecretHandle,
     ) -> Result<bool, SecretStoreError> {
-        let path = secret_path(scope, handle)?;
+        let path = secret_path(scope, handle);
         match self.filesystem.delete(scope, &path).await {
             Ok(()) => Ok(true),
             Err(error) if is_not_found(&error) => Ok(false),
@@ -418,7 +418,7 @@ where
         // process; the CAS retry inside `cas_mutate` is what makes a
         // concurrent consume from another process lose the race
         // deterministically.
-        let path = lease_path(scope, lease_id)?;
+        let path = lease_path(scope, lease_id);
         cas_mutate(
             &self.filesystem,
             scope,
@@ -494,7 +494,7 @@ where
         // clobbering a concurrent `consume`'s Consumed marker. Pattern
         // mirrors `consume` and `consume_session_use`. See F2 (Medium) in
         // the 2026-05 audit.
-        let path = lease_path(scope, lease_id)?;
+        let path = lease_path(scope, lease_id);
         cas_mutate(
             &self.filesystem,
             scope,
@@ -557,7 +557,7 @@ where
         // currently declares no indexes (no `ensure_*` calls in `new`), so
         // adding that path is a follow-up. Until then, the list+get fan-out
         // is acceptable because N is bounded by the owner prefix.
-        let root = lease_root(scope)?;
+        let root = lease_root(scope);
         let entries = match self.filesystem.list_dir(scope, &root).await {
             Ok(entries) => entries,
             Err(error) if is_not_found(&error) => return Ok(Vec::new()),
@@ -672,7 +672,7 @@ where
             status: account.status,
             updated_at: account.updated_at,
         };
-        let path = credential_account_path(&account.scope, &account.id)?;
+        let path = credential_account_path(&account.scope, &account.id);
         let body = serialize_credential(&stored)?;
         let entry = tag_entry_with_tenant(
             Entry::bytes(body).with_content_type(ContentType::json()),
@@ -681,7 +681,7 @@ where
         ensure_tenant_id_index_broker(
             &self.filesystem,
             &account.scope,
-            &credential_account_root(&account.scope)?,
+            &credential_account_root(&account.scope),
         )
         .await?;
         self.filesystem
@@ -697,7 +697,7 @@ where
         scope: &ResourceScope,
         account_id: &CredentialAccountId,
     ) -> Result<Option<CredentialAccount>, CredentialBrokerError> {
-        let path = credential_account_path(scope, account_id)?;
+        let path = credential_account_path(scope, account_id);
         let Some(versioned) = self
             .filesystem
             .get(scope, &path)
@@ -723,7 +723,7 @@ where
         &self,
         scope: &ResourceScope,
     ) -> Result<Vec<CredentialAccount>, CredentialBrokerError> {
-        let root = credential_account_root(scope)?;
+        let root = credential_account_root(scope);
         let entries = match self.filesystem.list_dir(scope, &root).await {
             Ok(entries) => entries,
             Err(error) if is_not_found(&error) => return Ok(Vec::new()),
@@ -779,7 +779,7 @@ where
             key_salt,
             uses: 0,
         };
-        let path = credential_session_path(session.scope(), session.correlation_id())?;
+        let path = credential_session_path(session.scope(), session.correlation_id());
         let body = serialize_credential(&stored)?;
         let entry = tag_entry_with_tenant(
             Entry::bytes(body).with_content_type(ContentType::json()),
@@ -788,7 +788,7 @@ where
         ensure_tenant_id_index_broker(
             &self.filesystem,
             session.scope(),
-            &credential_session_root(session.scope())?,
+            &credential_session_root(session.scope()),
         )
         .await?;
         self.filesystem
@@ -804,7 +804,7 @@ where
         scope: &ResourceScope,
         session_id: CredentialSessionId,
     ) -> Result<Option<CredentialSession>, CredentialBrokerError> {
-        let path = credential_session_path(scope, session_id)?;
+        let path = credential_session_path(scope, session_id);
         let Some(versioned) = self
             .filesystem
             .get(scope, &path)
@@ -829,7 +829,7 @@ where
         session_id: CredentialSessionId,
         now: Timestamp,
     ) -> Result<CredentialSession, CredentialBrokerError> {
-        let path = credential_session_path(scope, session_id)?;
+        let path = credential_session_path(scope, session_id);
         let lock = filesystem_session_lock(&path);
         let _guard = lock.lock().await;
         let Some(versioned) = self
@@ -857,7 +857,7 @@ where
         session_id: CredentialSessionId,
         now: Timestamp,
     ) -> Result<CredentialSession, CredentialBrokerError> {
-        let path = credential_session_path(scope, session_id)?;
+        let path = credential_session_path(scope, session_id);
         let lock = filesystem_session_lock(&path);
         let _guard = lock.lock().await;
         // Process-local mutex serializes writers in this process; the CAS
@@ -915,66 +915,57 @@ where
 // handle)` tuple so cross-owner reads fail closed both at the path layer and
 // at decrypt.
 
-fn secret_path(
-    scope: &ResourceScope,
-    handle: &SecretHandle,
-) -> Result<ScopedPath, SecretStoreError> {
-    scoped_path_secret(&format!(
+fn secret_path(scope: &ResourceScope, handle: &SecretHandle) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/secrets/{}.json",
         secret_owner_alias(scope),
         handle.as_str()
     ))
 }
 
-fn lease_path(
-    scope: &ResourceScope,
-    lease_id: SecretLeaseId,
-) -> Result<ScopedPath, SecretStoreError> {
-    scoped_path_secret(&format!("{}/{lease_id}.json", lease_root(scope)?.as_str()))
+fn lease_path(scope: &ResourceScope, lease_id: SecretLeaseId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
+        "{}/{lease_id}.json",
+        lease_root(scope).as_str()
+    ))
 }
 
-fn lease_root(scope: &ResourceScope) -> Result<ScopedPath, SecretStoreError> {
-    scoped_path_secret(&format!("{}/secret-leases", secret_owner_alias(scope)))
+fn lease_root(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(format!("{}/secret-leases", secret_owner_alias(scope)))
 }
 
 /// Alias-relative root prefix for the `secrets/` subdirectory under a
 /// given owner scope. Used as the `prefix` argument to
 /// [`ScopedFilesystem::ensure_index`] so the `tenant_id` projection is
 /// declared on the same subtree the corresponding writes land in.
-fn secret_owner_root(scope: &ResourceScope) -> Result<ScopedPath, SecretStoreError> {
-    scoped_path_secret(&format!("{}/secrets", secret_owner_alias(scope)))
+fn secret_owner_root(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(format!("{}/secrets", secret_owner_alias(scope)))
 }
 
-fn credential_session_root(scope: &ResourceScope) -> Result<ScopedPath, CredentialBrokerError> {
-    scoped_path_broker(&format!(
+fn credential_session_root(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/credential-sessions",
         secret_owner_alias(scope)
     ))
 }
 
-fn credential_account_path(
-    scope: &ResourceScope,
-    account_id: &CredentialAccountId,
-) -> Result<ScopedPath, CredentialBrokerError> {
-    scoped_path_broker(&format!(
+fn credential_account_path(scope: &ResourceScope, account_id: &CredentialAccountId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/{}.json",
-        credential_account_root(scope)?.as_str(),
+        credential_account_root(scope).as_str(),
         account_id.as_str()
     ))
 }
 
-fn credential_account_root(scope: &ResourceScope) -> Result<ScopedPath, CredentialBrokerError> {
-    scoped_path_broker(&format!(
+fn credential_account_root(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/credential-accounts",
         secret_owner_alias(scope)
     ))
 }
 
-fn credential_session_path(
-    scope: &ResourceScope,
-    session_id: CredentialSessionId,
-) -> Result<ScopedPath, CredentialBrokerError> {
-    scoped_path_broker(&format!(
+fn credential_session_path(scope: &ResourceScope, session_id: CredentialSessionId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/credential-sessions/{}.json",
         secret_owner_alias(scope),
         session_id.to_private_storage_string()
@@ -984,17 +975,13 @@ fn credential_session_path(
 /// Build the alias-relative owner prefix for a scope, starting from the
 /// `/secrets` mount alias. Tenant and user are intentionally absent — they
 /// live in the MountView the caller supplied.
+///
+/// Uses [`ResourceScope::within_agent_project_segment`] rather than the
+/// full within-tenant segment so secrets are shared across threads within
+/// the same (agent, project) owner scope. A secret written in one thread
+/// must be readable by any other thread under the same owner.
 fn secret_owner_alias(scope: &ResourceScope) -> String {
-    let mut base = String::from("/secrets");
-    if let Some(agent_id) = &scope.agent_id {
-        base.push_str("/agents/");
-        base.push_str(agent_id.as_str());
-    }
-    if let Some(project_id) = &scope.project_id {
-        base.push_str("/projects/");
-        base.push_str(project_id.as_str());
-    }
-    base
+    format!("/secrets/{}", scope.within_agent_project_segment())
 }
 
 fn scoped_path_secret(raw: &str) -> Result<ScopedPath, SecretStoreError> {
@@ -1088,9 +1075,9 @@ fn filesystem_secret_lock_for_lease(
     scope: &ResourceScope,
     lease_id: SecretLeaseId,
 ) -> FilesystemRecordLock {
-    // We can't reuse `lease_path` here because it returns Result; we just need
-    // a stable key for the in-process mutex. The path string is stable for the
-    // same scope/lease and not a host path.
+    // Uses a manually-constructed key rather than `lease_path` because the
+    // lock must be keyed on `invocation_id` (not the per-invocation lease
+    // file path) to serialize all lease mutations within the same owner.
     let key = format!("lease|{}|{}", owner_lock_prefix(scope), lease_id);
     filesystem_secret_lock(key)
 }
@@ -1764,7 +1751,7 @@ mod tests {
         // Resolve the alias-relative ScopedPath to its backing VirtualPath
         // through the same MountView the store uses, so the at-rest check
         // reads exactly the bytes the backend stored.
-        let scoped_path = secret_path(&scope, &handle).unwrap();
+        let scoped_path = secret_path(&scope, &handle);
         let virtual_path = scoped.resolve(&scope, &scoped_path).unwrap();
         let versioned = fs
             .get(&virtual_path)
@@ -1990,7 +1977,7 @@ mod tests {
         account.label = "leak-sentinel-92ab".to_string();
         broker.put_account(account).await.unwrap();
 
-        let scoped_path = credential_account_path(&scope, &account_id).unwrap();
+        let scoped_path = credential_account_path(&scope, &account_id);
         let virtual_path = scoped.resolve(&scope, &scoped_path).unwrap();
         let versioned = fs
             .get(&virtual_path)
@@ -2219,7 +2206,7 @@ mod tests {
         // The racing backend watches the post-resolution VirtualPath, so
         // resolve the alias-relative ScopedPath through the same MountView
         // shape composition uses in production.
-        let scoped_lease = lease_path(&scope, lease.id).unwrap();
+        let scoped_lease = lease_path(&scope, lease.id);
         let watched = bootstrap_store
             .filesystem
             .resolve(&scope, &scoped_lease)
@@ -2274,7 +2261,7 @@ mod tests {
             .await
             .unwrap();
         let correlation = session.correlation_id();
-        let scoped_session_path = credential_session_path(&scope, correlation).unwrap();
+        let scoped_session_path = credential_session_path(&scope, correlation);
         let watched = bootstrap_broker
             .filesystem
             .resolve(&scope, &scoped_session_path)
@@ -2333,7 +2320,7 @@ mod tests {
             .unwrap();
         let lease = bootstrap_store.lease_once(&scope, &handle).await.unwrap();
 
-        let scoped_lease = lease_path(&scope, lease.id).unwrap();
+        let scoped_lease = lease_path(&scope, lease.id);
         let watched = bootstrap_store
             .filesystem
             .resolve(&scope, &scoped_lease)
@@ -2378,7 +2365,7 @@ mod tests {
             .unwrap();
         let lease = bootstrap_store.lease_once(&scope, &handle).await.unwrap();
 
-        let scoped_lease = lease_path(&scope, lease.id).unwrap();
+        let scoped_lease = lease_path(&scope, lease.id);
         let watched = bootstrap_store
             .filesystem
             .resolve(&scope, &scoped_lease)
@@ -2440,7 +2427,7 @@ mod tests {
             .await
             .unwrap();
         let correlation = session.correlation_id();
-        let scoped_session_path = credential_session_path(&scope, correlation).unwrap();
+        let scoped_session_path = credential_session_path(&scope, correlation);
         let watched = bootstrap_broker
             .filesystem
             .resolve(&scope, &scoped_session_path)
@@ -2646,7 +2633,7 @@ mod tests {
         // Resolve the alias-relative secrets prefix to the backing
         // VirtualPath via the same MountView the store uses so the raw
         // query targets exactly the bytes the backend stored.
-        let prefix = secret_owner_root(&scope).unwrap();
+        let prefix = secret_owner_root(&scope);
         let virtual_prefix = scoped.resolve(&scope, &prefix).unwrap();
         let tenant_key = IndexKey::new("tenant_id").unwrap();
 

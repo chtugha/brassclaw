@@ -202,6 +202,19 @@ impl ScopedPath {
         Self::new_with_allowed_raw_host_aliases(value.into(), std::iter::empty())
     }
 
+    /// Construct from a value proven correct by construction — a path assembled
+    /// from already-validated ID types that cannot contain separators, `..`,
+    /// or control characters. Never call with user-supplied strings.
+    ///
+    /// A `debug_assert!` guards misuse in debug builds.
+    pub fn from_trusted(value: String) -> Self {
+        debug_assert!(
+            ScopedPath::new(value.clone()).is_ok(),
+            "ScopedPath::from_trusted called with invalid path: {value}"
+        );
+        Self(value)
+    }
+
     pub(crate) fn new_with_allowed_raw_host_aliases<'a>(
         raw: String,
         raw_host_aliases: impl IntoIterator<Item = &'a str>,

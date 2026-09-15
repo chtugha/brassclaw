@@ -163,7 +163,7 @@ where
         scope: &brassclaw_auth::AuthProductScope,
         flow_id: AuthFlowId,
     ) -> Result<Option<(AuthFlowRecord, RecordVersion)>, AuthProductError> {
-        self.read_record(&scope.resource, &flow_path(scope, flow_id)?)
+        self.read_record(&scope.resource, &flow_path(scope, flow_id))
             .await
     }
 
@@ -173,7 +173,7 @@ where
         record: &AuthFlowRecord,
         cas: CasExpectation,
     ) -> Result<RecordVersion, AuthProductError> {
-        self.write_record(&scope.resource, &flow_path(scope, record.id)?, record, cas)
+        self.write_record(&scope.resource, &flow_path(scope, record.id), record, cas)
             .await
     }
 
@@ -191,7 +191,7 @@ where
         &self,
         scope: &brassclaw_auth::AuthProductScope,
     ) -> Result<Vec<(AuthFlowRecord, RecordVersion)>, AuthProductError> {
-        let root = flow_root(scope)?;
+        let root = flow_root(scope);
         let entries = match self.filesystem.list_dir(&scope.resource, &root).await {
             Ok(entries) => entries,
             Err(FilesystemError::NotFound { .. }) => return Ok(Vec::new()),
@@ -243,7 +243,7 @@ where
                     .map(|(flow, _)| flow)
                     .filter(|flow| owner.matches(flow)),
             );
-            let sessions_root = surface_sessions_root(&resource, surface)?;
+            let sessions_root = surface_sessions_root(&resource, surface);
             let mut entries = match self
                 .filesystem
                 .list_dir_bounded(
@@ -290,7 +290,7 @@ where
         scope: &brassclaw_auth::AuthProductScope,
         account_id: CredentialAccountId,
     ) -> Result<Option<(CredentialAccount, RecordVersion)>, AuthProductError> {
-        self.read_record(&scope.resource, &account_path(scope, account_id)?)
+        self.read_record(&scope.resource, &account_path(scope, account_id))
             .await
     }
 
@@ -301,7 +301,7 @@ where
     ) -> Result<RecordVersion, AuthProductError> {
         self.write_record(
             &account.scope.resource,
-            &account_path(&account.scope, account.id)?,
+            &account_path(&account.scope, account.id),
             account,
             cas,
         )
@@ -342,7 +342,7 @@ where
         scope: &brassclaw_auth::AuthProductScope,
         max_records: Option<usize>,
     ) -> Result<Vec<CredentialAccount>, AuthProductError> {
-        let root = account_root(scope)?;
+        let root = account_root(scope);
         let entries = match max_records {
             Some(max_records) => {
                 self.filesystem
@@ -410,7 +410,7 @@ where
                 );
                 continue;
             }
-            let sessions_root = surface_sessions_root(&resource, surface)?;
+            let sessions_root = surface_sessions_root(&resource, surface);
             let mut entries = match self
                 .filesystem
                 .list_dir_bounded(

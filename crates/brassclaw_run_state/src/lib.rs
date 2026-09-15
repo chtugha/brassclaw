@@ -575,7 +575,7 @@ where
         scope: &ResourceScope,
         invocation_id: InvocationId,
     ) -> Result<Option<(RunRecord, RecordVersion)>, RunStateError> {
-        let path = run_record_path(scope, invocation_id)?;
+        let path = run_record_path(scope, invocation_id);
         let Some(versioned) = self.filesystem.get(scope, &path).await? else {
             return Ok(None);
         };
@@ -603,7 +603,7 @@ where
     where
         M: FnMut(&mut RunRecord),
     {
-        let path = run_record_path(scope, invocation_id)?;
+        let path = run_record_path(scope, invocation_id);
         for _ in 0..FILESYSTEM_CAS_RETRIES {
             let (mut record, version) = self
                 .read_versioned(scope, invocation_id)
@@ -638,7 +638,7 @@ where
     F: RootFilesystem,
 {
     async fn start(&self, start: RunStart) -> Result<RunRecord, RunStateError> {
-        let path = run_record_path(&start.scope, start.invocation_id)?;
+        let path = run_record_path(&start.scope, start.invocation_id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         let record = RunRecord {
@@ -673,7 +673,7 @@ where
         invocation_id: InvocationId,
         approval: ApprovalRequest,
     ) -> Result<RunRecord, RunStateError> {
-        let path = run_record_path(scope, invocation_id)?;
+        let path = run_record_path(scope, invocation_id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         self.apply_update(scope, invocation_id, |record| {
@@ -690,7 +690,7 @@ where
         invocation_id: InvocationId,
         error_kind: String,
     ) -> Result<RunRecord, RunStateError> {
-        let path = run_record_path(scope, invocation_id)?;
+        let path = run_record_path(scope, invocation_id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         self.apply_update(scope, invocation_id, |record| {
@@ -706,7 +706,7 @@ where
         scope: &ResourceScope,
         invocation_id: InvocationId,
     ) -> Result<RunRecord, RunStateError> {
-        let path = run_record_path(scope, invocation_id)?;
+        let path = run_record_path(scope, invocation_id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         self.apply_update(scope, invocation_id, |record| {
@@ -723,7 +723,7 @@ where
         invocation_id: InvocationId,
         error_kind: String,
     ) -> Result<RunRecord, RunStateError> {
-        let path = run_record_path(scope, invocation_id)?;
+        let path = run_record_path(scope, invocation_id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         self.apply_update(scope, invocation_id, |record| {
@@ -749,7 +749,7 @@ where
         &self,
         scope: &ResourceScope,
     ) -> Result<Vec<RunRecord>, RunStateError> {
-        let root = run_records_root(scope)?;
+        let root = run_records_root(scope);
         let entries = match self.filesystem.list_dir(scope, &root).await {
             Ok(entries) => entries,
             Err(error) if is_not_found(&error) => return Ok(Vec::new()),
@@ -807,7 +807,7 @@ where
         scope: &ResourceScope,
         request_id: ApprovalRequestId,
     ) -> Result<Option<(ApprovalRecord, RecordVersion)>, RunStateError> {
-        let path = approval_record_path(scope, request_id)?;
+        let path = approval_record_path(scope, request_id);
         let Some(versioned) = self.filesystem.get(scope, &path).await? else {
             return Ok(None);
         };
@@ -828,7 +828,7 @@ where
         request_id: ApprovalRequestId,
         status: ApprovalStatus,
     ) -> Result<ApprovalRecord, RunStateError> {
-        let path = approval_record_path(scope, request_id)?;
+        let path = approval_record_path(scope, request_id);
         for _ in 0..FILESYSTEM_CAS_RETRIES {
             let (mut record, version) = self
                 .read_versioned(scope, request_id)
@@ -873,7 +873,7 @@ where
         scope: ResourceScope,
         request: ApprovalRequest,
     ) -> Result<ApprovalRecord, RunStateError> {
-        let path = approval_record_path(&scope, request.id)?;
+        let path = approval_record_path(&scope, request.id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         let record = ApprovalRecord {
@@ -915,7 +915,7 @@ where
         scope: &ResourceScope,
         request_id: ApprovalRequestId,
     ) -> Result<ApprovalRecord, RunStateError> {
-        let path = approval_record_path(scope, request_id)?;
+        let path = approval_record_path(scope, request_id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         self.update_status(scope, request_id, ApprovalStatus::Approved)
@@ -927,7 +927,7 @@ where
         scope: &ResourceScope,
         request_id: ApprovalRequestId,
     ) -> Result<ApprovalRecord, RunStateError> {
-        let path = approval_record_path(scope, request_id)?;
+        let path = approval_record_path(scope, request_id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         self.update_status(scope, request_id, ApprovalStatus::Denied)
@@ -939,7 +939,7 @@ where
         scope: &ResourceScope,
         request_id: ApprovalRequestId,
     ) -> Result<ApprovalRecord, RunStateError> {
-        let path = approval_record_path(scope, request_id)?;
+        let path = approval_record_path(scope, request_id);
         let record_lock = filesystem_record_lock(&path);
         let _guard = record_lock.lock().await;
         let record = self
@@ -960,7 +960,7 @@ where
         &self,
         scope: &ResourceScope,
     ) -> Result<Vec<ApprovalRecord>, RunStateError> {
-        let root = approval_records_root(scope)?;
+        let root = approval_records_root(scope);
         let entries = match self.filesystem.list_dir(scope, &root).await {
             Ok(entries) => entries,
             Err(error) if is_not_found(&error) => return Ok(Vec::new()),
@@ -1002,36 +1002,30 @@ where
 const RUN_STATE_PREFIX: &str = "/run-state";
 const APPROVALS_PREFIX: &str = "/approvals";
 
-fn run_record_path(
-    scope: &ResourceScope,
-    invocation_id: InvocationId,
-) -> Result<ScopedPath, RunStateError> {
-    scoped_path(&format!(
+fn run_record_path(scope: &ResourceScope, invocation_id: InvocationId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/{invocation_id}.json",
         run_records_root_string(scope)
     ))
 }
 
-fn run_records_root(scope: &ResourceScope) -> Result<ScopedPath, RunStateError> {
-    scoped_path(&run_records_root_string(scope))
+fn run_records_root(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(run_records_root_string(scope))
 }
 
 fn run_records_root_string(scope: &ResourceScope) -> String {
     format!("{}/runs", scope_owner_alias_string(RUN_STATE_PREFIX, scope))
 }
 
-fn approval_record_path(
-    scope: &ResourceScope,
-    request_id: ApprovalRequestId,
-) -> Result<ScopedPath, RunStateError> {
-    scoped_path(&format!(
+fn approval_record_path(scope: &ResourceScope, request_id: ApprovalRequestId) -> ScopedPath {
+    ScopedPath::from_trusted(format!(
         "{}/{request_id}.json",
         approval_records_root_string(scope)
     ))
 }
 
-fn approval_records_root(scope: &ResourceScope) -> Result<ScopedPath, RunStateError> {
-    scoped_path(&approval_records_root_string(scope))
+fn approval_records_root(scope: &ResourceScope) -> ScopedPath {
+    ScopedPath::from_trusted(approval_records_root_string(scope))
 }
 
 fn approval_records_root_string(scope: &ResourceScope) -> String {
@@ -1044,20 +1038,7 @@ fn approval_records_root_string(scope: &ResourceScope) -> String {
 /// thread) stay in the path so within-tenant cross-scope isolation still
 /// works for stores sharing one alias target.
 fn scope_owner_alias_string(prefix: &'static str, scope: &ResourceScope) -> String {
-    let mut base = String::from(prefix);
-    if let Some(agent_id) = &scope.agent_id {
-        base.push_str("/agents/");
-        base.push_str(agent_id.as_str());
-    }
-    if let Some(project_id) = &scope.project_id {
-        base.push_str("/projects/");
-        base.push_str(project_id.as_str());
-    }
-    if let Some(thread_id) = &scope.thread_id {
-        base.push_str("/threads/");
-        base.push_str(thread_id.as_str());
-    }
-    base
+    format!("{}/{}", prefix, scope.within_tenant_segment())
 }
 
 fn scoped_path(raw: &str) -> Result<ScopedPath, RunStateError> {

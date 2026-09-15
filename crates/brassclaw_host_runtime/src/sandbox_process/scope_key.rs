@@ -9,6 +9,17 @@ pub struct RebornSandboxScopeKey {
 }
 
 impl RebornSandboxScopeKey {
+    /// Build a stable isolation digest for this scope.
+    ///
+    /// Note: this cascade (project OR thread OR invocation, exclusive) is
+    /// intentionally different from [`ResourceScope::within_tenant_segment`],
+    /// which appends *all* present axes for filesystem path isolation.
+    /// Here we pick the coarsest present granularity for workspace/container
+    /// reuse: project-scoped work shares a sandbox, thread-scoped falls back
+    /// to thread, and fully-unscoped work is invocation-unique. Mixing the
+    /// two semantics would break sandbox isolation by mapping distinct scopes
+    /// to the same digest, or break reuse by assigning separate sandboxes to
+    /// the same conceptual project context.
     pub fn from_scope(scope: &ResourceScope) -> Self {
         let mut raw_parts = vec![
             ("tenant", scope.tenant_id.as_str().to_string()),

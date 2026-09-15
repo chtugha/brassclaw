@@ -2694,24 +2694,12 @@ fn scoped_result_path(scope: &ResourceScope, process_id: ProcessId) -> ScopedPat
 }
 
 /// Build the alias-relative `/processes/...` owner prefix for a request
-/// scope. Mirrors the production `scope_owner_root_string` in
-/// `filesystem_store.rs` but lives in test code so a drift between
-/// production and fixture path layouts shows up as a test failure.
+/// scope. Delegates to [`ResourceScope::within_tenant_segment`] — the same
+/// function the production `scope_owner_root_string` in `filesystem_store.rs`
+/// uses, so any drift between production and fixture path layouts still shows
+/// up as a test failure.
 fn alias_relative_owner_root(scope: &ResourceScope) -> String {
-    let mut base = String::from("/processes");
-    if let Some(agent_id) = &scope.agent_id {
-        base.push_str("/agents/");
-        base.push_str(agent_id.as_str());
-    }
-    if let Some(project_id) = &scope.project_id {
-        base.push_str("/projects/");
-        base.push_str(project_id.as_str());
-    }
-    if let Some(thread_id) = &scope.thread_id {
-        base.push_str("/threads/");
-        base.push_str(thread_id.as_str());
-    }
-    base
+    format!("/processes/{}", scope.within_tenant_segment())
 }
 
 fn sample_scope_with_agent(

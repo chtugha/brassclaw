@@ -800,8 +800,7 @@ async fn filesystem_account_record_source_rejects_malformed_scan_records() {
         .unwrap();
 
     let malformed_account_id = brassclaw_auth::CredentialAccountId::new();
-    let malformed_path = super::paths::account_path(&scope, malformed_account_id)
-        .expect("account path derivation must succeed");
+    let malformed_path = super::paths::account_path(&scope, malformed_account_id);
     let malformed = brassclaw_filesystem::Entry::bytes(b"{ malformed account json".to_vec())
         .with_content_type(brassclaw_filesystem::ContentType::json());
     filesystem
@@ -1891,8 +1890,7 @@ async fn filesystem_manual_token_submit_cleans_up_secret_when_account_write_fail
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    let path = super::paths::account_path(&scope, account_id)
-        .expect("account path derivation must succeed");
+    let path = super::paths::account_path(&scope, account_id);
     let json = serde_json::to_vec(&dummy_account).expect("serialization must succeed");
     use brassclaw_filesystem::{ContentType, Entry};
     let entry = Entry::bytes(json).with_content_type(ContentType::json());
@@ -2982,8 +2980,7 @@ async fn filesystem_manual_token_consume_only_after_successful_account_write() {
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    let path = super::paths::account_path(&scope, account_id)
-        .expect("account path derivation must succeed");
+    let path = super::paths::account_path(&scope, account_id);
     let json = serde_json::to_vec(&dummy_account).expect("serialization must succeed");
     use brassclaw_filesystem::{ContentType, Entry};
     let entry = Entry::bytes(json).with_content_type(ContentType::json());
