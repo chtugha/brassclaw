@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-09-14
+
+### Fixed
+
+- *(prefix / bundle lookup)* **LLM now receives the prefix bundle on every turn.** `ThreadBackedLoopContextPort::load_loop_context` and the Sempai driver in `loop_driver_host` were falling back to `"_default"` when `run_context.scope.project_id` is `None`, while `regenerate_prefix` writes the bundle under `project_id = "default"`. The `WHERE project_id = $4` query never matched, so `get_system_bundle` always returned the minimal fallback string instead of the stored bundle. Changed the fallback to `"default"` in both locations to match every other site in the codebase.
+
 ## [1.2.6] - 2026-09-14
 
 ### Fixed

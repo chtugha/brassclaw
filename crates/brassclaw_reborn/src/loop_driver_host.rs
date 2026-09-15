@@ -2159,7 +2159,7 @@ impl RebornLoopDriverHost {
                     .project_id
                     .as_ref()
                     .map(|p| p.as_str())
-                    .unwrap_or("_default");
+                    .unwrap_or("default");
                 Some(source.get_system_bundle(user_id, project_id).await)
             } else {
                 None

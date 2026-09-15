@@ -334,7 +334,7 @@ where
                 .project_id
                 .as_ref()
                 .map(|p| p.as_str())
-                .unwrap_or("_default");
+                .unwrap_or("default");
             let bundle = source.get_system_bundle(user_id, project_id).await;
             vec![brassclaw_turns::run_profile::LoopContextSnippet {
                 snippet_ref: "prefix:bundle:v1".to_string(),
