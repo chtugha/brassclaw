@@ -60,30 +60,98 @@ const PREFIX_NAME_BASE_PROMPT: &str = "base-prompt";
 /// literals — never user input.  They are interpolated into SQL via `format!()`.
 const COMPONENT_TABLES: &[(&str, u16, &str)] = &[
     // skills / scaffolds use the `body` column
-    ("reborn_skills",              1,  "COALESCE(NULLIF(prior_knowledge_content,''), body)"),
+    (
+        "reborn_skills",
+        1,
+        "COALESCE(NULLIF(prior_knowledge_content,''), body)",
+    ),
     // tools have no prose body — use description
-    ("reborn_tools",               0,  "COALESCE(prior_knowledge_content, description)"),
+    (
+        "reborn_tools",
+        0,
+        "COALESCE(prior_knowledge_content, description)",
+    ),
     // actions — description-only (steps are JSONB, not human-readable prose)
-    ("reborn_actions",             16, "COALESCE(prior_knowledge_content, description)"),
+    (
+        "reborn_actions",
+        16,
+        "COALESCE(prior_knowledge_content, description)",
+    ),
     // memory-class tables all use the `content` column
-    ("reborn_specs",               12, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
-    ("reborn_summaries",           15, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
-    ("reborn_lessons",             18, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
-    ("reborn_issues",              19, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
-    ("reborn_notes",               20, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
-    ("reborn_tool_skills",         13, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
-    ("reborn_plans",               14, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),
-    ("reborn_docus",               17, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),  // Phase P
-    ("reborn_python_code",         22, "COALESCE(NULLIF(prior_knowledge_content,''), content)"),  // Phase B
+    (
+        "reborn_specs",
+        12,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ),
+    (
+        "reborn_summaries",
+        15,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ),
+    (
+        "reborn_lessons",
+        18,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ),
+    (
+        "reborn_issues",
+        19,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ),
+    (
+        "reborn_notes",
+        20,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ),
+    (
+        "reborn_tool_skills",
+        13,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ),
+    (
+        "reborn_plans",
+        14,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ),
+    (
+        "reborn_docus",
+        17,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ), // Phase P
+    (
+        "reborn_python_code",
+        22,
+        "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+    ), // Phase B
     // recipes have no plain-text body; prior_knowledge_content or empty
-    ("reborn_recipes",             21, "COALESCE(NULLIF(prior_knowledge_content,''), '')"),
+    (
+        "reborn_recipes",
+        21,
+        "COALESCE(NULLIF(prior_knowledge_content,''), '')",
+    ),
     // extensions use description
-    ("reborn_extensions_unified",  9,  "COALESCE(prior_knowledge_content, description)"),
+    (
+        "reborn_extensions_unified",
+        9,
+        "COALESCE(prior_knowledge_content, description)",
+    ),
     // extension catalogues use the overview_doc column
-    ("reborn_extension_catalogues", 23, "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)"),  // Phase C
+    (
+        "reborn_extension_catalogues",
+        23,
+        "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)",
+    ), // Phase C
     // future-phase tables; skipped when absent
-    ("reborn_orchestrators",       10, "COALESCE(NULLIF(prior_knowledge_content,''), body)"),
-    ("reborn_scaffolds",           50, "COALESCE(NULLIF(prior_knowledge_content,''), body)"),
+    (
+        "reborn_orchestrators",
+        10,
+        "COALESCE(NULLIF(prior_knowledge_content,''), body)",
+    ),
+    (
+        "reborn_scaffolds",
+        50,
+        "COALESCE(NULLIF(prior_knowledge_content,''), body)",
+    ),
 ];
 
 /// Class code → human-readable type label for bundle headers.
@@ -312,7 +380,8 @@ impl RebornInterceptorConfigService {
         let generation_ms = assembly_start.elapsed().as_millis() as i64;
 
         tracing::debug!(
-            user_id, project_id,
+            user_id,
+            project_id,
             parts = parts.len(),
             generation_ms,
             "do_assemble_bundle: assembled bundle, storing"
@@ -330,7 +399,12 @@ impl RebornInterceptorConfigService {
                     tracing::warn!(error = %e, user_id, project_id, "do_assemble_bundle: store() FAILED — bundle not persisted");
                     InterceptorConfigServiceError::Unavailable
                 })?;
-            tracing::debug!(user_id, project_id, generation_ms, "do_assemble_bundle: bundle stored successfully");
+            tracing::debug!(
+                user_id,
+                project_id,
+                generation_ms,
+                "do_assemble_bundle: bundle stored successfully"
+            );
         }
 
         Ok((bundle, fingerprint, generation_ms))
@@ -502,7 +576,8 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             .await?;
 
         // Assemble and store the bundle (with_prewarm=false initially; updated below if gateway succeeds).
-        let (bundle, fingerprint, generation_ms) = self.do_assemble_bundle(user_id, project_id, false).await?;
+        let (bundle, fingerprint, generation_ms) =
+            self.do_assemble_bundle(user_id, project_id, false).await?;
 
         // Pre-warm the Sempai gateway so vLLM allocates KV blocks.
         let mut with_prewarm = false;
@@ -517,9 +592,11 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                     reason: format!("model profile id: {e}"),
                 }
             })?;
-            let content_ref = LoopMessageRef::new("msg:interceptor.regenerate-prefix")
-                .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
-                    reason: format!("message ref: {e}"),
+            let content_ref =
+                LoopMessageRef::new("msg:interceptor.regenerate-prefix").map_err(|e| {
+                    InterceptorConfigServiceError::InvalidRequest {
+                        reason: format!("message ref: {e}"),
+                    }
                 })?;
             let request = HostManagedModelRequest {
                 model_profile_id: profile_id,
@@ -553,7 +630,15 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             #[cfg(feature = "postgres")]
             if let Some(store) = &self.pg_basic_prompt_store
                 && let Ok(Some(entry)) = store.get_for_scope(user_id, project_id).await
-                && let Err(e) = store.store(user_id, project_id, &entry.bundle, true, entry.generation_ms).await
+                && let Err(e) = store
+                    .store(
+                        user_id,
+                        project_id,
+                        &entry.bundle,
+                        true,
+                        entry.generation_ms,
+                    )
+                    .await
             {
                 // Re-assemble is not needed; re-read the already-stored bundle and call store() with prewarm=true.
                 tracing::debug!(error = %e, "regenerate_prefix: re-store with prewarm failed");

@@ -141,10 +141,9 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                 ))
             };
         #[cfg(not(feature = "postgres"))]
-        let skills_facade: Arc<dyn brassclaw_product_workflow::SkillsProductFacade> =
-            Arc::new(RebornLocalSkillsProductFacade::new(
-                local_runtime.skill_management.clone(),
-            ));
+        let skills_facade: Arc<dyn brassclaw_product_workflow::SkillsProductFacade> = Arc::new(
+            RebornLocalSkillsProductFacade::new(local_runtime.skill_management.clone()),
+        );
 
         api = api.with_skills_facade(skills_facade);
     }
@@ -189,9 +188,9 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             // hot-swap it into the running gateway immediately so the runtime
             // does not start with the placeholder provider.
             match trigger.reload().await {
-                Ok(()) => tracing::debug!(
-                    "boot-time LLM reload from DB succeeded; provider is now live"
-                ),
+                Ok(()) => {
+                    tracing::debug!("boot-time LLM reload from DB succeeded; provider is now live")
+                }
                 Err(e) => tracing::warn!(
                     error = %e,
                     "boot-time LLM reload from DB failed; starting with placeholder provider"
@@ -533,13 +532,11 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     #[cfg(feature = "postgres")]
     if let Some(pool) = services.pg_pool.as_ref() {
         let tenant_id = runtime.webui_tenant_id();
-        let listing_svc = crate::pg_settings_listing::PgSettingsListingService::new(
-            Arc::clone(pool),
-            tenant_id,
-        );
-        api = api.with_settings_listing_service(
-            Arc::new(listing_svc) as Arc<dyn brassclaw_product_workflow::SettingsListingService>,
-        );
+        let listing_svc =
+            crate::pg_settings_listing::PgSettingsListingService::new(Arc::clone(pool), tenant_id);
+        api = api
+            .with_settings_listing_service(Arc::new(listing_svc)
+                as Arc<dyn brassclaw_product_workflow::SettingsListingService>);
         tracing::debug!("SettingsListingService wired through PgSettingsListingService");
     }
 
@@ -548,10 +545,9 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     #[cfg(feature = "postgres")]
     if let Some(pool) = services.pg_pool.as_ref() {
         let tenant_id = runtime.webui_tenant_id();
-        let config_store =
-            crate::pg_config_store::PgConfigStore::new(Arc::clone(pool), tenant_id);
+        let config_store = crate::pg_config_store::PgConfigStore::new(Arc::clone(pool), tenant_id);
         api = api.with_config_store(
-            Arc::new(config_store) as Arc<dyn brassclaw_product_workflow::ConfigStore>,
+            Arc::new(config_store) as Arc<dyn brassclaw_product_workflow::ConfigStore>
         );
         tracing::debug!("ConfigStore wired through PgConfigStore");
     }

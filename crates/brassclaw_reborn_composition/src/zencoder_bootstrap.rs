@@ -110,56 +110,118 @@ impl ZencoderStores {
         }
     }
 
-    async fn upsert_tool(&self, row: NewPgTool, name: &str) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let map = |e: crate::pg_tool_store::PgToolStoreError| SeedBuiltinBootstrapError::Db { reason: e.to_string() };
+    async fn upsert_tool(
+        &self,
+        row: NewPgTool,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let map = |e: crate::pg_tool_store::PgToolStoreError| SeedBuiltinBootstrapError::Db {
+            reason: e.to_string(),
+        };
         if let Some(id) = self.tool.insert(row).await.map_err(map)? {
             self.audit(id, 0, name).await;
             return Ok(id);
         }
-        self.tool.get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
-            .await.map_err(map)?
-            .ok_or_else(|| SeedBuiltinBootstrapError::Db { reason: format!("tool `{name}` not found") })
+        self.tool
+            .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+            .ok_or_else(|| SeedBuiltinBootstrapError::Db {
+                reason: format!("tool `{name}` not found"),
+            })
     }
 
-    async fn upsert_tool_skill(&self, row: NewPgToolSkill, name: &str) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let map = |e: crate::pg_tool_skill_store::PgToolSkillStoreError| SeedBuiltinBootstrapError::Db { reason: e.to_string() };
+    async fn upsert_tool_skill(
+        &self,
+        row: NewPgToolSkill,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let map =
+            |e: crate::pg_tool_skill_store::PgToolSkillStoreError| SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            };
         if let Some(id) = self.tool_skill.insert(row).await.map_err(map)? {
             self.audit(id, 13, name).await;
             return Ok(id);
         }
-        self.tool_skill.get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
-            .await.map_err(map)?
-            .ok_or_else(|| SeedBuiltinBootstrapError::Db { reason: format!("tool_skill `{name}` not found") })
+        self.tool_skill
+            .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+            .ok_or_else(|| SeedBuiltinBootstrapError::Db {
+                reason: format!("tool_skill `{name}` not found"),
+            })
     }
 
-    async fn upsert_skill(&self, row: NewPgSkill, name: &str) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinBootstrapError::Db { reason: e.to_string() };
+    async fn upsert_skill(
+        &self,
+        row: NewPgSkill,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinBootstrapError::Db {
+            reason: e.to_string(),
+        };
         if let Some(id) = self.skill.insert(row).await.map_err(map)? {
             self.audit(id, 1, name).await;
             return Ok(id);
         }
-        self.skill.get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
-            .await.map_err(map)?
-            .ok_or_else(|| SeedBuiltinBootstrapError::Db { reason: format!("skill `{name}` not found") })
+        self.skill
+            .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+            .ok_or_else(|| SeedBuiltinBootstrapError::Db {
+                reason: format!("skill `{name}` not found"),
+            })
     }
 
-    async fn upsert_python_code(&self, row: NewPgPythonCode, name: &str) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let map = |e: crate::pg_python_code_store::PgPythonCodeStoreError| SeedBuiltinBootstrapError::Db { reason: e.to_string() };
-        if let Some(existing) = self.python_code.get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
-            .await.map_err(map)? {
+    async fn upsert_python_code(
+        &self,
+        row: NewPgPythonCode,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let map = |e: crate::pg_python_code_store::PgPythonCodeStoreError| {
+            SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            }
+        };
+        if let Some(existing) = self
+            .python_code
+            .get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+        {
             return Ok(existing.id);
         }
         let id = self.python_code.insert(row).await.map_err(map)?;
-        self.python_code.update_validation_status(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, id, "validated")
-            .await.map_err(map)?;
+        self.python_code
+            .update_validation_status(
+                &self.tenant,
+                SEED_USER,
+                SEED_AGENT,
+                SEED_PROJECT,
+                id,
+                "validated",
+            )
+            .await
+            .map_err(map)?;
         self.audit(id, 22, name).await;
         Ok(id)
     }
 
-    async fn upsert_recipe(&self, row: NewPgRecipe, name: &str) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let map = |e: crate::pg_recipe_store::PgRecipeStoreError| SeedBuiltinBootstrapError::Db { reason: e.to_string() };
-        if let Some(existing) = self.recipe.get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
-            .await.map_err(map)? {
+    async fn upsert_recipe(
+        &self,
+        row: NewPgRecipe,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let map = |e: crate::pg_recipe_store::PgRecipeStoreError| SeedBuiltinBootstrapError::Db {
+            reason: e.to_string(),
+        };
+        if let Some(existing) = self
+            .recipe
+            .get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+        {
             return Ok(existing.id);
         }
         let id = self.recipe.insert(row).await.map_err(map)?;
@@ -168,7 +230,13 @@ impl ZencoderStores {
     }
 
     async fn mark_recipe_tier0(&self, recipe_id: Uuid) -> Result<(), SeedBuiltinBootstrapError> {
-        let client = self.pool.get().await.map_err(|e| SeedBuiltinBootstrapError::Pool { reason: e.to_string() })?;
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Pool {
+                reason: e.to_string(),
+            })?;
         client.execute(
             "UPDATE reborn_recipes SET tier = 'mature', wilson_lower = 1.0 \
              WHERE id = $1 AND tenant_id = $2 AND user_id = $3 AND agent_id = $4 AND project_id = $5",
@@ -177,23 +245,61 @@ impl ZencoderStores {
         Ok(())
     }
 
-    async fn upsert_catalogue(&self, row: NewPgExtensionCatalogue, name: &str) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let map = |e: crate::pg_extension_catalogue_store::PgExtensionCatalogueStoreError| SeedBuiltinBootstrapError::Db { reason: e.to_string() };
-        if let Some(existing) = self.catalogue.get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
-            .await.map_err(map)? {
+    async fn upsert_catalogue(
+        &self,
+        row: NewPgExtensionCatalogue,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        let map = |e: crate::pg_extension_catalogue_store::PgExtensionCatalogueStoreError| {
+            SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            }
+        };
+        if let Some(existing) = self
+            .catalogue
+            .get_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
+            .await
+            .map_err(map)?
+        {
             return Ok(existing.id);
         }
         let id = self.catalogue.insert(row).await.map_err(map)?;
-        self.catalogue.update_validation_status(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, id, "validated")
-            .await.map_err(map)?;
+        self.catalogue
+            .update_validation_status(
+                &self.tenant,
+                SEED_USER,
+                SEED_AGENT,
+                SEED_PROJECT,
+                id,
+                "validated",
+            )
+            .await
+            .map_err(map)?;
         self.audit(id, 23, name).await;
         Ok(id)
     }
 
-    async fn append_children(&self, cat_id: Uuid, child_ids: &[Uuid]) -> Result<(), SeedBuiltinBootstrapError> {
-        let map = |e: crate::pg_extension_catalogue_store::PgExtensionCatalogueStoreError| SeedBuiltinBootstrapError::Db { reason: e.to_string() };
-        self.catalogue.append_child_component_ids(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, cat_id, child_ids)
-            .await.map_err(map)
+    async fn append_children(
+        &self,
+        cat_id: Uuid,
+        child_ids: &[Uuid],
+    ) -> Result<(), SeedBuiltinBootstrapError> {
+        let map = |e: crate::pg_extension_catalogue_store::PgExtensionCatalogueStoreError| {
+            SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            }
+        };
+        self.catalogue
+            .append_child_component_ids(
+                &self.tenant,
+                SEED_USER,
+                SEED_AGENT,
+                SEED_PROJECT,
+                cat_id,
+                child_ids,
+            )
+            .await
+            .map_err(map)
     }
 
     async fn seed_recipe(
@@ -205,7 +311,19 @@ impl ZencoderStores {
         step_entries: &[Value],
         intent_examples: &[Value],
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let id = self.upsert_recipe(recipe_row(&self.tenant, name, description, yaml_source, step_entries, intent_examples), name).await?;
+        let id = self
+            .upsert_recipe(
+                recipe_row(
+                    &self.tenant,
+                    name,
+                    description,
+                    yaml_source,
+                    step_entries,
+                    intent_examples,
+                ),
+                name,
+            )
+            .await?;
         if tier0 {
             self.mark_recipe_tier0(id).await?;
         }
@@ -228,38 +346,75 @@ pub async fn seed_zencoder_extension(
     let t = &s.tenant.clone();
 
     // ---- Step 1: Tool (class 0) ----
-    let tool_zencoder = s.upsert_tool(tool_zencoder_api_row(t), "zencoder-api").await?;
+    let tool_zencoder = s
+        .upsert_tool(tool_zencoder_api_row(t), "zencoder-api")
+        .await?;
 
     // ---- Step 2: ToolSkills (class 13) ----
-    let ts_projects_list   = s.upsert_tool_skill(ts_projects_list_row(t),   "ts-zencoder-projects-list").await?;
-    let ts_tasks_list      = s.upsert_tool_skill(ts_tasks_list_row(t),      "ts-zencoder-tasks-list").await?;
-    let ts_tasks_get       = s.upsert_tool_skill(ts_tasks_get_row(t),       "ts-zencoder-tasks-get").await?;
-    let ts_tasks_post      = s.upsert_tool_skill(ts_tasks_post_row(t),      "ts-zencoder-tasks-post").await?;
-    let ts_tasks_patch     = s.upsert_tool_skill(ts_tasks_patch_row(t),     "ts-zencoder-tasks-patch").await?;
-    let ts_plan_get        = s.upsert_tool_skill(ts_plan_get_row(t),        "ts-zencoder-plan-get").await?;
-    let ts_automations_list = s.upsert_tool_skill(ts_automations_list_row(t), "ts-zencoder-automations-list").await?;
-    let ts_automations_post = s.upsert_tool_skill(ts_automations_post_row(t), "ts-zencoder-automations-post").await?;
+    let ts_projects_list = s
+        .upsert_tool_skill(ts_projects_list_row(t), "ts-zencoder-projects-list")
+        .await?;
+    let ts_tasks_list = s
+        .upsert_tool_skill(ts_tasks_list_row(t), "ts-zencoder-tasks-list")
+        .await?;
+    let ts_tasks_get = s
+        .upsert_tool_skill(ts_tasks_get_row(t), "ts-zencoder-tasks-get")
+        .await?;
+    let ts_tasks_post = s
+        .upsert_tool_skill(ts_tasks_post_row(t), "ts-zencoder-tasks-post")
+        .await?;
+    let ts_tasks_patch = s
+        .upsert_tool_skill(ts_tasks_patch_row(t), "ts-zencoder-tasks-patch")
+        .await?;
+    let ts_plan_get = s
+        .upsert_tool_skill(ts_plan_get_row(t), "ts-zencoder-plan-get")
+        .await?;
+    let ts_automations_list = s
+        .upsert_tool_skill(ts_automations_list_row(t), "ts-zencoder-automations-list")
+        .await?;
+    let ts_automations_post = s
+        .upsert_tool_skill(ts_automations_post_row(t), "ts-zencoder-automations-post")
+        .await?;
 
     // Also need ts-host-post-reply for the auth-setup recipe — look it up from
     // the already-seeded host group rather than re-inserting it.
-    let ts_host_post_reply = s.tool_skill
+    let ts_host_post_reply = s
+        .tool_skill
         .get_id_by_name(t, SEED_USER, SEED_AGENT, SEED_PROJECT, "ts-host-post-reply")
         .await
-        .map_err(|e| SeedBuiltinBootstrapError::Db { reason: e.to_string() })?
+        .map_err(|e| SeedBuiltinBootstrapError::Db {
+            reason: e.to_string(),
+        })?
         .ok_or_else(|| SeedBuiltinBootstrapError::Db {
             reason: "ts-host-post-reply not found — host group must be seeded first".into(),
         })?;
 
     // ---- Step 3: PythonCode (class 22) ----
-    let pc_validate_uuid   = s.upsert_python_code(pc_row(t, "pc-zencoder-validate-uuid",
-        "Pure-logic: validates slot0 as a UUID. Returns {valid, error?}. No host call.",
-        PC_VALIDATE_UUID), "pc-zencoder-validate-uuid").await?;
+    let pc_validate_uuid = s
+        .upsert_python_code(
+            pc_row(
+                t,
+                "pc-zencoder-validate-uuid",
+                "Pure-logic: validates slot0 as a UUID. Returns {valid, error?}. No host call.",
+                PC_VALIDATE_UUID,
+            ),
+            "pc-zencoder-validate-uuid",
+        )
+        .await?;
     let pc_build_summary   = s.upsert_python_code(pc_row(t, "pc-zencoder-build-task-summary",
         "Pure-logic: merges task JSON (slot0) and plan JSON (slot1) into a summary dict. No host call.",
         PC_BUILD_TASK_SUMMARY), "pc-zencoder-build-task-summary").await?;
-    let pc_list_projects   = s.upsert_python_code(pc_row(t, "pc-zencoder-list-projects",
-        "Executor: GET /projects via host.zencoder_api. No parameters.",
-        PC_LIST_PROJECTS), "pc-zencoder-list-projects").await?;
+    let pc_list_projects = s
+        .upsert_python_code(
+            pc_row(
+                t,
+                "pc-zencoder-list-projects",
+                "Executor: GET /projects via host.zencoder_api. No parameters.",
+                PC_LIST_PROJECTS,
+            ),
+            "pc-zencoder-list-projects",
+        )
+        .await?;
     let pc_list_tasks      = s.upsert_python_code(pc_row(t, "pc-zencoder-list-tasks",
         "Executor: GET /projects/{pid}/tasks[?status&limit] via host.zencoder_api. slot0=pid, slot1=status, slot2=limit.",
         PC_LIST_TASKS), "pc-zencoder-list-tasks").await?;
@@ -275,9 +430,17 @@ pub async fn seed_zencoder_extension(
     let pc_patch_task      = s.upsert_python_code(pc_row(t, "pc-zencoder-patch-task",
         "Executor: PATCH /projects/{pid}/tasks/{tid} via host.zencoder_api. slot0=pid, slot1=tid, slot2=JSON body.",
         PC_PATCH_TASK), "pc-zencoder-patch-task").await?;
-    let pc_list_automations = s.upsert_python_code(pc_row(t, "pc-zencoder-list-automations",
-        "Executor: GET /automations[?enabled] via host.zencoder_api. slot0=enabled filter.",
-        PC_LIST_AUTOMATIONS), "pc-zencoder-list-automations").await?;
+    let pc_list_automations = s
+        .upsert_python_code(
+            pc_row(
+                t,
+                "pc-zencoder-list-automations",
+                "Executor: GET /automations[?enabled] via host.zencoder_api. slot0=enabled filter.",
+                PC_LIST_AUTOMATIONS,
+            ),
+            "pc-zencoder-list-automations",
+        )
+        .await?;
     let pc_create_automation = s.upsert_python_code(pc_row(t, "pc-zencoder-create-automation",
         "Executor: POST /automations via host.zencoder_api. slot0=JSON body (LLM-composed, user-confirmed).",
         PC_CREATE_AUTOMATION), "pc-zencoder-create-automation").await?;
@@ -286,18 +449,42 @@ pub async fn seed_zencoder_extension(
         PC_POST_AUTH_INSTRUCTIONS), "pc-zencoder-post-auth-instructions").await?;
 
     // ---- Step 4: Leaf Skills (class 1) ----
-    let sk_auth_error      = s.upsert_skill(leaf_skill(t, "skill-zencoder-auth-error",
-        "What Zencoder HTTP error codes mean and how to recover (401/402/429/5xx).",
-        SKILL_AUTH_ERROR), "skill-zencoder-auth-error").await?;
+    let sk_auth_error = s
+        .upsert_skill(
+            leaf_skill(
+                t,
+                "skill-zencoder-auth-error",
+                "What Zencoder HTTP error codes mean and how to recover (401/402/429/5xx).",
+                SKILL_AUTH_ERROR,
+            ),
+            "skill-zencoder-auth-error",
+        )
+        .await?;
     let sk_resilience      = s.upsert_skill(leaf_skill(t, "skill-zencoder-resilience",
         "Three-state resilience model: healthy / degraded / unavailable. Skip Zencoder calls when degraded.",
         SKILL_RESILIENCE), "skill-zencoder-resilience").await?;
-    let sk_list_projects   = s.upsert_skill(leaf_skill(t, "skill-zencoder-list-projects",
-        "How to list accessible Zencoder projects via pc-zencoder-list-projects.",
-        SKILL_LIST_PROJECTS), "skill-zencoder-list-projects").await?;
-    let sk_list_tasks      = s.upsert_skill(leaf_skill(t, "skill-zencoder-list-tasks",
-        "How to list tasks in a Zencoder project with optional status/limit filters.",
-        SKILL_LIST_TASKS), "skill-zencoder-list-tasks").await?;
+    let sk_list_projects = s
+        .upsert_skill(
+            leaf_skill(
+                t,
+                "skill-zencoder-list-projects",
+                "How to list accessible Zencoder projects via pc-zencoder-list-projects.",
+                SKILL_LIST_PROJECTS,
+            ),
+            "skill-zencoder-list-projects",
+        )
+        .await?;
+    let sk_list_tasks = s
+        .upsert_skill(
+            leaf_skill(
+                t,
+                "skill-zencoder-list-tasks",
+                "How to list tasks in a Zencoder project with optional status/limit filters.",
+                SKILL_LIST_TASKS,
+            ),
+            "skill-zencoder-list-tasks",
+        )
+        .await?;
     let sk_get_task        = s.upsert_skill(leaf_skill(t, "skill-zencoder-get-task",
         "How to fetch a single Zencoder task. Always call before PATCH — description is fully replaced.",
         SKILL_GET_TASK), "skill-zencoder-get-task").await?;
@@ -307,12 +494,28 @@ pub async fn seed_zencoder_extension(
     let sk_create_task     = s.upsert_skill(leaf_skill(t, "skill-zencoder-create-task",
         "How to create a Zencoder task. For delegation use workflow_id:default-auto-workflow + start:true.",
         SKILL_CREATE_TASK), "skill-zencoder-create-task").await?;
-    let sk_patch_task      = s.upsert_skill(leaf_skill(t, "skill-zencoder-patch-task",
-        "How to patch a Zencoder task. PATCH fully replaces description — read first.",
-        SKILL_PATCH_TASK), "skill-zencoder-patch-task").await?;
-    let sk_list_automations = s.upsert_skill(leaf_skill(t, "skill-zencoder-list-automations",
-        "How to list Zencoder automations with optional enabled filter.",
-        SKILL_LIST_AUTOMATIONS), "skill-zencoder-list-automations").await?;
+    let sk_patch_task = s
+        .upsert_skill(
+            leaf_skill(
+                t,
+                "skill-zencoder-patch-task",
+                "How to patch a Zencoder task. PATCH fully replaces description — read first.",
+                SKILL_PATCH_TASK,
+            ),
+            "skill-zencoder-patch-task",
+        )
+        .await?;
+    let sk_list_automations = s
+        .upsert_skill(
+            leaf_skill(
+                t,
+                "skill-zencoder-list-automations",
+                "How to list Zencoder automations with optional enabled filter.",
+                SKILL_LIST_AUTOMATIONS,
+            ),
+            "skill-zencoder-list-automations",
+        )
+        .await?;
     let sk_create_automation = s.upsert_skill(leaf_skill(t, "skill-zencoder-create-automation",
         "How to create a Zencoder automation. Always confirm full spec with user before dispatching.",
         SKILL_CREATE_AUTOMATION), "skill-zencoder-create-automation").await?;
@@ -327,72 +530,100 @@ pub async fn seed_zencoder_extension(
     // ---- Step 7: Recipes (class 21) ----
 
     // Tier-0: list-projects
-    let r_list_projects = s.seed_recipe(
-        "zencoder-list-projects",
-        "List all accessible Zencoder projects.",
-        true,
-        YAML_LIST_PROJECTS,
-        &[
-            step_entry(1, "rust",         "Pre-load ts-zencoder-projects-list ToolSkill binding", "component", &[ts_projects_list]),
-            step_entry(2, "orchestrator", "Execute: host.zencoder_api(GET /projects)",            "component", &[pc_list_projects]),
-        ],
-        &intents(&[
-            ("list my zencoder projects",                    1),
-            ("what zencoder projects do I have",             1),
-            ("show all zenflow projects",                    1),
-            ("zencoder project list",                        1),
-            ("what projects are available in zencoder",      1),
-            ("show me my zenflow projects",                  1),
-            ("which zencoder projects can I access",         1),
-            ("what projects exist in zenflow",               1),
-            ("get my zencoder project list",                 1),
-            ("show zenflow project list",                    1),
-            ("zencoder projects",                            1),
-            ("zenflow projects",                             1),
-            ("list all projects in zencoder",                1),
-            ("what are my zenflow projects",                 1),
-            ("fetch zencoder projects",                      1),
-            ("show accessible zencoder projects",            1),
-            ("display all zenflow projects",                 1),
-            ("which project should I pick",                  2),
-            ("list projects",                                2),
-            ("show projects",                                2),
-        ]),
-    ).await?;
+    let r_list_projects = s
+        .seed_recipe(
+            "zencoder-list-projects",
+            "List all accessible Zencoder projects.",
+            true,
+            YAML_LIST_PROJECTS,
+            &[
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-zencoder-projects-list ToolSkill binding",
+                    "component",
+                    &[ts_projects_list],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "Execute: host.zencoder_api(GET /projects)",
+                    "component",
+                    &[pc_list_projects],
+                ),
+            ],
+            &intents(&[
+                ("list my zencoder projects", 1),
+                ("what zencoder projects do I have", 1),
+                ("show all zenflow projects", 1),
+                ("zencoder project list", 1),
+                ("what projects are available in zencoder", 1),
+                ("show me my zenflow projects", 1),
+                ("which zencoder projects can I access", 1),
+                ("what projects exist in zenflow", 1),
+                ("get my zencoder project list", 1),
+                ("show zenflow project list", 1),
+                ("zencoder projects", 1),
+                ("zenflow projects", 1),
+                ("list all projects in zencoder", 1),
+                ("what are my zenflow projects", 1),
+                ("fetch zencoder projects", 1),
+                ("show accessible zencoder projects", 1),
+                ("display all zenflow projects", 1),
+                ("which project should I pick", 2),
+                ("list projects", 2),
+                ("show projects", 2),
+            ]),
+        )
+        .await?;
 
     // Tier-0: list-tasks (no filter)
-    let r_list_tasks = s.seed_recipe(
-        "zencoder-list-tasks",
-        "List all tasks in a Zencoder project (no status filter).",
-        true,
-        YAML_LIST_TASKS,
-        &[
-            step_entry(1, "rust",         "Pre-load ts-zencoder-tasks-list ToolSkill binding",             "component", &[ts_tasks_list]),
-            step_entry(2, "orchestrator", "Execute: host.zencoder_api(GET /projects/{pid}/tasks)",          "component", &[pc_list_tasks]),
-        ],
-        &intents(&[
-            ("list zencoder tasks",                          1),
-            ("show all zenflow tasks",                       1),
-            ("what tasks are in this project",               1),
-            ("zencoder task list",                           1),
-            ("list my zencoder tasks",                       1),
-            ("show me all tasks in this zenflow project",    1),
-            ("what tasks exist in zencoder",                 1),
-            ("zenflow task list",                            1),
-            ("get all tasks in this zencoder project",       1),
-            ("show every task in zenflow",                   1),
-            ("fetch all zencoder tasks",                     1),
-            ("display tasks in this zencoder project",       1),
-            ("list all tasks in zenflow project",            1),
-            ("what work is in this zencoder project",        1),
-            ("show zencoder task list",                      1),
-            ("enumerate tasks in zenflow",                   1),
-            ("list all tasks",                               2),
-            ("show tasks in this project",                   2),
-            ("what tasks are there",                         2),
-            ("show all tasks",                               2),
-        ]),
-    ).await?;
+    let r_list_tasks = s
+        .seed_recipe(
+            "zencoder-list-tasks",
+            "List all tasks in a Zencoder project (no status filter).",
+            true,
+            YAML_LIST_TASKS,
+            &[
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-zencoder-tasks-list ToolSkill binding",
+                    "component",
+                    &[ts_tasks_list],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "Execute: host.zencoder_api(GET /projects/{pid}/tasks)",
+                    "component",
+                    &[pc_list_tasks],
+                ),
+            ],
+            &intents(&[
+                ("list zencoder tasks", 1),
+                ("show all zenflow tasks", 1),
+                ("what tasks are in this project", 1),
+                ("zencoder task list", 1),
+                ("list my zencoder tasks", 1),
+                ("show me all tasks in this zenflow project", 1),
+                ("what tasks exist in zencoder", 1),
+                ("zenflow task list", 1),
+                ("get all tasks in this zencoder project", 1),
+                ("show every task in zenflow", 1),
+                ("fetch all zencoder tasks", 1),
+                ("display tasks in this zencoder project", 1),
+                ("list all tasks in zenflow project", 1),
+                ("what work is in this zencoder project", 1),
+                ("show zencoder task list", 1),
+                ("enumerate tasks in zenflow", 1),
+                ("list all tasks", 2),
+                ("show tasks in this project", 2),
+                ("what tasks are there", 2),
+                ("show all tasks", 2),
+            ]),
+        )
+        .await?;
 
     // Tier-0: list-tasks-filtered (with status filter)
     let r_list_tasks_filtered = s.seed_recipe(
@@ -429,146 +660,210 @@ pub async fn seed_zencoder_extension(
     ).await?;
 
     // Tier-0: get-task
-    let r_get_task = s.seed_recipe(
-        "zencoder-get-task",
-        "Fetch a single Zencoder task by project_id and task_id.",
-        true,
-        YAML_GET_TASK,
-        &[
-            step_entry(1, "rust",         "Pre-load ts-zencoder-tasks-get ToolSkill binding",                   "component", &[ts_tasks_get]),
-            step_entry(2, "orchestrator", "Execute: host.zencoder_api(GET /projects/{pid}/tasks/{tid})",         "component", &[pc_get_task]),
-        ],
-        &intents(&[
-            ("get zencoder task",                            1),
-            ("what is the status of zencoder task",          1),
-            ("fetch zencoder task by id",                    1),
-            ("look up zenflow task",                         1),
-            ("get task by id",                               1),
-            ("zencoder task details",                        1),
-            ("read zenflow task",                            1),
-            ("show me the zencoder task",                    1),
-            ("fetch the zenflow task details",               1),
-            ("retrieve zencoder task",                       1),
-            ("check this zencoder task",                     1),
-            ("what does this zenflow task say",              1),
-            ("get info about this zencoder task",            1),
-            ("look at zencoder task",                        1),
-            ("show zencoder task info",                      1),
-            ("read this zenflow task",                       1),
-            ("pull up the zencoder task",                    1),
-            ("show task details",                            2),
-            ("get task details",                             2),
-            ("show me that task",                            2),
-        ]),
-    ).await?;
+    let r_get_task = s
+        .seed_recipe(
+            "zencoder-get-task",
+            "Fetch a single Zencoder task by project_id and task_id.",
+            true,
+            YAML_GET_TASK,
+            &[
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-zencoder-tasks-get ToolSkill binding",
+                    "component",
+                    &[ts_tasks_get],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "Execute: host.zencoder_api(GET /projects/{pid}/tasks/{tid})",
+                    "component",
+                    &[pc_get_task],
+                ),
+            ],
+            &intents(&[
+                ("get zencoder task", 1),
+                ("what is the status of zencoder task", 1),
+                ("fetch zencoder task by id", 1),
+                ("look up zenflow task", 1),
+                ("get task by id", 1),
+                ("zencoder task details", 1),
+                ("read zenflow task", 1),
+                ("show me the zencoder task", 1),
+                ("fetch the zenflow task details", 1),
+                ("retrieve zencoder task", 1),
+                ("check this zencoder task", 1),
+                ("what does this zenflow task say", 1),
+                ("get info about this zencoder task", 1),
+                ("look at zencoder task", 1),
+                ("show zencoder task info", 1),
+                ("read this zenflow task", 1),
+                ("pull up the zencoder task", 1),
+                ("show task details", 2),
+                ("get task details", 2),
+                ("show me that task", 2),
+            ]),
+        )
+        .await?;
 
     // Tier-0: get-plan
-    let r_get_plan = s.seed_recipe(
-        "zencoder-get-plan",
-        "Fetch the execution plan for a Zencoder task.",
-        true,
-        YAML_GET_PLAN,
-        &[
-            step_entry(1, "rust",         "Pre-load ts-zencoder-plan-get ToolSkill binding",                          "component", &[ts_plan_get]),
-            step_entry(2, "orchestrator", "Execute: host.zencoder_api(GET /projects/{pid}/tasks/{tid}/plan)",          "component", &[pc_get_plan]),
-        ],
-        &intents(&[
-            ("show the zencoder plan",                       1),
-            ("what steps has zenflow planned",               1),
-            ("get plan for this zencoder task",              1),
-            ("zencoder execution plan",                      1),
-            ("show plan steps for this zencoder task",       1),
-            ("what is zenflow going to do",                  1),
-            ("get plan from zencoder",                       1),
-            ("zenflow plan steps",                           1),
-            ("show me the zencoder execution plan",          1),
-            ("what steps will zenflow take",                 1),
-            ("read the zencoder task plan",                  1),
-            ("fetch zenflow task plan",                      1),
-            ("what has zenflow planned for this task",       1),
-            ("show zencoder task execution steps",           1),
-            ("list plan steps for zencoder task",            1),
-            ("how is zenflow planning to solve this",        1),
-            ("show zenflow agent plan",                      1),
-            ("get execution plan from zencoder",             1),
-            ("list the plan",                                2),
-            ("show task plan",                               2),
-        ]),
-    ).await?;
+    let r_get_plan = s
+        .seed_recipe(
+            "zencoder-get-plan",
+            "Fetch the execution plan for a Zencoder task.",
+            true,
+            YAML_GET_PLAN,
+            &[
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-zencoder-plan-get ToolSkill binding",
+                    "component",
+                    &[ts_plan_get],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "Execute: host.zencoder_api(GET /projects/{pid}/tasks/{tid}/plan)",
+                    "component",
+                    &[pc_get_plan],
+                ),
+            ],
+            &intents(&[
+                ("show the zencoder plan", 1),
+                ("what steps has zenflow planned", 1),
+                ("get plan for this zencoder task", 1),
+                ("zencoder execution plan", 1),
+                ("show plan steps for this zencoder task", 1),
+                ("what is zenflow going to do", 1),
+                ("get plan from zencoder", 1),
+                ("zenflow plan steps", 1),
+                ("show me the zencoder execution plan", 1),
+                ("what steps will zenflow take", 1),
+                ("read the zencoder task plan", 1),
+                ("fetch zenflow task plan", 1),
+                ("what has zenflow planned for this task", 1),
+                ("show zencoder task execution steps", 1),
+                ("list plan steps for zencoder task", 1),
+                ("how is zenflow planning to solve this", 1),
+                ("show zenflow agent plan", 1),
+                ("get execution plan from zencoder", 1),
+                ("list the plan", 2),
+                ("show task plan", 2),
+            ]),
+        )
+        .await?;
 
     // Tier-0: check-solution-status (get-task + get-plan + summary merge)
-    let r_check_status = s.seed_recipe(
-        "zencoder-check-solution-status",
-        "Check a Zencoder task status and execution plan progress in one combined read.",
-        true,
-        YAML_CHECK_STATUS,
-        &[
-            step_entry(1, "rust",         "Pre-load task + plan ToolSkill bindings",
-                "component", &[ts_tasks_get, ts_plan_get]),
-            step_entry(2, "orchestrator", "Execute: GET /projects/{pid}/tasks/{tid}",
-                "component", &[pc_get_task]),
-            step_entry(3, "orchestrator", "Execute: GET /projects/{pid}/tasks/{tid}/plan",
-                "component", &[pc_get_plan]),
-            step_entry(4, "orchestrator", "Pure-logic: merge task + plan results into summary dict",
-                "component", &[pc_build_summary]),
-        ],
-        &intents(&[
-            ("how is that zencoder task going",              1),
-            ("check zencoder status",                        1),
-            ("is the zenflow agent done",                    1),
-            ("check solution status",                        1),
-            ("how far along is zencoder",                    1),
-            ("what has zenflow done so far",                 1),
-            ("is the coding task finished",                  1),
-            ("zencoder progress",                            1),
-            ("check if zencoder is done",                    1),
-            ("how many steps has zenflow completed",         1),
-            ("show me zencoder task progress",               1),
-            ("is zenflow still working on it",               1),
-            ("what is the zencoder task status",             1),
-            ("has zenflow finished the task",                1),
-            ("check zenflow agent progress",                 1),
-            ("how much of the zencoder plan is done",        1),
-            ("did zencoder finish",                          1),
-            ("is the zenflow task complete",                 1),
-            ("show combined zencoder task and plan status",  1),
-            ("what is the progress",                         2),
-        ]),
-    ).await?;
+    let r_check_status = s
+        .seed_recipe(
+            "zencoder-check-solution-status",
+            "Check a Zencoder task status and execution plan progress in one combined read.",
+            true,
+            YAML_CHECK_STATUS,
+            &[
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load task + plan ToolSkill bindings",
+                    "component",
+                    &[ts_tasks_get, ts_plan_get],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "Execute: GET /projects/{pid}/tasks/{tid}",
+                    "component",
+                    &[pc_get_task],
+                ),
+                step_entry(
+                    3,
+                    "orchestrator",
+                    "Execute: GET /projects/{pid}/tasks/{tid}/plan",
+                    "component",
+                    &[pc_get_plan],
+                ),
+                step_entry(
+                    4,
+                    "orchestrator",
+                    "Pure-logic: merge task + plan results into summary dict",
+                    "component",
+                    &[pc_build_summary],
+                ),
+            ],
+            &intents(&[
+                ("how is that zencoder task going", 1),
+                ("check zencoder status", 1),
+                ("is the zenflow agent done", 1),
+                ("check solution status", 1),
+                ("how far along is zencoder", 1),
+                ("what has zenflow done so far", 1),
+                ("is the coding task finished", 1),
+                ("zencoder progress", 1),
+                ("check if zencoder is done", 1),
+                ("how many steps has zenflow completed", 1),
+                ("show me zencoder task progress", 1),
+                ("is zenflow still working on it", 1),
+                ("what is the zencoder task status", 1),
+                ("has zenflow finished the task", 1),
+                ("check zenflow agent progress", 1),
+                ("how much of the zencoder plan is done", 1),
+                ("did zencoder finish", 1),
+                ("is the zenflow task complete", 1),
+                ("show combined zencoder task and plan status", 1),
+                ("what is the progress", 2),
+            ]),
+        )
+        .await?;
 
     // Tier-0: auth-setup (fixed reply via host.post_reply — no LLM)
-    let r_auth_setup = s.seed_recipe(
-        "zencoder-auth-setup",
-        "Post fixed Zencoder authentication setup instructions to the user. Tier 0.",
-        true,
-        YAML_AUTH_SETUP,
-        &[
-            step_entry(1, "rust",         "Pre-load ts-host-post-reply ToolSkill binding",            "component", &[ts_host_post_reply]),
-            step_entry(2, "orchestrator", "Execute: host.post_reply(fixed auth instructions)",         "component", &[pc_post_auth]),
-        ],
-        &intents(&[
-            ("set up zencoder",                              1),
-            ("authenticate with zencoder",                   1),
-            ("configure zencoder token",                     1),
-            ("zencoder auth",                                1),
-            ("how do I connect to zencoder",                 1),
-            ("set zencoder api key",                         1),
-            ("zencoder login",                               1),
-            ("configure zenflow access",                     1),
-            ("set up zenflow credentials",                   1),
-            ("zencoder token setup",                         1),
-            ("how do I authenticate with zenflow",           1),
-            ("zencoder access token",                        1),
-            ("set my zencoder jwt",                          1),
-            ("store zencoder credentials",                   1),
-            ("how do I set the zencoder secret",             1),
-            ("configure zencoder api access",                1),
-            ("zenflow auth setup",                           1),
-            ("i need to set up zencoder authentication",     1),
-            ("get started with zencoder",                    1),
-            ("zencoder first time setup",                    1),
-        ]),
-    ).await?;
+    let r_auth_setup = s
+        .seed_recipe(
+            "zencoder-auth-setup",
+            "Post fixed Zencoder authentication setup instructions to the user. Tier 0.",
+            true,
+            YAML_AUTH_SETUP,
+            &[
+                step_entry(
+                    1,
+                    "rust",
+                    "Pre-load ts-host-post-reply ToolSkill binding",
+                    "component",
+                    &[ts_host_post_reply],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "Execute: host.post_reply(fixed auth instructions)",
+                    "component",
+                    &[pc_post_auth],
+                ),
+            ],
+            &intents(&[
+                ("set up zencoder", 1),
+                ("authenticate with zencoder", 1),
+                ("configure zencoder token", 1),
+                ("zencoder auth", 1),
+                ("how do I connect to zencoder", 1),
+                ("set zencoder api key", 1),
+                ("zencoder login", 1),
+                ("configure zenflow access", 1),
+                ("set up zenflow credentials", 1),
+                ("zencoder token setup", 1),
+                ("how do I authenticate with zenflow", 1),
+                ("zencoder access token", 1),
+                ("set my zencoder jwt", 1),
+                ("store zencoder credentials", 1),
+                ("how do I set the zencoder secret", 1),
+                ("configure zencoder api access", 1),
+                ("zenflow auth setup", 1),
+                ("i need to set up zencoder authentication", 1),
+                ("get started with zencoder", 1),
+                ("zencoder first time setup", 1),
+            ]),
+        )
+        .await?;
 
     // Tier-1: solve-coding-problem (LLM composes task body)
     let r_solve = s.seed_recipe(
@@ -611,44 +906,66 @@ pub async fn seed_zencoder_extension(
     ).await?;
 
     // Tier-1: update-task (LLM reads current task, composes PATCH body)
-    let r_update = s.seed_recipe(
-        "zencoder-update-task",
-        "Update a Zencoder task — LLM reads current state, composes PATCH body, user confirms.",
-        false,
-        YAML_UPDATE_TASK,
-        &[
-            step_entry(1, "orchestrator", "Load get-task + patch-task + auth-error skills as LLM context",
-                "component", &[sk_get_task, sk_patch_task, sk_auth_error]),
-            step_entry(2, "orchestrator", "LLM: read current task in context, compose PATCH body, confirm with user",
-                "text", &[]),
-            step_entry(3, "rust",         "Pre-load ts-zencoder-tasks-patch ToolSkill binding",
-                "component", &[ts_tasks_patch]),
-            step_entry(4, "orchestrator", "Execute: host.zencoder_api(PATCH /projects/{pid}/tasks/{tid}, body)",
-                "component", &[pc_patch_task]),
-        ],
-        &intents(&[
-            ("update the zencoder task",                     1),
-            ("mark zencoder task as done",                   1),
-            ("change zencoder task status to done",          1),
-            ("close this zencoder task",                     1),
-            ("update zencoder task description",             1),
-            ("set zencoder task status to cancelled",        1),
-            ("mark zenflow task complete",                   1),
-            ("finish the zencoder task",                     1),
-            ("update zenflow task status",                   1),
-            ("change the title of this zencoder task",       1),
-            ("set this zenflow task to inreview",            1),
-            ("mark this zencoder task as in progress",       1),
-            ("edit the zencoder task",                       1),
-            ("patch the zenflow task",                       1),
-            ("update status of zencoder task",               1),
-            ("set zencoder task to done",                    1),
-            ("change zenflow task to cancelled",             1),
-            ("modify this zencoder task",                    1),
-            ("add notes to the zencoder task",               1),
-            ("rename this zencoder task",                    1),
-        ]),
-    ).await?;
+    let r_update = s
+        .seed_recipe(
+            "zencoder-update-task",
+            "Update a Zencoder task — LLM reads current state, composes PATCH body, user confirms.",
+            false,
+            YAML_UPDATE_TASK,
+            &[
+                step_entry(
+                    1,
+                    "orchestrator",
+                    "Load get-task + patch-task + auth-error skills as LLM context",
+                    "component",
+                    &[sk_get_task, sk_patch_task, sk_auth_error],
+                ),
+                step_entry(
+                    2,
+                    "orchestrator",
+                    "LLM: read current task in context, compose PATCH body, confirm with user",
+                    "text",
+                    &[],
+                ),
+                step_entry(
+                    3,
+                    "rust",
+                    "Pre-load ts-zencoder-tasks-patch ToolSkill binding",
+                    "component",
+                    &[ts_tasks_patch],
+                ),
+                step_entry(
+                    4,
+                    "orchestrator",
+                    "Execute: host.zencoder_api(PATCH /projects/{pid}/tasks/{tid}, body)",
+                    "component",
+                    &[pc_patch_task],
+                ),
+            ],
+            &intents(&[
+                ("update the zencoder task", 1),
+                ("mark zencoder task as done", 1),
+                ("change zencoder task status to done", 1),
+                ("close this zencoder task", 1),
+                ("update zencoder task description", 1),
+                ("set zencoder task status to cancelled", 1),
+                ("mark zenflow task complete", 1),
+                ("finish the zencoder task", 1),
+                ("update zenflow task status", 1),
+                ("change the title of this zencoder task", 1),
+                ("set this zenflow task to inreview", 1),
+                ("mark this zencoder task as in progress", 1),
+                ("edit the zencoder task", 1),
+                ("patch the zenflow task", 1),
+                ("update status of zencoder task", 1),
+                ("set zencoder task to done", 1),
+                ("change zenflow task to cancelled", 1),
+                ("modify this zencoder task", 1),
+                ("add notes to the zencoder task", 1),
+                ("rename this zencoder task", 1),
+            ]),
+        )
+        .await?;
 
     // Tier-1: create-automation (LLM collects details, user confirms)
     let r_automation = s.seed_recipe(
@@ -720,19 +1037,53 @@ pub async fn seed_zencoder_extension(
         "ext-zencoder",
     ).await?;
 
-    s.append_children(cat, &[
-        tool_zencoder,
-        ts_projects_list, ts_tasks_list, ts_tasks_get, ts_tasks_post, ts_tasks_patch,
-        ts_plan_get, ts_automations_list, ts_automations_post,
-        pc_validate_uuid, pc_build_summary, pc_list_projects, pc_list_tasks,
-        pc_get_task, pc_get_plan, pc_create_task, pc_patch_task,
-        pc_list_automations, pc_create_automation, pc_post_auth,
-        sk_auth_error, sk_resilience, sk_list_projects, sk_list_tasks,
-        sk_get_task, sk_get_plan, sk_create_task, sk_patch_task,
-        sk_list_automations, sk_create_automation, sk_domain,
-        r_list_projects, r_list_tasks, r_list_tasks_filtered, r_get_task,
-        r_get_plan, r_check_status, r_auth_setup, r_solve, r_update, r_automation,
-    ]).await?;
+    s.append_children(
+        cat,
+        &[
+            tool_zencoder,
+            ts_projects_list,
+            ts_tasks_list,
+            ts_tasks_get,
+            ts_tasks_post,
+            ts_tasks_patch,
+            ts_plan_get,
+            ts_automations_list,
+            ts_automations_post,
+            pc_validate_uuid,
+            pc_build_summary,
+            pc_list_projects,
+            pc_list_tasks,
+            pc_get_task,
+            pc_get_plan,
+            pc_create_task,
+            pc_patch_task,
+            pc_list_automations,
+            pc_create_automation,
+            pc_post_auth,
+            sk_auth_error,
+            sk_resilience,
+            sk_list_projects,
+            sk_list_tasks,
+            sk_get_task,
+            sk_get_plan,
+            sk_create_task,
+            sk_patch_task,
+            sk_list_automations,
+            sk_create_automation,
+            sk_domain,
+            r_list_projects,
+            r_list_tasks,
+            r_list_tasks_filtered,
+            r_get_task,
+            r_get_plan,
+            r_check_status,
+            r_auth_setup,
+            r_solve,
+            r_update,
+            r_automation,
+        ],
+    )
+    .await?;
 
     // ---- Step 6 (plan): Skill Amendments ----
     // Prepend Zencoder routing preambles to three existing builtin skills.
@@ -757,22 +1108,19 @@ pub async fn seed_zencoder_extension(
 /// content. The guard `body NOT LIKE '%Zencoder Routing%'` makes the UPDATE
 /// idempotent so re-seeding does not double-prepend.
 async fn amend_builtin_skills(s: &ZencoderStores) -> Result<(), SeedBuiltinBootstrapError> {
-    let client = s.pool.get().await.map_err(|e| SeedBuiltinBootstrapError::Pool { reason: e.to_string() })?;
+    let client = s
+        .pool
+        .get()
+        .await
+        .map_err(|e| SeedBuiltinBootstrapError::Pool {
+            reason: e.to_string(),
+        })?;
 
     // Each amendment is a (skill_name, preamble) pair.
     let amendments: &[(&str, &str)] = &[
-        (
-            "skill-coding",
-            AMEND_CODING,
-        ),
-        (
-            "skill-commit-workflow",
-            AMEND_COMMIT,
-        ),
-        (
-            "skill-spawn-coding",
-            AMEND_SPAWN_CODING,
-        ),
+        ("skill-coding", AMEND_CODING),
+        ("skill-commit-workflow", AMEND_COMMIT),
+        ("skill-spawn-coding", AMEND_SPAWN_CODING),
     ];
 
     for (name, preamble) in amendments {
@@ -796,7 +1144,9 @@ async fn amend_builtin_skills(s: &ZencoderStores) -> Result<(), SeedBuiltinBoots
                 ],
             )
             .await
-            .map_err(|e| SeedBuiltinBootstrapError::Db { reason: format!("amend {name}: {e}") })?;
+            .map_err(|e| SeedBuiltinBootstrapError::Db {
+                reason: format!("amend {name}: {e}"),
+            })?;
     }
     Ok(())
 }
@@ -829,13 +1179,19 @@ fn tool_zencoder_api_row(tenant: &str) -> NewPgTool {
         })),
         param_template: Some(json!({"method": "GET", "path": ""})),
         effect_type: "mixed".to_string(),
-        preconditions: Some("Secret 'zencoder_access_token' must be set. 401 = token expired.".into()),
+        preconditions: Some(
+            "Secret 'zencoder_access_token' must be set. 401 = token expired.".into(),
+        ),
         error_handling: Some(
             "401→re-auth (brassclaw secret set zencoder_access_token <jwt>). \
              402→quota exceeded. 429→Retry-After header. 5xx→retry GETs ×3."
                 .into(),
         ),
-        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into(), "05:validator".into()],
+        consumer_tags: vec![
+            "00:rusty".into(),
+            "02:orchestrator".into(),
+            "05:validator".into(),
+        ],
         source: "system".into(),
         validation_status: "validated".into(),
         capability_id: "builtin.http".into(),
@@ -873,92 +1229,124 @@ fn ts_row(
 }
 
 fn ts_projects_list_row(tenant: &str) -> NewPgToolSkill {
-    ts_row(tenant, "ts-zencoder-projects-list",
+    ts_row(
+        tenant,
+        "ts-zencoder-projects-list",
         "GET /projects — list all accessible Zencoder projects.",
         "Call `host.zencoder_api(method='GET', path='/projects')` to list all accessible projects. \
          Returns a JSON array; extract `id` and `name` from each entry.",
-        "/projects", "GET",
+        "/projects",
+        "GET",
         json!([{"name": "method", "param_type": "string", "required": true, "description": "Must be GET"},
-               {"name": "path",   "param_type": "string", "required": true, "description": "Must be /projects"}]))
+               {"name": "path",   "param_type": "string", "required": true, "description": "Must be /projects"}]),
+    )
 }
 
 fn ts_tasks_list_row(tenant: &str) -> NewPgToolSkill {
-    ts_row(tenant, "ts-zencoder-tasks-list",
+    ts_row(
+        tenant,
+        "ts-zencoder-tasks-list",
         "GET /projects/{pid}/tasks[?status=&limit=] — list tasks in a project.",
         "Call `host.zencoder_api(method='GET', path='/projects/{pid}/tasks')`. \
          Optional query params: status (todo|inprogress|inreview|done|cancelled), limit (integer). \
          Append them manually to the path string: /projects/{pid}/tasks?status={s}&limit={n}.",
-        "/projects/{{vars.pid}}/tasks", "GET",
+        "/projects/{{vars.pid}}/tasks",
+        "GET",
         json!([{"name": "method", "param_type": "string", "required": true},
-               {"name": "path",   "param_type": "string", "required": true, "description": "Include optional ?status=&limit= query params"}]))
+               {"name": "path",   "param_type": "string", "required": true, "description": "Include optional ?status=&limit= query params"}]),
+    )
 }
 
 fn ts_tasks_get_row(tenant: &str) -> NewPgToolSkill {
-    ts_row(tenant, "ts-zencoder-tasks-get",
+    ts_row(
+        tenant,
+        "ts-zencoder-tasks-get",
         "GET /projects/{pid}/tasks/{tid} — fetch one task.",
         "Call `host.zencoder_api(method='GET', path='/projects/{pid}/tasks/{tid}')`. \
          Returns task object with status, description, branch.",
-        "/projects/{{vars.pid}}/tasks/{{vars.tid}}", "GET",
+        "/projects/{{vars.pid}}/tasks/{{vars.tid}}",
+        "GET",
         json!([{"name": "method", "param_type": "string", "required": true},
-               {"name": "path",   "param_type": "string", "required": true}]))
+               {"name": "path",   "param_type": "string", "required": true}]),
+    )
 }
 
 fn ts_tasks_post_row(tenant: &str) -> NewPgToolSkill {
-    ts_row(tenant, "ts-zencoder-tasks-post",
+    ts_row(
+        tenant,
+        "ts-zencoder-tasks-post",
         "POST /projects/{pid}/tasks — create a task.",
         "Call `host.zencoder_api(method='POST', path='/projects/{pid}/tasks', body=<json>)`. \
          Body: {title, description?, workflow_id?, start?}. Returns created task object with 'id'.",
-        "/projects/{{vars.pid}}/tasks", "POST",
+        "/projects/{{vars.pid}}/tasks",
+        "POST",
         json!([{"name": "method", "param_type": "string", "required": true},
                {"name": "path",   "param_type": "string", "required": true},
-               {"name": "body",   "param_type": "string", "required": true, "description": "JSON: {title, description?, workflow_id?, start?}"}]))
+               {"name": "body",   "param_type": "string", "required": true, "description": "JSON: {title, description?, workflow_id?, start?}"}]),
+    )
 }
 
 fn ts_tasks_patch_row(tenant: &str) -> NewPgToolSkill {
-    ts_row(tenant, "ts-zencoder-tasks-patch",
+    ts_row(
+        tenant,
+        "ts-zencoder-tasks-patch",
         "PATCH /projects/{pid}/tasks/{tid} — partial update. Body replaces description fully.",
         "Call `host.zencoder_api(method='PATCH', path='/projects/{pid}/tasks/{tid}', body=<json>)`. \
          Body: any subset of {title, description, status}. \
          WARNING: PATCH fully replaces description — read the task first if appending. \
          Status values lowercase: todo|inprogress|inreview|done|cancelled.",
-        "/projects/{{vars.pid}}/tasks/{{vars.tid}}", "PATCH",
+        "/projects/{{vars.pid}}/tasks/{{vars.tid}}",
+        "PATCH",
         json!([{"name": "method", "param_type": "string", "required": true},
                {"name": "path",   "param_type": "string", "required": true},
-               {"name": "body",   "param_type": "string", "required": true, "description": "JSON subset of {title, description, status}"}]))
+               {"name": "body",   "param_type": "string", "required": true, "description": "JSON subset of {title, description, status}"}]),
+    )
 }
 
 fn ts_plan_get_row(tenant: &str) -> NewPgToolSkill {
-    ts_row(tenant, "ts-zencoder-plan-get",
+    ts_row(
+        tenant,
+        "ts-zencoder-plan-get",
         "GET /projects/{pid}/tasks/{tid}/plan — fetch task execution plan.",
         "Call `host.zencoder_api(method='GET', path='/projects/{pid}/tasks/{tid}/plan')`. \
          Returns steps[{name, status}]. Status values: Pending|InProgress|Completed|Skipped. \
          404 = plan not yet created — not an error.",
-        "/projects/{{vars.pid}}/tasks/{{vars.tid}}/plan", "GET",
+        "/projects/{{vars.pid}}/tasks/{{vars.tid}}/plan",
+        "GET",
         json!([{"name": "method", "param_type": "string", "required": true},
-               {"name": "path",   "param_type": "string", "required": true}]))
+               {"name": "path",   "param_type": "string", "required": true}]),
+    )
 }
 
 fn ts_automations_list_row(tenant: &str) -> NewPgToolSkill {
-    ts_row(tenant, "ts-zencoder-automations-list",
+    ts_row(
+        tenant,
+        "ts-zencoder-automations-list",
         "GET /automations[?enabled=true|false] — list automations.",
         "Call `host.zencoder_api(method='GET', path='/automations')`. \
          Optional: append ?enabled=true or ?enabled=false to filter by enabled status.",
-        "/automations", "GET",
+        "/automations",
+        "GET",
         json!([{"name": "method", "param_type": "string", "required": true},
-               {"name": "path",   "param_type": "string", "required": true}]))
+               {"name": "path",   "param_type": "string", "required": true}]),
+    )
 }
 
 fn ts_automations_post_row(tenant: &str) -> NewPgToolSkill {
-    ts_row(tenant, "ts-zencoder-automations-post",
+    ts_row(
+        tenant,
+        "ts-zencoder-automations-post",
         "POST /automations — create a scheduled automation.",
         "Call `host.zencoder_api(method='POST', path='/automations', body=<json>)`. \
          Body: {name, target_project_id?, task_name?, task_description?, \
          schedule_time? (HH:MM 24-hour), schedule_days_of_week? (int[] 0=Sun–6=Sat)}.",
-        "/automations", "POST",
+        "/automations",
+        "POST",
         json!([{"name": "method", "param_type": "string", "required": true},
                {"name": "path",   "param_type": "string", "required": true},
                {"name": "body",   "param_type": "string", "required": true,
-                "description": "JSON: {name, target_project_id?, task_name?, task_description?, schedule_time?, schedule_days_of_week?}"}]))
+                "description": "JSON: {name, target_project_id?, task_name?, task_description?, schedule_time?, schedule_days_of_week?}"}]),
+    )
 }
 
 fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPythonCode {
@@ -1005,7 +1393,14 @@ fn skill_row(
 }
 
 fn leaf_skill(tenant: &str, name: &str, description: &str, body: &str) -> NewPgSkill {
-    skill_row(tenant, name, description, body, 1, &["02:orchestrator", "05:validator"])
+    skill_row(
+        tenant,
+        name,
+        description,
+        body,
+        1,
+        &["02:orchestrator", "05:validator"],
+    )
 }
 
 fn step_entry(stepnumber: u32, knowledge: &str, goal: &str, ty: &str, include: &[Uuid]) -> Value {
@@ -1067,7 +1462,10 @@ fn recipe_row(
 
 /// Build the `intent_examples` array from `(input, class)` pairs.
 fn intents(pairs: &[(&str, u8)]) -> Vec<Value> {
-    pairs.iter().map(|(input, cls)| json!({"input": input, "class": cls})).collect()
+    pairs
+        .iter()
+        .map(|(input, cls)| json!({"input": input, "class": cls}))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

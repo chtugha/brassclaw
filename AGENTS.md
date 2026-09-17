@@ -226,6 +226,17 @@ When a task touches only `crates/` there is no longer a v1 `src/` tree — all v
 - Skills are selected deterministically. Tool approval and auth flows are special paths and must not be mixed into normal chat history.
 - Persistent memory is the workspace system, not just transcript storage.
 
+### Capability Lease Authority Invariants (`brassclaw_authorization`)
+
+Capability leases are authority-bearing records — the rules below are not style preferences:
+
+1. **`PgCapabilityLeaseStore` mutations must be atomic.** Every `revoke`, `claim`, and `consume` must run inside a single Postgres transaction with `SELECT … FOR UPDATE`. Never split the read and write across separate connections or pool checkouts. A TOCTOU gap here is a double-authority bug.
+2. **`UPDATE` predicates must include `user_id`.** Reading is scoped to `(id, tenant_id, user_id)`; writing must use the same triple. Omitting `user_id` from the `WHERE` clause allows mutations to cross user boundaries.
+3. **`consume` must call `ensure_consumable` and decrement `max_invocations`.** Directly setting `Consumed` without these steps grants additional invocations on multi-use leases and bypasses the unclaimed-fingerprint guard.
+4. **`FilesystemCapabilityLeaseStore` must not silently downgrade `CasExpectation::Version` to `Any`.** The indexed-projection fallback (stripping `entry.indexed` for byte-only backends) is acceptable. Downgrading the CAS version expectation is not — it removes the cross-process ordering guarantee. If the backend cannot provide versioned CAS, fail closed.
+5. **`LocalFilesystem` is not an accepted backend for authority-bearing stores.** Production wires `InMemoryBackend` (local-dev, under `/tenants`) and `PostgresRootFilesystem` (hosted). Tests that exercise mutation paths must use `InMemoryBackend`, not `LocalFilesystem`.
+6. **`issue` must not return success when zero rows were inserted.** `ON CONFLICT DO NOTHING` silently absorbs duplicate-key conflicts; check `rows_affected == 1` before returning the lease to the caller.
+
 ## Testing Rules
 
 - Add the narrowest tests that validate the change: unit tests for local logic, integration tests for runtime/DB/routing behavior, E2E or trace coverage for gateway, approvals, extensions, or other user-visible flows.

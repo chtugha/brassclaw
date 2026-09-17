@@ -264,14 +264,11 @@ pub struct RebornServices {
     #[cfg(feature = "postgres")]
     pub(crate) pg_memory_doc_store: Option<Arc<crate::pg_memory_doc_store::PgMemoryDocStore>>,
     /// Trigger repository for the automation facade (fire_now path).
-    pub(crate) trigger_repository:
-        Option<Arc<dyn brassclaw_triggers::TriggerRepository>>,
+    pub(crate) trigger_repository: Option<Arc<dyn brassclaw_triggers::TriggerRepository>>,
     /// Trusted submitter for manual trigger fire (fire_now path).
-    pub(crate) trusted_submitter:
-        Option<Arc<dyn brassclaw_triggers::TrustedTriggerFireSubmitter>>,
+    pub(crate) trusted_submitter: Option<Arc<dyn brassclaw_triggers::TrustedTriggerFireSubmitter>>,
     /// Prompt materializer for manual trigger fire (fire_now path).
-    pub(crate) trigger_materializer:
-        Option<Arc<dyn brassclaw_triggers::TriggerPromptMaterializer>>,
+    pub(crate) trigger_materializer: Option<Arc<dyn brassclaw_triggers::TriggerPromptMaterializer>>,
 }
 
 impl RebornServices {

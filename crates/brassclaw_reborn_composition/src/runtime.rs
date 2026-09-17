@@ -2158,7 +2158,11 @@ pub async fn build_reborn_runtime(
     // re-read by the wiring helper).
     let model_budget_accountant: Option<
         Arc<dyn brassclaw_turns::run_profile::LoopModelBudgetAccountant>,
-    > = match (trusted_laptop_access, resolved_token_budgets_enabled, resolved_cost_table) {
+    > = match (
+        trusted_laptop_access,
+        resolved_token_budgets_enabled,
+        resolved_cost_table,
+    ) {
         // Skip budget enforcement for trusted-laptop-access (yolo) profiles —
         // the local user has full host access and budget limits are counterproductive.
         (true, _, _) => None,

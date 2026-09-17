@@ -84,6 +84,13 @@ cargo clippy --all --benches --tests --examples --all-features         # lint (z
 cargo test                                                             # unit tests
 cargo test --features integration                                      # + PostgreSQL tests
 
+# Authorization crate — capability lease contract tests (no DB required)
+cargo test -p brassclaw_authorization
+
+# Authorization crate — PostgreSQL integration tests (requires BRASSCLAW_PG_URL)
+BRASSCLAW_PG_URL=postgresql://brassclaw@127.0.0.1:5434/brassclaw \
+  cargo test -p brassclaw_authorization --features integration
+
 # Build the Reborn binary with WebUI v2
 cargo build --release --bin brassclaw
 

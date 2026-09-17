@@ -141,7 +141,9 @@ impl SessionGuard {
     /// Take ownership of the session, disarming the park-on-drop guard.
     /// The caller must handle the session (park or drop it explicitly).
     fn take(mut self) -> MontySession {
-        self.session.take().expect("SessionGuard: session already taken")
+        self.session
+            .take()
+            .expect("SessionGuard: session already taken")
     }
 }
 
@@ -384,7 +386,9 @@ impl PersistentMontyDriver {
         // — without it the session would be silently lost and the next turn for
         // this conversation would restart the VM from scratch.
         let session = match self.registry.try_checkout(&context.scope).await {
-            Some(session) => SessionGuard::new(session, Arc::clone(&self.registry), context.scope.clone()),
+            Some(session) => {
+                SessionGuard::new(session, Arc::clone(&self.registry), context.scope.clone())
+            }
             None => {
                 let mut fresh =
                     prepare_monty_session(thread, Some(&self.store), max_duration_override)

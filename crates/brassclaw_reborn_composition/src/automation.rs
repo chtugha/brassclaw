@@ -13,13 +13,13 @@ use brassclaw_host_runtime::{
     TRIGGER_UPDATE_CAPABILITY_ID,
 };
 use brassclaw_product_workflow::{
-    AutomationProductFacade, AutomationStateAction, ProductAgentBoundCaller,
-    RebornAutomationInfo, RebornAutomationRunHistoryResponse, RebornAutomationRunRecord,
-    RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
-    RebornCreateAutomationResponse, RebornDeleteAutomationResponse,
-    RebornFireAutomationNowResponse, RebornGetAutomationResponse, RebornServicesError,
-    RebornServicesErrorCode, RebornServicesErrorKind, RebornUpdateAutomationResponse,
-    WebUiCreateAutomationRequest, WebUiSetAutomationStateRequest, WebUiUpdateAutomationRequest,
+    AutomationProductFacade, AutomationStateAction, ProductAgentBoundCaller, RebornAutomationInfo,
+    RebornAutomationRunHistoryResponse, RebornAutomationRunRecord, RebornAutomationRunStatus,
+    RebornAutomationSource, RebornAutomationState, RebornCreateAutomationResponse,
+    RebornDeleteAutomationResponse, RebornFireAutomationNowResponse, RebornGetAutomationResponse,
+    RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
+    RebornUpdateAutomationResponse, WebUiCreateAutomationRequest, WebUiSetAutomationStateRequest,
+    WebUiUpdateAutomationRequest,
 };
 use brassclaw_triggers::{
     TriggerFire, TriggerFireIdentity, TriggerId, TriggerPromptMaterializer, TriggerRepository,
@@ -364,8 +364,7 @@ impl AutomationProductFacade for RebornWebuiAutomationFacade {
         }
 
         let fire_slot = Utc::now();
-        let identity =
-            TriggerFireIdentity::new(caller.tenant_id.clone(), trigger_id, fire_slot);
+        let identity = TriggerFireIdentity::new(caller.tenant_id.clone(), trigger_id, fire_slot);
         let fire = TriggerFire {
             identity,
             creator_user_id: caller.user_id.clone(),
@@ -561,14 +560,13 @@ fn parse_run_history_output(
         finished_at: Option<String>,
         status: RebornAutomationRunStatus,
     }
-    let envelope: RawRunHistoryEnvelope =
-        serde_json::from_value(output).map_err(|error| {
-            tracing::debug!(
-                error = %error,
-                "malformed run history output from host runtime"
-            );
-            internal_invariant()
-        })?;
+    let envelope: RawRunHistoryEnvelope = serde_json::from_value(output).map_err(|error| {
+        tracing::debug!(
+            error = %error,
+            "malformed run history output from host runtime"
+        );
+        internal_invariant()
+    })?;
     let runs = envelope
         .runs
         .into_iter()

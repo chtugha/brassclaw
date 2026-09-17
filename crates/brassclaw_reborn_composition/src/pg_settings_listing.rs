@@ -222,37 +222,46 @@ pub(crate) mod inner {
     impl brassclaw_product_workflow::SettingsListingService for PgSettingsListingService {
         async fn list_recipes(
             &self,
-        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {
+        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError>
+        {
             self.list(SPEC_RECIPES).await.map_err(map_listing_error)
         }
         async fn list_skills(
             &self,
-        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {
+        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError>
+        {
             self.list(SPEC_SKILLS).await.map_err(map_listing_error)
         }
         async fn list_tools(
             &self,
-        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {
+        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError>
+        {
             self.list(SPEC_TOOLS).await.map_err(map_listing_error)
         }
         async fn list_actions(
             &self,
-        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {
+        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError>
+        {
             self.list(SPEC_ACTIONS).await.map_err(map_listing_error)
         }
         async fn list_extensions(
             &self,
-        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {
+        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError>
+        {
             self.list(SPEC_EXTENSIONS).await.map_err(map_listing_error)
         }
         async fn list_orchestrators(
             &self,
-        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {
-            self.list(SPEC_ORCHESTRATORS).await.map_err(map_listing_error)
+        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError>
+        {
+            self.list(SPEC_ORCHESTRATORS)
+                .await
+                .map_err(map_listing_error)
         }
         async fn list_scaffolds(
             &self,
-        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError> {
+        ) -> Result<SettingsListResponse, brassclaw_product_workflow::SettingsListingError>
+        {
             self.list(SPEC_SCAFFOLDS).await.map_err(map_listing_error)
         }
     }

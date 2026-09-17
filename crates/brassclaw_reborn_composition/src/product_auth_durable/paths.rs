@@ -9,10 +9,7 @@ pub(super) fn flow_path(
     scope: &brassclaw_auth::AuthProductScope,
     flow_id: AuthFlowId,
 ) -> ScopedPath {
-    ScopedPath::from_trusted(format!(
-        "{}/flows/{flow_id}.json",
-        product_auth_root(scope)
-    ))
+    ScopedPath::from_trusted(format!("{}/flows/{flow_id}.json", product_auth_root(scope)))
 }
 
 pub(super) fn flow_root(scope: &brassclaw_auth::AuthProductScope) -> ScopedPath {

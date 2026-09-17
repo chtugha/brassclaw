@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.9] - 2026-09-16
+
+### Security
+
+- *(authorization / postgres)* **`PgCapabilityLeaseStore` mutations are now fully atomic.** `revoke`, `claim`, and `consume` previously read and wrote on separate pooled connections, leaving a TOCTOU window where two concurrent callers could both pass the precondition check. All three operations now run inside a single Postgres transaction: `SELECT … FOR UPDATE` acquires a row-level lock, the Rust mutation runs while the lock is held, and `UPDATE … WHERE id AND tenant_id AND user_id` commits both representations (lowercase SQL `status` column + JSONB `grant.status`) in one statement. A zero-row update after the locked read is a hard invariant error, not silent success.
+- *(authorization / postgres)* `UPDATE` predicate now includes `user_id` — the previous implementation omitted it, allowing a row with the same `id` in a different user's scope to be accidentally mutated.
+- *(authorization / postgres)* `claim` previously performed two reads (one for `ensure_claimable`, one inside `transition_status`), widening the race window. The new `mutate_lease` transaction reads the row exactly once under `FOR UPDATE`, eliminating the double-read race. Two concurrent claimers now block on the row lock; the loser sees `InactiveLease`.
+- *(authorization / postgres)* `consume` previously set every lease directly to `Consumed` without calling `ensure_consumable` or decrementing `max_invocations`. Now applies the same multi-use transition logic as `InMemoryCapabilityLeaseStore` and `FilesystemCapabilityLeaseStore`: `ensure_consumable` is called, `max_invocations` is decremented, and fingerprinted leases are zeroed before `Consumed` is set.
+- *(authorization / postgres)* `issue` now returns a `Persistence` error when `ON CONFLICT DO NOTHING` inserts zero rows (duplicate UUID). Previously it returned the caller's lease claiming success for a row that was never persisted.
+- *(authorization / filesystem)* **CAS-downgrade fallback removed.** `write_lease_raw` previously caught any `FilesystemError::Unsupported` — covering both indexed-projection rejection and `CasExpectation::Version` rejection — and silently downgraded to `CasExpectation::Any`. This conflated two independent unsupported capabilities and could lose cross-process ordering guarantees. The fallback is now separated: indexed projections are stripped and the **same** CAS expectation is retried; if the byte-stripped retry still returns `Unsupported` with a `Version` expectation, the operation fails closed with a `Persistence` error instead of downgrading.
+- *(authorization / filesystem)* `LocalFilesystem`-backed mutation operations (`revoke`, `claim`, `consume`) now correctly fail closed with a `Persistence` error. The production `FilesystemCapabilityLeaseStore` is wired to `InMemoryBackend` (local-dev) and `PostgresRootFilesystem` (production), both of which support `CasExpectation::Version`. `LocalFilesystem` is not a supported backend for authority-bearing stores and mutations against it are now rejected rather than silently weakened.
+
+### Changed
+
+- *(authorization / locks)* **`FilesystemCapabilityLeaseStore` mutation-lock map now uses weak references.** The previous `HashMap<CapabilityLeaseOwnerKey, Arc<tokio::sync::Mutex<()>>>` retained one strong reference per owner forever. Replaced with `Weak<tokio::sync::Mutex<()>>` values. `mutation_lock()` now prunes dead entries on every call and upgrades the existing `Weak` when live, so idle entries are released as soon as the last in-flight operation drops its strong `Arc`. The map is bounded to the number of scopes with an operation actively in flight.
+
+### Added
+
+- *(authorization / tests)* PostgreSQL integration test suite in `tests/pg_lease_integration.rs` (gated on `--features integration`): concurrent claim race, concurrent one-shot consume race, two-invocation lease decrement, typed error parity for terminal lease states, cross-user isolation, duplicate `issue` detection, and SQL/JSONB status-column synchronization.
+- *(authorization / tests)* Backend-contract test suite (`tests/capability_lease_contract.rs`): `local_filesystem_backed_mutation_fails_closed_without_partial_write`, `two_store_instances_cannot_double_consume_one_shot_lease`, `in_memory_backend_stale_version_write_fails`, `in_memory_backend_indexed_projection_survives_full_lease_lifecycle`.
+- *(authorization / tests)* Weak-lock registry tests: `weak_lock_registry_concurrent_same_owner_serializes_different_owner_does_not`, `weak_lock_registry_prunes_dead_entries_after_release`.
+- *(composition / tests)* `per_user_aliases_contains_exactly_the_canonical_set` — maintenance tripwire pinning the 14 per-user filesystem mount aliases. Any new consumer store must update both `PER_USER_ALIASES` and this test in the same change.
+- *(composition / tests)* `invocation_mount_view_grant_count_equals_aliases_plus_four` — verifies total mount grant count = `PER_USER_ALIASES.len() + 4` (1 tenant-shared + 3 read-only system grants).
+
+### Fixed
+
+- *(composition)* `Vec::with_capacity(PER_USER_ALIASES.len() + 2)` in `invocation_mount_view_for_segments` corrected to `+ 4` — the function appends one tenant-shared grant and three system grants, not two.
+
+## [1.2.8] - 2026-09-15
+
+### Changed
+
+- *(host-api / paths)* **`ResourceScope::within_tenant_segment()` and `within_agent_project_segment()` centralized in `brassclaw_host_api`.** Previously each store crate (`brassclaw_authorization`, `brassclaw_processes`, `brassclaw_run_state`, `brassclaw_secrets`, `brassclaw_reborn_composition`) maintained its own private helper to construct `agent/project/thread` path segments from a `ResourceScope`. These helpers are now a single canonical pair on `ResourceScope` itself.
+- *(host-api / paths)* **`ScopedPath::from_trusted()`** added for constructing lease/index/owner paths from scope-derived values. Callers that held the invariant through construction (not user input) were previously forced to handle `Result` from `ScopedPath::new`. `from_trusted` carries a `debug_assert` guard and never returns `Result` for scope-derived identifiers.
+- *(authorization)* `lease_path`, `lease_index_path`, and `lease_owner_prefix` made infallible — they now return `ScopedPath` directly via `ScopedPath::from_trusted`.
+- *(processes, run-state, secrets, composition)* Corresponding scope-derived path helpers in `brassclaw_processes`, `brassclaw_run_state`, `brassclaw_secrets`, and `brassclaw_reborn_composition` collapsed to one-liners using the new `ResourceScope` methods.
+
 ## [1.2.7] - 2026-09-14
 
 ### Fixed

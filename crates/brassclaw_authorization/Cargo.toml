@@ -6,6 +6,7 @@ publish = false
 
 [features]
 default = []
+integration = []
 
 [dependencies]
 async-trait = "0.1"
@@ -22,5 +23,6 @@ thiserror = "2"
 tokio = { version = "1", features = ["sync"] }
 
 [dev-dependencies]
+brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread"] }

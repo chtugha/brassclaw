@@ -20,9 +20,9 @@ pub(crate) mod inner {
     use async_trait::async_trait;
     use brassclaw_pg::PgPool;
     use brassclaw_product_workflow::{
-        RebornListSkillsResponse, RebornServicesError, RebornServicesErrorCode,
-        RebornSkillInfo, RebornSkillInstallResult, RebornSkillRemoveResult,
-        SkillsProductFacade, WebUiAuthenticatedCaller,
+        RebornListSkillsResponse, RebornServicesError, RebornServicesErrorCode, RebornSkillInfo,
+        RebornSkillInstallResult, RebornSkillRemoveResult, SkillsProductFacade,
+        WebUiAuthenticatedCaller,
     };
 
     use crate::lifecycle::RebornLocalSkillManagementPort;
@@ -63,11 +63,7 @@ pub(crate) mod inner {
         ) -> Result<RebornListSkillsResponse, RebornServicesError> {
             let client = self.pool.get().await.map_err(|e| {
                 tracing::debug!(error = %e, "pg_skills_facade: pool unavailable");
-                RebornServicesError::from_status(
-                    RebornServicesErrorCode::Unavailable,
-                    503,
-                    false,
-                )
+                RebornServicesError::from_status(RebornServicesErrorCode::Unavailable, 503, false)
             })?;
 
             let rows = client
@@ -165,7 +161,11 @@ pub(crate) mod inner {
         use brassclaw_skills::SkillManagementErrorKind;
         match error {
             crate::lifecycle::RebornLocalSkillManagementError::InvalidContext { .. } => {
-                RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
+                RebornServicesError::from_status(
+                    RebornServicesErrorCode::InvalidRequest,
+                    400,
+                    false,
+                )
             }
             crate::lifecycle::RebornLocalSkillManagementError::Skill(e) => match e.kind() {
                 SkillManagementErrorKind::InvalidInput
@@ -176,11 +176,9 @@ pub(crate) mod inner {
                     400,
                     false,
                 ),
-                SkillManagementErrorKind::FilesystemDenied => RebornServicesError::from_status(
-                    RebornServicesErrorCode::Forbidden,
-                    403,
-                    false,
-                ),
+                SkillManagementErrorKind::FilesystemDenied => {
+                    RebornServicesError::from_status(RebornServicesErrorCode::Forbidden, 403, false)
+                }
                 SkillManagementErrorKind::Resource => RebornServicesError::from_status(
                     RebornServicesErrorCode::Unavailable,
                     503,

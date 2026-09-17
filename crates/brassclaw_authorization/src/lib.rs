@@ -422,7 +422,17 @@ where
     F: RootFilesystem,
 {
     filesystem: Arc<ScopedFilesystem<F>>,
-    mutation_locks: Mutex<HashMap<CapabilityLeaseOwnerKey, Arc<tokio::sync::Mutex<()>>>>,
+    /// Per-owner weak lock registry. Stores `Weak` references instead of
+    /// permanent `Arc` values so that idle entries are automatically pruned
+    /// when no concurrent operation holds a strong reference to the lock.
+    ///
+    /// The map is never allowed to grow without bound: when an entry's
+    /// `Weak` is dead (all callers have dropped their `Arc`), that entry is
+    /// removed on the next `mutation_lock` call for any scope. This bounds
+    /// the map to the number of scopes that have at least one operation
+    /// currently in flight — not the number of scopes ever seen.
+    mutation_locks:
+        Mutex<HashMap<CapabilityLeaseOwnerKey, std::sync::Weak<tokio::sync::Mutex<()>>>>,
 }
 
 impl<F> FilesystemCapabilityLeaseStore<F>
@@ -436,14 +446,36 @@ where
         }
     }
 
+    /// Return the per-owner serialization lock as a strong `Arc`.
+    ///
+    /// While the outer `mutation_locks` map mutex is held:
+    /// 1. Remove all entries whose `Weak` reference is dead (the lock is
+    ///    idle — no operation currently holds it).
+    /// 2. For the requested owner, upgrade the existing `Weak` when the lock
+    ///    is still live, or create a new `Arc` and store a `Weak` downgrade.
+    /// 3. Return the strong `Arc`. The caller must hold it (and its `.lock()`
+    ///    guard) for the entire read/validate/write sequence.
+    ///
+    /// This bounds idle entry retention: entries disappear as soon as all
+    /// concurrent operations for an owner release their strong references,
+    /// typically within the same async turn.
     fn mutation_lock(&self, scope: &ResourceScope) -> Arc<tokio::sync::Mutex<()>> {
         let key = CapabilityLeaseOwnerKey::new(scope);
-        self.mutation_locks
+        let mut map = self
+            .mutation_locks
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .entry(key)
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
-            .clone()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        // Prune dead entries on every call so idle scopes never accumulate.
+        map.retain(|_, weak| weak.strong_count() > 0);
+
+        // Try to reuse a live lock for this owner; otherwise create a new one.
+        if let Some(existing) = map.get(&key).and_then(|w| w.upgrade()) {
+            return existing;
+        }
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        map.insert(key, Arc::downgrade(&lock));
+        lock
     }
 
     async fn read_lease(
@@ -480,23 +512,37 @@ where
         Ok(Some((lease, versioned.version)))
     }
 
-    /// Write the lease with the given CAS expectation.
-    ///
-    /// `CasExpectation::Version(_)` is the canonical path used by the mutation
-    /// flows below — a `VersionMismatch` from the backend signals that a
-    /// concurrent writer modified the same row, and the caller's retry loop
-    /// re-reads and tries again. `CasExpectation::Any` remains in use only
-    /// from the issue path, which is paired with the per-owner
-    /// [`mutation_lock`] and writes a freshly-generated lease id that no
-    /// other writer can collide with.
     /// Write the lease through the backend with the given CAS expectation.
     ///
-    /// Backends that don't track per-row versions (e.g. `LocalFilesystem`)
-    /// reject `CasExpectation::Version(_)` with `Unsupported`. For those,
-    /// fall back to `CasExpectation::Any` and carry the safety invariant
-    /// via the per-owner `mutation_lock` — same trade-off documented on
-    /// `FilesystemCapabilityLeaseStore` and matched by sibling crates'
-    /// fallback shape (`brassclaw_processes::put_with_byte_fallback`).
+    /// `CasExpectation::Version(_)` is the canonical path used by the mutation
+    /// flows (`revoke`, `claim`, `consume` via `update_lease_cas`) — a
+    /// `VersionMismatch` from the backend signals that a concurrent writer
+    /// modified the same row, and the caller's retry loop re-reads and retries.
+    /// `CasExpectation::Any` is used only from the `issue` path, which is
+    /// paired with the per-owner `mutation_lock` and writes a freshly-generated
+    /// lease id that no other writer can collide with.
+    ///
+    /// ## Projection fallback (byte-only backends)
+    ///
+    /// Capable backends (e.g. `InMemoryBackend`) store the `indexed` projection.
+    /// Byte-only backends (e.g. `LocalFilesystem`) reject entries with a
+    /// populated `indexed` field by returning `FilesystemError::Unsupported`.
+    /// On that error, we strip the `indexed` field and retry with the **same**
+    /// CAS expectation — the projection is best-effort defense-in-depth, but
+    /// the CAS guarantee must not be silently downgraded.
+    ///
+    /// ## CAS fallback (byte-only backends, version expectation)
+    ///
+    /// `LocalFilesystem` also rejects `CasExpectation::Version(_)` with
+    /// `Unsupported`. If the byte-stripped retry still returns `Unsupported`
+    /// and the original expectation was a `Version` CAS, the backend cannot
+    /// provide the required cross-process ordering guarantee. In that case we
+    /// fail closed rather than silently downgrading to `CasExpectation::Any`.
+    ///
+    /// The per-owner `mutation_lock` serialises in-process callers for
+    /// byte-only mounts, but it does not provide cross-process safety. Callers
+    /// that require cross-process atomicity must use a CAS-capable backend
+    /// (e.g. `InMemoryBackend` or a PostgreSQL-backed filesystem in tests/production).
     async fn write_lease_raw(
         &self,
         lease: &CapabilityLease,
@@ -520,30 +566,52 @@ where
             &lease_owner_prefix(&lease.scope),
         )
         .await?;
-        // Byte-only backends (LocalFilesystem) reject BOTH non-`Any` CAS
-        // AND entries with a populated `indexed` projection in a single
-        // `Unsupported` response. Strip the projection and downgrade CAS
-        // to `Any` so byte-only mounts stay writeable — the per-owner
-        // `mutation_lock` carries the ordering safety invariant on the
-        // fallback path, and the dropped tenant projection is best-effort
-        // (path-prefix scoping is the primary isolation boundary).
+
+        // First attempt: full indexed entry with the requested CAS expectation.
         match self
             .filesystem
             .put(&lease.scope, &path, entry.clone(), expectation)
             .await
         {
+            Ok(_) => return Ok(()),
+            // Projection fallback: byte-only backends (LocalFilesystem) reject
+            // entries that carry an `indexed` projection. Strip the projection
+            // and retry — the tenant_id index is best-effort defense-in-depth;
+            // path-prefix scoping is the primary isolation boundary.
+            //
+            // Crucially we keep the SAME CAS expectation on the retry so a
+            // stale-version write still fails with `VersionMismatch` instead of
+            // silently succeeding.
+            Err(FilesystemError::Unsupported { .. }) => {}
+            Err(error) => return Err(lease_persistence_error(error)),
+        }
+
+        let opaque = Entry::bytes(entry.body).with_content_type(entry.content_type);
+        match self
+            .filesystem
+            .put(&lease.scope, &path, opaque, expectation)
+            .await
+        {
             Ok(_) => Ok(()),
-            Err(FilesystemError::Unsupported { .. }) => {
-                let opaque = Entry::bytes(entry.body).with_content_type(entry.content_type);
-                match self
-                    .filesystem
-                    .put(&lease.scope, &path, opaque, CasExpectation::Any)
-                    .await
-                {
-                    Ok(_) => Ok(()),
-                    Err(error) => Err(lease_persistence_error(error)),
-                }
+            // The byte-stripped retry still returned Unsupported. The only
+            // remaining Unsupported trigger in LocalFilesystem::put is
+            // CasExpectation::Version(_). We must NOT silently downgrade to
+            // CasExpectation::Any because that would lose the cross-process
+            // ordering guarantee required by update_lease_cas. Fail closed.
+            Err(FilesystemError::Unsupported { .. })
+                if matches!(expectation, CasExpectation::Version(_)) =>
+            {
+                Err(CapabilityLeaseError::Persistence {
+                    reason: format!(
+                        "filesystem capability lease store: backend does not support \
+                         versioned compare-and-swap (CasExpectation::Version) for lease \
+                         path {path}; use a CAS-capable backend (InMemoryBackend or \
+                         PostgreSQL-backed filesystem) for authority-bearing stores"
+                    ),
+                })
             }
+            // For CasExpectation::Any the indexed fallback is the only unsupported
+            // condition; a second Unsupported here is unexpected — propagate as persistence.
             Err(error) => Err(lease_persistence_error(error)),
         }
     }
@@ -1508,6 +1576,10 @@ pub(crate) fn same_scope_owner(left: &ResourceScope, right: &ResourceScope) -> b
         && left.thread_id == right.thread_id
 }
 
+pub(crate) fn same_lease_scope(left: &ResourceScope, right: &ResourceScope) -> bool {
+    same_scope_owner(left, right) && left.invocation_id == right.invocation_id
+}
+
 // ── Lease path helpers ────────────────────────────────────────
 //
 // All helpers return [`ScopedPath`] strings under the `/authorization`
@@ -1652,5 +1724,62 @@ where
         Ok(()) => Ok(()),
         Err(FilesystemError::Unsupported { .. }) => Ok(()),
         Err(error) => Err(lease_persistence_error(error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_mount_view(_: &ResourceScope) -> Result<brassclaw_host_api::MountView, HostApiError> {
+        Ok(brassclaw_host_api::MountView::default())
+    }
+
+    fn store() -> FilesystemCapabilityLeaseStore<brassclaw_filesystem::InMemoryBackend> {
+        let root = Arc::new(brassclaw_filesystem::InMemoryBackend::default());
+        let filesystem = Arc::new(ScopedFilesystem::new(root, empty_mount_view));
+        FilesystemCapabilityLeaseStore::new(filesystem)
+    }
+
+    fn scope(user: &str) -> ResourceScope {
+        ResourceScope::local_default(UserId::new(user).unwrap(), InvocationId::new()).unwrap()
+    }
+
+    #[test]
+    fn mutation_lock_reuses_live_owner_lock() {
+        let store = store();
+        let first_scope = scope("first-user");
+        let mut second_scope = first_scope.clone();
+        second_scope.invocation_id = InvocationId::new();
+
+        let first = store.mutation_lock(&first_scope);
+        let second = store.mutation_lock(&second_scope);
+
+        assert!(Arc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn mutation_lock_separates_owners_and_prunes_dead_entries() {
+        let store = store();
+        let first = store.mutation_lock(&scope("first-user"));
+        let second_scope = scope("second-user");
+        let second = store.mutation_lock(&second_scope);
+
+        assert!(!Arc::ptr_eq(&first, &second));
+        drop(first);
+        drop(second);
+
+        let live = store.mutation_lock(&second_scope);
+        let locks = store
+            .mutation_locks
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(locks.len(), 1);
+        assert!(
+            locks
+                .values()
+                .next()
+                .is_some_and(|lock| lock.ptr_eq(&Arc::downgrade(&live)))
+        );
     }
 }

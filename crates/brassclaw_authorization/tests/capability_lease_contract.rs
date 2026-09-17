@@ -752,9 +752,14 @@ async fn filesystem_lease_store_lists_from_owner_index_without_scanning_invocati
     );
 }
 
+/// This test requires a backend that supports `CasExpectation::Version`.
+/// `LocalFilesystem` does NOT support versioned CAS, so this test uses
+/// `InMemoryBackend` — the same backend that local-dev composition wires
+/// for the `/tenants` subtree. See plan 2B: versioned CAS is required for
+/// authority-bearing mutation operations.
 #[tokio::test]
 async fn filesystem_lease_store_persists_revoke_claim_and_consume() {
-    let fs = engine_filesystem();
+    let fs = in_memory_filesystem();
     let context = execution_context(CapabilitySet::default());
     let descriptor = descriptor(CapabilityId::new("echo.say").unwrap());
     let fingerprint = InvocationFingerprint::for_dispatch(
@@ -856,9 +861,11 @@ async fn filesystem_fingerprinted_lease_cannot_be_consumed_before_claim() {
     );
 }
 
+/// This test requires a backend that supports `CasExpectation::Version` (claim writes).
+/// Uses `InMemoryBackend` — see plan 2B.
 #[tokio::test]
 async fn filesystem_fingerprinted_lease_without_invocation_limit_is_consumed_after_one_use() {
-    let fs = engine_filesystem();
+    let fs = in_memory_filesystem();
     let context = execution_context(CapabilitySet::default());
     let descriptor = descriptor(CapabilityId::new("echo.say").unwrap());
     let fingerprint = InvocationFingerprint::for_dispatch(
@@ -1129,6 +1136,217 @@ async fn revoked_lease_no_longer_authorizes_dispatch() {
     ));
 }
 
+// ── 2B.3 backend-contract tests ───────────────────────────────────────────────
+
+/// Plan 2B.3: a versioned mutation on a `LocalFilesystem`-backed store must
+/// fail closed without persisting a partial transition. The error must be a
+/// `Persistence` error, not a silent success or a corrupted lease state.
+///
+/// `LocalFilesystem` does not support `CasExpectation::Version`; the store
+/// must detect this and reject the mutation rather than downgrading the
+/// CAS expectation to `Any`.
+#[tokio::test]
+async fn local_filesystem_backed_mutation_fails_closed_without_partial_write() {
+    let fs = engine_filesystem();
+    let context = execution_context(CapabilitySet::default());
+    let descriptor = descriptor(CapabilityId::new("echo.say").unwrap());
+    let lease = CapabilityLease::new(
+        context.resource_scope.clone(),
+        grant_for(
+            descriptor.id.clone(),
+            Principal::Extension(context.extension_id.clone()),
+            vec![EffectKind::DispatchCapability],
+        ),
+    );
+    let lease_id = lease.grant.id;
+    let store = FilesystemCapabilityLeaseStore::new(Arc::clone(&fs));
+    store.issue(lease).await.unwrap();
+
+    // revoke triggers update_lease_cas → write_lease_raw with Version → fails closed
+    let err = store
+        .revoke(&context.resource_scope, lease_id)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, CapabilityLeaseError::Persistence { .. }),
+        "LocalFilesystem-backed mutation must fail with Persistence, not silently succeed; got {err:?}"
+    );
+
+    // The lease must still be Active — no partial write happened.
+    let still_active = FilesystemCapabilityLeaseStore::new(Arc::clone(&fs))
+        .get(&context.resource_scope, lease_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        still_active.status,
+        CapabilityLeaseStatus::Active,
+        "the lease must remain Active after a failed mutation; got {still_active:?}"
+    );
+}
+
+/// Plan 2B.3: two `FilesystemCapabilityLeaseStore` instances over the same
+/// `InMemoryBackend` root cannot both consume a one-shot lease.
+///
+/// One store acquires the exclusive consume (CAS wins); the other loses the
+/// CAS race and returns `ExhaustedLease` after reading the already-`Consumed`
+/// row on its next attempt.
+#[tokio::test]
+async fn two_store_instances_cannot_double_consume_one_shot_lease() {
+    let backend = Arc::new(InMemoryBackend::new());
+    let scoped_a = build_scoped_fs(
+        Arc::clone(&backend),
+        "/tenants/test/users/test/authorization",
+    );
+    let scoped_b = build_scoped_fs(backend, "/tenants/test/users/test/authorization");
+    let store_a = FilesystemCapabilityLeaseStore::new(Arc::clone(&scoped_a));
+    let store_b = FilesystemCapabilityLeaseStore::new(scoped_b);
+
+    let context = execution_context(CapabilitySet::default());
+    let descriptor = descriptor(CapabilityId::new("echo.say").unwrap());
+    let mut grant = grant_for(
+        descriptor.id.clone(),
+        Principal::Extension(context.extension_id.clone()),
+        vec![EffectKind::DispatchCapability],
+    );
+    grant.constraints.max_invocations = Some(1);
+    let lease = CapabilityLease::new(context.resource_scope.clone(), grant);
+    let lease_id = lease.grant.id;
+    store_a.issue(lease).await.unwrap();
+
+    // B consumes first.
+    let consumed = store_b
+        .consume(&context.resource_scope, lease_id)
+        .await
+        .unwrap();
+    assert_eq!(consumed.status, CapabilityLeaseStatus::Consumed);
+
+    // A's subsequent consume must fail — CAS detects the updated version
+    // or reads the Consumed status and rejects.
+    let err = store_a
+        .consume(&context.resource_scope, lease_id)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, CapabilityLeaseError::ExhaustedLease { .. }),
+        "second consume of a one-shot lease must return ExhaustedLease; got {err:?}"
+    );
+}
+
+/// Plan 2B.3: stale versioned writes fail with `VersionMismatch` (bubbled up
+/// from the backend) or `Persistence` (when the backend fails closed) — never
+/// with silent success.
+///
+/// The `InMemoryBackend` tracks per-path versions. Read the current version,
+/// write the lease once (advances the version), then attempt a second write
+/// with the stale version. The backend must reject the second write.
+#[tokio::test]
+async fn in_memory_backend_stale_version_write_fails() {
+    use brassclaw_filesystem::{CasExpectation, ContentType, Entry, RootFilesystem};
+    use brassclaw_host_api::VirtualPath;
+
+    let backend = Arc::new(InMemoryBackend::new());
+    let path = VirtualPath::new("/tenants/stale-test").unwrap();
+    let entry = Entry::bytes(b"v1".to_vec()).with_content_type(ContentType::json());
+
+    // First write: Absent CAS (new path) → success.
+    let v1 = backend
+        .put(&path, entry.clone(), CasExpectation::Absent)
+        .await
+        .unwrap();
+
+    // Second write: advance to v2.
+    let entry2 = Entry::bytes(b"v2".to_vec()).with_content_type(ContentType::json());
+    let _v2 = backend
+        .put(&path, entry2, CasExpectation::Version(v1))
+        .await
+        .unwrap();
+
+    // Third write with stale v1 — must fail with VersionMismatch.
+    let entry3 = Entry::bytes(b"stale".to_vec()).with_content_type(ContentType::json());
+    let err = backend
+        .put(&path, entry3, CasExpectation::Version(v1))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, FilesystemError::VersionMismatch { .. }),
+        "stale-version write on InMemoryBackend must return VersionMismatch; got {err:?}"
+    );
+}
+
+/// Plan 2B.3: indexed projections remain queryable on `InMemoryBackend`.
+/// This covers the regression that dropping the indexed fallback could break
+/// the tenant-isolation defense-in-depth query path. The actual projection
+/// query is covered by `filesystem_capability_lease_store_writes_tenant_id_indexed_projection`;
+/// this test just confirms the index survives a full issue→claim→consume cycle.
+#[tokio::test]
+async fn in_memory_backend_indexed_projection_survives_full_lease_lifecycle() {
+    use brassclaw_filesystem::{Filter, IndexKey, IndexValue, Page};
+
+    let backend = Arc::new(InMemoryBackend::new());
+    let scoped = build_scoped_fs(
+        Arc::clone(&backend),
+        "/tenants/tenant-x/users/alice/authorization",
+    );
+    let store = FilesystemCapabilityLeaseStore::new(Arc::clone(&scoped));
+    let context = execution_context(CapabilitySet::default());
+    let descriptor = descriptor(CapabilityId::new("echo.say").unwrap());
+    let fingerprint = InvocationFingerprint::for_dispatch(
+        &context.resource_scope,
+        &descriptor.id,
+        &ResourceEstimate::default(),
+        &serde_json::json!({}),
+    )
+    .unwrap();
+    let mut lease = CapabilityLease::new(
+        context.resource_scope.clone(),
+        grant_for(
+            descriptor.id.clone(),
+            Principal::Extension(context.extension_id.clone()),
+            vec![EffectKind::DispatchCapability],
+        ),
+    );
+    lease.invocation_fingerprint = Some(fingerprint.clone());
+    let lease_id = lease.grant.id;
+    store.issue(lease).await.unwrap();
+
+    // Claim then consume — both mutate the row; projection must survive.
+    store
+        .claim(&context.resource_scope, lease_id, &fingerprint)
+        .await
+        .unwrap();
+    store
+        .consume(&context.resource_scope, lease_id)
+        .await
+        .unwrap();
+
+    // The tenant_id projection must still be queryable after the consume.
+    let owner_alias = brassclaw_host_api::ScopedPath::new(format!(
+        "/authorization/leases/projects/{}",
+        context.resource_scope.project_id.as_ref().unwrap().as_str()
+    ))
+    .unwrap();
+    let virtual_prefix = scoped
+        .resolve(&context.resource_scope, &owner_alias)
+        .unwrap();
+    let tenant_key = IndexKey::new("tenant_id").unwrap();
+    let tenant_id_str = context.resource_scope.tenant_id.as_str().to_string();
+    let hits = backend
+        .query(
+            &virtual_prefix,
+            &Filter::Eq {
+                key: tenant_key,
+                value: IndexValue::Text(tenant_id_str),
+            },
+            Page::new(0, Page::MAX_LIMIT),
+        )
+        .await
+        .unwrap();
+    assert!(
+        !hits.is_empty(),
+        "tenant_id projection must remain queryable after a full claim→consume cycle"
+    );
+}
+
 struct CountingFilesystem {
     inner: LocalFilesystem,
     list_dir_calls: Arc<AtomicUsize>,
@@ -1264,6 +1482,17 @@ fn engine_filesystem() -> Arc<ScopedFilesystem<LocalFilesystem>> {
     build_scoped_fs(
         Arc::new(local_filesystem_with_engine_mount()),
         "/engine/tenants/test/users/test/authorization",
+    )
+}
+
+/// Build a `FilesystemCapabilityLeaseStore` backed by `InMemoryBackend`.
+/// `InMemoryBackend` supports `CasExpectation::Version` and indexed
+/// projections — it is the backend used by local-dev composition for the
+/// `/tenants` subtree (see `factory::mount_local_dev_tenant_root`).
+fn in_memory_filesystem() -> Arc<ScopedFilesystem<InMemoryBackend>> {
+    build_scoped_fs(
+        Arc::new(InMemoryBackend::new()),
+        "/tenants/test/users/test/authorization",
     )
 }
 

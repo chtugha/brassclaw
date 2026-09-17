@@ -87,8 +87,6 @@ pub mod skill_import;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 #[cfg(feature = "postgres")]
 pub mod builtin_bootstrap;
-#[cfg(feature = "postgres")]
-pub mod zencoder_bootstrap;
 /// Phase P Step 9: doc-sync file-watcher + PG listener.
 pub(crate) mod doc_sync_watcher;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
@@ -109,12 +107,12 @@ pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_basic_prompt_store;
 #[cfg(feature = "postgres")]
-pub(crate) mod pg_config_store;
-#[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_component_db_backend;
 pub(crate) mod pg_composition_port;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_config_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_docus_store;
 #[cfg(feature = "postgres")]
@@ -133,9 +131,9 @@ pub(crate) mod pg_security_settings_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_settings_listing;
 #[cfg(feature = "postgres")]
-pub(crate) mod pg_skills_facade;
-#[cfg(feature = "postgres")]
 pub(crate) mod pg_skill_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_skills_facade;
 pub(crate) mod pg_thread_engine_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_token_settings_store;
@@ -180,6 +178,8 @@ mod webui_rate_limit;
 mod webui_route_match;
 mod webui_serve;
 mod webui_ws_origin;
+#[cfg(feature = "postgres")]
+pub mod zencoder_bootstrap;
 
 #[cfg(feature = "postgres")]
 pub(crate) mod boot_integrity;
@@ -568,7 +568,10 @@ fn invocation_mount_view_for_segments(
     user_id: &str,
 ) -> Result<MountView, brassclaw_host_api::HostApiError> {
     let tenant_user_prefix = format!("/tenants/{tenant_id}/users/{user_id}");
-    let mut grants = Vec::with_capacity(PER_USER_ALIASES.len() + 2);
+    // Capacity: PER_USER_ALIASES.len() per-user grants
+    //         + 1 tenant-shared grant (/tenant-shared)
+    //         + 3 read-only system grants (/system/settings, /system/extensions, /system/skills)
+    let mut grants = Vec::with_capacity(PER_USER_ALIASES.len() + 4);
     for alias in PER_USER_ALIASES {
         let target = format!("{tenant_user_prefix}{alias}");
         grants.push(MountGrant::new(
@@ -852,6 +855,69 @@ mod mount_view_tests {
             .await
             .expect("user skill should be readable");
         assert_eq!(content, b"user skill");
+    }
+
+    /// Maintenance tripwire: `PER_USER_ALIASES` must contain exactly the
+    /// aliases listed below, in any order.
+    ///
+    /// Any new filesystem-backed consumer store wired by composition must
+    /// update both the `PER_USER_ALIASES` constant **and** the expected
+    /// set in this test in the same change. The test exists to make that
+    /// requirement explicit and to catch accidental omissions early.
+    ///
+    /// It does NOT automatically discover new stores; it is a deliberate
+    /// pinning of the known alias set.
+    #[test]
+    fn per_user_aliases_contains_exactly_the_canonical_set() {
+        let expected: std::collections::HashSet<&str> = [
+            "/processes",
+            "/secrets",
+            "/authorization",
+            "/outbound",
+            "/run-state",
+            "/approvals",
+            "/threads",
+            "/conversations",
+            "/turns",
+            "/checkpoint-state",
+            "/resources",
+            "/engine",
+            "/skills",
+            "/workspace",
+        ]
+        .iter()
+        .copied()
+        .collect();
+        let actual: std::collections::HashSet<&str> = PER_USER_ALIASES.iter().copied().collect();
+        assert_eq!(
+            actual, expected,
+            "PER_USER_ALIASES diverged from the canonical alias set — \
+             update both the constant and this test when adding or removing \
+             a filesystem-backed consumer store"
+        );
+    }
+
+    /// The `invocation_mount_view` must return exactly
+    /// `PER_USER_ALIASES.len() + 4` grants:
+    /// - one per user alias
+    /// - one tenant-shared (`/tenant-shared`)
+    /// - three read-only system grants (`/system/settings`,
+    ///   `/system/extensions`, `/system/skills`)
+    ///
+    /// Confirms that the `Vec::with_capacity` on line 571 matches the
+    /// actual push count and that no grant is silently dropped.
+    #[test]
+    fn invocation_mount_view_grant_count_equals_aliases_plus_four() {
+        let scope = sample_scope();
+        let view = invocation_mount_view(&scope).unwrap();
+        let expected_count = PER_USER_ALIASES.len() + 4;
+        assert_eq!(
+            view.mounts.len(),
+            expected_count,
+            "mount view must have exactly {expected_count} grants \
+             (PER_USER_ALIASES.len()={} + 4 for tenant-shared and three system grants)",
+            PER_USER_ALIASES.len()
+        );
     }
 }
 
