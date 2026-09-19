@@ -88,8 +88,7 @@ pub const WEBUI_V2_PATTERN_EXPORT_SKILL: &str = "/api/webchat/v2/skills/{id}/exp
 
 // Automation sub-resource URL patterns.
 // Note: WEBUI_V2_PATTERN_LIST_AUTOMATIONS ("/api/webchat/v2/automations") is reused for GET + POST.
-pub const WEBUI_V2_PATTERN_AUTOMATION_ID: &str =
-    "/api/webchat/v2/automations/{automation_id}";
+pub const WEBUI_V2_PATTERN_AUTOMATION_ID: &str = "/api/webchat/v2/automations/{automation_id}";
 pub const WEBUI_V2_PATTERN_AUTOMATION_STATE: &str =
     "/api/webchat/v2/automations/{automation_id}/state";
 pub const WEBUI_V2_PATTERN_AUTOMATION_FIRE: &str =

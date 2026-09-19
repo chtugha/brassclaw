@@ -924,10 +924,7 @@ fn secret_path(scope: &ResourceScope, handle: &SecretHandle) -> ScopedPath {
 }
 
 fn lease_path(scope: &ResourceScope, lease_id: SecretLeaseId) -> ScopedPath {
-    ScopedPath::from_trusted(format!(
-        "{}/{lease_id}.json",
-        lease_root(scope).as_str()
-    ))
+    ScopedPath::from_trusted(format!("{}/{lease_id}.json", lease_root(scope).as_str()))
 }
 
 fn lease_root(scope: &ResourceScope) -> ScopedPath {
@@ -943,10 +940,7 @@ fn secret_owner_root(scope: &ResourceScope) -> ScopedPath {
 }
 
 fn credential_session_root(scope: &ResourceScope) -> ScopedPath {
-    ScopedPath::from_trusted(format!(
-        "{}/credential-sessions",
-        secret_owner_alias(scope)
-    ))
+    ScopedPath::from_trusted(format!("{}/credential-sessions", secret_owner_alias(scope)))
 }
 
 fn credential_account_path(scope: &ResourceScope, account_id: &CredentialAccountId) -> ScopedPath {
@@ -958,10 +952,7 @@ fn credential_account_path(scope: &ResourceScope, account_id: &CredentialAccount
 }
 
 fn credential_account_root(scope: &ResourceScope) -> ScopedPath {
-    ScopedPath::from_trusted(format!(
-        "{}/credential-accounts",
-        secret_owner_alias(scope)
-    ))
+    ScopedPath::from_trusted(format!("{}/credential-accounts", secret_owner_alias(scope)))
 }
 
 fn credential_session_path(scope: &ResourceScope, session_id: CredentialSessionId) -> ScopedPath {

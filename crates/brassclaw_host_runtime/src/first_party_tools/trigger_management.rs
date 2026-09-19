@@ -231,8 +231,13 @@ impl FirstPartyCapabilityHandler for TriggerManagementToolHandler {
                 get_trigger(&*self.repository, &request.scope, request.input).await?
             }
             TRIGGER_UPDATE_CAPABILITY_ID => {
-                update_trigger(&*self.repository, &request.scope, request.input, self.clock.now())
-                    .await?
+                update_trigger(
+                    &*self.repository,
+                    &request.scope,
+                    request.input,
+                    self.clock.now(),
+                )
+                .await?
             }
             TRIGGER_SET_STATE_CAPABILITY_ID => {
                 set_trigger_state(&*self.repository, &request.scope, request.input).await?
@@ -513,13 +518,9 @@ async fn run_history(
     input: Value,
 ) -> Result<Value, FirstPartyCapabilityError> {
     const MAX_RUN_HISTORY_LIMIT: usize = 50;
-    let input: TriggerRunHistoryInput =
-        serde_json::from_value(input).map_err(|_| input_error())?;
+    let input: TriggerRunHistoryInput = serde_json::from_value(input).map_err(|_| input_error())?;
     let trigger_id = TriggerId::parse(&input.trigger_id).map_err(trigger_input_error)?;
-    let limit = input
-        .limit
-        .unwrap_or(20)
-        .min(MAX_RUN_HISTORY_LIMIT);
+    let limit = input.limit.unwrap_or(20).min(MAX_RUN_HISTORY_LIMIT);
     let runs: Vec<Value> = repository
         .list_trigger_runs(scope.tenant_id.clone(), trigger_id, limit)
         .await

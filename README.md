@@ -36,7 +36,7 @@ sudo bash install.sh
 Pin to a specific version:
 
 ```bash
-sudo bash install.sh -v 0.9.4
+sudo bash install.sh -v 1.2.9
 ```
 
 ### Option B: macOS — manual binary

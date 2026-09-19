@@ -743,10 +743,7 @@ impl TriggerRepository for PostgresTriggerRepository {
             .transpose()?;
 
         let name = patch.name.as_deref();
-        let schedule_expression = patch
-            .schedule
-            .as_ref()
-            .map(schedule_expression_text_ref);
+        let schedule_expression = patch.schedule.as_ref().map(schedule_expression_text_ref);
         let prompt = patch.prompt.as_deref();
         let completion_policy = patch.completion_policy.map(completion_policy_text);
         let next_run_at = new_next_run_at.as_ref().map(fmt_ts);

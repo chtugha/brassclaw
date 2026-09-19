@@ -117,27 +117,27 @@ pub use llm_config::{
 pub use types::{
     AutomationStateAction, RebornAutomationInfo, RebornAutomationRunHistoryResponse,
     RebornAutomationRunRecord, RebornAutomationRunStatus, RebornAutomationSource,
-    RebornAutomationState, RebornCreateAutomationResponse, RebornDeleteAutomationResponse,
-    RebornFireAutomationNowResponse, RebornGetAutomationResponse, RebornUpdateAutomationResponse,
-    WebUiCreateAutomationRequest, WebUiSetAutomationStateRequest, WebUiUpdateAutomationRequest,
-    RebornCancelRunResponse, RebornCapabilityInfo, RebornChannelConnectAction,
-    RebornChannelConnectStrategy, RebornConnectableChannelInfo,
-    RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
+    RebornAutomationState, RebornCancelRunResponse, RebornCapabilityInfo,
+    RebornChannelConnectAction, RebornChannelConnectStrategy, RebornConnectableChannelInfo,
+    RebornConnectableChannelListResponse, RebornCreateAutomationResponse,
+    RebornCreateThreadResponse, RebornDeleteAutomationResponse, RebornDeleteThreadRequest,
     RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionCredentialSetup,
     RebornExtensionInfo, RebornExtensionListResponse, RebornExtensionOnboardingPayload,
     RebornExtensionOnboardingState, RebornExtensionRegistryEntry, RebornExtensionRegistryResponse,
-    RebornExtensionSetupField, RebornExtensionSetupSecret, RebornGetRunStateRequest,
-    RebornGetRunStateResponse, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
-    RebornListThreadsResponse, RebornOutboundDeliveryModality,
-    RebornOutboundDeliveryTargetCapabilities, RebornOutboundDeliveryTargetChannel,
-    RebornOutboundDeliveryTargetDescription, RebornOutboundDeliveryTargetDisplayName,
-    RebornOutboundDeliveryTargetId, RebornOutboundDeliveryTargetListResponse,
-    RebornOutboundDeliveryTargetOption, RebornOutboundDeliveryTargetSummary,
-    RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
-    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornStreamEventsRequest,
-    RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
-    RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
-    RebornUpdateCapabilityPermissionResponse,
+    RebornExtensionSetupField, RebornExtensionSetupSecret, RebornFireAutomationNowResponse,
+    RebornGetAutomationResponse, RebornGetRunStateRequest, RebornGetRunStateResponse,
+    RebornListAutomationsResponse, RebornListCapabilitiesResponse, RebornListThreadsResponse,
+    RebornOutboundDeliveryModality, RebornOutboundDeliveryTargetCapabilities,
+    RebornOutboundDeliveryTargetChannel, RebornOutboundDeliveryTargetDescription,
+    RebornOutboundDeliveryTargetDisplayName, RebornOutboundDeliveryTargetId,
+    RebornOutboundDeliveryTargetListResponse, RebornOutboundDeliveryTargetOption,
+    RebornOutboundDeliveryTargetSummary, RebornOutboundPreferencesResponse,
+    RebornResolveGateResponse, RebornResumeGateResponse, RebornSetOutboundPreferencesRequest,
+    RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
+    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
+    RebornUpdateAutomationResponse, RebornUpdateCapabilityPermissionRequest,
+    RebornUpdateCapabilityPermissionResponse, WebUiCreateAutomationRequest,
+    WebUiSetAutomationStateRequest, WebUiUpdateAutomationRequest,
 };
 
 type SkillActivationRecorder =
@@ -2250,10 +2250,7 @@ impl RebornServices {
 
     /// Wire the config store backing `GET /api/settings/config` and
     /// `PUT /api/settings/config/{key}`.
-    pub fn with_config_store(
-        mut self,
-        store: Arc<dyn crate::settings::ConfigStore>,
-    ) -> Self {
+    pub fn with_config_store(mut self, store: Arc<dyn crate::settings::ConfigStore>) -> Self {
         self.config_store = Some(store);
         self
     }
@@ -4678,7 +4675,10 @@ impl RebornServicesApi for RebornServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
-        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
         svc.list_skills().await.map_err(map_settings_listing_error)
     }
 
@@ -4686,7 +4686,10 @@ impl RebornServicesApi for RebornServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
-        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
         svc.list_tools().await.map_err(map_settings_listing_error)
     }
 
@@ -4694,15 +4697,23 @@ impl RebornServicesApi for RebornServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
-        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
-        svc.list_extensions().await.map_err(map_settings_listing_error)
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
+        svc.list_extensions()
+            .await
+            .map_err(map_settings_listing_error)
     }
 
     async fn list_settings_actions(
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
-        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
         svc.list_actions().await.map_err(map_settings_listing_error)
     }
 
@@ -4710,23 +4721,36 @@ impl RebornServicesApi for RebornServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
-        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
-        svc.list_orchestrators().await.map_err(map_settings_listing_error)
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
+        svc.list_orchestrators()
+            .await
+            .map_err(map_settings_listing_error)
     }
 
     async fn list_settings_scaffolds(
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
-        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
-        svc.list_scaffolds().await.map_err(map_settings_listing_error)
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
+        svc.list_scaffolds()
+            .await
+            .map_err(map_settings_listing_error)
     }
 
     async fn list_settings_recipes(
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
-        let svc = self.settings_listing.as_ref().ok_or_else(settings_listing_unavailable)?;
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
         svc.list_recipes().await.map_err(map_settings_listing_error)
     }
 
@@ -4734,7 +4758,10 @@ impl RebornServicesApi for RebornServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsConfigResponse, RebornServicesError> {
-        let store = self.config_store.as_ref().ok_or_else(config_store_unavailable)?;
+        let store = self
+            .config_store
+            .as_ref()
+            .ok_or_else(config_store_unavailable)?;
         store.get_all().await.map_err(map_config_store_error)
     }
 
@@ -4744,8 +4771,14 @@ impl RebornServicesApi for RebornServices {
         key: String,
         request: crate::settings::UpdateSettingRequest,
     ) -> Result<crate::settings::UpdateSettingResponse, RebornServicesError> {
-        let store = self.config_store.as_ref().ok_or_else(config_store_unavailable)?;
-        store.set_key(&key, &request.value).await.map_err(map_config_store_error)
+        let store = self
+            .config_store
+            .as_ref()
+            .ok_or_else(config_store_unavailable)?;
+        store
+            .set_key(&key, &request.value)
+            .await
+            .map_err(map_config_store_error)
     }
 }
 
@@ -6012,9 +6045,7 @@ fn map_security_error(error: crate::settings::SecuritySettingsError) -> RebornSe
 }
 
 /// Error mapper for [`crate::settings::SettingsListingError`] → [`RebornServicesError`].
-fn map_settings_listing_error(
-    error: crate::settings::SettingsListingError,
-) -> RebornServicesError {
+fn map_settings_listing_error(error: crate::settings::SettingsListingError) -> RebornServicesError {
     match error {
         crate::settings::SettingsListingError::Unavailable(_) => {
             RebornServicesError::from_status_kind(

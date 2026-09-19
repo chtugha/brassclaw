@@ -494,10 +494,12 @@ pub trait ConfigStore: Send + Sync {
     /// Read all allowed config keys for this tenant.
     async fn get_all(&self) -> Result<SettingsConfigResponse, ConfigStoreError>;
     /// Write (or delete when `value` is empty) a single allowed key.
-    async fn set_key(&self, key: &str, value: &str) -> Result<UpdateSettingResponse, ConfigStoreError>;
+    async fn set_key(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> Result<UpdateSettingResponse, ConfigStoreError>;
 }
-
-
 
 // ── SettingsListingService ────────────────────────────────────────────────────
 

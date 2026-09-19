@@ -127,8 +127,8 @@ This project uses GitHub Actions for automated releases. **Do not build binaries
 Simply push a version tag:
 
 ```bash
-git tag v0.9.0
-git push origin v0.9.0
+git tag v1.3.0
+git push origin v1.3.0
 ```
 
 GitHub Actions will automatically:
@@ -160,7 +160,7 @@ See `CICD_SETUP_DOCUMENTATION.md` for comprehensive documentation on:
 ### Important Notes
 
 - **Never manually build and upload binaries** - always use the automated workflow
-- **Tag format**: Use semantic versioning with `v` prefix (e.g., `v0.29.9`, `v1.0.0`)
+- **Tag format**: Use semantic versioning with `v` prefix (e.g., `v1.2.9`, `v1.3.0`)
 - **Build time**: Expect 10-15 minutes for all platforms to build
 - **Artifacts**: Each release includes 6 files (3 binaries + 3 checksums)
 

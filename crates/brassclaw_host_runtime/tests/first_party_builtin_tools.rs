@@ -49,10 +49,9 @@ use brassclaw_host_runtime::{
     TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_GET_CAPABILITY_ID,
     TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID, TRIGGER_RUN_HISTORY_CAPABILITY_ID,
     TRIGGER_SET_STATE_CAPABILITY_ID, TRIGGER_UPDATE_CAPABILITY_ID, TenantSandboxProcessPort,
-    ToolCallHttpEgress, TriggerCreateHook,
-    VisibleCapabilityAccess, VisibleCapabilityRequest, WRITE_FILE_CAPABILITY_ID,
-    builtin_first_party_handlers, builtin_first_party_handlers_with_trigger_create_hook,
-    builtin_first_party_package,
+    ToolCallHttpEgress, TriggerCreateHook, VisibleCapabilityAccess, VisibleCapabilityRequest,
+    WRITE_FILE_CAPABILITY_ID, builtin_first_party_handlers,
+    builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
 };
 #[cfg(feature = "test-support")]
 use brassclaw_host_runtime::{
@@ -6249,7 +6248,9 @@ impl TriggerRepository for RemoveFailingTriggerRepository {
         trigger_id: brassclaw_triggers::TriggerId,
         patch: brassclaw_triggers::TriggerUpdatePatch,
     ) -> Result<Option<brassclaw_triggers::TriggerRecord>, brassclaw_triggers::TriggerError> {
-        self.inner.update_trigger(tenant_id, trigger_id, patch).await
+        self.inner
+            .update_trigger(tenant_id, trigger_id, patch)
+            .await
     }
 
     async fn set_trigger_state(
@@ -6258,7 +6259,9 @@ impl TriggerRepository for RemoveFailingTriggerRepository {
         trigger_id: brassclaw_triggers::TriggerId,
         state: brassclaw_triggers::TriggerState,
     ) -> Result<Option<brassclaw_triggers::TriggerRecord>, brassclaw_triggers::TriggerError> {
-        self.inner.set_trigger_state(tenant_id, trigger_id, state).await
+        self.inner
+            .set_trigger_state(tenant_id, trigger_id, state)
+            .await
     }
 
     async fn list_trigger_runs(
@@ -6267,7 +6270,9 @@ impl TriggerRepository for RemoveFailingTriggerRepository {
         trigger_id: brassclaw_triggers::TriggerId,
         limit: usize,
     ) -> Result<Vec<brassclaw_triggers::TriggerRunRecord>, brassclaw_triggers::TriggerError> {
-        self.inner.list_trigger_runs(tenant_id, trigger_id, limit).await
+        self.inner
+            .list_trigger_runs(tenant_id, trigger_id, limit)
+            .await
     }
 }
 
