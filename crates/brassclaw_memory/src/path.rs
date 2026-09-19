@@ -3,15 +3,23 @@
 use std::sync::OnceLock;
 
 use brassclaw_filesystem::{FilesystemError, FilesystemOperation};
-use brassclaw_host_api::{HostApiError, VirtualPath};
+use brassclaw_host_api::{AgentId, HostApiError, ProjectId, TenantId, UserId, VirtualPath};
 
 /// Tenant/user/agent/project scope for DB-backed memory documents exposed as virtual files.
+///
+/// Structural validation (non-empty, length, dot segments, path separators,
+/// control characters) is delegated to the shared [`TenantId`]/[`UserId`]/
+/// [`AgentId`]/[`ProjectId`] newtypes from `brassclaw_host_api` rather than
+/// re-implemented here. Only the memory-specific extra constraints (segments
+/// must not be whitespace-only, and must not contain `:`, which is reserved
+/// for owner-key encoding in [`crate::repo::scoped_memory_owner_key`]) are
+/// layered on top.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MemoryDocumentScope {
-    pub(crate) tenant_id: String,
-    pub(crate) user_id: String,
-    pub(crate) agent_id: Option<String>,
-    pub(crate) project_id: Option<String>,
+    pub(crate) tenant_id: TenantId,
+    pub(crate) user_id: UserId,
+    pub(crate) agent_id: Option<AgentId>,
+    pub(crate) project_id: Option<ProjectId>,
 }
 
 impl MemoryDocumentScope {
@@ -29,12 +37,12 @@ impl MemoryDocumentScope {
         agent_id: Option<&str>,
         project_id: Option<&str>,
     ) -> Result<Self, HostApiError> {
-        let tenant_id = validated_memory_segment("memory tenant", tenant_id.into())?;
-        let user_id = validated_memory_segment("memory user", user_id.into())?;
+        let tenant_id = validated_memory_tenant(tenant_id.into())?;
+        let user_id = validated_memory_user(user_id.into())?;
         let agent_id = agent_id
-            .map(|agent_id| validated_memory_segment("memory agent", agent_id.to_string()))
+            .map(|agent_id| validated_memory_agent(agent_id.to_string()))
             .transpose()?;
-        if agent_id.as_deref() == Some("_none") {
+        if agent_id.as_ref().map(AgentId::as_str) == Some("_none") {
             return Err(HostApiError::InvalidId {
                 kind: "memory agent",
                 value: "_none".to_string(),
@@ -42,9 +50,9 @@ impl MemoryDocumentScope {
             });
         }
         let project_id = project_id
-            .map(|project_id| validated_memory_segment("memory project", project_id.to_string()))
+            .map(|project_id| validated_memory_project(project_id.to_string()))
             .transpose()?;
-        if project_id.as_deref() == Some("_none") {
+        if project_id.as_ref().map(ProjectId::as_str) == Some("_none") {
             return Err(HostApiError::InvalidId {
                 kind: "memory project",
                 value: "_none".to_string(),
@@ -60,19 +68,19 @@ impl MemoryDocumentScope {
     }
 
     pub fn tenant_id(&self) -> &str {
-        &self.tenant_id
+        self.tenant_id.as_str()
     }
 
     pub fn user_id(&self) -> &str {
-        &self.user_id
+        self.user_id.as_str()
     }
 
     pub fn agent_id(&self) -> Option<&str> {
-        self.agent_id.as_deref()
+        self.agent_id.as_ref().map(AgentId::as_str)
     }
 
     pub fn project_id(&self) -> Option<&str> {
-        self.project_id.as_deref()
+        self.project_id.as_ref().map(ProjectId::as_str)
     }
 
     pub(crate) fn virtual_prefix(&self) -> Result<VirtualPath, HostApiError> {
@@ -80,8 +88,14 @@ impl MemoryDocumentScope {
             "/memory/tenants/{}/users/{}/agents/{}/projects/{}",
             self.tenant_id,
             self.user_id,
-            self.agent_id.as_deref().unwrap_or("_none"),
-            self.project_id.as_deref().unwrap_or("_none")
+            self.agent_id
+                .as_ref()
+                .map(AgentId::as_str)
+                .unwrap_or("_none"),
+            self.project_id
+                .as_ref()
+                .map(ProjectId::as_str)
+                .unwrap_or("_none")
         ))
     }
 }
@@ -250,50 +264,64 @@ impl ParsedMemoryPath {
     }
 }
 
-pub(crate) fn validated_memory_segment(
-    kind: &'static str,
-    value: String,
-) -> Result<String, HostApiError> {
+/// Rejects whitespace-only segments before the newtype constructor runs,
+/// so this check (which is stricter than the newtype's plain `is_empty`)
+/// takes precedence over the newtype's own structural checks (e.g. the
+/// 256-byte length limit) — matching the error precedence this crate had
+/// before validation was delegated to `brassclaw_host_api::ids`.
+fn reject_whitespace_only_segment(kind: &'static str, value: &str) -> Result<(), HostApiError> {
     if value.trim().is_empty() {
         return Err(HostApiError::InvalidId {
             kind,
-            value,
+            value: value.to_string(),
             reason: "segment must not be empty".to_string(),
         });
     }
-    if value.len() > 256 {
-        return Err(HostApiError::InvalidId {
-            kind,
-            value,
-            reason: "segment must be at most 256 bytes".to_string(),
-        });
-    }
-    if value == "." || value == ".." {
-        return Err(HostApiError::InvalidId {
-            kind,
-            value,
-            reason: "dot segments are not allowed".to_string(),
-        });
-    }
+    Ok(())
+}
+
+/// Rejects `:` in an already newtype-validated segment value: the colon is
+/// reserved for owner-key encoding in [`crate::repo::scoped_memory_owner_key`].
+/// Structural checks (empty, length, dot segments, path separators, control
+/// characters) are the newtype constructor's responsibility and are not
+/// repeated here.
+fn reject_colon_in_segment(kind: &'static str, value: &str) -> Result<(), HostApiError> {
     if value.contains(':') {
         return Err(HostApiError::InvalidId {
             kind,
-            value,
+            value: value.to_string(),
             reason: "colon is reserved for memory owner key encoding".to_string(),
         });
     }
-    if value.contains('/')
-        || value.contains('\\')
-        || value.contains('\0')
-        || value.chars().any(char::is_control)
-    {
-        return Err(HostApiError::InvalidId {
-            kind,
-            value,
-            reason: "segment must not contain path separators or control characters".to_string(),
-        });
-    }
-    Ok(value)
+    Ok(())
+}
+
+pub(crate) fn validated_memory_tenant(value: String) -> Result<TenantId, HostApiError> {
+    reject_whitespace_only_segment("memory tenant", &value)?;
+    let id = TenantId::new(value)?;
+    reject_colon_in_segment("memory tenant", id.as_str())?;
+    Ok(id)
+}
+
+pub(crate) fn validated_memory_user(value: String) -> Result<UserId, HostApiError> {
+    reject_whitespace_only_segment("memory user", &value)?;
+    let id = UserId::new(value)?;
+    reject_colon_in_segment("memory user", id.as_str())?;
+    Ok(id)
+}
+
+pub(crate) fn validated_memory_agent(value: String) -> Result<AgentId, HostApiError> {
+    reject_whitespace_only_segment("memory agent", &value)?;
+    let id = AgentId::new(value)?;
+    reject_colon_in_segment("memory agent", id.as_str())?;
+    Ok(id)
+}
+
+pub(crate) fn validated_memory_project(value: String) -> Result<ProjectId, HostApiError> {
+    reject_whitespace_only_segment("memory project", &value)?;
+    let id = ProjectId::new(value)?;
+    reject_colon_in_segment("memory project", id.as_str())?;
+    Ok(id)
 }
 
 pub(crate) fn validated_memory_relative_path(value: String) -> Result<String, HostApiError> {
