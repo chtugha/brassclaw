@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-17
+
+### Removed
+
+- *(authorization)* **`CapabilityDispatchAuthorizer` trait and its implementations eliminated.** The non-trust `authorize_dispatch` / `authorize_spawn` methods on `GrantAuthorizer` and `LeaseBackedAuthorizer` were dead code — every call site in the codebase already used `TrustAwareCapabilityDispatchAuthorizer`. Removing the redundant trait eliminates the risk of callers bypassing trust-decision validation. All test call sites updated to use `authorize_dispatch_with_trust` / `authorize_spawn_with_trust` directly.
+- *(authorization)* `authorize_from_grants` private helper removed — it was the sole implementation backing the now-deleted non-trust impls. All grant evaluation goes through `authorize_from_grants_with_trust`.
+
+### Fixed
+
+- *(authorization / durable-restart test)* `approval_resume_survives_filesystem_service_restart_and_consumes_lease` was incorrectly backing the capability lease store with `LocalFilesystem`, which rejects `CasExpectation::Version` and fails closed (correct behavior per the 2B plan invariant). The test now receives a shared `Arc<InMemoryBackend>` for the lease store so restart durability is simulated by reusing the same backing store across service-graph rebuilds, without depending on an unsupported backend.
+
+### Changed
+
+- *(ci)* `actions/checkout` upgraded from v4.3.1 (Node.js 20, deprecated) to v5.1.0 (Node.js 24) in all workflow jobs.
+- *(ci)* Linux build and release jobs pinned to `ubuntu-24.04` to avoid the pending `ubuntu-latest` → Ubuntu 26 migration on 2026-10-19.
+- *(docs)* Updated stale version pin example in `README.md` (`0.9.4` → `1.2.9`); updated release tag examples in `CLAUDE.md` to reflect the current v1.x scheme.
+
 ## [1.2.9] - 2026-09-16
 
 ### Security

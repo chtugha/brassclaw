@@ -8,8 +8,9 @@ use serde_json::json;
 async fn capability_access_denies_without_matching_grant() {
     let context = execution_context(CapabilitySet::default());
     let descriptor = wasm_descriptor();
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(&context, &descriptor, &ResourceEstimate::default(), &trust)
         .await;
 
     assert_eq!(
@@ -31,15 +32,17 @@ async fn capability_access_allows_matching_extension_grant() {
     let context = execution_context(CapabilitySet {
         grants: vec![grant],
     });
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &context,
             &descriptor,
             &ResourceEstimate {
                 concurrency_slots: Some(1),
                 ..ResourceEstimate::default()
             },
+            &trust,
         )
         .await;
 
@@ -100,8 +103,17 @@ async fn capability_access_returns_grant_constraints_as_runtime_obligations() {
         sandbox: None,
     });
 
+    let trust = trust_decision(
+        vec![
+            EffectKind::DispatchCapability,
+            EffectKind::Network,
+            EffectKind::UseSecret,
+            EffectKind::ReadFilesystem,
+        ],
+        None,
+    );
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
@@ -110,6 +122,7 @@ async fn capability_access_returns_grant_constraints_as_runtime_obligations() {
                 output_bytes: Some(512),
                 ..ResourceEstimate::default()
             },
+            &trust,
         )
         .await;
 
@@ -164,14 +177,23 @@ async fn capability_access_allows_first_party_dynamic_secret_consumers_without_s
         ],
     );
     grant.constraints.network = network.clone();
+    let trust = trust_decision(
+        vec![
+            EffectKind::DispatchCapability,
+            EffectKind::Network,
+            EffectKind::UseSecret,
+        ],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -213,14 +235,19 @@ async fn first_party_use_secret_with_non_empty_static_secret_still_injects_oblig
         vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
     );
     grant.constraints.secrets = vec![secret.clone()];
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -254,14 +281,19 @@ async fn capability_access_denies_non_first_party_secret_consumers_without_stati
         Principal::Extension(ExtensionId::new("caller").unwrap()),
         vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
     );
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -287,15 +319,17 @@ async fn capability_access_denies_when_grant_is_for_different_principal_or_capab
         vec![EffectKind::DispatchCapability],
     );
     let authorizer = GrantAuthorizer::new();
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
 
     assert_eq!(
         authorizer
-            .authorize_dispatch(
+            .authorize_dispatch_with_trust(
                 &execution_context(CapabilitySet {
                     grants: vec![wrong_principal]
                 }),
                 &descriptor,
                 &ResourceEstimate::default(),
+                &trust,
             )
             .await,
         Decision::Deny {
@@ -304,12 +338,13 @@ async fn capability_access_denies_when_grant_is_for_different_principal_or_capab
     );
     assert_eq!(
         authorizer
-            .authorize_dispatch(
+            .authorize_dispatch_with_trust(
                 &execution_context(CapabilitySet {
                     grants: vec![wrong_capability]
                 }),
                 &descriptor,
                 &ResourceEstimate::default(),
+                &trust,
             )
             .await,
         Decision::Deny {
@@ -332,9 +367,13 @@ async fn capability_access_denies_when_grant_does_not_cover_declared_effects() {
     let context = execution_context(CapabilitySet {
         grants: vec![grant],
     });
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::Network],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(&context, &descriptor, &ResourceEstimate::default(), &trust)
         .await;
 
     assert_eq!(
@@ -625,14 +664,16 @@ async fn capability_access_skips_expired_and_exhausted_grants() {
         vec![EffectKind::DispatchCapability],
     );
     exhausted.constraints.max_invocations = Some(0);
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![expired, exhausted],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -660,14 +701,19 @@ async fn capability_access_allows_later_grant_that_covers_effects() {
         Principal::Extension(ExtensionId::new("caller").unwrap()),
         vec![EffectKind::DispatchCapability, EffectKind::Network],
     );
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::Network],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![weak, strong],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -690,9 +736,10 @@ async fn capability_access_denies_when_resource_estimate_exceeds_grant_ceiling()
         max_output_bytes: None,
         sandbox: None,
     });
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
@@ -701,6 +748,7 @@ async fn capability_access_denies_when_resource_estimate_exceeds_grant_ceiling()
                 input_tokens: Some(11),
                 ..ResourceEstimate::default()
             },
+            &trust,
         )
         .await;
 
@@ -728,14 +776,16 @@ async fn capability_access_denies_when_grant_ceiling_dimension_has_no_estimate()
         max_output_bytes: None,
         sandbox: None,
     });
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -770,9 +820,10 @@ async fn capability_access_returns_full_resource_ceiling_as_runtime_obligation()
         vec![EffectKind::DispatchCapability],
     );
     grant.constraints.resource_ceiling = Some(ceiling.clone());
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
@@ -786,6 +837,7 @@ async fn capability_access_returns_full_resource_ceiling_as_runtime_obligation()
                 process_count: Some(1),
                 ..ResourceEstimate::default()
             },
+            &trust,
         )
         .await;
 
@@ -815,10 +867,19 @@ async fn spawn_access_requires_spawn_process_effect_in_addition_to_capability_ef
         )],
     });
     let authorizer = GrantAuthorizer::new();
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::SpawnProcess],
+        None,
+    );
 
     assert_eq!(
         authorizer
-            .authorize_spawn(&dispatch_only, &descriptor, &ResourceEstimate::default())
+            .authorize_spawn_with_trust(
+                &dispatch_only,
+                &descriptor,
+                &ResourceEstimate::default(),
+                &trust
+            )
             .await,
         Decision::Deny {
             reason: DenyReason::PolicyDenied
@@ -826,7 +887,12 @@ async fn spawn_access_requires_spawn_process_effect_in_addition_to_capability_ef
     );
     assert_eq!(
         authorizer
-            .authorize_spawn(&spawn_grant, &descriptor, &ResourceEstimate::default())
+            .authorize_spawn_with_trust(
+                &spawn_grant,
+                &descriptor,
+                &ResourceEstimate::default(),
+                &trust
+            )
             .await,
         Decision::Allow {
             obligations: Default::default()
@@ -845,9 +911,15 @@ async fn capability_access_denies_invalid_execution_context() {
         grants: vec![grant],
     });
     context.resource_scope.tenant_id = TenantId::new("wrong-tenant").unwrap();
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(&context, &wasm_descriptor(), &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &wasm_descriptor(),
+            &ResourceEstimate::default(),
+            &trust,
+        )
         .await;
 
     assert_eq!(

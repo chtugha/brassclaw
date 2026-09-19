@@ -15,7 +15,7 @@ use brassclaw_events::{InMemoryDurableAuditLog, InMemoryDurableEventLog};
 use brassclaw_extensions::{
     ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
 };
-use brassclaw_filesystem::{LocalFilesystem, ScopedFilesystem};
+use brassclaw_filesystem::{InMemoryBackend, LocalFilesystem, ScopedFilesystem};
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
     CapabilitySurfaceVersion, HostRuntime, HostRuntimeServices, RuntimeCapabilityOutcome,
@@ -53,7 +53,15 @@ async fn approval_resume_survives_filesystem_service_restart_and_consumes_lease_
     let temp = tempfile::tempdir().unwrap();
     let engine_root = temp.path().join("engine");
     let shared_events = in_memory_event_stores();
-    let first = durable_services(&engine_root, shared_events.clone()).await;
+    // Capability leases are an authority-bearing store requiring versioned
+    // CAS on claim/consume/revoke; `LocalFilesystem` does not support
+    // `CasExpectation::Version` and fails closed rather than downgrading
+    // (see AGENTS.md Capability Lease Authority Invariants, rule 5). Back
+    // the lease store with a shared `InMemoryBackend` instead so restart
+    // durability is simulated by reusing the same backing store across
+    // service-graph rebuilds, without relying on an unsupported backend.
+    let lease_backend = Arc::new(InMemoryBackend::new());
+    let first = durable_services(&engine_root, shared_events.clone(), &lease_backend).await;
     let first_runtime = first.services.host_runtime_for_local_testing();
     let context = execution_context_without_grants_for_scope(sample_scope(InvocationId::new()));
     let scope = context.resource_scope.clone();
@@ -75,7 +83,7 @@ async fn approval_resume_survives_filesystem_service_restart_and_consumes_lease_
     )
     .await;
 
-    let second = durable_services(&engine_root, shared_events.clone()).await;
+    let second = durable_services(&engine_root, shared_events.clone(), &lease_backend).await;
     assert_blocked_run(
         second.run_state.as_ref(),
         &scope,
@@ -126,7 +134,7 @@ async fn approval_resume_survives_filesystem_service_restart_and_consumes_lease_
         CapabilityLeaseStatus::Consumed
     );
 
-    let third = durable_services(&engine_root, shared_events.clone()).await;
+    let third = durable_services(&engine_root, shared_events.clone(), &lease_backend).await;
     let completed_run = third
         .run_state
         .get(&scope, context.invocation_id)
@@ -268,17 +276,31 @@ struct DurableServices {
     services: DurableHostRuntimeServices,
     run_state: Arc<FilesystemRunStateStore<LocalFilesystem>>,
     approval_requests: Arc<FilesystemApprovalRequestStore<LocalFilesystem>>,
-    capability_leases: Arc<FilesystemCapabilityLeaseStore<LocalFilesystem>>,
+    capability_leases: Arc<FilesystemCapabilityLeaseStore<InMemoryBackend>>,
     events: RebornEventStores,
 }
 
-async fn durable_services(engine_root: &Path, event_stores: RebornEventStores) -> DurableServices {
-    // All three filesystem-backed stores now take `Arc<ScopedFilesystem<F>>`
-    // (run_state migrated in commit 475588153; capability lease in 34e3c68cb).
+async fn durable_services(
+    engine_root: &Path,
+    event_stores: RebornEventStores,
+    lease_backend: &Arc<InMemoryBackend>,
+) -> DurableServices {
+    // `run_state`/`approval_requests` take `Arc<ScopedFilesystem<F>>` over
+    // `LocalFilesystem` (run_state migrated in commit 475588153; capability
+    // lease in 34e3c68cb) to exercise real on-disk durability across
+    // restarts. Capability leases are an authority-bearing store whose
+    // claim/consume/revoke paths require `CasExpectation::Version`, which
+    // `LocalFilesystem` does not support (fails closed rather than
+    // downgrading — see AGENTS.md Capability Lease Authority Invariants,
+    // rule 5). The lease store is instead backed by a shared
+    // `InMemoryBackend` passed in by the caller, so durability across
+    // "restarts" is simulated by reusing the same backing store across
+    // service-graph rebuilds.
     let scoped_fs = scoped_engine_filesystem(engine_root);
     let run_state = Arc::new(FilesystemRunStateStore::new(Arc::clone(&scoped_fs)));
     let approval_requests = Arc::new(FilesystemApprovalRequestStore::new(Arc::clone(&scoped_fs)));
-    let capability_leases = Arc::new(FilesystemCapabilityLeaseStore::new(Arc::clone(&scoped_fs)));
+    let leases_scoped_fs = scoped_leases_filesystem(lease_backend);
+    let capability_leases = Arc::new(FilesystemCapabilityLeaseStore::new(leases_scoped_fs));
     let services = base_services(
         engine_root,
         event_stores.clone(),
@@ -371,6 +393,22 @@ fn durable_mount_view() -> MountView {
 fn scoped_engine_filesystem(engine_root: &Path) -> Arc<ScopedFilesystem<LocalFilesystem>> {
     Arc::new(ScopedFilesystem::with_fixed_view(
         Arc::new(mounted_engine_filesystem(engine_root)),
+        durable_mount_view(),
+    ))
+}
+
+/// Build a [`ScopedFilesystem`] for the capability lease store over a
+/// shared [`InMemoryBackend`], reusing the caller's `Arc` so state persists
+/// across simulated service-graph "restarts" within the same test process.
+/// `InMemoryBackend` is used instead of `LocalFilesystem` because lease
+/// claim/consume/revoke requires `CasExpectation::Version`, which
+/// `LocalFilesystem` does not support (see AGENTS.md Capability Lease
+/// Authority Invariants, rule 5).
+fn scoped_leases_filesystem(
+    backend: &Arc<InMemoryBackend>,
+) -> Arc<ScopedFilesystem<InMemoryBackend>> {
+    Arc::new(ScopedFilesystem::with_fixed_view(
+        Arc::clone(backend),
         durable_mount_view(),
     ))
 }

@@ -37,38 +37,12 @@ use brassclaw_trust::{AuthorityCeiling, TrustDecision};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Authorizes a capability dispatch request against an execution context.
-#[async_trait]
-pub trait CapabilityDispatchAuthorizer: Send + Sync {
-    /// Returns `Allow` only when the context has matching authority for the capability and declared effects; otherwise fails closed.
-    async fn authorize_dispatch(
-        &self,
-        context: &ExecutionContext,
-        descriptor: &CapabilityDescriptor,
-        estimate: &ResourceEstimate,
-    ) -> Decision;
-
-    /// Returns `Allow` only when dispatch authority and `SpawnProcess` authority are both present for the target capability.
-    async fn authorize_spawn(
-        &self,
-        _context: &ExecutionContext,
-        _descriptor: &CapabilityDescriptor,
-        _estimate: &ResourceEstimate,
-    ) -> Decision {
-        Decision::Deny {
-            reason: DenyReason::MissingGrant,
-        }
-    }
-}
-
 /// Trust-aware capability dispatch authorizer.
 ///
-/// This trait is the host-policy-aware counterpart to
-/// [`CapabilityDispatchAuthorizer`]. Callers pass the policy-validated
-/// [`TrustDecision`] alongside the serializable [`ExecutionContext`]. We keep
-/// this separate because `brassclaw_trust::EffectiveTrustClass` deliberately
-/// does not implement `Deserialize`; it should not be embedded directly in
-/// wire-shaped execution contexts.
+/// Callers pass the policy-validated [`TrustDecision`] alongside the
+/// serializable [`ExecutionContext`]. `brassclaw_trust::EffectiveTrustClass`
+/// deliberately does not implement `Deserialize`, so it is carried out-of-band
+/// here rather than embedded directly in wire-shaped execution contexts.
 #[async_trait]
 pub trait TrustAwareCapabilityDispatchAuthorizer: Send + Sync {
     /// Authorize a dispatch using both explicit grants/leases and the
@@ -103,32 +77,6 @@ pub struct GrantAuthorizer;
 impl GrantAuthorizer {
     pub fn new() -> Self {
         Self
-    }
-}
-
-#[async_trait]
-impl CapabilityDispatchAuthorizer for GrantAuthorizer {
-    async fn authorize_dispatch(
-        &self,
-        context: &ExecutionContext,
-        descriptor: &CapabilityDescriptor,
-        estimate: &ResourceEstimate,
-    ) -> Decision {
-        authorize_from_grants(context, descriptor, estimate, context.grants.grants.iter())
-    }
-
-    async fn authorize_spawn(
-        &self,
-        context: &ExecutionContext,
-        descriptor: &CapabilityDescriptor,
-        estimate: &ResourceEstimate,
-    ) -> Decision {
-        authorize_from_grants(
-            context,
-            &spawn_descriptor(descriptor),
-            estimate,
-            context.grants.grants.iter(),
-        )
     }
 }
 
@@ -1010,54 +958,6 @@ where
 }
 
 #[async_trait]
-impl<S> CapabilityDispatchAuthorizer for LeaseBackedAuthorizer<'_, S>
-where
-    S: CapabilityLeaseStore + ?Sized,
-{
-    async fn authorize_dispatch(
-        &self,
-        context: &ExecutionContext,
-        descriptor: &CapabilityDescriptor,
-        estimate: &ResourceEstimate,
-    ) -> Decision {
-        if context.validate().is_err() {
-            return Decision::Deny {
-                reason: DenyReason::InternalInvariantViolation,
-            };
-        }
-
-        let lease_grants = self.leases.active_grants_for_context(context).await;
-        authorize_from_grants(
-            context,
-            descriptor,
-            estimate,
-            context.grants.grants.iter().chain(lease_grants.iter()),
-        )
-    }
-
-    async fn authorize_spawn(
-        &self,
-        context: &ExecutionContext,
-        descriptor: &CapabilityDescriptor,
-        estimate: &ResourceEstimate,
-    ) -> Decision {
-        if context.validate().is_err() {
-            return Decision::Deny {
-                reason: DenyReason::InternalInvariantViolation,
-            };
-        }
-
-        let lease_grants = self.leases.active_grants_for_context(context).await;
-        authorize_from_grants(
-            context,
-            &spawn_descriptor(descriptor),
-            estimate,
-            context.grants.grants.iter().chain(lease_grants.iter()),
-        )
-    }
-}
-
-#[async_trait]
 impl<S> TrustAwareCapabilityDispatchAuthorizer for LeaseBackedAuthorizer<'_, S>
 where
     S: CapabilityLeaseStore + ?Sized,
@@ -1115,15 +1015,6 @@ fn spawn_descriptor(descriptor: &CapabilityDescriptor) -> CapabilityDescriptor {
         descriptor.effects.push(EffectKind::SpawnProcess);
     }
     descriptor
-}
-
-fn authorize_from_grants<'a>(
-    context: &ExecutionContext,
-    descriptor: &CapabilityDescriptor,
-    estimate: &ResourceEstimate,
-    grants: impl Iterator<Item = &'a CapabilityGrant>,
-) -> Decision {
-    authorize_from_grants_with_authority_ceiling(context, descriptor, estimate, grants, None)
 }
 
 fn authorize_from_grants_with_trust<'a>(

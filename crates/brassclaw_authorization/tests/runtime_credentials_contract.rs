@@ -1,5 +1,7 @@
 use brassclaw_authorization::*;
 use brassclaw_host_api::*;
+use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
+use chrono::Utc;
 use serde_json::json;
 
 #[tokio::test]
@@ -21,14 +23,19 @@ async fn capability_access_uses_declared_runtime_credential_handles() {
         vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
     );
     grant.constraints.secrets = vec![other, declared.clone()];
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -58,14 +65,19 @@ async fn capability_access_denies_when_declared_runtime_credential_is_not_grante
         vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
     );
     grant.constraints.secrets = vec![SecretHandle::new("other_token").unwrap()];
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -103,14 +115,19 @@ async fn capability_access_injects_all_declared_runtime_credentials() {
         vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
     );
     grant.constraints.secrets = vec![first.clone(), second.clone()];
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -152,14 +169,19 @@ async fn capability_access_skips_missing_optional_runtime_credentials() {
         vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
     );
     grant.constraints.secrets = vec![required.clone()];
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -192,14 +214,19 @@ async fn capability_access_resolves_product_auth_account_runtime_credentials() {
         Principal::Extension(ExtensionId::new("caller").unwrap()),
         vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
     );
+    let trust = trust_decision(
+        vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
+        None,
+    );
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -234,14 +261,16 @@ async fn capability_access_denies_runtime_credentials_without_use_secret_effect(
         vec![EffectKind::DispatchCapability],
     );
     grant.constraints.secrets = vec![SecretHandle::new("github_token").unwrap()];
+    let trust = trust_decision(vec![EffectKind::DispatchCapability], None);
 
     let decision = GrantAuthorizer::new()
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &execution_context(CapabilitySet {
                 grants: vec![grant],
             }),
             &descriptor,
             &ResourceEstimate::default(),
+            &trust,
         )
         .await;
 
@@ -313,6 +342,21 @@ fn github_audience() -> NetworkTargetPattern {
         scheme: Some(NetworkScheme::Https),
         host_pattern: "api.github.com".to_string(),
         port: None,
+    }
+}
+
+fn trust_decision(
+    allowed_effects: Vec<EffectKind>,
+    max_resource_ceiling: Option<ResourceCeiling>,
+) -> TrustDecision {
+    TrustDecision {
+        effective_trust: EffectiveTrustClass::sandbox(),
+        authority_ceiling: AuthorityCeiling {
+            allowed_effects,
+            max_resource_ceiling,
+        },
+        provenance: TrustProvenance::Default,
+        evaluated_at: Utc::now(),
     }
 }
 

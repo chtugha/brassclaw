@@ -31,7 +31,12 @@ async fn lease_authorizer_allows_matching_active_lease_without_context_grant() {
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
 
     assert!(matches!(decision, Decision::Allow { .. }));
@@ -102,7 +107,12 @@ async fn fingerprinted_approval_lease_does_not_authorize_plain_dispatch() {
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
 
     assert!(matches!(
@@ -145,7 +155,12 @@ async fn claim_marks_fingerprinted_lease_claimed_and_hides_it_from_authorizer() 
     assert_eq!(claimed.status, CapabilityLeaseStatus::Claimed);
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
     assert!(matches!(
         decision,
@@ -233,7 +248,12 @@ async fn lease_authorizer_hides_leases_across_tenant_scope() {
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
 
     assert!(matches!(
@@ -323,7 +343,12 @@ async fn lease_authorizer_denies_other_agent_context() {
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&other_context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &other_context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
 
     assert!(matches!(
@@ -394,7 +419,12 @@ async fn lease_authorizer_denies_invalid_context_before_grant_match() {
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
 
     assert!(matches!(
@@ -429,10 +459,11 @@ async fn one_off_lease_does_not_authorize_different_invocation_in_same_tenant() 
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(
+        .authorize_dispatch_with_trust(
             &next_invocation_context,
             &descriptor,
             &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
         )
         .await;
 
@@ -501,7 +532,12 @@ async fn consumed_lease_no_longer_authorizes_dispatch() {
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
 
     assert!(matches!(
@@ -616,7 +652,12 @@ async fn expired_lease_no_longer_authorizes_or_consumes() {
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
 
     assert!(matches!(
@@ -1125,7 +1166,12 @@ async fn revoked_lease_no_longer_authorizes_dispatch() {
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision(vec![EffectKind::DispatchCapability], None),
+        )
         .await;
 
     assert!(matches!(
