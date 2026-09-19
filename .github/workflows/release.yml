@@ -103,6 +103,11 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+          # Upload assets one at a time instead of concurrently. Parallel
+          # uploads (the action's default via Promise.all) intermittently
+          # trip GitHub's asset-upload backend with "Error creating asset
+          # temp dir" when multiple large binaries land at once.
+          preserve_order: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
