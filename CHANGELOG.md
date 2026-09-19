@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-19
+
+### Changed
+
+- *(memory)* `MemoryDocumentScope` now wraps the shared `TenantId`/`UserId`/`AgentId`/`ProjectId` newtypes from `brassclaw_host_api` instead of raw `String`/`Option<String>` fields, eliminating duplicated structural ID validation (empty, length, dot segments, path separators, control characters). The two memory-specific extra invariants (whitespace-only rejection, `:` forbidden to protect owner-key encoding in `scoped_memory_owner_key`) are preserved via small dedicated helpers; the whitespace check runs before the newtype constructor so error precedence for whitespace-only-but-oversized segments is unchanged from prior behavior. Public API (constructor and accessor signatures) is unaffected.
+
 ## [1.3.0] - 2026-09-17
 
 ### Removed
