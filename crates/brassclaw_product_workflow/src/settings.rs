@@ -520,6 +520,14 @@ pub trait SettingsListingService: Send + Sync {
     async fn list_extensions(&self) -> Result<SettingsListResponse, SettingsListingError>;
     async fn list_orchestrators(&self) -> Result<SettingsListResponse, SettingsListingError>;
     async fn list_scaffolds(&self) -> Result<SettingsListResponse, SettingsListingError>;
+    /// List ToolSkills (class 13, `reborn_tool_skills`) for the Settings UI.
+    async fn list_tool_skills(&self) -> Result<SettingsListResponse, SettingsListingError>;
+    /// List PythonCode (class 22, `reborn_python_code`) for the Settings UI.
+    async fn list_python_code(&self) -> Result<SettingsListResponse, SettingsListingError>;
+    /// List ExtensionCatalogues (class 23, `reborn_extension_catalogues`) for
+    /// the Settings UI.
+    async fn list_extension_catalogues(&self)
+    -> Result<SettingsListResponse, SettingsListingError>;
 }
 
 /// Error type returned by [`SettingsListingService`] methods.
@@ -529,4 +537,11 @@ pub enum SettingsListingError {
     Unavailable(String),
     #[error("settings listing query failed: {0}")]
     QueryFailed(String),
+    /// The table backing this Settings tab does not exist in the connected
+    /// database. This is a backend configuration bug — a tab wired to a
+    /// table name that was never migrated — never a normal empty state, and
+    /// must be surfaced as a hard error rather than silently rendering an
+    /// empty tab.
+    #[error("settings listing table missing: {0}")]
+    MissingTable(String),
 }

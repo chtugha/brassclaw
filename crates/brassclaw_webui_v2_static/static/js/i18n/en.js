@@ -173,12 +173,16 @@ registerPack("en", {
   "extensions.registry": "Registry",
 
   // Settings tabs
+  "settings.section.runtimeConfig": "Runtime Config",
+  "settings.section.componentCatalog": "Component Catalog",
+  "settings.section.securityGovernance": "Security & Governance",
+  "settings.section.accessOps": "Access & Ops",
   "settings.inference": "Inference",
   "settings.agent": "Agent",
   "settings.channels": "Channels",
   "settings.networking": "Networking",
-  "settings.tools": "Tools",
-  "settings.skills": "Skills",
+  "settings.toolPermissions": "Tool Permissions",
+  "settings.skillPackages": "Skill Packages",
   "settings.safety": "Safety",
   "settings.tokens": "Tokens",
   "settings.users": "Users",
@@ -190,6 +194,9 @@ registerPack("en", {
   "settings.orchestrator": "Orchestrator",
   "settings.scaffold": "Scaffold",
   "settings.recipes": "Recipes",
+  "settings.toolSkills": "Tool Skills",
+  "settings.pythonCode": "Python Code",
+  "settings.extensionCatalogues": "Extension Catalogues",
   "settings.montyVm": "Monty VM",
   "settings.mcpServer": "MCP Server",
   "settings.security": "Security",
@@ -587,6 +594,7 @@ registerPack("en", {
 
   // Settings — skills tab
   "skills.installed": "Installed skills",
+  "skills.installedDesc": "Installed SKILL.md packages — plugin-style prompt bundles, not the orchestrator recipe/tool catalog.",
   "skills.noInstalled": "No skills installed",
   "skills.noInstalledDesc":
     "Skills extend the agent with domain-specific instructions. Import a SKILL.md bundle or place SKILL.md files in your workspace.",
@@ -1102,6 +1110,24 @@ registerPack("en", {
   "recipes.none": "No recipes registered",
   "recipes.noneDesc": "Recipes will appear here once they have been validated.",
   "recipes.library": "Recipe library",
+
+  // Settings — Tool Skills tab.
+  "toolSkills.failedLoad": "Failed to load tool skills: {message}",
+  "toolSkills.none": "No tool skills registered",
+  "toolSkills.noneDesc": "Tool skill bindings will appear here once they have been validated.",
+  "toolSkills.library": "Tool skill library",
+
+  // Settings — Python Code tab.
+  "pythonCode.failedLoad": "Failed to load Python code: {message}",
+  "pythonCode.none": "No Python code registered",
+  "pythonCode.noneDesc": "Python code executors will appear here once they have been validated.",
+  "pythonCode.library": "Python code library",
+
+  // Settings — Extension Catalogues tab.
+  "extensionCatalogues.failedLoad": "Failed to load extension catalogues: {message}",
+  "extensionCatalogues.none": "No extension catalogues registered",
+  "extensionCatalogues.noneDesc": "Extension catalogues will appear here once they have been validated.",
+  "extensionCatalogues.library": "Extension catalogue library",
 
   // Settings — Monty VM tab (Phase 6).
   "montyVm.failedLoad": "Failed to load Monty VM settings: {message}",

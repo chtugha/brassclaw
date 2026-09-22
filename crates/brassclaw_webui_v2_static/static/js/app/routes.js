@@ -38,8 +38,8 @@ export const SETTINGS_SUB_ROUTES = [
   // { id: "agent", labelKey: "settings.agent", icon: "bolt" },
   // { id: "channels", labelKey: "settings.channels", icon: "send" },
   // { id: "networking", labelKey: "settings.networking", icon: "pulse" },
-  { id: "tools",            labelKey: "settings.tools",           icon: "tool"     },
-  { id: "skills",           labelKey: "settings.skills",          icon: "list"     },
+  { id: "tools",            labelKey: "settings.toolPermissions", icon: "tool"     },
+  { id: "skills",           labelKey: "settings.skillPackages",   icon: "list"     },
   // Phase 6 — 10-tab Settings UI editor tabs.
   { id: "actions",          labelKey: "settings.actions",         icon: "bolt"     },
   { id: "orchestrator",     labelKey: "settings.orchestrator",    icon: "layers"   },

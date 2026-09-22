@@ -106,9 +106,12 @@ export function SkillsTab({ searchQuery = "" }) {
       <${SkillInstallPanel} onInstall=${installSkill} isInstalling=${isInstalling} />
       <${SkillActionResult} error=${actionError} result=${actionResult} />
       <${Card} padding="md">
-        <h3 className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
+        <h3 className="mb-1 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
           ${t("skills.installed")}
         </h3>
+        <p className="mb-4 text-xs text-[var(--v2-text-muted)]">
+          ${t("skills.installedDesc")}
+        </p>
         ${filteredSkills.map(
           (skill) => html`
             <${SkillCard}

@@ -182,12 +182,6 @@ export function regeneratePrefix(name) {
 }
 
 // Phase 6 — Settings UI: component library endpoints (10-tab editor).
-export function fetchSettingsSkills() {
-  return apiFetch("/api/settings/skills");
-}
-export function fetchSettingsTools() {
-  return apiFetch("/api/settings/tools");
-}
 export function fetchSettingsExtensions() {
   return apiFetch("/api/settings/extensions");
 }
@@ -202,6 +196,15 @@ export function fetchSettingsScaffolds() {
 }
 export function fetchSettingsRecipes() {
   return apiFetch("/api/settings/recipes");
+}
+export function fetchSettingsToolSkills() {
+  return apiFetch("/api/settings/tool-skills");
+}
+export function fetchSettingsPythonCode() {
+  return apiFetch("/api/settings/python-code");
+}
+export function fetchSettingsExtensionCatalogues() {
+  return apiFetch("/api/settings/extension-catalogues");
 }
 
 // Phase 6 — Monty VM settings + lifecycle.

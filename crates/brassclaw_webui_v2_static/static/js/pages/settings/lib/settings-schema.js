@@ -1,27 +1,51 @@
-export const SETTINGS_TABS = [
-  { id: "inference",        labelKey: "settings.inference",       icon: "spark"    },
-  { id: "agent",            labelKey: "settings.agent",           icon: "settings" },
-  { id: "channels",         labelKey: "settings.channels",        icon: "send"     },
-  { id: "networking",       labelKey: "settings.networking",      icon: "plug"     },
-  { id: "tools",            labelKey: "settings.tools",           icon: "tool"     },
-  { id: "skills",           labelKey: "settings.skills",          icon: "list"     },
-  // Phase 6 — 10-tab Settings UI editor.
-  { id: "actions",          labelKey: "settings.actions",         icon: "bolt"     },
-  { id: "orchestrator",     labelKey: "settings.orchestrator",    icon: "layers"   },
-  { id: "scaffold",         labelKey: "settings.scaffold",        icon: "folder"   },
-  { id: "recipes",          labelKey: "settings.recipes",         icon: "copy"     },
-  { id: "monty-vm",         labelKey: "settings.montyVm",         icon: "pulse"    },
-  { id: "security",         labelKey: "settings.security",        icon: "shield"   },
-  { id: "validation-queue", labelKey: "settings.validationQueue", icon: "check"    },
-  { id: "docs",             labelKey: "settings.docs",            icon: "file"     },
-  { id: "reliability",      labelKey: "settings.reliability",     icon: "clock"    },
-  { id: "interceptor",      labelKey: "settings.interceptor",     icon: "flag"     },
-  { id: "prefix",           labelKey: "settings.prefix",          icon: "moon"     },
-  { id: "safety",           labelKey: "settings.safety",          icon: "lock"     },
-  { id: "tokens",           labelKey: "settings.tokens",          icon: "calendar" },
-  { id: "users",            labelKey: "settings.users",           icon: "logout"   },
-  { id: "language",         labelKey: "settings.language",        icon: "sun"      },
+export const SETTINGS_SECTIONS = [
+  {
+    sectionKey: "settings.section.runtimeConfig",
+    tabs: [
+      { id: "inference",   labelKey: "settings.inference",   icon: "spark"    },
+      { id: "agent",       labelKey: "settings.agent",       icon: "settings" },
+      { id: "channels",    labelKey: "settings.channels",    icon: "send"     },
+      { id: "networking",  labelKey: "settings.networking",  icon: "plug"     },
+      { id: "monty-vm",    labelKey: "settings.montyVm",     icon: "pulse"    },
+      { id: "tokens",      labelKey: "settings.tokens",      icon: "calendar" },
+      { id: "language",    labelKey: "settings.language",    icon: "sun"      },
+    ],
+  },
+  {
+    sectionKey: "settings.section.componentCatalog",
+    tabs: [
+      { id: "actions",              labelKey: "settings.actions",              icon: "bolt"   },
+      { id: "orchestrator",         labelKey: "settings.orchestrator",         icon: "layers" },
+      { id: "scaffold",             labelKey: "settings.scaffold",             icon: "folder" },
+      { id: "recipes",              labelKey: "settings.recipes",              icon: "copy"   },
+      { id: "tool-skills",          labelKey: "settings.toolSkills",           icon: "tool"   },
+      { id: "python-code",          labelKey: "settings.pythonCode",           icon: "list"   },
+      { id: "extension-catalogues", labelKey: "settings.extensionCatalogues",  icon: "layers" },
+    ],
+  },
+  {
+    sectionKey: "settings.section.securityGovernance",
+    tabs: [
+      { id: "security",         labelKey: "settings.security",         icon: "shield" },
+      { id: "safety",           labelKey: "settings.safety",           icon: "lock"   },
+      { id: "validation-queue", labelKey: "settings.validationQueue",  icon: "check"  },
+      { id: "interceptor",      labelKey: "settings.interceptor",      icon: "flag"   },
+      { id: "prefix",           labelKey: "settings.prefix",           icon: "moon"   },
+    ],
+  },
+  {
+    sectionKey: "settings.section.accessOps",
+    tabs: [
+      { id: "tools",       labelKey: "settings.toolPermissions", icon: "tool"   },
+      { id: "skills",      labelKey: "settings.skillPackages",   icon: "list"   },
+      { id: "users",       labelKey: "settings.users",           icon: "logout" },
+      { id: "docs",        labelKey: "settings.docs",            icon: "file"   },
+      { id: "reliability", labelKey: "settings.reliability",     icon: "clock"  },
+    ],
+  },
 ];
+
+export const SETTINGS_TABS = SETTINGS_SECTIONS.flatMap((section) => section.tabs);
 
 export const INFERENCE_FIELDS = [
   {

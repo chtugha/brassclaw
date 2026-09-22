@@ -17,6 +17,9 @@ import { ReliabilityTab } from "./components/reliability-tab.js";
 import { RestartBanner } from "./components/restart-banner.js";
 import { SafetyPanel } from "./components/safety-panel.js";
 import { RecipesTab } from "./components/recipes-tab.js";
+import { ToolSkillsTab } from "./components/tool-skills-tab.js";
+import { PythonCodeTab } from "./components/python-code-tab.js";
+import { ExtensionCataloguesTab } from "./components/extension-catalogues-tab.js";
 import { ScaffoldTab } from "./components/scaffold-tab.js";
 import { SecurityTab } from "./components/security-tab.js";
 import { SkillsTab } from "./components/skills-tab.js";
@@ -85,6 +88,9 @@ export function SettingsPage() {
     orchestrator: html`<${OrchestratorTab} searchQuery=${searchQuery} />`,
     scaffold: html`<${ScaffoldTab} searchQuery=${searchQuery} />`,
     recipes: html`<${RecipesTab} searchQuery=${searchQuery} />`,
+    "tool-skills": html`<${ToolSkillsTab} searchQuery=${searchQuery} />`,
+    "python-code": html`<${PythonCodeTab} searchQuery=${searchQuery} />`,
+    "extension-catalogues": html`<${ExtensionCataloguesTab} searchQuery=${searchQuery} />`,
     "monty-vm": html`<${MontyVmTab} searchQuery=${searchQuery} />`,
     "mcp-server": html`<${McpServerTab} searchQuery=${searchQuery} />`,
     security: html`<${SecurityTab} searchQuery=${searchQuery} />`,

@@ -1593,6 +1593,42 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
+    /// List ToolSkills (class 13) for the Settings UI Catalog.
+    async fn list_settings_tool_skills(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List PythonCode (class 22) for the Settings UI Catalog.
+    async fn list_settings_python_code(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List ExtensionCatalogues (class 23) for the Settings UI Catalog.
+    async fn list_settings_extension_catalogues(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
     /// Get the current Monty VM settings.
     async fn get_monty_vm_settings(
         &self,
@@ -4754,6 +4790,45 @@ impl RebornServicesApi for RebornServices {
         svc.list_recipes().await.map_err(map_settings_listing_error)
     }
 
+    async fn list_settings_tool_skills(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
+        svc.list_tool_skills()
+            .await
+            .map_err(map_settings_listing_error)
+    }
+
+    async fn list_settings_python_code(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
+        svc.list_python_code()
+            .await
+            .map_err(map_settings_listing_error)
+    }
+
+    async fn list_settings_extension_catalogues(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
+        svc.list_extension_catalogues()
+            .await
+            .map_err(map_settings_listing_error)
+    }
+
     async fn get_settings_config(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -6062,6 +6137,19 @@ fn map_settings_listing_error(error: crate::settings::SettingsListingError) -> R
                 503,
                 false,
             )
+        }
+        // A missing table is a backend configuration bug (a Settings tab
+        // wired to a table that was never migrated), not a transient
+        // unavailability — surface it as 500 Internal so it cannot be
+        // confused with "DB pool temporarily down" (503) and cannot be
+        // silently rendered as an empty tab by the frontend.
+        crate::settings::SettingsListingError::MissingTable(ref detail) => {
+            tracing::error!(
+                detail = %detail,
+                "settings listing: {}",
+                error
+            );
+            RebornServicesError::internal_invariant()
         }
     }
 }

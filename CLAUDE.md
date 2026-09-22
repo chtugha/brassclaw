@@ -203,14 +203,14 @@ New work belongs in `crates/`. The v1 `src/` tree was removed in Phase 6.
 
 ### Component Catalog and Class Codes
 
-BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons, etc.) in unified Postgres tables indexed by integer **class codes**. Each class has a dedicated table:
+BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons, etc.) in unified Postgres tables indexed by integer **class codes**. Each class has a dedicated table — this mapping is the verified source of truth, defined by `class_code_to_table` in `crates/brassclaw_engine/src/memory/retrieval_source.rs` and mirrored by `PgSettingsListingService` (`crates/brassclaw_reborn_composition/src/pg_settings_listing.rs`):
 
 | Class code | Type | Table |
 |------------|------|-------|
 | 0 | Tool | `reborn_tools` |
 | 1 | Leaf Skill (Rusty) | `reborn_skills` |
 | 2 | Domain Skill (Monty) | `reborn_skills` |
-| 10 | Orchestrator | `reborn_component_catalog` (class 10) |
+| 10 | Orchestrator | `reborn_skills` (filtered by `class_code = 10`) |
 | 11 | Actions | `reborn_actions` |
 | 12 | Spec | `reborn_specs` |
 | 13 | ToolSkill | `reborn_tool_skills` |
@@ -222,7 +222,11 @@ BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons,
 | 21 | Recipe | `reborn_recipes` |
 | 22 | PythonCode | `reborn_python_code` |
 | 23 | ExtensionCatalogue | `reborn_extension_catalogues` |
-| 50 | Scaffold | `reborn_component_catalog` (class 50) |
+| 50 | Scaffold | `reborn_skills` (filtered by `class_code = 50`) |
+
+Classes 10 and 50 are **not** separate tables — Orchestrator and Scaffold rows live in `reborn_skills` alongside classes 1–3, distinguished only by `class_code`. Any caller that queries a nonexistent `reborn_orchestrators`/`reborn_scaffolds` table is buggy.
+
+`reborn_component_catalog` (`crates/brassclaw_pg/migrations/V084__reborn_component_catalog_view.sql`) is a read-only Postgres **VIEW** — not a table — that `UNION ALL`s the 14 prompt-bearing class tables above (excluding `reborn_tools`, class 0, which carries no prompt text) into one relation for ad hoc querying. It intentionally does not bake in per-request scope/validation filtering (tenant/user/agent/project scope, `validation_status = 'validated'`, consumer-tag checks) — callers apply their own `WHERE` clause on top, exactly as `PgSettingsListingService::list()` does per-table.
 
 Legacy `brassclaw_memory_docs` rows are migrated into the appropriate class table at boot by `run_component_import` (`crates/brassclaw_reborn_composition/src/component_import.rs`).
 

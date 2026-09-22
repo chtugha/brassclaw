@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-09-22
+
+### Added
+
+- *(webui / settings)* **New Settings Catalog tabs for ToolSkill (class 13), PythonCode (class 22), and ExtensionCatalogue (class 23).** These component classes previously had no Settings UI at all. Added `GET /api/settings/tool-skills`, `/api/settings/python-code`, `/api/settings/extension-catalogues` endpoints (`crates/brassclaw_webui_v2/src/{descriptors,handlers,router,lib}.rs`), backing `RebornServicesApi` methods (`crates/brassclaw_product_workflow/src/{settings,reborn_services}.rs`), and frontend tabs `tool-skills-tab.js`, `python-code-tab.js`, `extension-catalogues-tab.js`.
+- *(db)* **`reborn_component_catalog` materialized as a real Postgres VIEW** (`crates/brassclaw_pg/migrations/V084__reborn_component_catalog_view.sql`), `UNION ALL`-ing all 14 prompt-bearing class tables (excluding `reborn_tools`, class 0). Previously this name existed only as documentation of an ad hoc query shape in `retrieval_source.rs`, never as a queryable object — `AGENTS.md` incorrectly referenced it as an existing table. It is now a real, verified (via the `full_boot_cycle_from_scratch` integration test) read-only relation any caller can query, with per-request scope/validation filtering left to the caller's own `WHERE` clause.
+
+### Fixed
+
+- *(webui / settings)* **Orchestrator (class 10) and Scaffold (class 50) Settings tabs were structurally broken** — `PgSettingsListingService` queried nonexistent `reborn_orchestrators`/`reborn_scaffolds` tables. Both classes are actually stored in `reborn_skills` filtered by `class_code`, per `class_code_to_table` in `brassclaw_engine::memory::retrieval_source` (the single source of truth for class→table dispatch). Fixed to query `reborn_skills WHERE class_code = 10` / `= 50`.
+- *(webui / settings)* `PgSettingsListingService::list()` previously treated a genuinely missing backing table the same as a normal empty result, silently masking backend misconfiguration (exactly the bug behind the Orchestrator/Scaffold defect above). Now fails loud with `SettingsListingError::MissingTable` (HTTP 500, always logged) so table drift can never again pass as an empty list.
+
+### Changed
+
+- *(webui / settings)* **Disambiguated three previously colliding "Skills"/"Tools" UI labels.** The SKILL.md plugin installer tab is now labeled "Skill Packages" (was "Skills"); the runtime tool-permission list tab is now labeled "Tool Permissions" (was "Tools"). Route IDs are unchanged — only display labels and i18n strings across all locales were updated — so neither is confused with the class-code Skill (1/2) or ToolSkill (13) catalog tabs.
+- *(webui / settings)* **Grouped the previously flat 20+-tab Settings sidebar into sections**: Runtime Config / Component Catalog / Security & Governance / Access & Ops (`settings-tabs.js`, `settings-schema.js`), making the Recipes/ToolSkills/PythonCode/ExtensionCatalogues cluster discoverable as a group instead of scattered alphabetically.
+
+### Removed
+
+- *(webui / settings)* Removed unused dead-code stubs `fetchSettingsSkills`, `fetchSettingsTools`, `fetchSettingsExtensions` from `settings-api.js` — no call sites existed; they were unwired leftovers.
+
 ## [1.4.1] - 2026-09-22
 
 ### Fixed

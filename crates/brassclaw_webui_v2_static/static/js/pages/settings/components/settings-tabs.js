@@ -1,7 +1,7 @@
 import { Icon } from "../../../design-system/icons.js";
 import { React, html } from "../../../lib/html.js";
 import { useT } from "../../../lib/i18n.js";
-import { SETTINGS_TABS } from "../lib/settings-schema.js";
+import { SETTINGS_SECTIONS, SETTINGS_TABS } from "../lib/settings-schema.js";
 
 function useVisibleTabs(isAdmin) {
   return React.useMemo(
@@ -10,35 +10,55 @@ function useVisibleTabs(isAdmin) {
   );
 }
 
+function useVisibleSections(isAdmin) {
+  return React.useMemo(
+    () =>
+      SETTINGS_SECTIONS.map((section) => ({
+        ...section,
+        tabs: section.tabs.filter((tab) => isAdmin || tab.id !== "users"),
+      })).filter((section) => section.tabs.length > 0),
+    [isAdmin]
+  );
+}
+
 export function SettingsTabs({ activeTab, onTabChange, isAdmin = true }) {
   const t = useT();
-  const tabs = useVisibleTabs(isAdmin);
+  const sections = useVisibleSections(isAdmin);
   return html`
-    <div className="flex flex-col gap-1">
-      ${tabs.map(
-        (tab) => html`
-          <button
-            key=${tab.id}
-            onClick=${() => onTabChange(tab.id)}
-            className=${[
-              "group flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm",
-              activeTab === tab.id
-                ? "v2-nav-active text-white"
-                : "text-iron-300 hover:bg-white/[0.045] hover:text-white",
-            ].join(" ")}
-          >
-            <span
-              className=${[
-                "grid h-7 w-7 shrink-0 place-items-center rounded-md border",
-                activeTab === tab.id
-                  ? "border-signal/35 bg-signal/10 text-signal"
-                  : "border-white/10 bg-white/[0.035] text-iron-300 group-hover:border-signal/35 group-hover:text-signal",
-              ].join(" ")}
-            >
-              <${Icon} name=${tab.icon} className="h-3.5 w-3.5" />
-            </span>
-            <span className="min-w-0 truncate">${t(tab.labelKey)}</span>
-          </button>
+    <div className="flex flex-col gap-4">
+      ${sections.map(
+        (section) => html`
+          <div key=${section.sectionKey} className="flex flex-col gap-1">
+            <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-iron-500">
+              ${t(section.sectionKey)}
+            </div>
+            ${section.tabs.map(
+              (tab) => html`
+                <button
+                  key=${tab.id}
+                  onClick=${() => onTabChange(tab.id)}
+                  className=${[
+                    "group flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm",
+                    activeTab === tab.id
+                      ? "v2-nav-active text-white"
+                      : "text-iron-300 hover:bg-white/[0.045] hover:text-white",
+                  ].join(" ")}
+                >
+                  <span
+                    className=${[
+                      "grid h-7 w-7 shrink-0 place-items-center rounded-md border",
+                      activeTab === tab.id
+                        ? "border-signal/35 bg-signal/10 text-signal"
+                        : "border-white/10 bg-white/[0.035] text-iron-300 group-hover:border-signal/35 group-hover:text-signal",
+                    ].join(" ")}
+                  >
+                    <${Icon} name=${tab.icon} className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="min-w-0 truncate">${t(tab.labelKey)}</span>
+                </button>
+              `
+            )}
+          </div>
         `
       )}
     </div>

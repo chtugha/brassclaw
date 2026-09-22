@@ -1628,6 +1628,42 @@ pub async fn get_settings_recipes(
     Ok(Json(response))
 }
 
+/// `GET /api/settings/tool-skills`
+///
+/// List ToolSkills (class 13) for the Settings UI Catalog.
+pub async fn get_settings_tool_skills(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_tool_skills(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/python-code`
+///
+/// List PythonCode (class 22) for the Settings UI Catalog.
+pub async fn get_settings_python_code(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_python_code(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/extension-catalogues`
+///
+/// List ExtensionCatalogues (class 23) for the Settings UI Catalog.
+pub async fn get_settings_extension_catalogues(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .list_settings_extension_catalogues(caller)
+        .await?;
+    Ok(Json(response))
+}
+
 /// `GET /api/settings/config`
 ///
 /// Return all allowed config keys (agent.*, heartbeat.*, sandbox.*, routines.*,
