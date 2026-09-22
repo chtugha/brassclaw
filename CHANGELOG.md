@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-22
+
+### Fixed
+
+- *(prefix-cache / kohai)* `get_system_bundle` now falls back to the `"default"` project scope when the thread's `project_id` (a UUID) has no stored bundle row. In single-operator deployments without `[identity].default_project` configured, the Regenerate endpoint stores the bundle under `project_id = "default"` while the Kohai call path carries `thread.project_id` (a random UUID generated at thread-creation time). This mismatch caused every Kohai LLM call to receive the "Bundle not yet compiled" minimal fallback instead of the real bundle, regardless of whether the operator had already run Regenerate. The fix adds a secondary probe in `PgBasicPromptStore::get_system_bundle`: on a primary-scope miss (`Ok(None)`), the function retries under `"default"` before returning the fallback. Stale project-scoped rows are not probed through — a stale row stays stale until the operator clicks Regenerate for that scope. No regeneration is needed after deploy; the existing bundle is picked up on the next turn.
+
 ## [1.4.0] - 2026-09-22
 
 ### Added

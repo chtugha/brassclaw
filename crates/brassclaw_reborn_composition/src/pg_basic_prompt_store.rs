@@ -309,14 +309,28 @@ mod inner {
     // Per-turn bundle retrieval helper
     // -----------------------------------------------------------------------
 
+    /// Sentinel project scope used by the Regenerate endpoint when the caller
+    /// carries no explicit project (i.e. `[identity].default_project` is not
+    /// configured).  The per-turn Kohai path receives `thread.project_id`
+    /// (a UUID), which will not match this sentinel — so `get_system_bundle`
+    /// retries under `DEFAULT_PROJECT_SCOPE` before returning the fallback.
+    pub(crate) const DEFAULT_PROJECT_SCOPE: &str = "default";
+
     /// Return the bundle text to use as the System-message prefix for this turn.
     ///
-    /// **Fast path:** a non-stale, non-empty row exists → return `entry.bundle`.
-    ///   One cheap single-row DB fetch; no component-table re-assembly.
+    /// **Fast path:** a non-stale, non-empty row exists for `project_id` →
+    ///   return `entry.bundle`.  One cheap single-row DB fetch.
     ///
-    /// **Slow/cold path:** stale, no row, or empty bundle → return
+    /// **Fallback probe:** when `project_id` is not [`DEFAULT_PROJECT_SCOPE`]
+    ///   and the primary lookup finds no valid row, retry under
+    ///   `DEFAULT_PROJECT_SCOPE`.  This bridges the common single-operator
+    ///   setup where the Regenerate endpoint stores the bundle under `"default"`
+    ///   (no `[identity].default_project` configured) while the Kohai call
+    ///   carries the thread's UUID-based `project_id`.
+    ///
+    /// **Slow/cold path:** both lookups find nothing usable → return
     ///   `minimal_base_prompt_fallback()`.  The operator must click Regenerate
-    ///   in the Prefix Tab to restore the full bundle.
+    ///   in the Prefix Tab to populate the bundle.
     ///
     /// Used by both the Kohai prompt path and the Sempai `run_sempai_review` path.
     pub(crate) async fn get_system_bundle(
@@ -324,20 +338,54 @@ mod inner {
         user_id: &str,
         project_id: &str,
     ) -> String {
+        // Primary lookup under the thread's own project_id.
         match store.get_for_scope(user_id, project_id).await {
-            Ok(Some(entry)) if !entry.is_stale && !entry.bundle.is_empty() => entry.bundle,
-            Ok(Some(_)) => minimal_base_prompt_fallback(),
-            Ok(None) => minimal_base_prompt_fallback(),
+            Ok(Some(entry)) if !entry.is_stale && !entry.bundle.is_empty() => {
+                return entry.bundle;
+            }
+            // Stale row — do not fall through to the default probe; a stale
+            // project-scoped row is intentional and should show the fallback
+            // until the operator clicks Regenerate for that scope.
+            Ok(Some(_)) => return minimal_base_prompt_fallback(),
             Err(e) => {
                 debug!(
                     user_id,
                     project_id,
                     error = %e,
-                    "get_system_bundle: DB error, using fallback"
+                    "get_system_bundle: DB error on primary scope, using fallback"
                 );
-                minimal_base_prompt_fallback()
+                return minimal_base_prompt_fallback();
+            }
+            // No row at all — fall through to the default-scope probe.
+            Ok(None) => {}
+        }
+
+        // Secondary probe: if the primary project_id had no row, check whether
+        // a bundle was stored under the default sentinel (common when
+        // [identity].default_project is not configured and the operator
+        // regenerated from the WebUI).
+        if project_id != DEFAULT_PROJECT_SCOPE {
+            match store.get_for_scope(user_id, DEFAULT_PROJECT_SCOPE).await {
+                Ok(Some(entry)) if !entry.is_stale && !entry.bundle.is_empty() => {
+                    debug!(
+                        user_id,
+                        project_id,
+                        "get_system_bundle: primary scope miss, using default-scope bundle"
+                    );
+                    return entry.bundle;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    debug!(
+                        user_id,
+                        error = %e,
+                        "get_system_bundle: DB error on default-scope probe, using fallback"
+                    );
+                }
             }
         }
+
+        minimal_base_prompt_fallback()
     }
 
     /// Minimal System message when the bundle is unavailable (stale or first boot).
@@ -398,6 +446,11 @@ mod inner {
             let fb = minimal_base_prompt_fallback();
             assert!(!fb.is_empty());
             assert!(fb.contains("Bundle not yet compiled"));
+        }
+
+        #[test]
+        fn default_project_scope_constant_is_default() {
+            assert_eq!(DEFAULT_PROJECT_SCOPE, "default");
         }
     }
 }
