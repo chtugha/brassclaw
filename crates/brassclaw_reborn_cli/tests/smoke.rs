@@ -74,10 +74,6 @@ fn help_mentions_reborn_commands() {
     assert!(stdout.contains("profile"), "stdout: {stdout}");
     assert!(stdout.contains("repl"), "stdout: {stdout}");
     assert!(stdout.contains("run"), "stdout: {stdout}");
-    // `serve` is gated behind the `webui-v2-beta` Cargo feature so a
-    // default binary build does not link the beta HTTP/auth gateway.
-    // The dedicated `serve_*` tests below also `#[cfg]` themselves.
-
     assert!(stdout.contains("serve"), "stdout: {stdout}");
     assert!(stdout.contains("skills"), "stdout: {stdout}");
 }
