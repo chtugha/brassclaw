@@ -237,7 +237,7 @@ pub use llm_key_store::{LlmKeyStore, LlmKeyStoreError};
 pub use local_runtime_profile::{
     RebornLocalRuntimeProfileError, RebornLocalRuntimeProfileOptions, local_dev_runtime_policy,
     local_dev_yolo_runtime_policy, local_runtime_build_input,
-    local_runtime_build_input_with_options,
+    local_runtime_build_input_for_profile, local_runtime_build_input_with_options,
 };
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 pub use pg_provider_repo::PgProviderRepo;

@@ -22,12 +22,13 @@ struct RuntimeProfileListCommand {
     json: bool,
 }
 
-/// All 12 `RuntimeProfile` variants in display order.
+/// All 13 `RuntimeProfile` variants in display order.
 const ALL_RUNTIME_PROFILES: &[RuntimeProfile] = &[
     RuntimeProfile::SecureDefault,
     RuntimeProfile::LocalSafe,
     RuntimeProfile::LocalDev,
     RuntimeProfile::LocalYolo,
+    RuntimeProfile::Full,
     RuntimeProfile::HostedSafe,
     RuntimeProfile::HostedDev,
     RuntimeProfile::HostedYoloTenantScoped,
@@ -49,7 +50,7 @@ impl RuntimeProfileCommand {
 impl RuntimeProfileListCommand {
     fn execute(self) -> anyhow::Result<()> {
         let profiles = ALL_RUNTIME_PROFILES;
-        let default_profile = RuntimeProfile::LocalDev;
+        let default_profile = RuntimeProfile::Full;
 
         if self.json {
             let profiles = profiles.iter().map(|profile| {

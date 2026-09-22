@@ -101,7 +101,8 @@ fn profile_list_shows_supported_profiles_without_reborn_home() {
         stdout.contains("BrassClaw runtime profiles"),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("local_dev (default)"), "stdout: {stdout}");
+    assert!(stdout.contains("full (default)"), "stdout: {stdout}");
+    assert!(stdout.contains("local_dev"), "stdout: {stdout}");
     assert!(stdout.contains("local_safe"), "stdout: {stdout}");
     assert!(stdout.contains("local_yolo"), "stdout: {stdout}");
     assert!(stdout.contains("hosted_safe"), "stdout: {stdout}");
@@ -130,11 +131,16 @@ fn profile_list_json_is_stable_and_does_not_resolve_reborn_home() {
     let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid JSON");
     assert_eq!(json["selector"], "BRASSCLAW_RUNTIME_PROFILE");
     let profiles = json["profiles"].as_array().expect("profiles array");
-    assert_eq!(profiles.len(), 12);
+    assert_eq!(profiles.len(), 13);
     assert!(
         profiles
             .iter()
-            .any(|profile| profile["name"] == "local_dev" && profile["default"] == true)
+            .any(|profile| profile["name"] == "full" && profile["default"] == true)
+    );
+    assert!(
+        profiles
+            .iter()
+            .any(|profile| profile["name"] == "local_dev" && profile["default"] == false)
     );
     assert!(
         profiles
@@ -898,7 +904,7 @@ fn completion_generates_bash_script_without_reborn_home() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("_brassclaw-reborn()"), "stdout: {stdout}");
+    assert!(stdout.contains("_brassclaw__reborn()"), "stdout: {stdout}");
     assert!(stdout.contains("COMPREPLY"), "stdout: {stdout}");
 }
 
@@ -1310,6 +1316,7 @@ fn run_rejects_codex_backend_when_auth_file_is_missing() {
         .args(["run", "-m", "ping"])
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
+        .env("HOME", temp.path().join("home"))
         .env("LLM_BACKEND", "openai_codex")
         .env("CODEX_AUTH_PATH", &missing_codex_auth_path)
         .output()

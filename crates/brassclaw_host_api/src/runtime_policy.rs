@@ -143,6 +143,17 @@ pub enum RuntimeProfile {
     /// explicit selection + visible disclosure. Audit/timeouts/output caps
     /// stay on.
     LocalYolo,
+    /// Trusted-laptop mode that installs and enables everything by default:
+    /// same authority boundary as `LocalYolo` (host workspace + home,
+    /// provider-host shell, direct network, inherited env, minimal
+    /// approvals, audit stays on), but reached without the interactive
+    /// yolo disclosure gate — a non-blocking startup banner is shown
+    /// instead. `Full` is the compiled default when no
+    /// `BRASSCLAW_RUNTIME_PROFILE` is set; an explicit profile selection
+    /// (including an explicit `full`) always wins over this default, and a
+    /// narrower tenant/org ceiling can still reduce it (see
+    /// `family_rank` in the resolver). Local single-user only.
+    Full,
 
     /// Hosted multi-tenant default: tenant workspace read, ask-on-write,
     /// tenant-scoped sandbox process, brokered network/secrets.
@@ -191,6 +202,7 @@ impl RuntimeProfile {
             Self::LocalSafe => "local_safe",
             Self::LocalDev => "local_dev",
             Self::LocalYolo => "local_yolo",
+            Self::Full => "full",
             Self::HostedSafe => "hosted_safe",
             Self::HostedDev => "hosted_dev",
             Self::HostedYoloTenantScoped => "hosted_yolo_tenant_scoped",
@@ -211,7 +223,7 @@ impl RuntimeProfile {
     /// rather than silently default to `false`.
     pub const fn is_local(&self) -> bool {
         match self {
-            Self::LocalSafe | Self::LocalDev | Self::LocalYolo => true,
+            Self::LocalSafe | Self::LocalDev | Self::LocalYolo | Self::Full => true,
             Self::SecureDefault
             | Self::HostedSafe
             | Self::HostedDev
@@ -234,6 +246,7 @@ impl RuntimeProfile {
             | Self::LocalSafe
             | Self::LocalDev
             | Self::LocalYolo
+            | Self::Full
             | Self::EnterpriseSafe
             | Self::EnterpriseDev
             | Self::EnterpriseYoloDedicated
@@ -252,6 +265,7 @@ impl RuntimeProfile {
             | Self::LocalSafe
             | Self::LocalDev
             | Self::LocalYolo
+            | Self::Full
             | Self::HostedSafe
             | Self::HostedDev
             | Self::HostedYoloTenantScoped
@@ -266,6 +280,12 @@ impl RuntimeProfile {
     /// — the resolver and CLI/settings surfaces enforce that, this method is
     /// just a predicate.
     ///
+    /// `Full` is deliberately **not** yolo-classified even though it shares
+    /// `LocalYolo`'s exact authority boundary: it is reached without the
+    /// blocking interactive disclosure gate (a non-blocking startup banner
+    /// is used instead), so it must not trip the resolver's
+    /// `YoloRequiresDisclosure` check.
+    ///
     /// Exhaustive `match` for the same reason as [`Self::is_local`]: a new
     /// yolo-shaped profile must be classified at compile time.
     pub const fn is_yolo(&self) -> bool {
@@ -274,6 +294,7 @@ impl RuntimeProfile {
             Self::SecureDefault
             | Self::LocalSafe
             | Self::LocalDev
+            | Self::Full
             | Self::HostedSafe
             | Self::HostedDev
             | Self::EnterpriseSafe
@@ -299,6 +320,7 @@ impl std::str::FromStr for RuntimeProfile {
             "local_safe" => Ok(Self::LocalSafe),
             "local_dev" => Ok(Self::LocalDev),
             "local_yolo" => Ok(Self::LocalYolo),
+            "full" => Ok(Self::Full),
             "hosted_safe" => Ok(Self::HostedSafe),
             "hosted_dev" => Ok(Self::HostedDev),
             "hosted_yolo_tenant_scoped" => Ok(Self::HostedYoloTenantScoped),
@@ -640,6 +662,7 @@ mod tests {
             RuntimeProfile::LocalSafe,
             RuntimeProfile::LocalDev,
             RuntimeProfile::LocalYolo,
+            RuntimeProfile::Full,
             RuntimeProfile::HostedSafe,
             RuntimeProfile::HostedDev,
             RuntimeProfile::HostedYoloTenantScoped,
@@ -674,6 +697,7 @@ mod tests {
             RuntimeProfile::LocalSafe,
             RuntimeProfile::LocalDev,
             RuntimeProfile::LocalYolo,
+            RuntimeProfile::Full,
             RuntimeProfile::HostedSafe,
             RuntimeProfile::HostedDev,
             RuntimeProfile::HostedYoloTenantScoped,
@@ -697,6 +721,7 @@ mod tests {
             RuntimeProfile::LocalSafe,
             RuntimeProfile::LocalDev,
             RuntimeProfile::LocalYolo,
+            RuntimeProfile::Full,
             RuntimeProfile::HostedSafe,
             RuntimeProfile::HostedDev,
             RuntimeProfile::HostedYoloTenantScoped,
@@ -730,6 +755,7 @@ mod tests {
             RuntimeProfile::SecureDefault,
             RuntimeProfile::LocalSafe,
             RuntimeProfile::LocalDev,
+            RuntimeProfile::Full,
             RuntimeProfile::HostedSafe,
             RuntimeProfile::HostedDev,
             RuntimeProfile::EnterpriseSafe,

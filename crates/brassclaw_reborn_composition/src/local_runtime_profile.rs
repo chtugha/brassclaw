@@ -49,6 +49,26 @@ pub fn local_runtime_build_input_with_options(
     Ok(RebornBuildInput::local_dev(owner_id, root).with_runtime_policy(policy))
 }
 
+/// Build the local runtime substrate input for an explicitly selected local
+/// `RuntimeProfile`.
+///
+/// Unlike [`local_runtime_build_input_with_options`] (which only
+/// distinguishes `LocalDev`/`LocalYolo` via `confirm_host_access`), this
+/// accepts any `Local*` profile directly. It exists for callers that must
+/// honor an explicit selection — such as the CLI's
+/// `BRASSCLAW_RUNTIME_PROFILE` env var dispatch — including
+/// `RuntimeProfile::Full`, which has no dedicated `local_dev`-style
+/// convenience constructor of its own.
+pub fn local_runtime_build_input_for_profile(
+    runtime_profile: RuntimeProfile,
+    owner_id: impl Into<String>,
+    root: PathBuf,
+    options: RebornLocalRuntimeProfileOptions,
+) -> Result<RebornBuildInput, RebornLocalRuntimeProfileError> {
+    let policy = local_runtime_policy(runtime_profile, options)?;
+    Ok(RebornBuildInput::local_dev(owner_id, root).with_runtime_policy(policy))
+}
+
 /// Resolved policy for the standalone local development runtime profile.
 pub fn local_dev_runtime_policy() -> Result<ResolvedRuntimePolicy, ResolveError> {
     local_runtime_policy(

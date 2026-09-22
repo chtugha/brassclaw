@@ -49,6 +49,8 @@ fn extension_install_json_uses_reborn_home_without_v1_state() {
     let reborn_home = temp.path().join("reborn-home");
     let v1_base_dir = temp.path().join("v1-state");
     write_extension_fixture(&reborn_home, "zztest-mcp");
+    let home = temp.path().join("home");
+    fs::create_dir_all(&home).expect("create fake HOME dir");
 
     let output = Command::new(reborn_bin())
         .arg("extension")
@@ -57,6 +59,7 @@ fn extension_install_json_uses_reborn_home_without_v1_state() {
         .arg("--json")
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
+        .env("HOME", &home)
         .env("BRASSCLAW_BASE_DIR", &v1_base_dir)
         .output()
         .expect("brassclaw-reborn extension install --json should run");
@@ -94,6 +97,8 @@ fn extension_search_human_output_escapes_control_characters() {
         "Bad\u{1b}[31mName",
         "Line\rRewrite",
     );
+    let home = temp.path().join("home");
+    fs::create_dir_all(&home).expect("create fake HOME dir");
 
     let output = Command::new(reborn_bin())
         .arg("extension")
@@ -101,6 +106,7 @@ fn extension_search_human_output_escapes_control_characters() {
         .arg("zztest-evil")
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
+        .env("HOME", &home)
         .output()
         .expect("brassclaw-reborn extension search should run");
 
@@ -143,11 +149,17 @@ fn extension_activate_and_remove_json_use_persisted_installation_state() {
 }
 
 fn run_extension_json(reborn_home: &Path, args: &[&str]) -> serde_json::Value {
+    let home = reborn_home
+        .parent()
+        .expect("reborn_home should have a parent temp dir")
+        .join("home");
+    fs::create_dir_all(&home).expect("create fake HOME dir");
     let output = Command::new(reborn_bin())
         .arg("extension")
         .args(args)
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", reborn_home)
+        .env("HOME", &home)
         .output()
         .expect("brassclaw-reborn extension command should run");
 

@@ -670,9 +670,19 @@ async fn start_postgres_and_upgrade_input(
         .map(|s| s.owner_id().to_string())
         .unwrap_or_else(|| "reborn-cli".to_string());
 
+    // Carry over whatever runtime profile was already resolved for the
+    // local-dev input (e.g. `local_safe`, `local_yolo`, `full`) rather than
+    // hardcoding `local_dev` here. Re-deriving a fresh `local_dev` policy on
+    // the Postgres upgrade path would silently downgrade the operator's
+    // explicit profile selection the moment `serve` switches storage
+    // backends — the storage backend and the runtime authority profile are
+    // orthogonal and must not be conflated.
     let reborn_home = boot_config.home().path().to_path_buf();
-    let runtime_policy = brassclaw_reborn_composition::local_dev_runtime_policy()
-        .map_err(|e| anyhow!("failed to resolve local-dev runtime policy: {e}"))?;
+    let runtime_policy = match input.services.as_ref().and_then(|s| s.runtime_policy()) {
+        Some(policy) => policy.clone(),
+        None => brassclaw_reborn_composition::local_dev_runtime_policy()
+            .map_err(|e| anyhow!("failed to resolve local-dev runtime policy: {e}"))?,
+    };
     let pg_input = RebornBuildInput::postgres_with_reborn_home(
         owner_id,
         pool,

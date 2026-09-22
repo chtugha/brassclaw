@@ -9,7 +9,8 @@ use brassclaw_reborn_composition::host_api::RuntimeProfile;
 use brassclaw_reborn_composition::{
     OAuthClientConfig, PollSettings, RebornBuildInput, RebornLocalRuntimeProfileOptions,
     RebornRuntimeIdentity, RebornRuntimeInput, TurnRunnerSettings, build_reborn_runtime,
-    local_dev_yolo_runtime_policy, local_runtime_build_input_with_options,
+    local_dev_yolo_runtime_policy, local_runtime_build_input_for_profile,
+    local_runtime_build_input_with_options,
 };
 use brassclaw_reborn_config::RebornBootConfig;
 use secrecy::SecretString;
@@ -466,32 +467,68 @@ pub(crate) fn build_services_input_with_options(
     };
     // Hard-error if the legacy BRASSCLAW_REBORN_PROFILE var is still set.
     reject_legacy_reborn_profile_env()?;
-    // When BRASSCLAW_RUNTIME_PROFILE=local_yolo is set, request the yolo policy
-    // (which fails closed with YoloRequiresDisclosure when confirm_host_access is
-    // not set).  For any other value, validate the profile (fail-closed for
-    // non-local without BRASSCLAW_PG_URL) and use the default local-dev path.
-    let yolo_from_env = matches!(runtime_profile_from_env()?, Some(RuntimeProfile::LocalYolo));
-    let mut services_input = if yolo_from_env && !options.confirm_host_access {
-        // Force the yolo policy resolution so it emits the proper
-        // YoloRequiresDisclosure error rather than silently falling back.
-        let policy = local_dev_yolo_runtime_policy(false)
-            .map_err(|e| anyhow::anyhow!("{e}"))
-            .with_context(|| "brassclaw-reborn: failed to assemble local-dev-yolo runtime input")?;
-        RebornBuildInput::local_dev(owner_id, local_dev_root).with_runtime_policy(policy)
-    } else {
-        local_runtime_build_input_with_options(
+    // Dispatch on the explicit `BRASSCLAW_RUNTIME_PROFILE` env selection (if
+    // any), then fall back to the CLI-flag-driven choice. Three cases:
+    //
+    // 1. `local_yolo` requested via env without `--yolo` confirmation: force
+    //    the yolo policy resolution so it fails closed with
+    //    `YoloRequiresDisclosure` rather than silently falling back to a
+    //    less-privileged profile.
+    // 2. Any other *local* profile selection (`local_safe`, `local_dev`,
+    //    `local_yolo` with confirmation, or `full`) is honored directly —
+    //    this builder is local-only, and an explicit local selection must
+    //    always win over the CLI-flag default.
+    // 3. Env unset, or set to a non-local profile (out of scope for this
+    //    local-only builder — ignored, matching prior behavior): fall back
+    //    to the CLI-flag-driven choice. `--yolo` still selects `LocalYolo`;
+    //    otherwise the compiled default is `RuntimeProfile::Full`.
+    let profile_from_env = runtime_profile_from_env()?;
+    let mut services_input = match profile_from_env {
+        Some(RuntimeProfile::LocalYolo) if !options.confirm_host_access => {
+            let policy = local_dev_yolo_runtime_policy(false)
+                .map_err(|e| anyhow::anyhow!("{e}"))
+                .with_context(
+                    || "brassclaw-reborn: failed to assemble local-dev-yolo runtime input",
+                )?;
+            RebornBuildInput::local_dev(owner_id, local_dev_root.clone())
+                .with_runtime_policy(policy)
+        }
+        Some(profile) if profile.is_local() => local_runtime_build_input_for_profile(
+            profile,
             owner_id,
-            local_dev_root,
+            local_dev_root.clone(),
             RebornLocalRuntimeProfileOptions {
                 confirm_host_access: options.confirm_host_access,
             },
         )
-        .with_context(|| "brassclaw-reborn: failed to assemble local-dev runtime input")?
+        .with_context(|| format!("brassclaw-reborn: failed to assemble {profile} runtime input"))?,
+        _ if options.confirm_host_access => local_runtime_build_input_with_options(
+            owner_id,
+            local_dev_root.clone(),
+            RebornLocalRuntimeProfileOptions {
+                confirm_host_access: true,
+            },
+        )
+        .with_context(|| "brassclaw-reborn: failed to assemble local-dev-yolo runtime input")?,
+        _ => local_runtime_build_input_for_profile(
+            RuntimeProfile::Full,
+            owner_id,
+            local_dev_root.clone(),
+            RebornLocalRuntimeProfileOptions {
+                confirm_host_access: false,
+            },
+        )
+        .with_context(|| "brassclaw-reborn: failed to assemble full runtime input")?,
     }
     .with_local_dev_workspace_root(workspace_root);
+    emit_full_profile_disclosure_banner(&services_input);
     if services_input.requires_local_dev_confirmed_host_home_root() {
-        let host_home_root =
-            confirmed_host_home_root(options).context("local-dev-yolo host access")?;
+        let resolved_profile = services_input
+            .runtime_policy()
+            .map(|policy| policy.resolved_profile)
+            .unwrap_or(RuntimeProfile::LocalYolo);
+        let host_home_root = confirmed_host_home_root(options, resolved_profile)
+            .context("local-dev-yolo host access")?;
         services_input = services_input.with_local_dev_confirmed_host_home_root(host_home_root);
     }
     if let Some(ResolvedGoogleOAuthConfig {
@@ -594,8 +631,43 @@ pub(crate) fn default_owner_id(
         .unwrap_or("reborn-cli")
 }
 
-fn confirmed_host_home_root(options: RuntimeInputOptions) -> anyhow::Result<PathBuf> {
-    debug_assert!(options.confirm_host_access);
+/// Print a one-time, non-blocking disclosure banner to stderr when the
+/// resolved runtime profile is `RuntimeProfile::Full` — the compiled
+/// default that installs and enables everything (host workspace + home,
+/// provider-host shell, direct network, inherited env, minimal approvals)
+/// without the interactive `LocalYolo` confirmation gate. Unlike
+/// `LocalYolo`'s blocking disclosure, this never stops startup; it only
+/// informs the operator so the authority boundary is visible.
+fn emit_full_profile_disclosure_banner(services_input: &RebornBuildInput) {
+    let Some(policy) = services_input.runtime_policy() else {
+        return;
+    };
+    if policy.resolved_profile != RuntimeProfile::Full {
+        return;
+    }
+    eprintln!(
+        "brassclaw-reborn: runtime profile 'full' is active — host workspace and home \
+         access, provider-host shell, direct network, and minimal approvals are all \
+         enabled by default. Set BRASSCLAW_RUNTIME_PROFILE to a narrower profile \
+         (local_safe, local_dev, local_yolo) to reduce this authority boundary."
+    );
+}
+
+/// Resolve the host home root for profiles whose filesystem backend is
+/// `HostWorkspaceAndHome`. Host home access is granted either through the
+/// caller's explicit `--yolo`/confirm-host-access flag (`LocalYolo`), or
+/// through the `Full` profile's non-blocking-by-design grant (no interactive
+/// confirmation required — see `emit_full_profile_disclosure_banner`).
+/// `resolved_profile` disambiguates the two so the assert reflects the
+/// actual authority-grant contract rather than the raw CLI option alone.
+fn confirmed_host_home_root(
+    options: RuntimeInputOptions,
+    resolved_profile: RuntimeProfile,
+) -> anyhow::Result<PathBuf> {
+    debug_assert!(
+        options.confirm_host_access || resolved_profile == RuntimeProfile::Full,
+        "host home root access requires explicit yolo confirmation or the Full runtime profile"
+    );
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
@@ -665,7 +737,7 @@ pub(crate) fn runtime_profile_from_env() -> anyhow::Result<Option<RuntimeProfile
     let profile: RuntimeProfile = raw.parse().map_err(|_| {
         anyhow::anyhow!(
             "{RUNTIME_PROFILE_ENV}={raw} is not a recognised runtime profile. \
-             Valid values: secure_default, local_safe, local_dev, local_yolo, \
+             Valid values: secure_default, local_safe, local_dev, local_yolo, full, \
              hosted_safe, hosted_dev, hosted_yolo_tenant_scoped, \
              enterprise_safe, enterprise_dev, enterprise_yolo_dedicated, \
              sandboxed, experiment"

@@ -13,8 +13,10 @@ use brassclaw_host_runtime::{
     MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID,
     SHELL_CAPABILITY_ID, SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID,
     SKILL_REMOVE_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID, TIME_CAPABILITY_ID,
-    TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID,
-    WRITE_FILE_CAPABILITY_ID, builtin_first_party_package,
+    TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_GET_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID,
+    TRIGGER_REMOVE_CAPABILITY_ID, TRIGGER_RUN_HISTORY_CAPABILITY_ID,
+    TRIGGER_SET_STATE_CAPABILITY_ID, TRIGGER_UPDATE_CAPABILITY_ID, WRITE_FILE_CAPABILITY_ID,
+    builtin_first_party_package,
 };
 use brassclaw_loop_support::{HostManagedModelMessageRole, HostManagedModelResponse};
 use brassclaw_turns::{TurnStatus, run_profile::LoopHostMilestoneKind};
@@ -49,6 +51,10 @@ const REBORN_FIRST_PARTY_E2E_COVERED_CAPABILITIES: &[&str] = &[
     TRIGGER_CREATE_CAPABILITY_ID,
     TRIGGER_LIST_CAPABILITY_ID,
     TRIGGER_REMOVE_CAPABILITY_ID,
+    TRIGGER_GET_CAPABILITY_ID,
+    TRIGGER_UPDATE_CAPABILITY_ID,
+    TRIGGER_SET_STATE_CAPABILITY_ID,
+    TRIGGER_RUN_HISTORY_CAPABILITY_ID,
     // Phase P §0.22: pure-op (compute_hash / extract_section) coverage — no
     // backend needed for these ops; DB-backed ops (upsert, read_hash, etc.)
     // require a Postgres fixture and are covered by integration tests.
@@ -380,8 +386,16 @@ async fn reborn_trace_trigger_management_first_party_tools_parity() {
     let trigger_create =
         CapabilityId::new(TRIGGER_CREATE_CAPABILITY_ID).expect("valid capability id");
     let trigger_list = CapabilityId::new(TRIGGER_LIST_CAPABILITY_ID).expect("valid capability id");
+    let trigger_get = CapabilityId::new(TRIGGER_GET_CAPABILITY_ID).expect("valid capability id");
+    let trigger_update =
+        CapabilityId::new(TRIGGER_UPDATE_CAPABILITY_ID).expect("valid capability id");
+    let trigger_set_state =
+        CapabilityId::new(TRIGGER_SET_STATE_CAPABILITY_ID).expect("valid capability id");
+    let trigger_run_history =
+        CapabilityId::new(TRIGGER_RUN_HISTORY_CAPABILITY_ID).expect("valid capability id");
     let trigger_remove =
         CapabilityId::new(TRIGGER_REMOVE_CAPABILITY_ID).expect("valid capability id");
+    const UNKNOWN_TRIGGER_ID: &str = "01J00000000000000000000009";
     let model_gateway = RebornTraceReplayModelGateway::with_scripted_steps([
         RebornModelReplayStep::ProviderToolCalls {
             calls: vec![RebornScriptedProviderToolCall::new(
@@ -405,9 +419,44 @@ async fn reborn_trace_trigger_management_first_party_tools_parity() {
         },
         RebornModelReplayStep::ProviderToolCalls {
             calls: vec![RebornScriptedProviderToolCall::new(
+                trigger_get.clone(),
+                "call_trigger_get_first_party",
+                serde_json::json!({"trigger_id": UNKNOWN_TRIGGER_ID}),
+            )],
+            expected_tool_results: Vec::new(),
+        },
+        RebornModelReplayStep::ProviderToolCalls {
+            calls: vec![RebornScriptedProviderToolCall::new(
+                trigger_update.clone(),
+                "call_trigger_update_first_party",
+                serde_json::json!({
+                    "trigger_id": UNKNOWN_TRIGGER_ID,
+                    "name": "Daily trace summary (updated)"
+                }),
+            )],
+            expected_tool_results: Vec::new(),
+        },
+        RebornModelReplayStep::ProviderToolCalls {
+            calls: vec![RebornScriptedProviderToolCall::new(
+                trigger_set_state.clone(),
+                "call_trigger_set_state_first_party",
+                serde_json::json!({"trigger_id": UNKNOWN_TRIGGER_ID, "state": "paused"}),
+            )],
+            expected_tool_results: Vec::new(),
+        },
+        RebornModelReplayStep::ProviderToolCalls {
+            calls: vec![RebornScriptedProviderToolCall::new(
+                trigger_run_history.clone(),
+                "call_trigger_run_history_first_party",
+                serde_json::json!({"trigger_id": UNKNOWN_TRIGGER_ID}),
+            )],
+            expected_tool_results: Vec::new(),
+        },
+        RebornModelReplayStep::ProviderToolCalls {
+            calls: vec![RebornScriptedProviderToolCall::new(
                 trigger_remove.clone(),
                 "call_trigger_remove_first_party",
-                serde_json::json!({"trigger_id": "01J00000000000000000000009"}),
+                serde_json::json!({"trigger_id": UNKNOWN_TRIGGER_ID}),
             )],
             expected_tool_results: Vec::new(),
         },
@@ -443,13 +492,17 @@ async fn reborn_trace_trigger_management_first_party_tools_parity() {
         .expect("final reply");
 
     let invocations = harness.capability_invocations();
-    assert_eq!(invocations.len(), 3);
+    assert_eq!(invocations.len(), 7);
     assert_eq!(invocations[0].capability_id, trigger_create);
     assert_eq!(invocations[1].capability_id, trigger_list);
-    assert_eq!(invocations[2].capability_id, trigger_remove);
+    assert_eq!(invocations[2].capability_id, trigger_get);
+    assert_eq!(invocations[3].capability_id, trigger_update);
+    assert_eq!(invocations[4].capability_id, trigger_set_state);
+    assert_eq!(invocations[5].capability_id, trigger_run_history);
+    assert_eq!(invocations[6].capability_id, trigger_remove);
 
     let results = harness.capability_results();
-    assert_eq!(results.len(), 3);
+    assert_eq!(results.len(), 7);
     let trigger_id = results[0].output["trigger"]["trigger_id"]
         .as_str()
         .expect("created trigger id");
@@ -462,14 +515,26 @@ async fn reborn_trace_trigger_management_first_party_tools_parity() {
         results[1].output["triggers"][0]["trigger_id"],
         serde_json::json!(trigger_id)
     );
-    assert_eq!(results[2].capability_id, trigger_remove);
-    assert_eq!(results[2].output["removed"], serde_json::json!(false));
+    assert_eq!(results[2].capability_id, trigger_get);
+    assert_eq!(results[2].output["trigger"], serde_json::Value::Null);
+    assert_eq!(results[3].capability_id, trigger_update);
+    assert_eq!(results[3].output["found"], serde_json::json!(false));
+    assert_eq!(results[4].capability_id, trigger_set_state);
+    assert_eq!(results[4].output["found"], serde_json::json!(false));
+    assert_eq!(results[5].capability_id, trigger_run_history);
+    assert_eq!(results[5].output["runs"], serde_json::json!([]));
+    assert_eq!(results[6].capability_id, trigger_remove);
+    assert_eq!(results[6].output["removed"], serde_json::json!(false));
 
     let requests = harness.model_requests();
-    assert_eq!(requests.len(), 4);
+    assert_eq!(requests.len(), 8);
     assert_eq!(tool_result_count(&requests[1]), 1);
     assert_eq!(tool_result_count(&requests[2]), 2);
     assert_eq!(tool_result_count(&requests[3]), 3);
+    assert_eq!(tool_result_count(&requests[4]), 4);
+    assert_eq!(tool_result_count(&requests[5]), 5);
+    assert_eq!(tool_result_count(&requests[6]), 6);
+    assert_eq!(tool_result_count(&requests[7]), 7);
     assert_milestone_order(
         &harness.milestones(),
         |kind| matches!(kind, LoopHostMilestoneKind::CapabilityBatchCompleted { .. }),

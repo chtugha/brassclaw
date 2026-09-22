@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-22
+
+### Added
+
+- *(runtime-policy)* **New `RuntimeProfile::Full` variant — the compiled default runtime profile.** Reuses `LocalYolo`'s exact backend tuple (`HostWorkspaceAndHome` filesystem, `LocalHost` process backend, `Direct` network, `InheritedEnv` secrets, `Minimal` approvals, audit logging on) but is reached without `LocalYolo`'s blocking interactive disclosure gate — a non-blocking startup banner (`emit_full_profile_disclosure_banner`) informs the operator instead. `BRASSCLAW_RUNTIME_PROFILE` unset now resolves to `full` rather than `local_dev`; any narrower profile (`local_safe`, `local_dev`, `local_yolo`, `hosted_*`, `enterprise_*`) can still be selected explicitly via the env var. Wired through `brassclaw_host_api::runtime_policy` (`as_str`, `FromStr`, `is_local`/`is_hosted`/`is_enterprise`/`is_yolo`), `brassclaw_runtime_policy::resolver` (compatibility, family rank, backend resolution), `brassclaw_reborn_composition::local_runtime_profile`, and `brassclaw-reborn`'s CLI runtime builder and `runtime-profile list` command (now lists 13 profiles). GitHub release builds require no workflow changes — `full` is a runtime default, not a Cargo feature.
+- *(host-runtime / tests)* Added `production_runtime_policy_denial_blocks_dispatch_even_with_permissive_trust` to `production_trust_contract.rs`, proving `enforce_runtime_policy`'s deny-fast gate blocks capability dispatch on its own even when the independently-evaluated `TrustDecision`/`AuthorityCeiling` would otherwise permit it — confirming the two authority-narrowing systems (`brassclaw_runtime_policy` and `brassclaw_trust`) compose as a sequential AND-gate with no permissive-trust bypass of a runtime-policy denial.
+- *(tests)* Extended first-party-tool e2e coverage to the 4 trigger-management capabilities (`trigger_get`, `trigger_update`, `trigger_set_state`, `trigger_run_history`) that previously had handlers registered but no e2e trace coverage; `reborn_trace_trigger_management_first_party_tools_parity` now exercises all 7 trigger capabilities end-to-end.
+
+### Fixed
+
+- *(cli)* `build_services_input_with_options` previously only honored an explicit `BRASSCLAW_RUNTIME_PROFILE=local_yolo` selection from the environment; any other explicit local profile (`local_safe`, `local_dev`, `full`) was silently ignored in favor of the CLI-flag-driven default. Now every explicit local profile selection is honored directly.
+- *(cli / serve)* `start_postgres_and_upgrade_input`'s Postgres-upgrade path was hardcoding `local_dev_runtime_policy()`, silently discarding the already-resolved runtime profile. Now carries forward the resolved policy from the prior build input.
+- *(approvals / tests)* `approval_resolution_contract.rs` called the `authorize_dispatch` method removed in `1.3.0`'s `CapabilityDispatchAuthorizer` cleanup, breaking the crate's test build. Updated to `authorize_dispatch_with_trust` with an explicit inline `TrustDecision`; added `brassclaw_trust`/`chrono` dev-dependencies.
+- *(cli / tests)* `confirmed_host_home_root`'s `debug_assert!` assumed host-home-root access always required interactive yolo confirmation, firing whenever the new `Full` default (which grants host-home access without that flag, by design) was exercised. The assert is now profile-aware (`options.confirm_host_access || resolved_profile == RuntimeProfile::Full`), and stale test expectations in `smoke.rs` (`runtime-profile list` profile count/default-name) and a pre-existing clap-generated completion-function-name mismatch were updated to match.
+
 ## [1.3.1] - 2026-09-19
 
 ### Changed

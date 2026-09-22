@@ -30,6 +30,31 @@ fn local_test_runtime_policy() -> brassclaw_host_api::runtime_policy::EffectiveR
     .unwrap()
 }
 
+/// A structurally-denying runtime policy: `network_mode = Deny`, which the
+/// planner rejects for any MCP-runtime capability (see
+/// `brassclaw_host_runtime::planner::plan_capability`) regardless of trust.
+/// Every other field stays maximally permissive so that if the runtime-policy
+/// gate were *not* enforced (or were enforced after trust), the permissive
+/// trust policy paired with this in the test below would let dispatch
+/// through — proving the runtime-policy gate alone is what blocks it.
+fn network_denied_runtime_policy() -> brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy {
+    use brassclaw_host_api::runtime_policy::{
+        ApprovalPolicy, AuditMode, DeploymentMode, FilesystemBackendKind, NetworkMode,
+        ProcessBackendKind, RuntimeProfile, SecretMode,
+    };
+    brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy {
+        deployment: DeploymentMode::LocalSingleUser,
+        requested_profile: RuntimeProfile::SecureDefault,
+        resolved_profile: RuntimeProfile::SecureDefault,
+        filesystem_backend: FilesystemBackendKind::ScopedVirtual,
+        process_backend: ProcessBackendKind::None,
+        network_mode: NetworkMode::Deny,
+        secret_mode: SecretMode::BrokeredHandles,
+        approval_policy: ApprovalPolicy::Minimal,
+        audit_mode: AuditMode::LocalMinimal,
+    }
+}
+
 #[tokio::test]
 async fn production_runtime_ignores_caller_supplied_privileged_trust_decision() {
     let registry = Arc::new(registry_with_manifest(LOCAL_INSTALLED_MANIFEST));
@@ -163,6 +188,40 @@ async fn trust_downgrade_denies_future_invocation_before_dispatch_side_effects()
         dispatcher.count(),
         1,
         "downgraded trust must fail closed before any second dispatch side effect"
+    );
+}
+
+#[tokio::test]
+async fn production_runtime_policy_denial_blocks_dispatch_even_with_permissive_trust() {
+    let registry = Arc::new(registry_with_manifest(LOCAL_INSTALLED_MANIFEST));
+    let dispatcher = Arc::new(CountingDispatcher::default());
+    let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> = Arc::new(GrantAuthorizer);
+    let runtime = DefaultHostRuntime::new(
+        Arc::clone(&registry),
+        dispatcher.clone(),
+        authorizer,
+        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
+        network_denied_runtime_policy(),
+    )
+    .with_trust_policy(Arc::new(privileged_local_manifest_policy()));
+
+    let request = RuntimeCapabilityRequest::new(
+        execution_context_with_dispatch_grant(TrustClass::FirstParty),
+        capability_id(),
+        ResourceEstimate::default(),
+        json!({"message": "runtime policy must deny before trust is even consulted"}),
+        sandbox_caller_decision(),
+    );
+
+    let outcome = runtime.invoke_capability(request).await.unwrap();
+
+    assert_authorization_failed(outcome);
+    assert_eq!(
+        dispatcher.count(),
+        0,
+        "a structurally-denying runtime policy must block dispatch even though the \
+         paired trust policy is fully permissive (first-party admin grant) — proving \
+         the runtime-policy gate alone, not trust, is responsible for the denial"
     );
 }
 

@@ -14,7 +14,7 @@ impl StatusCommand {
     pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let home = context.boot_config().home().path().to_path_buf();
         let runtime_profile =
-            std::env::var("BRASSCLAW_RUNTIME_PROFILE").unwrap_or_else(|_| "local_dev".to_string());
+            std::env::var("BRASSCLAW_RUNTIME_PROFILE").unwrap_or_else(|_| "full".to_string());
 
         println!();
         println!("  BrassClaw Status");

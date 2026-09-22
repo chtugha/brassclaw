@@ -158,7 +158,8 @@ const fn is_compatible(deployment: DeploymentMode, profile: RuntimeProfile) -> b
         // Local family — local single-user only.
         (DeploymentMode::LocalSingleUser, RuntimeProfile::LocalSafe)
         | (DeploymentMode::LocalSingleUser, RuntimeProfile::LocalDev)
-        | (DeploymentMode::LocalSingleUser, RuntimeProfile::LocalYolo) => true,
+        | (DeploymentMode::LocalSingleUser, RuntimeProfile::LocalYolo)
+        | (DeploymentMode::LocalSingleUser, RuntimeProfile::Full) => true,
 
         // Hosted family — hosted multi-tenant only.
         (DeploymentMode::HostedMultiTenant, RuntimeProfile::HostedSafe)
@@ -183,6 +184,12 @@ const fn family_rank(profile: RuntimeProfile) -> Option<(ProfileFamily, u8)> {
         RuntimeProfile::LocalSafe => Some((ProfileFamily::Local, 1)),
         RuntimeProfile::LocalDev => Some((ProfileFamily::Local, 2)),
         RuntimeProfile::LocalYolo => Some((ProfileFamily::Local, 3)),
+        // `Full` shares `LocalYolo`'s exact authority boundary but ranks
+        // above it: a `LocalYolo` ceiling (e.g. from an org/blueprint
+        // policy) must still be able to narrow an implicit/explicit `Full`
+        // selection down to `LocalYolo`, preserving the monotonic-reduction
+        // invariant even for the most permissive local profile.
+        RuntimeProfile::Full => Some((ProfileFamily::Local, 4)),
         RuntimeProfile::HostedSafe => Some((ProfileFamily::Hosted, 1)),
         RuntimeProfile::HostedDev => Some((ProfileFamily::Hosted, 2)),
         RuntimeProfile::HostedYoloTenantScoped => Some((ProfileFamily::Hosted, 3)),
@@ -299,6 +306,19 @@ fn backends_for(
             AuditMode::LocalMinimal,
         ),
         LocalYolo => (
+            FilesystemBackendKind::HostWorkspaceAndHome,
+            ProcessBackendKind::LocalHost,
+            NetworkMode::Direct,
+            SecretMode::InheritedEnv,
+            ApprovalPolicy::Minimal,
+            AuditMode::LocalMinimal,
+        ),
+        // `Full` reuses `LocalYolo`'s exact backend tuple — it is the same
+        // authority boundary, reached without the blocking interactive
+        // disclosure gate. The CLI shows a non-blocking startup banner
+        // instead (see `brassclaw_reborn_cli::runtime`). Audit stays on,
+        // matching every other local profile.
+        Full => (
             FilesystemBackendKind::HostWorkspaceAndHome,
             ProcessBackendKind::LocalHost,
             NetworkMode::Direct,
@@ -455,6 +475,7 @@ mod tests {
             RuntimeProfile::SecureDefault,
             RuntimeProfile::LocalSafe,
             RuntimeProfile::LocalDev,
+            RuntimeProfile::Full,
             RuntimeProfile::Sandboxed,
             RuntimeProfile::Experiment,
         ] {
@@ -464,6 +485,61 @@ mod tests {
             assert_eq!(policy.resolved_profile, profile);
             assert!(!policy.was_reduced());
         }
+    }
+
+    #[test]
+    fn full_resolves_without_yolo_disclosure_and_matches_local_yolo_backends() {
+        // `Full` shares `LocalYolo`'s exact authority boundary but must not
+        // require `yolo_disclosure_acknowledged` — it is reached via a
+        // non-blocking startup banner, not the interactive yolo gate.
+        let policy = resolve(req(DeploymentMode::LocalSingleUser, RuntimeProfile::Full))
+            .expect("Full must resolve without yolo disclosure");
+        assert_eq!(policy.resolved_profile, RuntimeProfile::Full);
+
+        let yolo_policy = resolve(req_yolo(
+            DeploymentMode::LocalSingleUser,
+            RuntimeProfile::LocalYolo,
+        ))
+        .unwrap();
+
+        assert_eq!(policy.filesystem_backend, yolo_policy.filesystem_backend);
+        assert_eq!(policy.process_backend, yolo_policy.process_backend);
+        assert_eq!(policy.network_mode, yolo_policy.network_mode);
+        assert_eq!(policy.secret_mode, yolo_policy.secret_mode);
+        assert_eq!(policy.approval_policy, yolo_policy.approval_policy);
+        assert_eq!(policy.audit_mode, yolo_policy.audit_mode);
+    }
+
+    #[test]
+    fn full_is_rejected_under_hosted_and_enterprise_deployments() {
+        for deployment in [
+            DeploymentMode::HostedMultiTenant,
+            DeploymentMode::EnterpriseDedicated,
+        ] {
+            assert!(matches!(
+                resolve(req(deployment, RuntimeProfile::Full)),
+                Err(ResolveError::IncompatibleDeployment { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn local_yolo_ceiling_narrows_full_selection() {
+        // An org/blueprint ceiling of `LocalYolo` must still be able to cap
+        // an implicit or explicit `Full` selection — `Full` ranks above
+        // `LocalYolo` in `family_rank` specifically so this narrowing path
+        // exists.
+        let request = ResolveRequest {
+            org_policy: OrgPolicyConstraints {
+                max_profile: Some(RuntimeProfile::LocalYolo),
+                ..OrgPolicyConstraints::default()
+            },
+            ..ResolveRequest::new(DeploymentMode::LocalSingleUser, RuntimeProfile::Full)
+        };
+        let policy = resolve(request).unwrap();
+        assert_eq!(policy.requested_profile, RuntimeProfile::Full);
+        assert_eq!(policy.resolved_profile, RuntimeProfile::LocalYolo);
+        assert!(policy.was_reduced());
     }
 
     #[test]

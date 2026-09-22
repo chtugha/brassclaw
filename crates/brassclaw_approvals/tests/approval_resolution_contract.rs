@@ -4,6 +4,8 @@ use brassclaw_authorization::*;
 use brassclaw_events::{AuditSink, EventError, InMemoryAuditSink};
 use brassclaw_host_api::*;
 use brassclaw_run_state::*;
+use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
+use chrono::Utc;
 
 #[tokio::test]
 async fn approving_pending_dispatch_request_issues_scoped_capability_lease() {
@@ -307,8 +309,19 @@ async fn lease_from_approved_request_is_resume_only_and_not_plain_authority() {
         .unwrap();
 
     let authorizer = LeaseBackedAuthorizer::new(&leases);
+    let trust_decision = TrustDecision {
+        effective_trust: EffectiveTrustClass::sandbox(),
+        authority_ceiling: AuthorityCeiling::empty(),
+        provenance: TrustProvenance::Default,
+        evaluated_at: Utc::now(),
+    };
     let decision = authorizer
-        .authorize_dispatch(&context, &descriptor, &ResourceEstimate::default())
+        .authorize_dispatch_with_trust(
+            &context,
+            &descriptor,
+            &ResourceEstimate::default(),
+            &trust_decision,
+        )
         .await;
 
     assert!(matches!(
