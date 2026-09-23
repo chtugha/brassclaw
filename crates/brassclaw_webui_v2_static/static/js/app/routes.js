@@ -1,3 +1,5 @@
+import { SETTINGS_SECTIONS } from "../pages/settings/lib/settings-schema.js";
+
 export const defaultRoute = "/chat";
 
 // `hidden: true` keeps the route registered (direct URL access and
@@ -30,33 +32,34 @@ export const routeSectionDefs = [
   },
 ];
 
-export const SETTINGS_SUB_ROUTES = [
-  // Inference is un-hidden: its lib/*-api.js (LLM providers) now calls the real
-  // v2 `/api/webchat/v2/llm/*` endpoints, per the unhide rule in the header
-  // comment above. The rest stay hidden until their api libs leave stub state.
-  { id: "inference", labelKey: "settings.inference", icon: "spark" },
-  // { id: "agent", labelKey: "settings.agent", icon: "bolt" },
-  // { id: "channels", labelKey: "settings.channels", icon: "send" },
-  // { id: "networking", labelKey: "settings.networking", icon: "pulse" },
-  { id: "tool-permissions",      labelKey: "settings.toolPermissions",     icon: "tool"     },
-  // Phase 6 — component catalog tabs (class-coded entries).
-  { id: "skills",           labelKey: "settings.skills",          icon: "file"     },
-  { id: "actions",          labelKey: "settings.actions",         icon: "bolt"     },
-  { id: "orchestrator",     labelKey: "settings.orchestrators",   icon: "layers"   },
-  { id: "scaffold",         labelKey: "settings.scaffolds",       icon: "layers"   },
-  { id: "monty-vm",         labelKey: "settings.montyVm",         icon: "pulse"    },
-  { id: "mcp-server",       labelKey: "settings.mcpServer",       icon: "pulse"    },
-  { id: "validation-queue", labelKey: "settings.validationQueue", icon: "check"    },
-  { id: "reliability",      labelKey: "settings.reliability",     icon: "clock"    },
-  { id: "interceptor",      labelKey: "settings.interceptor",     icon: "flag"     },
-  { id: "prefix",           labelKey: "settings.prefix",          icon: "moon"     },
-  { id: "safety",           labelKey: "settings.safety",          icon: "lock"     },
-  // { id: "tokens", labelKey: "settings.tokens", icon: "calendar" },
-  // Removed: global token settings are superseded by per-provider token
-  // settings in the provider dialog. The global endpoint has been removed.
-  // { id: "users", labelKey: "settings.users", icon: "logout" },
-  { id: "language",         labelKey: "settings.language",        icon: "sun"      },
-];
+// Settings tabs kept out of the sidebar. The route stays registered, so
+// direct URL access still renders the tab; it just isn't advertised. Per
+// the `hidden` rule above, drop an id from this set once its page-level
+// api lib calls real endpoints.
+const HIDDEN_SETTINGS_TABS = new Set([
+  "agent",
+  "channels",
+  "networking",
+  // Superseded by per-provider token settings in the provider dialog.
+  "tokens",
+]);
+
+// Derived from `SETTINGS_SECTIONS`, the single source of truth for the
+// settings tab set (`pages/settings/lib/settings-schema.js`). Keeping a
+// hand-maintained copy here is what made the v3 component-catalog tabs
+// reachable only by direct URL: the schema gained them, this list did not.
+// `sectionKey` rides along so the sidebar can group entries the same way
+// the schema does.
+export const SETTINGS_SUB_ROUTES = SETTINGS_SECTIONS.flatMap((section) =>
+  section.tabs
+    .filter((tab) => !HIDDEN_SETTINGS_TABS.has(tab.id))
+    .map((tab) => ({
+      id: tab.id,
+      labelKey: tab.labelKey,
+      icon: tab.icon,
+      sectionKey: section.sectionKey,
+    }))
+);
 
 export const EXTENSIONS_SUB_ROUTES = [
   { id: "installed", labelKey: "extensions.installed", icon: "bolt" },

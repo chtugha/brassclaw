@@ -9,6 +9,10 @@
 pub(crate) struct Asset {
     pub bytes: &'static [u8],
     pub content_type: &'static str,
+    /// Quoted strong validator derived from the file bytes at build
+    /// time. Lets the browser revalidate instead of heuristically
+    /// reusing a previous release's copy of the same URL.
+    pub etag: &'static str,
 }
 
 include!(concat!(env!("OUT_DIR"), "/assets_generated.rs"));

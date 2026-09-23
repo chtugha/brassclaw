@@ -38,11 +38,14 @@ fn main() {
         }
         let content_type = content_type_for(abs_path);
         let include_path = abs_path.to_string_lossy();
+        let bytes = fs::read(abs_path).expect("read asset bytes"); // safety: build script — fail build on read error
+        let etag = format!("\"{:016x}\"", fnv1a64(&bytes));
         src.push_str(&format!(
-            "    (\"{}\", Asset {{ bytes: include_bytes!(r\"{}\"), content_type: {:?} }}),\n",
+            "    (\"{}\", Asset {{ bytes: include_bytes!(r\"{}\"), content_type: {:?}, etag: {:?} }}),\n",
             escape_url(rel_url),
             include_path,
             content_type,
+            etag,
         ));
     }
     src.push_str("];\n\n");
@@ -79,6 +82,18 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
             out.push((url, path));
         }
     }
+}
+
+/// FNV-1a 64 over the asset bytes. Not a security primitive — it only
+/// has to change when the file changes, so the browser revalidates an
+/// upgraded bundle instead of serving the previous release's module.
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 fn content_type_for(path: &Path) -> &'static str {

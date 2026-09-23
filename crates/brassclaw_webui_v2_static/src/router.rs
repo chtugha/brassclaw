@@ -12,7 +12,7 @@
 use axum::Router;
 use axum::body::Body;
 use axum::extract::Path as AxumPath;
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use rand::RngCore;
@@ -92,11 +92,14 @@ pub async fn serve_root() -> Response {
 /// table. Falls back to the SPA shell for client-side routes (any
 /// path that has no file extension), 404 for unknown asset paths
 /// that do look like asset requests.
-pub async fn serve_wildcard(AxumPath(path): AxumPath<String>) -> Response {
-    serve_for_path(&path)
+pub async fn serve_wildcard(AxumPath(path): AxumPath<String>, headers: HeaderMap) -> Response {
+    let if_none_match = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok());
+    serve_for_path(&path, if_none_match)
 }
 
-fn serve_for_path(path: &str) -> Response {
+fn serve_for_path(path: &str, if_none_match: Option<&str>) -> Response {
     // Sanitize against `..` traversal segments even though the URL
     // table is a closed set; defense in depth keeps a future routing
     // change from leaking arbitrary file content if a host
@@ -111,7 +114,7 @@ fn serve_for_path(path: &str) -> Response {
     }
 
     if let Some(asset) = assets::lookup(path) {
-        return asset_response(asset.bytes, asset.content_type);
+        return asset_response(asset, if_none_match);
     }
 
     // Unknown path that does not look like a real asset request
@@ -184,15 +187,53 @@ fn render_index_with_nonce() -> Response {
     response
 }
 
-fn asset_response(bytes: &'static [u8], content_type: &'static str) -> Response {
-    let mut response = Response::new(Body::from(bytes));
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        // content_type strings come from build.rs and are static
-        // ASCII; from_static cannot panic on the values we emit.
-        HeaderValue::from_static(content_type),
-    );
+fn asset_response(asset: &'static assets::Asset, if_none_match: Option<&str>) -> Response {
+    // Asset URLs are not content-hashed, so a release that changes a
+    // module keeps the same URL. Without a validator the browser is
+    // free to reuse its heuristically-cached copy and the upgraded
+    // bundle never loads — `no-cache` forces a conditional request on
+    // every load, and the build-time ETag turns the common case into
+    // a cheap 304.
+    let mut response = if etag_matches(if_none_match, asset.etag) {
+        let mut not_modified = Response::new(Body::empty());
+        *not_modified.status_mut() = StatusCode::NOT_MODIFIED;
+        not_modified
+    } else {
+        let mut ok = Response::new(Body::from(asset.bytes));
+        ok.headers_mut().insert(
+            header::CONTENT_TYPE,
+            // content_type strings come from build.rs and are static
+            // ASCII; from_static cannot panic on the values we emit.
+            HeaderValue::from_static(asset.content_type),
+        );
+        ok
+    };
     response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    response
+        .headers_mut()
+        // etag strings come from build.rs and are quoted lowercase hex.
+        .insert(header::ETAG, HeaderValue::from_static(asset.etag));
+    response
+}
+
+/// `If-None-Match` per RFC 9110 §13.1.2: `*` matches anything, and a
+/// comma-separated list matches if any member equals our validator.
+/// A `W/` prefix is tolerated — weak comparison is the correct
+/// semantics for a cache revalidation of a whole representation.
+fn etag_matches(if_none_match: Option<&str>, etag: &str) -> bool {
+    let Some(header) = if_none_match else {
+        return false;
+    };
+    let header = header.trim();
+    if header == "*" {
+        return true;
+    }
+    header
+        .split(',')
+        .map(|candidate| candidate.trim().trim_start_matches("W/"))
+        .any(|candidate| candidate == etag)
 }
 
 fn generate_nonce() -> String {
@@ -258,6 +299,66 @@ mod tests {
             .map(|v| v.to_str().unwrap().to_string())
             .unwrap_or_default();
         assert!(ct.starts_with("text/css"), "got `{ct}`");
+    }
+
+    #[tokio::test]
+    async fn assets_revalidate_and_honor_if_none_match() {
+        // Without a validator the browser heuristically caches an
+        // asset URL and keeps serving the previous release's module
+        // after an upgrade — the failure mode that made v1.4.3 look
+        // unchanged on the test machine. Drive it through the router,
+        // not `etag_matches`, so a future change that stops wiring
+        // the request header into the comparison is caught.
+        let app = static_router();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/styles/app.css")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|v| v.to_str().ok()),
+            Some("no-cache")
+        );
+        let etag = response
+            .headers()
+            .get(header::ETAG)
+            .expect("etag on asset response")
+            .to_str()
+            .expect("etag ascii")
+            .to_string();
+        assert!(etag.starts_with('"') && etag.ends_with('"'), "got `{etag}`");
+
+        let revalidated = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/styles/app.css")
+                    .header(header::IF_NONE_MATCH, &etag)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
+        assert!(body_string(revalidated).await.is_empty());
+    }
+
+    #[test]
+    fn etag_matches_handles_lists_wildcards_and_misses() {
+        assert!(etag_matches(Some("*"), "\"abc\""));
+        assert!(etag_matches(Some("\"zzz\", W/\"abc\""), "\"abc\""));
+        assert!(!etag_matches(Some("\"zzz\""), "\"abc\""));
+        assert!(!etag_matches(None, "\"abc\""));
     }
 
     #[tokio::test]

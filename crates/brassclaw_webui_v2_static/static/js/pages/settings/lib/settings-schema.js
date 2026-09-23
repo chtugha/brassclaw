@@ -7,6 +7,7 @@ export const SETTINGS_SECTIONS = [
       { id: "channels",    labelKey: "settings.channels",    icon: "send"     },
       { id: "networking",  labelKey: "settings.networking",  icon: "plug"     },
       { id: "monty-vm",    labelKey: "settings.montyVm",     icon: "pulse"    },
+      { id: "mcp-server",  labelKey: "settings.mcpServer",   icon: "plug"     },
       { id: "tokens",      labelKey: "settings.tokens",      icon: "calendar" },
       { id: "language",    labelKey: "settings.language",    icon: "sun"      },
     ],

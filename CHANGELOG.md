@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-09-23
+
+### Fixed
+
+- *(webui / navigation)* **The v1.4.3 Component Catalog tabs were unreachable from the sidebar.** The WebUI had two competing definitions of the settings tab set: `SETTINGS_SECTIONS` in `pages/settings/lib/settings-schema.js` (which the v3 work updated) and a hand-maintained duplicate `SETTINGS_SUB_ROUTES` in `app/routes.js` (which it did not). Only the latter feeds `sidebar-nav.js` and `page-header.js`, so the new Tools / ToolSkills / PythonCode / Recipes / Extension Catalogues / Docs / Security tabs rendered correctly by direct URL but never appeared in navigation — the reason v1.4.3 looked unchanged after upgrade. `SETTINGS_SUB_ROUTES` is now *derived* from `SETTINGS_SECTIONS` so the two cannot drift again, carrying `sectionKey` through so the sidebar renders the schema's four-section grouping (Runtime Config / Component Catalog / Security & Governance / Access & Ops). Deliberately-suppressed stub tabs are preserved via an explicit `HIDDEN_SETTINGS_TABS` set rather than silently unhidden.
+- *(webui / caching)* **Static assets shipped with no cache validator.** `asset_response` set only `Content-Type` — no `cache-control`, no `etag`, no `last-modified` — so browsers heuristically cached JS modules with nothing to revalidate against and kept serving the previous release's bundle across upgrades. Assets now carry `cache-control: no-cache` plus a build-time content ETag (FNV-1a over the file bytes, emitted by `build.rs`), and conditional requests matching it get a `304`.
+- *(webui / i18n)* Added the missing German strings for the new settings sections and Component Catalog tabs (the UI fell back to English for them).
+
+### Removed
+
+- *(webui)* Deleted `pages/settings/components/settings-tabs.js`. It rendered `SETTINGS_SECTIONS` but nothing imported it — the dead duplicate that made the stale nav list look correct on inspection.
+
 ## [1.4.3] - 2026-09-23
 
 ### Removed

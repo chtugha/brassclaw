@@ -77,25 +77,40 @@ function ExpandableNavItem({ route, label, subRoutes, onNavigate }) {
       ${isExpanded &&
       html`
         <div className="mt-0.5 flex flex-col gap-0.5 pl-3">
-          ${subRoutes.map(
-            (sub) => html`
-              <${NavLink}
-                key=${sub.id}
-                to=${route.path + "/" + sub.id}
-                onClick=${onNavigate}
-                className=${({ isActive }) =>
-                  cn(
-                    "flex items-center gap-2.5 rounded-[8px] py-1.5 pl-7 pr-3 text-[12px] font-medium",
-                    isActive
-                      ? "text-[var(--v2-accent-text)]"
-                      : "text-[var(--v2-text-muted)] hover:bg-[var(--v2-surface-muted)] hover:text-[var(--v2-text-strong)]"
-                  )}
-              >
-                <${Icon} name=${sub.icon} className="h-3 w-3 shrink-0" />
-                <span className="min-w-0 truncate">${t(sub.labelKey)}</span>
+          ${subRoutes.map((sub, index) => {
+            // Sub-routes arrive flat but carry the `sectionKey` of the
+            // group they belong to; emit a header whenever it changes so
+            // the sidebar mirrors the schema's grouping.
+            const showHeader =
+              Boolean(sub.sectionKey) &&
+              sub.sectionKey !== subRoutes[index - 1]?.sectionKey;
+            return html`
+              <${React.Fragment} key=${sub.id}>
+                ${showHeader &&
+                html`
+                  <div
+                    className="px-3 pb-0.5 pl-7 pt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-text-faint)]"
+                  >
+                    ${t(sub.sectionKey)}
+                  </div>
+                `}
+                <${NavLink}
+                  to=${route.path + "/" + sub.id}
+                  onClick=${onNavigate}
+                  className=${({ isActive }) =>
+                    cn(
+                      "flex items-center gap-2.5 rounded-[8px] py-1.5 pl-7 pr-3 text-[12px] font-medium",
+                      isActive
+                        ? "text-[var(--v2-accent-text)]"
+                        : "text-[var(--v2-text-muted)] hover:bg-[var(--v2-surface-muted)] hover:text-[var(--v2-text-strong)]"
+                    )}
+                >
+                  <${Icon} name=${sub.icon} className="h-3 w-3 shrink-0" />
+                  <span className="min-w-0 truncate">${t(sub.labelKey)}</span>
+                <//>
               <//>
-            `
-          )}
+            `;
+          })}
         </div>
       `}
     </div>
