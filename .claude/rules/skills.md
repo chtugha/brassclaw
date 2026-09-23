@@ -2,59 +2,44 @@
 paths:
   - "crates/brassclaw_skills/**"
 ---
-# Skills System
+# Skills
 
-`SKILL.md` files extend the agent's prompt with domain-specific instructions. Each skill is a YAML frontmatter block (metadata, activation criteria, required tools) followed by a markdown body injected into the LLM context.
+A Skill is a **v3 component** (class codes 1/2/3) — orchestrator-facing prose that
+describes one task pattern. Skills live in `reborn_skills`, scoped to
+`(tenant_id, user_id, agent_id, project_id)`, and are injected into the base prompt by
+`PgBasicPromptStore`. Classes 10 (Orchestrator) and 50 (Scaffold) share the same table
+and are distinguished only by `class_code`.
 
-Skills in the v3 Reborn stack are stored in the database (`brassclaw_skills` crate, `PgSkillStore`) scoped to `(tenant_id, user_id, agent_id)`. They are also importable from bundled `.md` files at boot time via `crates/brassclaw_reborn_composition/src/skill_import.rs`.
+## The v1 SKILL.md Subsystem Is Gone
 
-## Trust Model
+`SKILL.md` files, the `/skills` and `/system/skills` install roots, the host-FS registry,
+the remote catalog, the gating/scoring/selection/attenuation pipeline, the
+`skill_list` / `skill_search` / `skill_install` / `skill_install_url` / `skill_remove`
+first-party tools, the `skill_install` / `skill_remove` lifecycle commands, the "Skill
+Packages" WebUI tab, and the repo-root `skills/` directory have all been removed.
 
-| Trust Level | Source | Tool Access |
-|-------------|--------|-------------|
-| **Trusted** | Agent-scoped DB-stored skills (user-owned) | All tools available to the agent |
-| **Installed** | Downloaded from registry or URL, stored with provenance metadata | Read-only tools only (no shell, file write, HTTP) |
+Do not reintroduce a filesystem skill-loading path. Authoring a skill means inserting a
+class-1/2/3 row through the component pipeline (Q1 automated → Q2 human review), or
+seeding it as `source = "system"` in `builtin_bootstrap.rs`.
 
-## SKILL.md Format
+## What This Crate Still Owns
 
-```yaml
----
-name: my-skill
-version: 0.1.0
-description: Does something useful
-activation:
-  patterns:
-    - "deploy to.*production"
-  keywords:
-    - "deployment"
-  exclude_keywords:
-    - "rollback"
-  tags:
-    - "devops"
-  max_context_tokens: 2000
-requires:
-  bins: [docker, kubectl]
-  env: [KUBECONFIG]
----
+- `types` / `v2` — `SkillManifest`, `LoadedSkill`, `V2SkillMetadata`, and related data
+  structures.
+- `validation` — name validation, `escape_skill_content`, credential-spec validation,
+  safe relative-path normalization.
+- `db_store` (feature `db-store`) — the `reborn_skills` reader/writer used by
+  `brassclaw_engine`'s `db_skill_loader`.
+- `component_type` — the class-code component taxonomy.
 
-# Skill instructions here...
-```
+## Content Safety
 
-Only the top-level `requires:` block is supported. The legacy nested shape
-`metadata.openclaw.requires` is unsupported and ignored by the current parser.
+Every skill body is passed through `escape_skill_content` on insert
+(`DbSkillStore::insert`). The injection wrapper in `db_skill_loader` applies it again as
+defence in depth; the function is idempotent for content with no raw `<skill` tags.
 
-## Selection Pipeline (`crates/brassclaw_skills/src/selector.rs`)
+## Validation
 
-1. **Gating** (`gating.rs`) — Check binary/env/config requirements; skip skills whose prerequisites are missing
-2. **Scoring** — Deterministic scoring: keywords (10/5 pts, cap 30) + patterns (20 pts, cap 40) + tags (3 pts, cap 15). `exclude_keywords` veto (score = 0 if any present). Pattern (regex) scoring is gated on a runtime config flag; when disabled, regex activation contributes 0 and only keywords/tags/explicit mentions can select a skill.
-3. **Budget** — Select top-scoring skills within `SKILLS_MAX_TOKENS` prompt budget
-4. **Attenuation** — Minimum trust across active skills determines tool ceiling; installed skills lose dangerous tools
-
-## Skill Tools
-
-First-party tools registered in `crates/brassclaw_host_runtime/src/first_party_tools/` handle:
-- `skill_list` — List all discovered skills with trust level and status
-- `skill_search` — Search registry for available skills
-- `skill_install` — Install a skill from raw SKILL.md content or registry
-- `skill_install_url` — Fetch and install a skill from an HTTPS raw SKILL.md, ZIP bundle, or supported GitHub repository/tree URL
-- `skill_remove` — Remove an installed skill
+- `cargo test -p brassclaw_skills`
+- `cargo test -p brassclaw_skills --all-features` after touching `db_store`
+- `cargo test -p brassclaw_architecture` after dependency or public-API changes

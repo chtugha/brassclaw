@@ -268,27 +268,6 @@ impl RebornServicesApi for StubServices {
     > {
         unreachable!("test does not drive update_capability_permission")
     }
-    async fn list_skills(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
-        unreachable!("test does not drive list_skills")
-    }
-    async fn install_skill(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _content: String,
-        _source_url: Option<String>,
-    ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError> {
-        unreachable!("test does not drive install_skill")
-    }
-    async fn remove_skill(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _name: String,
-    ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError> {
-        unreachable!("test does not drive remove_skill")
-    }
 }
 
 // ─── stub OAuth provider ──────────────────────────────────────────────

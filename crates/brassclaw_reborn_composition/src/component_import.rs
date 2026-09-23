@@ -17,7 +17,8 @@
 //! | Note     | reborn_notes       | 20         |
 //!
 //! Notes:
-//! - `DocType::Skill` is handled by `skill_import.rs` (already migrated).
+//! - `DocType::Skill` rows are no longer imported; v3 Skill components are
+//!   seeded by `builtin_bootstrap.rs` or authored through the component APIs.
 //! - `DocType::Recipe` is handled by `PgRecipeStoreFacade` / V033.
 //! - `DocType::Docu` (class 17, `reborn_docus`) has no legacy `DocType` variant;
 //!   `reborn_docus` rows are created fresh and are NOT migrated from V016.

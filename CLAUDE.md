@@ -210,12 +210,15 @@ BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons,
 | 0 | Tool | `reborn_tools` |
 | 1 | Leaf Skill (Rusty) | `reborn_skills` |
 | 2 | Domain Skill (Monty) | `reborn_skills` |
+| 3 | Skill (LLM) | `reborn_skills` |
+| 4–9 | Extension package (`rusty` 4, `monty` 5, `mcp_server` 6, `mcp_client` 7, `llm` 8, `misc` 9) | `reborn_extensions_unified` |
 | 10 | Orchestrator | `reborn_skills` (filtered by `class_code = 10`) |
-| 11 | Actions | `reborn_actions` |
 | 12 | Spec | `reborn_specs` |
 | 13 | ToolSkill | `reborn_tool_skills` |
 | 14 | Plan | `reborn_plans` |
 | 15 | Summary | `reborn_summaries` |
+| 16 | Actions | `reborn_actions` |
+| 17 | Docu | `reborn_docus` |
 | 18 | Lesson | `reborn_lessons` |
 | 19 | Issue | `reborn_issues` |
 | 20 | Note | `reborn_notes` |
@@ -225,6 +228,8 @@ BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons,
 | 50 | Scaffold | `reborn_skills` (filtered by `class_code = 50`) |
 
 Classes 10 and 50 are **not** separate tables — Orchestrator and Scaffold rows live in `reborn_skills` alongside classes 1–3, distinguished only by `class_code`. Any caller that queries a nonexistent `reborn_orchestrators`/`reborn_scaffolds` table is buggy.
+
+Class **11 is unallocated** (`class_code_to_table` returns `None`) — Actions are class **16**. The `class_code_to_table_matches_claude_md_table` test in `retrieval_source.rs` parses the table above and fails if it drifts from the code again.
 
 `reborn_component_catalog` (`crates/brassclaw_pg/migrations/V084__reborn_component_catalog_view.sql`) is a read-only Postgres **VIEW** — not a table — that `UNION ALL`s the 14 prompt-bearing class tables above (excluding `reborn_tools`, class 0, which carries no prompt text) into one relation for ad hoc querying. It intentionally does not bake in per-request scope/validation filtering (tenant/user/agent/project scope, `validation_status = 'validated'`, consumer-tag checks) — callers apply their own `WHERE` clause on top, exactly as `PgSettingsListingService::list()` does per-table.
 
@@ -602,7 +607,7 @@ crates/
 │   └── brassclaw_embeddings/       # Embedding providers, hybrid search (FTS + vector + RRF)
 │
 ├── Skills
-│   └── brassclaw_skills/           # SKILL.md discovery, scoring, selection, attenuation
+│   └── brassclaw_skills/           # v3 Skill component types, validation, reborn_skills store
 │
 ├── Safety and security
 │   └── brassclaw_safety/           # Prompt injection, validation, leak detection, policy
@@ -627,8 +632,6 @@ crates/
 │   └── brassclaw_architecture/     # Architectural invariant tests
 │
 └── (additional shared utility crates)
-
-skills/                             # SKILL.md files (trusted user skills)
 
 tests/
 ├── *.rs                            # Integration tests
@@ -661,20 +664,18 @@ BrassClaw Reborn targets 7B-14B LLMs within an 8,192-token context window.
 | Budget item | Tokens |
 |-------------|--------|
 | Total context | 8,192 |
-| Skills budget | 2,048 |
+| Base prompt (prefix + injected components) | 2,048 |
 | Remaining for history, tools, response | ~6,144 |
 
-Compaction is triggered when the in-context history would exceed the budget. Workspace memory (persistent, chunked, searchable) is the mechanism for retaining information across compaction boundaries. Skills are selected to fit within the 2,048-token budget; overflow skills are dropped by priority order.
+Compaction is triggered when the in-context history would exceed the budget. Workspace memory (persistent, chunked, searchable) is the mechanism for retaining information across compaction boundaries.
 
-## Skills System
+## Skills
 
-SKILL.md files extend the agent's prompt with domain-specific instructions.
-
-- **Trust model**: Trusted (user-placed in `~/.brassclaw/skills/` or workspace `skills/`, full tool access) vs Installed (registry, read-only tools)
-- **Selection pipeline**: gating (check bin/env/config requirements) -> scoring (keywords/patterns/tags) -> budget (fit within 2,048 tokens) -> attenuation (trust-based tool ceiling)
-- **Skill tools**: `skill_list`, `skill_search`, `skill_install`, `skill_remove`
-
-See `.claude/rules/skills.md` for full details.
+Skills are v3 components (class codes 1/2/3) stored in `reborn_skills` and injected
+into the base prompt by `PgBasicPromptStore`. There is no SKILL.md subsystem: the v1
+filesystem install/discovery path, its first-party tools (`skill_list`, `skill_search`,
+`skill_install`, `skill_remove`), the `/skills` package UI, and the repo-root `skills/`
+directory were all removed. See `.claude/rules/skills.md`.
 
 ## Configuration
 

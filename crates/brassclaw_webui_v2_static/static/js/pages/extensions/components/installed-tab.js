@@ -2,34 +2,33 @@
  * InstalledTab — shows the recipe-system ExtensionCatalogue entries (class 23)
  * that are seeded into the orchestrator at boot.
  *
- * Data source: GET /api/settings/extensions  → { items: SettingsComponentSummary[] }
+ * Data source: GET /api/settings/extension-catalogues
+ *              → { items: SettingsComponentSummary[] } over `reborn_extension_catalogues`.
  *
- * The catalogue IDs map to three logical sections:
- *   • Core capabilities  — builtin-filesystem / -network / -memory / -process / -management
+ * `item.id` is the row UUID; the stable slug seeded by `builtin_bootstrap.rs` /
+ * `zencoder_bootstrap.rs` is `item.name` — all grouping keys off `name`.
+ *
+ * Sections:
+ *   • Core capabilities  — every `builtin-*` catalogue (filesystem, network, memory,
+ *                          process, management, host)
  *   • Workflow domains   — ext-coding, ext-commit, ext-github, ext-code-review,
  *                          ext-qa-review, ext-security-review, ext-plan-mode
  *   • Integrations       — ext-zencoder, ext-doc-sync
- *
- * Individual per-tool sub-catalogues (ext-read-file, ext-http, …) are filtered
- * out — they are visible in the Settings › Extensions detail view.
+ *   • Other              — everything else (per-tool sub-catalogues such as
+ *                          ext-read-file / ext-http, plus operator- and
+ *                          Sempai-authored catalogues), so nothing is hidden.
  */
 import { React, html } from "../../../lib/html.js";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "../../../design-system/badge.js";
 import { useT } from "../../../lib/i18n.js";
-import { fetchSettingsExtensions } from "../../settings/lib/settings-api.js";
+import { fetchSettingsExtensionCatalogues } from "../../settings/lib/settings-api.js";
 
-// ── Section membership ────────────────────────────────────────────────────────
+// ── Section membership (keyed by catalogue `name`) ────────────────────────────
 
-const CORE_IDS = new Set([
-  "builtin-filesystem",
-  "builtin-network",
-  "builtin-memory",
-  "builtin-process",
-  "builtin-management",
-]);
+const CORE_PREFIX = "builtin-";
 
-const WORKFLOW_IDS = new Set([
+const WORKFLOW_NAMES = new Set([
   "ext-coding",
   "ext-commit",
   "ext-github",
@@ -39,13 +38,13 @@ const WORKFLOW_IDS = new Set([
   "ext-plan-mode",
 ]);
 
-const INTEGRATION_IDS = new Set([
+const INTEGRATION_NAMES = new Set([
   "ext-zencoder",
   "ext-doc-sync",
 ]);
 
-// Human-readable fallback labels for well-known IDs (backend descriptions are
-// used when present; these are the last-resort fallbacks).
+// Human-readable fallback labels for well-known catalogues (backend
+// descriptions are used when present; these are the last-resort fallbacks).
 const KNOWN_DESCRIPTIONS = {
   "builtin-filesystem":    "File read, write, list, glob, grep, and patch operations.",
   "builtin-network":       "HTTP requests, web search, and file-saving from URLs.",
@@ -69,6 +68,7 @@ const KNOWN_LABELS = {
   "builtin-memory":        "Memory",
   "builtin-process":       "Process",
   "builtin-management":    "Management",
+  "builtin-host":          "Host Runtime",
   "ext-coding":            "Coding",
   "ext-commit":            "Git Commit",
   "ext-github":            "GitHub",
@@ -82,20 +82,20 @@ const KNOWN_LABELS = {
 
 // ── Section order ─────────────────────────────────────────────────────────────
 
-const SECTION_ORDER = ["core", "workflow", "integration"];
+const SECTION_ORDER = ["core", "workflow", "integration", "other"];
 
-function sectionFor(id) {
-  if (CORE_IDS.has(id)) return "core";
-  if (WORKFLOW_IDS.has(id)) return "workflow";
-  if (INTEGRATION_IDS.has(id)) return "integration";
-  return null;
+function sectionFor(name) {
+  if (typeof name === "string" && name.startsWith(CORE_PREFIX)) return "core";
+  if (WORKFLOW_NAMES.has(name)) return "workflow";
+  if (INTEGRATION_NAMES.has(name)) return "integration";
+  return "other";
 }
 
 // ── Card ──────────────────────────────────────────────────────────────────────
 
 function ExtCatalogueCard({ item, t }) {
-  const label = KNOWN_LABELS[item.id] || item.name;
-  const description = item.description || KNOWN_DESCRIPTIONS[item.id] || "";
+  const label = KNOWN_LABELS[item.name] || item.name;
+  const description = item.description || KNOWN_DESCRIPTIONS[item.name] || "";
   const isValidated = item.validation_status === "validated";
 
   return html`
@@ -113,9 +113,9 @@ function ExtCatalogueCard({ item, t }) {
         </span>
       </div>
 
-      ${item.id && html`
+      ${item.name && html`
         <div className="mt-1 font-mono text-[10px] text-[var(--v2-text-faint)]">
-          ${item.id}
+          ${item.name}
         </div>
       `}
 
@@ -166,8 +166,8 @@ export function InstalledTab() {
   const t = useT();
 
   const query = useQuery({
-    queryKey: ["settings-extensions-catalogue"],
-    queryFn: fetchSettingsExtensions,
+    queryKey: ["settings-extension-catalogues"],
+    queryFn: fetchSettingsExtensionCatalogues,
     staleTime: 60_000,
   });
 
@@ -185,10 +185,7 @@ export function InstalledTab() {
 
   const allItems = query.data?.items || [];
 
-  // Only show domain-level catalogues (filter out per-tool sub-catalogues).
-  const known = allItems.filter((item) => sectionFor(item.id) !== null);
-
-  if (known.length === 0) {
+  if (allItems.length === 0) {
     return html`
       <div className="v2-panel rounded-[18px] p-6 sm:p-8">
         <h3 className="text-lg font-semibold text-[var(--v2-text-strong)]">
@@ -203,8 +200,8 @@ export function InstalledTab() {
 
   // Group by section preserving SECTION_ORDER.
   const bySection = {};
-  for (const item of known) {
-    const s = sectionFor(item.id);
+  for (const item of allItems) {
+    const s = sectionFor(item.name);
     if (!bySection[s]) bySection[s] = [];
     bySection[s].push(item);
   }

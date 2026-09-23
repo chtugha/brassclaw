@@ -16,7 +16,6 @@ pub(crate) mod runtime_profile;
 pub(crate) mod secrets;
 pub(crate) mod serve;
 pub(crate) mod serve_sso;
-pub(crate) mod skills;
 pub(crate) mod status;
 pub(crate) mod traces;
 pub(crate) mod user_directory;
@@ -55,8 +54,6 @@ pub(crate) enum Command {
     Secrets(secrets::SecretsCommand),
     /// Start the Reborn WebUI service.
     Serve(serve::ServeCommand),
-    /// Inspect configured Reborn skills.
-    Skills(skills::SkillsCommand),
     /// Print system health and configuration summary.
     Status(status::StatusCommand),
     /// Manage trace contributions to TraceCommons.
@@ -97,9 +94,6 @@ impl Command {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
             Self::Serve(command) => {
-                command.execute(crate::context::RebornCliContext::resolve_from_env()?)
-            }
-            Self::Skills(command) => {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
             Self::Status(command) => {

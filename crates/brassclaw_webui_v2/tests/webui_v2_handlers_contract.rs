@@ -57,15 +57,16 @@ use brassclaw_product_workflow::{
     RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
     RebornTimelineResponse, RebornUpdateAutomationResponse, RecordOutcomeRequest,
     RecordOutcomeResponse, ReductionRuleConfigView, ReductionRulesRequest, ReductionRulesResponse,
-    RuleType, SetActiveLlmRequest, SettingsListResponse, TokenSettingsResponse, ToolSkillDetail,
-    UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateInterceptorConfigRequest,
-    UpdateMontyVmSettingsRequest, UpdateTokenSettingsRequest, UpdateValidationStatusRequest,
-    UpdateValidationStatusResponse, UpsertLlmProviderRequest, ValidationQueueCountResponse,
-    ValidationQueueFilter, ValidationQueueItem, ValidationQueueListResponse,
-    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateAutomationRequest,
-    WebUiCreateThreadRequest, WebUiListAutomationsRequest, WebUiListThreadsRequest,
-    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetAutomationStateRequest,
-    WebUiSetupExtensionRequest, WebUiUpdateAutomationRequest,
+    RuleType, SetActiveLlmRequest, SettingsComponentDetail, SettingsListResponse,
+    TokenSettingsResponse, ToolSkillDetail, UpdateChatPreferenceRequest,
+    UpdateChatPreferenceResponse, UpdateInterceptorConfigRequest, UpdateMontyVmSettingsRequest,
+    UpdateTokenSettingsRequest, UpdateValidationStatusRequest, UpdateValidationStatusResponse,
+    UpsertLlmProviderRequest, ValidationQueueCountResponse, ValidationQueueFilter,
+    ValidationQueueItem, ValidationQueueListResponse, WebUiAuthenticatedCaller,
+    WebUiCancelRunRequest, WebUiCreateAutomationRequest, WebUiCreateThreadRequest,
+    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
+    WebUiSendMessageRequest, WebUiSetAutomationStateRequest, WebUiSetupExtensionRequest,
+    WebUiUpdateAutomationRequest,
 };
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
@@ -153,7 +154,13 @@ struct StubServices {
     get_token_settings_calls: Mutex<Vec<(WebUiAuthenticatedCaller, String)>>,
     update_token_settings_calls: Mutex<Vec<(String, UpdateTokenSettingsRequest)>>,
     next_token_settings_response: Mutex<Option<Result<TokenSettingsResponse, RebornServicesError>>>,
+    get_settings_component_calls: Mutex<Vec<(String, String)>>,
+    /// `(class_code, component_id, new_status, feedback)` for every
+    /// generalized validation-status transition (Q2 validate / reject).
+    update_component_validation_calls: Mutex<Vec<ComponentValidationCall>>,
 }
+
+type ComponentValidationCall = (u16, String, String, Option<String>);
 
 impl StubServices {
     fn fail_create_thread(&self, error: RebornServicesError) {
@@ -652,52 +659,6 @@ impl RebornServicesApi for StubServices {
         })
     }
 
-    async fn list_skills(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
-        use brassclaw_product_workflow::{RebornListSkillsResponse, RebornSkillInfo};
-        Ok(RebornListSkillsResponse {
-            skills: vec![RebornSkillInfo {
-                name: "test-skill".to_string(),
-                version: "1.0.0".to_string(),
-                description: "A test skill".to_string(),
-                source: "system".to_string(),
-                keywords: vec!["test".to_string()],
-                tags: vec![],
-                requires_skills: vec![],
-            }],
-        })
-    }
-
-    async fn install_skill(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _content: String,
-        _source_url: Option<String>,
-    ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError> {
-        use brassclaw_product_workflow::RebornSkillInstallResult;
-        Ok(RebornSkillInstallResult {
-            name: "test-skill".to_string(),
-            source: "user".to_string(),
-            success: true,
-            message: "installed".to_string(),
-        })
-    }
-
-    async fn remove_skill(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _name: String,
-    ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError> {
-        use brassclaw_product_workflow::RebornSkillRemoveResult;
-        Ok(RebornSkillRemoveResult {
-            name: "test-skill".to_string(),
-            success: true,
-            message: "removed".to_string(),
-        })
-    }
-
     async fn list_reduction_rules(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -1081,14 +1042,6 @@ impl RebornServicesApi for StubServices {
         })
     }
 
-    async fn export_skill_as_skill_md(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _skill_id: String,
-    ) -> Result<String, RebornServicesError> {
-        Ok("---\nname: stub-skill\n---\n\nStub body.".to_string())
-    }
-
     async fn create_automation(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -1161,6 +1114,50 @@ impl RebornServicesApi for StubServices {
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<SettingsListResponse, RebornServicesError> {
         Ok(SettingsListResponse { items: Vec::new() })
+    }
+
+    async fn get_settings_component(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        component_type: String,
+        id: String,
+    ) -> Result<SettingsComponentDetail, RebornServicesError> {
+        self.get_settings_component_calls
+            .lock()
+            .expect("lock")
+            .push((component_type.clone(), id.clone()));
+        Ok(SettingsComponentDetail {
+            id,
+            class_code: 21,
+            component: serde_json::json!({ "component_type": component_type }),
+        })
+    }
+
+    async fn update_component_validation_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        new_status: &str,
+        feedback: Option<String>,
+    ) -> Result<UpdateValidationStatusResponse, RebornServicesError> {
+        self.update_component_validation_calls
+            .lock()
+            .expect("lock")
+            .push((
+                class_code,
+                component_id.to_string(),
+                new_status.to_string(),
+                feedback,
+            ));
+        Ok(UpdateValidationStatusResponse {
+            id: component_id.to_string(),
+            item_type: brassclaw_product_workflow::RecipeKind::Recipe,
+            previous_status: "auto_passed".to_string(),
+            new_status: new_status.to_string(),
+            review_attempts: 1,
+        })
     }
 }
 
@@ -1810,7 +1807,7 @@ async fn install_extension_rejects_non_extension_package_kind_with_400() {
                 .uri("/api/webchat/v2/extensions/install")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    r#"{"package_ref":{"kind":"skill","id":"nearai-mcp"}}"#,
+                    r#"{"package_ref":{"kind":"mcp","id":"nearai-mcp"}}"#,
                 ))
                 .expect("request"),
         )
@@ -2476,30 +2473,6 @@ async fn stream_events_releases_slot_when_facade_drain_stalls_past_max_lifetime(
             brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse,
             RebornServicesError,
         > {
-            unreachable!("not exercised by this test")
-        }
-        async fn list_skills(
-            &self,
-            _caller: WebUiAuthenticatedCaller,
-        ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError>
-        {
-            unreachable!("not exercised by this test")
-        }
-        async fn install_skill(
-            &self,
-            _caller: WebUiAuthenticatedCaller,
-            _content: String,
-            _source_url: Option<String>,
-        ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError>
-        {
-            unreachable!("not exercised by this test")
-        }
-        async fn remove_skill(
-            &self,
-            _caller: WebUiAuthenticatedCaller,
-            _name: String,
-        ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError>
-        {
             unreachable!("not exercised by this test")
         }
     }
@@ -3815,6 +3788,147 @@ async fn get_settings_scaffolds_returns_ok() {
         .expect("oneshot");
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_settings_component_dispatches_recipe_path_segments() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/recipes/3f0f1a6c-1c3f-4a1b-9c6d-0b4a1f2e3d44")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["id"], "3f0f1a6c-1c3f-4a1b-9c6d-0b4a1f2e3d44");
+    assert_eq!(body["class_code"], 21);
+    assert_eq!(body["component"]["component_type"], "recipes");
+
+    let calls = services
+        .get_settings_component_calls
+        .lock()
+        .expect("lock")
+        .clone();
+    assert_eq!(
+        calls,
+        vec![(
+            "recipes".to_string(),
+            "3f0f1a6c-1c3f-4a1b-9c6d-0b4a1f2e3d44".to_string()
+        )]
+    );
+}
+
+/// The Q2 reject action must carry the operator's reason through to the
+/// service layer — a rejection with no feedback tells the author nothing.
+#[tokio::test]
+async fn reject_component_forwards_operator_feedback() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/webchat/v2/components/22/pc-exec-demo/reject?project_id=default")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "feedback": "body calls open() — forbidden at Q1" })
+                        .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["new_status"], "rejected");
+
+    let calls = services
+        .update_component_validation_calls
+        .lock()
+        .expect("lock")
+        .clone();
+    assert_eq!(
+        calls,
+        vec![(
+            22,
+            "pc-exec-demo".to_string(),
+            "rejected".to_string(),
+            Some("body calls open() — forbidden at Q1".to_string()),
+        )]
+    );
+}
+
+#[tokio::test]
+async fn get_settings_component_dispatches_python_code_path_segments() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/python-code/8a5cd8e2-6f5a-4a0e-9a3d-7c1f5b2e9a10")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["component"]["component_type"], "python-code");
+
+    let calls = services
+        .get_settings_component_calls
+        .lock()
+        .expect("lock")
+        .clone();
+    assert_eq!(
+        calls,
+        vec![(
+            "python-code".to_string(),
+            "8a5cd8e2-6f5a-4a0e-9a3d-7c1f5b2e9a10".to_string()
+        )]
+    );
+}
+
+/// The detail route is a two-segment wildcard under `/api/settings`; the
+/// static sibling paths must keep winning the match.
+#[tokio::test]
+async fn get_settings_component_does_not_shadow_static_settings_paths() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/monty-vm/status")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        services
+            .get_settings_component_calls
+            .lock()
+            .expect("lock")
+            .is_empty(),
+        "static path must not reach the component detail handler"
+    );
 }
 
 #[tokio::test]

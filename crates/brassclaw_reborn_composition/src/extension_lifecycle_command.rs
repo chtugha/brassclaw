@@ -34,7 +34,7 @@ pub async fn execute_reborn_extension_lifecycle_command(
         .local_runtime
         .as_ref()
         .ok_or(RebornExtensionLifecycleCommandError::LocalRuntimeUnavailable)?;
-    let mut facade = RebornLocalLifecycleFacade::new(local_runtime.skill_management.clone());
+    let mut facade = RebornLocalLifecycleFacade::new();
     if let Some(extension_management) = &local_runtime.extension_management {
         facade = facade.with_extension_management(extension_management.clone());
     }

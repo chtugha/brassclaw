@@ -12,8 +12,7 @@ mod tests {
     use brassclaw_host_runtime::{
         APPLY_PATCH_CAPABILITY_ID, GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID,
         HTTP_SAVE_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID,
-        READ_FILE_CAPABILITY_ID, SHELL_CAPABILITY_ID, SKILL_INSTALL_CAPABILITY_ID,
-        SKILL_LIST_CAPABILITY_ID, SKILL_REMOVE_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID,
+        READ_FILE_CAPABILITY_ID, SHELL_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID,
         WRITE_FILE_CAPABILITY_ID,
     };
     use brassclaw_loop_support::HostManagedModelMessage;
@@ -365,10 +364,8 @@ mod tests {
             .as_ref()
             .expect("extension management")
             .clone();
-        let facade = crate::lifecycle::RebornLocalLifecycleFacade::new(
-            local_runtime.skill_management.clone(),
-        )
-        .with_extension_management(extension_management);
+        let facade = crate::lifecycle::RebornLocalLifecycleFacade::new()
+            .with_extension_management(extension_management);
         for extension_id in ["gmail", "google-calendar"] {
             let package_ref =
                 LifecyclePackageRef::new(LifecyclePackageKind::Extension, extension_id)
@@ -609,9 +606,6 @@ mod tests {
 
         assert!(capability_ids.contains(&WRITE_FILE_CAPABILITY_ID));
         assert!(capability_ids.contains(&APPLY_PATCH_CAPABILITY_ID));
-        assert!(capability_ids.contains(&SKILL_LIST_CAPABILITY_ID));
-        assert!(capability_ids.contains(&SKILL_INSTALL_CAPABILITY_ID));
-        assert!(capability_ids.contains(&SKILL_REMOVE_CAPABILITY_ID));
         assert!(capability_ids.contains(&SHELL_CAPABILITY_ID));
         assert!(capability_ids.contains(&HTTP_CAPABILITY_ID));
         assert!(capability_ids.contains(&HTTP_SAVE_CAPABILITY_ID));
@@ -773,39 +767,6 @@ mod tests {
         assert_eq!(read_file_grant.constraints.mounts, workspace_mounts);
         assert_eq!(
             read_file_grant.constraints.network,
-            NetworkPolicy::default()
-        );
-
-        let skill_install_grant = grant_for(SKILL_INSTALL_CAPABILITY_ID);
-        assert_eq!(
-            skill_install_grant.constraints.allowed_effects,
-            vec![
-                EffectKind::DispatchCapability,
-                EffectKind::ReadFilesystem,
-                EffectKind::WriteFilesystem,
-                EffectKind::DeleteFilesystem,
-                EffectKind::Network
-            ]
-        );
-        assert_eq!(skill_install_grant.constraints.mounts, skill_mounts);
-        assert_eq!(
-            skill_install_grant.constraints.network,
-            local_dev_shell_network_policy
-        );
-
-        let skill_remove_grant = grant_for(SKILL_REMOVE_CAPABILITY_ID);
-        assert_eq!(
-            skill_remove_grant.constraints.allowed_effects,
-            vec![
-                EffectKind::DispatchCapability,
-                EffectKind::ReadFilesystem,
-                EffectKind::WriteFilesystem,
-                EffectKind::DeleteFilesystem
-            ]
-        );
-        assert_eq!(skill_remove_grant.constraints.mounts, skill_mounts);
-        assert_eq!(
-            skill_remove_grant.constraints.network,
             NetworkPolicy::default()
         );
     }
@@ -1048,82 +1009,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_dev_capability_port_skill_install_writes_user_skill_root() {
-        let dir = tempfile::tempdir().expect("tempdir"); // safety: test-only setup in #[cfg(test)] module.
-        let storage_root = dir.path().join("local-dev");
-        let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
-            "local-dev-skill-port-owner",
-            storage_root.clone(),
-        ))
-        .await
-        .expect("local-dev services build"); // safety: test-only assertion in #[cfg(test)] module.
-        let runtime = services.host_runtime.clone().expect("host runtime"); // safety: test-only assertion in #[cfg(test)] module.
-        let local_runtime = services
-            .local_runtime
-            .as_ref()
-            .expect("local runtime substrate"); // safety: test-only assertion in #[cfg(test)] module.
-        let workspace_mounts = local_runtime.workspace_mounts.clone();
-        let skill_mounts = local_runtime.skill_mounts.clone();
-        let policy = Arc::new(
-            crate::local_dev_capability_policy::local_dev_capability_policy()
-                .expect("policy parses"),
-        );
-        let capability_io = Arc::new(LocalDevCapabilityIo::default());
-        let input_resolver: Arc<dyn LoopCapabilityInputResolver> = capability_io.clone();
-        let result_writer: Arc<dyn LoopCapabilityResultWriter> = capability_io.clone();
-        let factory = LocalDevLoopCapabilityPortFactory {
-            runtime,
-            fallback_user_id: UserId::new("local-dev-skill-port-user").expect("user id"), // safety: literal test id is valid.
-            policy,
-            workspace_mounts,
-            skill_mounts,
-            memory_mounts: local_runtime.memory_mounts.clone(),
-            extension_surface_source: LocalDevExtensionSurfaceSource::default(),
-            input_resolver,
-            result_writer,
-            milestone_sink: Arc::new(InMemoryLoopHostMilestoneSink::default()),
-        };
-        let run_context = run_context("skill-install-write").await;
-        let port = factory
-            .create_capability_port(&run_context)
-            .await
-            .expect("capability port"); // safety: test-only assertion in #[cfg(test)] module.
-        let surface = port
-            .visible_capabilities(VisibleCapabilityRequest {})
-            .await
-            .expect("visible surface"); // safety: test-only assertion in #[cfg(test)] module.
-        let content =
-            "---\nname: qa-smoke-skill\ndescription: qa smoke skill\n---\nqa skill loaded\n";
-        let input_ref = capability_io
-            .register_provider_tool_call_input(
-                &run_context,
-                &provider_tool_call(serde_json::json!({ "content": content })),
-            )
-            .await
-            .expect("input ref"); // safety: test-only assertion in #[cfg(test)] module.
-
-        let outcome = port
-            .invoke_capability(CapabilityInvocation {
-                surface_version: surface.version,
-                capability_id: CapabilityId::new(SKILL_INSTALL_CAPABILITY_ID)
-                    .expect("skill_install capability id"), // safety: built-in capability id is a valid literal.
-                input_ref,
-            })
-            .await
-            .expect("skill_install invocation"); // safety: test-only assertion in #[cfg(test)] module.
-
-        let CapabilityOutcome::Completed(completed) = outcome else {
-            panic!("expected completed skill_install invocation, got {outcome:?}");
-        };
-        let output = capability_io
-            .result_output(completed.result_ref.as_str())
-            .expect("result output lookup") // safety: test-only assertion in #[cfg(test)] module.
-            .expect("result output"); // safety: test-only assertion in #[cfg(test)] module.
-        assert_eq!(output["installed"], serde_json::json!(true));
-        assert!(storage_root.join("skills/qa-smoke-skill/SKILL.md").exists());
-    }
-
-    #[tokio::test]
     async fn local_dev_capability_port_omits_host_disclosure_without_confirmed_host_mount() {
         let dir = tempfile::tempdir().expect("tempdir"); // safety: test-only setup in #[cfg(test)] module.
         let storage_root = dir.path().join("local-dev");
@@ -1274,10 +1159,8 @@ mod tests {
                 .as_ref()
                 .expect("extension management")
                 .clone();
-            let facade = crate::lifecycle::RebornLocalLifecycleFacade::new(
-                local_runtime.skill_management.clone(),
-            )
-            .with_extension_management(extension_management);
+            let facade = crate::lifecycle::RebornLocalLifecycleFacade::new()
+                .with_extension_management(extension_management);
             let package_ref =
                 LifecyclePackageRef::new(LifecyclePackageKind::Extension, "google-calendar")
                     .expect("valid google-calendar ref");
@@ -1367,10 +1250,8 @@ mod tests {
             .as_ref()
             .expect("extension management")
             .clone();
-        let facade = crate::lifecycle::RebornLocalLifecycleFacade::new(
-            local_runtime.skill_management.clone(),
-        )
-        .with_extension_management(extension_management);
+        let facade = crate::lifecycle::RebornLocalLifecycleFacade::new()
+            .with_extension_management(extension_management);
         let package_ref =
             LifecyclePackageRef::new(LifecyclePackageKind::Extension, "google-calendar")
                 .expect("valid google-calendar ref");

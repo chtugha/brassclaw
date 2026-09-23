@@ -14,7 +14,6 @@ publish = false
 async-trait = "0.1"
 futures = "0.3"
 brassclaw_host_api = { path = "../brassclaw_host_api" }
-brassclaw_skills = { path = "../brassclaw_skills" }
 brassclaw_turns = { path = "../brassclaw_turns" }
 thiserror = "2"
 tracing = "0.1"

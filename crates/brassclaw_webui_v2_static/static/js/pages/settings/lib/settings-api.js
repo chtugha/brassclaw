@@ -94,20 +94,6 @@ export function updateToolPermission(toolId, mode) {
     body: JSON.stringify({ capability_id: toolId, permission_mode: mode }),
   });
 }
-export function fetchSkills() {
-  return apiFetch("/api/webchat/v2/skills");
-}
-export function installSkill(payload) {
-  return apiFetch("/api/webchat/v2/skills/install", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-export function removeSkill(name) {
-  return apiFetch(`/api/webchat/v2/skills/${encodeURIComponent(name)}`, {
-    method: "DELETE",
-  });
-}
 export function fetchUsers() {
   return Promise.resolve({ users: [], todo: true });
 }
@@ -182,6 +168,12 @@ export function regeneratePrefix(name) {
 }
 
 // Phase 6 — Settings UI: component library endpoints (10-tab editor).
+// Note: `/api/settings/skills` returns every `reborn_skills` row — classes
+// 1/2/3 plus 10 (Orchestrator) and 50 (Scaffold) — because `SPEC_SKILLS` has
+// no class filter. Callers must narrow by `class_code` themselves.
+export function fetchSettingsSkills() {
+  return apiFetch("/api/settings/skills");
+}
 export function fetchSettingsExtensions() {
   return apiFetch("/api/settings/extensions");
 }
@@ -205,6 +197,28 @@ export function fetchSettingsPythonCode() {
 }
 export function fetchSettingsExtensionCatalogues() {
   return apiFetch("/api/settings/extension-catalogues");
+}
+// Class-0 Tool catalog (`reborn_tools`) — the registered capability
+// descriptors, distinct from the runtime permission editor on
+// `/api/webchat/v2/tools`.
+export function fetchSettingsToolCatalog() {
+  return apiFetch("/api/settings/tools");
+}
+// One catalog row in full: { id, class_code, component } where `component`
+// is the whole DB row as opaque JSON. `componentType` is the endpoint
+// segment (`recipes`, `tool-skills`, `orchestrators`, …), not the tab id.
+export function fetchSettingsComponentDetail(componentType, id) {
+  return apiFetch(
+    `/api/settings/${encodeURIComponent(componentType)}/${encodeURIComponent(id)}`
+  );
+}
+// The whole catalog's wiring: { nodes: [{id, name, class_code,
+// validation_status}], edges: [{from, to, kind, channel, step_ref,
+// step_label}] }. Fetched once and indexed client-side, because a reverse
+// reference ("which Recipes include this PythonCode") is only answerable
+// with every Recipe's step_descriptions in hand.
+export function fetchSettingsComponentGraph() {
+  return apiFetch("/api/settings/component-graph");
 }
 
 // Phase 6 — Monty VM settings + lifecycle.
@@ -275,6 +289,10 @@ export function rejectComponent(classCode, componentId, feedback) {
 }
 
 // Phase M.6 — intent inputs CRUD (per-component intent expression surface).
+// No caller yet: the mounted surface (intent-template-preview-panel.js) is the
+// client-only live-feedback half of M.6, and the save/upsert half waits on the
+// recipe/variant editor and project-id threading. Retained because the routes
+// are live server-side and this is their only client binding.
 // Backed by the v2 settings intent-inputs routes (handlers.rs). The upsert
 // re-seeds via `seed_intent_input` server-side, which populates the V076
 // `is_template` / `template_prefix` / `template_suffix` columns via

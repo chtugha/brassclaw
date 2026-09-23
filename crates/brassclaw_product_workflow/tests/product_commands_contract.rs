@@ -4,8 +4,8 @@ use brassclaw_product_adapters::{
     InboundCommandPayload, ProductRejectionKind, ProductTriggerReason,
 };
 use brassclaw_product_workflow::{
-    LifecyclePackageId, LifecyclePackageKind, LifecyclePackageRef, LifecycleProductAction,
-    ProductCommand, ProductModelCommand, product_command_descriptors,
+    LifecyclePackageKind, LifecyclePackageRef, LifecycleProductAction, ProductCommand,
+    ProductModelCommand, product_command_descriptors,
 };
 
 #[test]
@@ -98,18 +98,6 @@ fn command_payload_maps_all_declared_commands_and_unknown_fallback() {
             Some("extension_install"),
         ),
         (
-            "skill_install",
-            r#"{"name":"review-helper","content":"---\nname: review-helper\n---\nUse review helper."}"#,
-            ProductCommand::Lifecycle {
-                action: LifecycleProductAction::SkillInstall {
-                    name: Some(LifecyclePackageId::new("review-helper").unwrap()),
-                    content: "---\nname: review-helper\n---\nUse review helper.".to_string(),
-                },
-            },
-            "skill_install",
-            Some("skill_install"),
-        ),
-        (
             "model",
             "",
             ProductCommand::Model {
@@ -181,35 +169,9 @@ fn lifecycle_command_parser_handles_json_forms_and_rejects_malformed_refs() {
         }
     );
 
-    for arguments in [r#"{"id":"review-helper"}"#, r#"{"name":"review-helper"}"#] {
-        let payload =
-            InboundCommandPayload::new("skill_remove", arguments, ProductTriggerReason::BotCommand)
-                .expect("valid command payload");
-        assert_eq!(
-            ProductCommand::from_payload(&payload).expect("parse skill remove command"),
-            ProductCommand::Lifecycle {
-                action: LifecycleProductAction::SkillRemove {
-                    package_ref: brassclaw_product_workflow::LifecyclePackageRef::new(
-                        LifecyclePackageKind::Skill,
-                        "review-helper",
-                    )
-                    .unwrap(),
-                },
-            }
-        );
-    }
-
     for (command, arguments) in [
-        ("skill_remove", ""),
+        ("extension_remove", ""),
         ("extension_install", r#"{"id":"git\nhub"}"#),
-        (
-            "skill_install",
-            r#"{"content":"---\nname: nul-skill\n---\nNo\u0000pe."}"#,
-        ),
-        (
-            "skill_install",
-            &format!(r#"{{"content":"{}"}}"#, "x".repeat(64 * 1024 + 1)),
-        ),
     ] {
         let payload = InboundCommandPayload {
             command: command.to_string(),
@@ -272,15 +234,6 @@ fn lifecycle_command_parser_maps_every_lifecycle_command_variant() {
                 },
             },
         ),
-        (
-            "skill_search",
-            "review",
-            ProductCommand::Lifecycle {
-                action: LifecycleProductAction::SkillSearch {
-                    query: "review".to_string(),
-                },
-            },
-        ),
     ];
 
     for (command, arguments, expected) in cases {
@@ -309,43 +262,6 @@ fn lifecycle_refs_validate_during_deserialization() {
 }
 
 #[test]
-fn lifecycle_command_parser_rejects_invalid_skill_install_name() {
-    let payload = InboundCommandPayload {
-        command: "skill_install".to_string(),
-        arguments: r#"{"name":"bad\nname","content":"---\nname: bad-name\n---\nUse bad name."}"#
-            .to_string(),
-        trigger: ProductTriggerReason::BotCommand,
-    };
-
-    let rejection = ProductCommand::from_payload(&payload).expect_err("invalid skill name");
-    assert_eq!(rejection.kind, ProductRejectionKind::InvalidRequest);
-}
-
-#[test]
-fn lifecycle_command_parser_preserves_skill_install_content() {
-    let content = "---\nname: review-helper\n---\nUse review helper.\n";
-    let payload = InboundCommandPayload {
-        command: "skill_install".to_string(),
-        arguments: serde_json::json!({
-            "name": "review-helper",
-            "content": content,
-        })
-        .to_string(),
-        trigger: ProductTriggerReason::BotCommand,
-    };
-
-    assert_eq!(
-        ProductCommand::from_payload(&payload).expect("parse skill install command"),
-        ProductCommand::Lifecycle {
-            action: LifecycleProductAction::SkillInstall {
-                name: Some(LifecyclePackageId::new("review-helper").unwrap()),
-                content: content.to_string(),
-            },
-        }
-    );
-}
-
-#[test]
 fn command_registry_declares_model_without_source_policy() {
     let model = product_command_descriptors()
         .find(|descriptor| descriptor.name == "model")
@@ -367,9 +283,6 @@ fn command_registry_declares_canonical_lifecycle_commands() {
         "extension_activate",
         "extension_configure",
         "extension_remove",
-        "skill_search",
-        "skill_install",
-        "skill_remove",
     ] {
         assert!(names.contains(&name), "missing lifecycle command {name}");
     }

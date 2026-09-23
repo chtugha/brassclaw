@@ -32,24 +32,22 @@ use brassclaw_product_workflow::{
     RebornCreateThreadResponse, RebornDeleteAutomationResponse, RebornDeleteThreadRequest,
     RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
     RebornExtensionRegistryResponse, RebornFireAutomationNowResponse, RebornGetAutomationResponse,
-    RebornInstallSkillRequest, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
-    RebornListSkillsResponse, RebornListThreadsResponse, RebornResolveGateResponse,
-    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
-    RebornSetupExtensionResponse, RebornSkillInstallResult, RebornSkillRemoveResult,
-    RebornStreamEventsRequest, RebornSubmitTurnResponse, RebornTimelineRequest,
-    RebornTimelineResponse, RebornUpdateAutomationResponse,
-    RebornUpdateCapabilityPermissionRequest, RebornUpdateCapabilityPermissionResponse,
-    RecipeDetail, RecipeListResponse, RecordOutcomeRequest, RecordOutcomeResponse,
-    SecurityModeConfig, SetActiveLlmRequest, SettingsListResponse, ToolSkillDetail,
-    ToolSkillListResponse, UpdateChatPreferenceRequest, UpdateChatPreferenceResponse,
-    UpdateDocusRequest, UpdateInterceptorConfigRequest, UpdateMcpServerSettingsRequest,
-    UpdateMontyVmSettingsRequest, UpdateValidationStatusRequest, UpdateValidationStatusResponse,
-    UpsertLlmProviderRequest, ValidationQueueCountResponse, ValidationQueueFilter,
-    ValidationQueueListResponse, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
-    WebUiCreateAutomationRequest, WebUiCreateThreadRequest, WebUiInboundValidationCode,
-    WebUiInboundValidationError, WebUiListAutomationsRequest, WebUiListThreadsRequest,
-    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetAutomationStateRequest,
-    WebUiSetupExtensionRequest, WebUiUpdateAutomationRequest,
+    RebornListAutomationsResponse, RebornListCapabilitiesResponse, RebornListThreadsResponse,
+    RebornResolveGateResponse, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
+    RebornServicesErrorKind, RebornSetupExtensionResponse, RebornStreamEventsRequest,
+    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
+    RebornUpdateAutomationResponse, RebornUpdateCapabilityPermissionRequest,
+    RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
+    RecordOutcomeRequest, RecordOutcomeResponse, SecurityModeConfig, SetActiveLlmRequest,
+    SettingsListResponse, ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
+    UpdateChatPreferenceResponse, UpdateDocusRequest, UpdateInterceptorConfigRequest,
+    UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest, UpdateValidationStatusRequest,
+    UpdateValidationStatusResponse, UpsertLlmProviderRequest, ValidationQueueCountResponse,
+    ValidationQueueFilter, ValidationQueueListResponse, WebUiAuthenticatedCaller,
+    WebUiCancelRunRequest, WebUiCreateAutomationRequest, WebUiCreateThreadRequest,
+    WebUiInboundValidationCode, WebUiInboundValidationError, WebUiListAutomationsRequest,
+    WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
+    WebUiSetAutomationStateRequest, WebUiSetupExtensionRequest, WebUiUpdateAutomationRequest,
 };
 use futures::SinkExt;
 use futures::stream::Stream;
@@ -1042,45 +1040,6 @@ pub async fn update_tool_permission(
     Ok(Json(response))
 }
 
-/// `GET /api/webchat/v2/skills`
-///
-/// List all installed and system skills available to the authenticated caller.
-pub async fn list_skills(
-    State(state): State<WebUiV2State>,
-    Extension(caller): Extension<WebUiAuthenticatedCaller>,
-) -> Result<Json<RebornListSkillsResponse>, WebUiV2HttpError> {
-    let response = state.services().list_skills(caller).await?;
-    Ok(Json(response))
-}
-
-/// `POST /api/webchat/v2/skills/install`
-///
-/// Install a skill from its SKILL.md content.
-/// Body shape: [`RebornInstallSkillRequest`].
-pub async fn install_skill(
-    State(state): State<WebUiV2State>,
-    Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Json(body): Json<RebornInstallSkillRequest>,
-) -> Result<Json<RebornSkillInstallResult>, WebUiV2HttpError> {
-    let result = state
-        .services()
-        .install_skill(caller, body.content, body.source_url)
-        .await?;
-    Ok(Json(result))
-}
-
-/// `DELETE /api/webchat/v2/skills/{name}`
-///
-/// Remove a skill by name.
-pub async fn remove_skill(
-    State(state): State<WebUiV2State>,
-    Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Path(name): Path<String>,
-) -> Result<Json<RebornSkillRemoveResult>, WebUiV2HttpError> {
-    let result = state.services().remove_skill(caller, name).await?;
-    Ok(Json(result))
-}
-
 /// `GET /api/webchat/v2/recipes`
 ///
 /// List the caller's Recipe library. The query parameter `project_id`
@@ -1511,40 +1470,6 @@ pub async fn regenerate_prefix(
     Ok(Json(response))
 }
 
-/// Path params for `GET /api/webchat/v2/skills/{id}/export`.
-#[derive(Debug, serde::Deserialize)]
-pub struct ExportSkillPath {
-    pub id: String,
-}
-
-/// `GET /api/webchat/v2/skills/{id}/export`
-///
-/// Export a DB-stored v3 skill as an on-demand SKILL.md download.
-/// Returns `Content-Type: text/plain` with a `Content-Disposition: attachment` header.
-pub async fn export_skill(
-    State(state): State<WebUiV2State>,
-    Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Path(ExportSkillPath { id }): Path<ExportSkillPath>,
-) -> Result<axum::response::Response, WebUiV2HttpError> {
-    let skill_md = state
-        .services()
-        .export_skill_as_skill_md(caller, id)
-        .await?;
-    let response = axum::response::Response::builder()
-        .status(axum::http::StatusCode::OK)
-        .header(
-            axum::http::header::CONTENT_TYPE,
-            "text/plain; charset=utf-8",
-        )
-        .header(
-            axum::http::header::CONTENT_DISPOSITION,
-            "attachment; filename=\"SKILL.md\"",
-        )
-        .body(axum::body::Body::from(skill_md))
-        .map_err(|e| WebUiV2HttpError::internal(format!("response build: {e}")))?;
-    Ok(response)
-}
-
 pub mod reduction_rules;
 pub mod safety;
 pub mod tokens;
@@ -1660,6 +1585,37 @@ pub async fn get_settings_extension_catalogues(
     let response = state
         .services()
         .list_settings_extension_catalogues(caller)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/component-graph`
+///
+/// Read the catalog's cross-reference graph — every component as a node,
+/// every `step_descriptions` include, ToolSkill tool binding and
+/// `dependency_registry` entry as an edge.
+pub async fn get_settings_component_graph(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<brassclaw_product_workflow::SettingsComponentGraph>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .get_settings_component_graph(caller)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/{component_type}/{id}`
+///
+/// Read one catalog component in full for the Settings UI detail pane.
+pub async fn get_settings_component(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((component_type, id)): Path<(String, String)>,
+) -> Result<Json<brassclaw_product_workflow::SettingsComponentDetail>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .get_settings_component(caller, component_type, id)
         .await?;
     Ok(Json(response))
 }

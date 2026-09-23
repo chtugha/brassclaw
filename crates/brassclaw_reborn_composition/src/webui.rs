@@ -8,8 +8,7 @@ use brassclaw_product_workflow::{
 
 use crate::{
     RebornBuildError, RebornProductAuthServices, RebornReadiness, RebornRuntime,
-    RebornWebuiAutomationFacade,
-    lifecycle::{RebornLocalLifecycleFacade, RebornLocalSkillsProductFacade},
+    RebornWebuiAutomationFacade, lifecycle::RebornLocalLifecycleFacade,
     webui_extension_credentials::ProductAuthExtensionCredentialSetup,
 };
 
@@ -112,8 +111,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         );
     }
     if let Some(local_runtime) = &services.local_runtime {
-        let mut lifecycle_facade =
-            RebornLocalLifecycleFacade::new(local_runtime.skill_management.clone());
+        let mut lifecycle_facade = RebornLocalLifecycleFacade::new();
         if let Some(extension_management) = &local_runtime.extension_management {
             lifecycle_facade =
                 lifecycle_facade.with_extension_management(extension_management.clone());
@@ -123,29 +121,6 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                 lifecycle_facade.with_runtime_http_egress(runtime_http_egress.clone());
         }
         api = api.with_lifecycle_product_facade(Arc::new(lifecycle_facade));
-
-        // Prefer the Postgres-backed facade when a pool is available so that
-        // the Skills tab shows DB-seeded (builtin bootstrap) skills too.
-        // Fall back to the filesystem-only facade when postgres is absent.
-        #[cfg(feature = "postgres")]
-        let skills_facade: Arc<dyn brassclaw_product_workflow::SkillsProductFacade> =
-            if let Some(pool) = services.pg_pool.as_ref() {
-                Arc::new(crate::pg_skills_facade::PgSkillsProductFacade::new(
-                    Arc::clone(pool),
-                    runtime.webui_tenant_id(),
-                    local_runtime.skill_management.clone(),
-                ))
-            } else {
-                Arc::new(RebornLocalSkillsProductFacade::new(
-                    local_runtime.skill_management.clone(),
-                ))
-            };
-        #[cfg(not(feature = "postgres"))]
-        let skills_facade: Arc<dyn brassclaw_product_workflow::SkillsProductFacade> = Arc::new(
-            RebornLocalSkillsProductFacade::new(local_runtime.skill_management.clone()),
-        );
-
-        api = api.with_skills_facade(skills_facade);
     }
     if let Some(product_auth) = &services.product_auth {
         api = api.with_extension_credentials(Arc::new(ProductAuthExtensionCredentialSetup::new(

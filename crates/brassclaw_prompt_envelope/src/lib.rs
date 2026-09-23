@@ -42,7 +42,7 @@ pub enum EnvelopeSource {
     Memory,
     /// Snippet emitted by a `before_prompt` hook patch.
     Hook,
-    /// Snippet contributed by a SKILL.md selection.
+    /// Snippet contributed by a skill component selection.
     Skill,
 }
 

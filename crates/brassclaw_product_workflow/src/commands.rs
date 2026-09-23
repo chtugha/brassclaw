@@ -17,9 +17,8 @@ use serde_json::Value;
 use crate::{
     ProductCommandContext, ProductCommandService, ProductWorkflowError,
     lifecycle::{
-        LifecycleCommandKind, LifecyclePackageId, LifecyclePackageKind, LifecyclePackageRef,
-        LifecycleProductAction, LifecycleProductContext, LifecycleProductFacade,
-        validate_lifecycle_text,
+        LifecycleCommandKind, LifecyclePackageKind, LifecyclePackageRef, LifecycleProductAction,
+        LifecycleProductContext, LifecycleProductFacade,
     },
 };
 
@@ -260,13 +259,6 @@ fn parse_lifecycle_command_payload(
                 LifecycleProductAction::ExtensionRemove { package_ref }
             })?
         }
-        LifecycleCommandKind::SkillSearch => ProductCommand::Lifecycle {
-            action: LifecycleProductAction::SkillSearch {
-                query: payload.arguments.trim().to_string(),
-            },
-        },
-        LifecycleCommandKind::SkillInstall => parse_skill_install_command(payload)?,
-        LifecycleCommandKind::SkillRemove => parse_skill_remove_command(payload)?,
     })
 }
 
@@ -292,45 +284,6 @@ fn parse_extension_configure_command(payload: &InboundCommandPayload) -> Product
     }
 }
 
-fn parse_skill_install_command(payload: &InboundCommandPayload) -> ProductCommandParseResult {
-    let args = payload.arguments.trim();
-    let Ok(json) = serde_json::from_str::<Value>(args) else {
-        return invalid_lifecycle_command("skill_install expects a JSON payload");
-    };
-    let content = match json.get("content").and_then(Value::as_str) {
-        Some(content) => content,
-        None => return invalid_lifecycle_command("skill_install.content is required"),
-    };
-    let content = match validate_lifecycle_text(content.to_string(), "skill content", 64 * 1024) {
-        Ok(content) => content,
-        Err(error) => return invalid_lifecycle_command(error.to_string()),
-    };
-    let name = match json.get("name").and_then(Value::as_str) {
-        Some(name) => match LifecyclePackageId::new(name) {
-            Ok(name) => Some(name),
-            Err(error) => return invalid_lifecycle_command(error.to_string()),
-        },
-        None => None,
-    };
-    Ok(ProductCommand::Lifecycle {
-        action: LifecycleProductAction::SkillInstall { name, content },
-    })
-}
-
-fn parse_skill_remove_command(payload: &InboundCommandPayload) -> ProductCommandParseResult {
-    let args = payload.arguments.trim();
-    let id = match skill_remove_ref_argument(args) {
-        Ok(id) => id,
-        Err(reason) => return invalid_lifecycle_command(reason),
-    };
-    match lifecycle_package_ref(LifecyclePackageKind::Skill, id) {
-        Ok(package_ref) => Ok(ProductCommand::Lifecycle {
-            action: LifecycleProductAction::SkillRemove { package_ref },
-        }),
-        Err(error) => invalid_lifecycle_command(error.to_string()),
-    }
-}
-
 fn extension_package_command(
     payload: &InboundCommandPayload,
     build: fn(LifecyclePackageRef) -> LifecycleProductAction,
@@ -351,12 +304,6 @@ fn lifecycle_ref_argument(payload: &InboundCommandPayload) -> Result<String, Str
     let args = payload.arguments.trim();
     json_or_whitespace_field(args, &["id"], || {
         format!("{}.id is required", payload.command)
-    })
-}
-
-fn skill_remove_ref_argument(args: &str) -> Result<String, String> {
-    json_or_whitespace_field(args, &["id", "name"], || {
-        "skill_remove.id or skill_remove.name is required".to_string()
     })
 }
 

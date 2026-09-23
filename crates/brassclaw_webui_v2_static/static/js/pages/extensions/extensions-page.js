@@ -13,8 +13,6 @@ export function ExtensionsPage() {
 
   const {
     status,
-    channels,
-    channelRegistry,
     toolRegistry,
     connectableChannels,
     isLoading,
@@ -68,18 +66,10 @@ export function ExtensionsPage() {
     installed: html`<${InstalledTab} />`,
     channels: html`<${ChannelsTab}
       status=${status}
-      channels=${channels}
       connectableChannels=${connectableChannels}
-      channelRegistry=${channelRegistry}
-      onActivate=${activate}
-      onConfigure=${handleConfigure}
-      onRemove=${remove}
-      onInstall=${install}
-      isBusy=${isBusy}
     />`,
     registry: html`<${RegistryTab}
       toolRegistry=${toolRegistry}
-      channelRegistry=${channelRegistry}
       onInstall=${install}
       isBusy=${isBusy}
     />`,

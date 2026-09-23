@@ -1,3 +1,7 @@
+// The Integrations surface: installable runtime packages with an
+// install/activate/credential lifecycle (`reborn_extensions_unified`,
+// classes 4–8). It is NOT the class-23 ExtensionCatalogue component, which
+// lives in Settings › Component Catalog › Extension Catalogues.
 export const EXTENSIONS_TABS = [
   { id: "installed", label: "Installed", icon: "bolt" },
   { id: "channels", label: "Channels", icon: "send" },

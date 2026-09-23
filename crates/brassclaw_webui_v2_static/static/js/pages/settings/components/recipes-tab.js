@@ -1,97 +1,84 @@
-import { React, html } from "../../../lib/html.js";
-import { Card } from "../../../design-system/card.js";
+import { html } from "../../../lib/html.js";
 import { Badge } from "../../../design-system/badge.js";
+import { Card } from "../../../design-system/card.js";
 import { useT } from "../../../lib/i18n.js";
-import { useQuery } from "@tanstack/react-query";
 import { fetchSettingsRecipes } from "../lib/settings-api.js";
-import { matchesSearch } from "../lib/settings-search.js";
-import { SettingsSearchEmpty } from "./settings-search-empty.js";
+import { tierCoverage } from "../lib/component-graph.js";
+import { ComponentCatalogTab } from "./component-catalog-tab.js";
 
 export function RecipesTab({ searchQuery = "" }) {
   const t = useT();
-  const query = useQuery({
-    queryKey: ["settings", "recipes"],
-    queryFn: fetchSettingsRecipes,
-  });
 
-  if (query.isLoading) {
-    return html`
-      <div className="space-y-4">
-        ${[1, 2, 3].map(
-          (i) => html`
-            <div key=${i} className="flex items-center justify-between border-t border-[var(--v2-panel-border)] py-4 first:border-0">
-              <div>
-                <div className="h-4 w-40 animate-pulse rounded bg-[var(--v2-surface-muted)]" />
-                <div className="mt-1 h-3 w-56 animate-pulse rounded bg-[var(--v2-surface-muted)]" />
-              </div>
-              <div className="h-6 w-20 animate-pulse rounded-full bg-[var(--v2-surface-muted)]" />
-            </div>
-          `
-        )}
-      </div>
-    `;
-  }
+  // `tier` is derived server-side from `steps.llm_call_required`:
+  // "0" = no LLM call, "1" = LLM-guided.
+  const renderRowBadges = (item) => {
+    if (item.tier === "0") {
+      return html`<${Badge} tone="positive" label=${t("componentDetail.tier0")} size="sm" />`;
+    }
+    if (item.tier === "1") {
+      return html`<${Badge} tone="warning" label=${t("componentDetail.tier1")} size="sm" />`;
+    }
+    return null;
+  };
 
-  if (query.isError) {
-    return html`
-      <${Card} padding="md">
-        <p className="text-sm text-[var(--v2-danger-text)]">
-          ${t("recipes.failedLoad", { message: query.error?.message ?? String(query.error) })}
-        </p>
-      <//>
-    `;
-  }
+  const renderSummary = (items) => html`<${TierSummary} items=${items} />`;
 
-  const items = query.data?.items ?? [];
-  const filtered = items.filter((item) =>
-    matchesSearch(searchQuery, [item.name, item.description, item.validation_status])
-  );
+  return html`
+    <${ComponentCatalogTab}
+      searchQuery=${searchQuery}
+      ns="recipes"
+      queryKey=${["settings", "recipes"]}
+      queryFn=${fetchSettingsRecipes}
+      componentType="recipes"
+      classCode=${21}
+      renderRowBadges=${renderRowBadges}
+      renderSummary=${renderSummary}
+    />
+  `;
+}
 
-  if (items.length === 0) {
-    return html`
-      <${Card} padding="lg">
-        <h3 className="text-lg font-semibold text-[var(--v2-text-strong)]">
-          ${t("recipes.none")}
-        </h3>
-        <p className="mt-2 max-w-md text-sm leading-6 text-[var(--v2-text-muted)]">
-          ${t("recipes.noneDesc")}
-        </p>
-      <//>
-    `;
-  }
-
-  if (filtered.length === 0) {
-    return html`<${SettingsSearchEmpty} query=${searchQuery} />`;
-  }
+/**
+ * Tier-0 coverage: the share of recipes that answer without an LLM call.
+ *
+ * The percentage is over recipes whose tier is known — a recipe whose `steps`
+ * JSONB predates `llm_call_required` is counted separately rather than
+ * assumed Tier 0, which would flatter the number.
+ */
+function TierSummary({ items }) {
+  const t = useT();
+  const coverage = tierCoverage(items);
 
   return html`
     <${Card} padding="md">
-      <h3 className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
-        ${t("recipes.library")}
+      <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
+        ${t("recipes.tierCoverage")}
       </h3>
-      ${filtered.map(
-        (item) => html`
-          <div
-            key=${item.id}
-            className="flex items-start justify-between border-t border-[var(--v2-panel-border)] py-4 first:border-0"
-          >
-            <div className="flex-1 min-w-0 pr-4">
-              <span className="font-mono text-sm font-semibold text-[var(--v2-text-strong)]">
-                ${item.name}
-              </span>
-              ${item.description &&
-                html`<p className="mt-0.5 text-xs text-[var(--v2-text-muted)] truncate">
-                  ${item.description}
-                </p>`}
-            </div>
-            <${Badge}
-              tone=${item.validation_status === "validated" ? "positive" : "neutral"}
-              label=${item.validation_status ?? "unknown"}
-              size="sm"
-            />
-          </div>
-        `
-      )}
+      <div className="mt-3 flex flex-wrap items-center gap-4">
+        <span className="font-mono text-2xl text-[var(--v2-text-strong)]">
+          ${coverage.percent === null ? "—" : `${coverage.percent}%`}
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <${Badge}
+            tone="positive"
+            label=${t("recipes.tier0Count", { count: String(coverage.tier0) })}
+            size="sm"
+          />
+          <${Badge}
+            tone="warning"
+            label=${t("recipes.tier1Count", { count: String(coverage.tier1) })}
+            size="sm"
+          />
+          ${coverage.unknown > 0 &&
+          html`<${Badge}
+            tone="muted"
+            label=${t("recipes.tierUnknownCount", { count: String(coverage.unknown) })}
+            size="sm"
+          />`}
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-[var(--v2-text-muted)]">
+        ${t("recipes.tierCoverageDesc", { total: String(coverage.total) })}
+      </p>
     <//>
   `;
 }

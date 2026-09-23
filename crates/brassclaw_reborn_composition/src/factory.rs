@@ -60,7 +60,6 @@ use brassclaw_turns::{
 use crate::RebornProductAuthServicePorts;
 use crate::default_system_prompt::seed_default_system_prompt;
 use crate::input::{RebornRuntimeProcessBinding, RebornStorageInput};
-use crate::lifecycle::{RebornLocalSkillManagementPort, build_local_skill_management_port};
 use crate::local_dev_capability_policy::local_dev_capability_policy;
 use crate::local_dev_mounts::{
     ambient_workspace_mount_view, memory_mount_view, skill_management_mount_view,
@@ -327,7 +326,6 @@ pub(crate) struct RebornLocalRuntimeServices {
     /// swap in the filesystem-backed `FilesystemBudgetGateStore`.
     #[allow(dead_code)]
     pub(crate) budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore>,
-    pub(crate) skill_management: Arc<RebornLocalSkillManagementPort>,
     // LocalSingleUser-only for now. Production and multi-tenant lifecycle
     // wiring need scoped storage/registry ownership before this is reused
     // outside local-dev composition. Tracked in #4091.
@@ -480,7 +478,6 @@ struct RebornLocalDevStoreGraph {
 
 struct RebornLocalDevStoreGraphInput {
     filesystem: Arc<LocalDevRootFilesystem>,
-    owner_user_id: UserId,
     workspace_mounts: MountView,
     local_dev_storage_root: PathBuf,
     default_system_prompt_path: PathBuf,
@@ -796,7 +793,8 @@ async fn build_local_dev(
         Arc::clone(&filesystem),
         runtime_workspace_mounts.clone(),
     ));
-    let owner_user_id = UserId::new(owner_id).map_err(|error| RebornBuildError::InvalidConfig {
+    // Fail fast on a malformed owner id before any store is constructed.
+    UserId::new(owner_id).map_err(|error| RebornBuildError::InvalidConfig {
         reason: error.to_string(),
     })?;
 
@@ -809,7 +807,6 @@ async fn build_local_dev(
 
     let mut store_graph = build_local_dev_store_graph(RebornLocalDevStoreGraphInput {
         filesystem: Arc::clone(&filesystem),
-        owner_user_id,
         workspace_mounts: runtime_workspace_mounts,
         local_dev_storage_root: root.clone(),
         default_system_prompt_path,
@@ -1126,7 +1123,6 @@ async fn build_local_dev_store_graph(
 ) -> Result<RebornLocalDevStoreGraph, RebornBuildError> {
     let RebornLocalDevStoreGraphInput {
         filesystem,
-        owner_user_id,
         workspace_mounts,
         local_dev_storage_root,
         default_system_prompt_path,
@@ -1164,8 +1160,6 @@ async fn build_local_dev_store_graph(
                 reason: error.to_string(),
             }
         })?;
-    let skill_management =
-        build_local_skill_management_port(owner_user_id, Arc::clone(&filesystem))?;
     let local_runtime = Arc::new(RebornLocalRuntimeServices {
         approval_requests: Arc::clone(&approval_requests),
         capability_leases: Arc::clone(&capability_leases),
@@ -1181,7 +1175,6 @@ async fn build_local_dev_store_graph(
         in_memory_budget_event_sink,
         broadcast_budget_event_sink,
         budget_gate_store,
-        skill_management,
         extension_management: None,
         runtime_http_egress: None,
         host_runtime_http_egress: None,
@@ -2219,7 +2212,6 @@ mod tests {
     use brassclaw_host_runtime::{
         MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID,
         RuntimeCapabilityOutcome, RuntimeCapabilityRequest, RuntimeFailureKind,
-        SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID, SKILL_REMOVE_CAPABILITY_ID,
         TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID,
     };
     use brassclaw_product_workflow::{LifecyclePackageKind, LifecyclePackageRef};
@@ -2346,7 +2338,6 @@ mod tests {
             in_memory_budget_event_sink: Arc::clone(&base_runtime.in_memory_budget_event_sink),
             broadcast_budget_event_sink: Arc::clone(&base_runtime.broadcast_budget_event_sink),
             budget_gate_store: Arc::clone(&base_runtime.budget_gate_store),
-            skill_management: Arc::clone(&base_runtime.skill_management),
             extension_management: base_runtime.extension_management.clone(),
             runtime_http_egress: base_runtime.runtime_http_egress.clone(),
             host_runtime_http_egress: base_runtime.host_runtime_http_egress.clone(),
@@ -2811,68 +2802,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_dev_skill_management_invokes_through_first_party_runtime() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let storage_root = dir.path().join("local-dev");
-        let services = build_reborn_services(RebornBuildInput::local_dev(
-            "local-dev-skill-tools-owner",
-            storage_root.clone(),
-        ))
-        .await
-        .expect("local-dev services build");
-        let runtime = services.host_runtime.expect("host runtime composed");
-
-        let install_output = invoke_json(
-            runtime.as_ref(),
-            SKILL_INSTALL_CAPABILITY_ID,
-            skill_context(SKILL_INSTALL_CAPABILITY_ID),
-            serde_json::json!({
-                "content": skill_md("runtime-sentinel", "runtime skill", "RUNTIME_SENTINEL")
-            }),
-        )
-        .await
-        .expect("skill install succeeds");
-        assert_eq!(install_output["installed"], true);
-        assert_eq!(install_output["name"], "runtime-sentinel");
-        assert!(
-            storage_root
-                .join("skills/runtime-sentinel/SKILL.md")
-                .exists()
-        );
-
-        let list_output = invoke_json(
-            runtime.as_ref(),
-            SKILL_LIST_CAPABILITY_ID,
-            skill_context(SKILL_LIST_CAPABILITY_ID),
-            serde_json::json!({}),
-        )
-        .await
-        .expect("skill list succeeds");
-        assert!(
-            list_output["skills"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|skill| { skill["name"] == "runtime-sentinel" && skill["source"] == "user" })
-        );
-
-        let remove_output = invoke_json(
-            runtime.as_ref(),
-            SKILL_REMOVE_CAPABILITY_ID,
-            skill_context(SKILL_REMOVE_CAPABILITY_ID),
-            serde_json::json!({"name": "runtime-sentinel"}),
-        )
-        .await
-        .expect("skill remove succeeds");
-        assert_eq!(remove_output["removed"], true);
-        assert!(
-            !storage_root
-                .join("skills/runtime-sentinel/SKILL.md")
-                .exists()
-        );
-    }
-
-    #[tokio::test]
     async fn local_dev_workspace_mounts_do_not_authorize_skill_writes() {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
@@ -2890,7 +2819,7 @@ mod tests {
             workspace_context("builtin.write_file"),
             serde_json::json!({
                 "path": "/skills/blocked/SKILL.md",
-                "content": skill_md("blocked", "blocked skill", "BLOCKED")
+                "content": "---\nname: blocked\ndescription: blocked\n---\nBLOCKED\n"
             }),
         )
         .await
@@ -2930,16 +2859,13 @@ mod tests {
     }
 
     #[test]
-    fn builtin_first_party_package_declares_skill_management_tools() {
+    fn builtin_first_party_package_declares_trigger_management_tools() {
         let package = builtin_first_party_package().expect("built-in package builds");
         let ids = package
             .capabilities
             .iter()
             .map(|capability| capability.id.as_str())
             .collect::<Vec<_>>();
-        assert!(ids.contains(&SKILL_LIST_CAPABILITY_ID));
-        assert!(ids.contains(&SKILL_INSTALL_CAPABILITY_ID));
-        assert!(ids.contains(&SKILL_REMOVE_CAPABILITY_ID));
         assert!(ids.contains(&TRIGGER_CREATE_CAPABILITY_ID));
         assert!(ids.contains(&TRIGGER_LIST_CAPABILITY_ID));
         assert!(ids.contains(&TRIGGER_REMOVE_CAPABILITY_ID));
@@ -2949,9 +2875,6 @@ mod tests {
         ))
         .expect("built-in handlers build");
         for id in [
-            SKILL_LIST_CAPABILITY_ID,
-            SKILL_INSTALL_CAPABILITY_ID,
-            SKILL_REMOVE_CAPABILITY_ID,
             TRIGGER_CREATE_CAPABILITY_ID,
             TRIGGER_LIST_CAPABILITY_ID,
             TRIGGER_REMOVE_CAPABILITY_ID,
@@ -3003,10 +2926,6 @@ mod tests {
             RuntimeCapabilityOutcome::Failed(failure) => Err(failure.kind),
             other => panic!("unexpected runtime outcome: {other:?}"),
         }
-    }
-
-    fn skill_context(capability_id: &str) -> ExecutionContext {
-        execution_context(capability_id, skill_mounts())
     }
 
     fn workspace_context(capability_id: &str) -> ExecutionContext {
@@ -3161,22 +3080,6 @@ mod tests {
         }
     }
 
-    fn skill_mounts() -> MountView {
-        MountView::new(vec![
-            MountGrant::new(
-                MountAlias::new("/skills").expect("valid mount alias"),
-                VirtualPath::new("/projects/skills").expect("valid virtual path"),
-                MountPermissions::read_write_list_delete(),
-            ),
-            MountGrant::new(
-                MountAlias::new("/system/skills").expect("valid mount alias"),
-                VirtualPath::new("/projects/system/skills").expect("valid virtual path"),
-                MountPermissions::read_only(),
-            ),
-        ])
-        .expect("valid mount view")
-    }
-
     fn workspace_mounts() -> MountView {
         MountView::new(vec![MountGrant::new(
             MountAlias::new("/workspace").expect("valid mount alias"),
@@ -3250,10 +3153,6 @@ mod tests {
             provenance: TrustProvenance::Default,
             evaluated_at: chrono::Utc::now(),
         }
-    }
-
-    fn skill_md(name: &str, description: &str, prompt: &str) -> String {
-        format!("---\nname: {name}\ndescription: {description}\n---\n{prompt}\n")
     }
 }
 

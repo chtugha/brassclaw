@@ -1,7 +1,6 @@
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::time::Duration;
-use std::{future::Future, thread};
 
 use anyhow::Context;
 
@@ -40,31 +39,6 @@ pub(crate) fn init_tracing() {
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
         .try_init();
-}
-
-pub(crate) fn block_on_cli<F, T, E>(future: F) -> anyhow::Result<T>
-where
-    F: Future<Output = Result<T, E>> + Send + 'static,
-    T: Send + 'static,
-    E: Into<anyhow::Error> + Send + 'static,
-{
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return thread::spawn(move || block_on_cli_future(future))
-            .join()
-            .map_err(|_| anyhow::anyhow!("CLI async task thread panicked"))?;
-    }
-    block_on_cli_future(future)
-}
-
-fn block_on_cli_future<F, T, E>(future: F) -> anyhow::Result<T>
-where
-    F: Future<Output = Result<T, E>>,
-    E: Into<anyhow::Error>,
-{
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    runtime.block_on(future).map_err(Into::into)
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -852,8 +826,6 @@ fn runner_settings(
 mod tests {
     use std::collections::HashMap;
 
-    // Arbitrary integer returned by block_on_cli in the runtime-nesting test.
-    const BLOCK_ON_CLI_TEST_VALUE: i32 = 42;
     // Trigger-poller interval written in test configs to exercise config parsing.
     const TEST_TRIGGER_POLL_INTERVAL_SECS: u64 = 42;
 
@@ -862,8 +834,8 @@ mod tests {
     use super::test_env::{EnvGuard, lock_trigger_env};
 
     use super::{
-        RUNTIME_PROFILE_ENV, RuntimeInputCaller, RuntimeInputOptions, block_on_cli,
-        build_runtime_input, build_runtime_input_with_options, resolve_google_oauth_config,
+        RUNTIME_PROFILE_ENV, RuntimeInputCaller, RuntimeInputOptions, build_runtime_input,
+        build_runtime_input_with_options, resolve_google_oauth_config,
     };
 
     fn clear_trigger_poller_env() -> (EnvGuard, EnvGuard) {
@@ -871,14 +843,6 @@ mod tests {
             EnvGuard::clear("BRASSCLAW_TRIGGER_POLLER_ENABLED"),
             EnvGuard::clear("BRASSCLAW_TRIGGER_POLLER_INTERVAL_SECS"),
         )
-    }
-
-    #[tokio::test]
-    async fn block_on_cli_can_run_inside_existing_tokio_runtime() {
-        let value = block_on_cli(async { Ok::<_, anyhow::Error>(BLOCK_ON_CLI_TEST_VALUE) })
-            .expect("block future");
-
-        assert_eq!(value, BLOCK_ON_CLI_TEST_VALUE);
     }
 
     #[test]

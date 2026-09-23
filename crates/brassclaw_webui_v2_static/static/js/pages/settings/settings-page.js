@@ -25,6 +25,7 @@ import { SecurityTab } from "./components/security-tab.js";
 import { SkillsTab } from "./components/skills-tab.js";
 import { TokensTab } from "./components/tokens-tab.js";
 import { ToolsTab } from "./components/tools-tab.js";
+import { ToolCatalogTab } from "./components/tool-catalog-tab.js";
 import { SettingsToolbar } from "./components/settings-toolbar.js";
 import { UsersTab } from "./components/users-tab.js";
 import { ValidationQueueTab } from "./components/validation-queue-tab.js";
@@ -81,7 +82,8 @@ export function SettingsPage() {
       isLoading=${isLoading}
       searchQuery=${searchQuery}
     />`,
-    tools: html`<${ToolsTab} searchQuery=${searchQuery} />`,
+    "tool-permissions": html`<${ToolsTab} searchQuery=${searchQuery} />`,
+    tools: html`<${ToolCatalogTab} searchQuery=${searchQuery} />`,
     skills: html`<${SkillsTab} searchQuery=${searchQuery} />`,
     // Phase 6 — 10-tab Settings UI editor.
     actions: html`<${ActionsTab} searchQuery=${searchQuery} />`,

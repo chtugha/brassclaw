@@ -1123,9 +1123,8 @@ mod tests {
     };
     use brassclaw_host_api::{
         CapabilityId, ExtensionLifecycleOperation, HostPath, HostPortCatalog, InvocationId,
-        MountAlias, MountGrant, MountPermissions, MountView, NetworkMethod, ResourceScope,
-        RuntimeHttpEgress, RuntimeHttpEgressError, RuntimeHttpEgressRequest,
-        RuntimeHttpEgressResponse, TenantId, TrustClass, UserId,
+        NetworkMethod, ResourceScope, RuntimeHttpEgress, RuntimeHttpEgressError,
+        RuntimeHttpEgressRequest, RuntimeHttpEgressResponse, TenantId, TrustClass, UserId,
     };
     use brassclaw_host_runtime::{SPAWN_SUBAGENT_CAPABILITY_ID, builtin_first_party_package};
     use brassclaw_product_workflow::{
@@ -2238,28 +2237,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn extension_install_rejects_skill_package_ref() {
-        let (_dir, _storage_root, facade, _active_registry, _installation_store) =
-            extension_lifecycle_fixture();
-
-        let error = facade
-            .execute(
-                lifecycle_surface_context(),
-                LifecycleProductAction::ExtensionInstall {
-                    package_ref: LifecyclePackageRef::new(LifecyclePackageKind::Skill, "fixture")
-                        .expect("valid skill ref"),
-                },
-            )
-            .await
-            .expect_err("extension install rejects non-extension refs");
-
-        assert!(matches!(
-            error,
-            ProductWorkflowError::InvalidBindingRequest { .. }
-        ));
-    }
-
-    #[tokio::test]
     async fn extension_install_rejects_duplicate_without_overwriting_materialized_files() {
         let (_dir, storage_root, facade, _active_registry, _installation_store) =
             extension_lifecycle_fixture();
@@ -2803,16 +2780,6 @@ mod tests {
             .expect("mount system extensions");
         let filesystem = Arc::new(filesystem);
         let root_filesystem: Arc<dyn RootFilesystem> = filesystem.clone();
-        let skill_management = Arc::new(crate::lifecycle::RebornLocalSkillManagementPort::new(
-            UserId::new("lifecycle-owner").expect("valid user"),
-            root_filesystem.clone(),
-            MountView::new(vec![MountGrant::new(
-                MountAlias::new("/skills").expect("valid alias"),
-                VirtualPath::new("/projects/skills").expect("valid path"),
-                MountPermissions::read_write_list_delete(),
-            )])
-            .expect("valid mount view"),
-        ));
         let active_registry = Arc::new(SharedExtensionRegistry::new(ExtensionRegistry::new()));
         let installation_store = Arc::new(InMemoryExtensionInstallationStore::default());
         let extension_management = Arc::new(RebornLocalExtensionManagementPort::new(
@@ -2825,7 +2792,7 @@ mod tests {
                 test_extension_trust_policy(),
             ),
         ));
-        let facade = crate::lifecycle::RebornLocalLifecycleFacade::new(skill_management)
+        let facade = crate::lifecycle::RebornLocalLifecycleFacade::new()
             .with_extension_management(extension_management);
         (
             dir,

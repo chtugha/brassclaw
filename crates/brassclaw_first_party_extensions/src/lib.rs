@@ -7,7 +7,6 @@
 
 pub mod coding;
 mod gsuite;
-pub mod skills;
 pub mod web_access;
 
 pub use gsuite::{

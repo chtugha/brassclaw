@@ -1894,6 +1894,96 @@ mod tests {
         assert_eq!(class_code_to_table(999), None);
     }
 
+    /// Split a class-code cell (`16`, or a range such as `4–9`) into codes.
+    #[cfg(feature = "skills-db")]
+    fn parse_documented_class_codes(cell: &str) -> Vec<i32> {
+        let normalised = cell.replace(['–', '—'], "-");
+        let spec = normalised.trim();
+        match spec.split_once('-') {
+            Some((start, end)) => match (start.trim().parse::<i32>(), end.trim().parse::<i32>()) {
+                (Ok(first), Ok(last)) if first <= last => (first..=last).collect(),
+                _ => Vec::new(),
+            },
+            None => spec.parse::<i32>().into_iter().collect(),
+        }
+    }
+
+    /// Extract `(class_code, table)` pairs from the `| Class code | Type |
+    /// Table |` markdown table in the repo-root `CLAUDE.md`.
+    #[cfg(feature = "skills-db")]
+    fn parse_claude_md_class_table(doc: &str) -> Vec<(i32, String)> {
+        let mut rows = Vec::new();
+        let mut in_table = false;
+        for line in doc.lines() {
+            let line = line.trim();
+            if line.starts_with("| Class code |") {
+                in_table = true;
+                continue;
+            }
+            if !in_table {
+                continue;
+            }
+            if !line.starts_with('|') {
+                break;
+            }
+            let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+            let (Some(code_cell), Some(table_cell)) = (cells.first(), cells.get(2)) else {
+                continue;
+            };
+            let Some(table) = table_cell.split('`').nth(1) else {
+                continue;
+            };
+            for code in parse_documented_class_codes(code_cell) {
+                rows.push((code, table.to_string()));
+            }
+        }
+        rows
+    }
+
+    /// The class→table mapping is documented in `CLAUDE.md` and implemented in
+    /// [`class_code_to_table`]. The two drifted (the doc claimed Actions = 11
+    /// while the code has always said 16, and omitted classes 4–9 and 17), so
+    /// this test parses the doc table and asserts agreement in both
+    /// directions: every documented class maps to the documented table, and
+    /// every class the code maps is documented.
+    #[cfg(feature = "skills-db")]
+    #[test]
+    fn class_code_to_table_matches_claude_md_table() {
+        const CLAUDE_MD: &str =
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../CLAUDE.md"));
+
+        let documented = parse_claude_md_class_table(CLAUDE_MD);
+        assert!(
+            documented.len() >= 20,
+            "class-code table not found in CLAUDE.md (parsed {} rows)",
+            documented.len()
+        );
+
+        for (code, table) in &documented {
+            match class_code_to_table(*code) {
+                Some((actual, _)) => assert_eq!(
+                    actual, table,
+                    "CLAUDE.md documents class {code} as `{table}`, code maps it to `{actual}`"
+                ),
+                // Class 0 (Tool) is the one documented class with no prompt
+                // text, so the code deliberately returns None for it.
+                None => assert_eq!(
+                    *code, 0,
+                    "CLAUDE.md documents class {code} as `{table}`, code has no mapping for it"
+                ),
+            }
+        }
+
+        for code in -1..=60 {
+            if let Some((table, _)) = class_code_to_table(code) {
+                assert!(
+                    documented.iter().any(|(c, t)| *c == code && t == table),
+                    "class {code} → `{table}` is missing from the CLAUDE.md class-code table"
+                );
+            }
+        }
+    }
+
     #[test]
     fn turn_routing_signals_recipe_id_carried_through_split_result() {
         // v3 Phase H4.3: a SplitResult built on the recipe path carries

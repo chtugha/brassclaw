@@ -179,108 +179,6 @@ impl ConnectableChannelsProductFacade for StaticConnectableChannelsProductFacade
     }
 }
 
-// ── Skills facade ────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RebornSkillInfo {
-    pub name: String,
-    pub version: String,
-    pub description: String,
-    pub source: String, // "system" | "user" | "installed"
-    pub keywords: Vec<String>,
-    pub tags: Vec<String>,
-    pub requires_skills: Vec<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RebornListSkillsResponse {
-    pub skills: Vec<RebornSkillInfo>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RebornInstallSkillRequest {
-    pub content: String,
-    pub source_url: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RebornSkillInstallResult {
-    pub name: String,
-    pub source: String,
-    pub success: bool,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RebornSkillRemoveResult {
-    pub name: String,
-    pub success: bool,
-    pub message: String,
-}
-
-#[async_trait]
-pub trait SkillsProductFacade: Send + Sync {
-    async fn list_skills(
-        &self,
-        caller: &WebUiAuthenticatedCaller,
-    ) -> Result<RebornListSkillsResponse, RebornServicesError>;
-
-    async fn install_skill(
-        &self,
-        caller: &WebUiAuthenticatedCaller,
-        content: String,
-        source_url: Option<String>,
-    ) -> Result<RebornSkillInstallResult, RebornServicesError>;
-
-    async fn remove_skill(
-        &self,
-        caller: &WebUiAuthenticatedCaller,
-        name: &str,
-    ) -> Result<RebornSkillRemoveResult, RebornServicesError>;
-}
-
-#[derive(Debug)]
-pub struct UnsupportedSkillsProductFacade;
-
-#[async_trait]
-impl SkillsProductFacade for UnsupportedSkillsProductFacade {
-    async fn list_skills(
-        &self,
-        _caller: &WebUiAuthenticatedCaller,
-    ) -> Result<RebornListSkillsResponse, RebornServicesError> {
-        Err(RebornServicesError::from_status(
-            RebornServicesErrorCode::InvalidRequest,
-            501,
-            false,
-        ))
-    }
-
-    async fn install_skill(
-        &self,
-        _caller: &WebUiAuthenticatedCaller,
-        _content: String,
-        _source_url: Option<String>,
-    ) -> Result<RebornSkillInstallResult, RebornServicesError> {
-        Err(RebornServicesError::from_status(
-            RebornServicesErrorCode::InvalidRequest,
-            501,
-            false,
-        ))
-    }
-
-    async fn remove_skill(
-        &self,
-        _caller: &WebUiAuthenticatedCaller,
-        _name: &str,
-    ) -> Result<RebornSkillRemoveResult, RebornServicesError> {
-        Err(RebornServicesError::from_status(
-            RebornServicesErrorCode::InvalidRequest,
-            501,
-            false,
-        ))
-    }
-}
-
 // ── Docus facade ─────────────────────────────────────────────────────────────
 
 /// A single `reborn_docus` row projected for the WebUI Docs settings tab.
@@ -1001,27 +899,6 @@ pub trait RebornServicesApi: Send + Sync {
         request: RebornUpdateCapabilityPermissionRequest,
     ) -> Result<RebornUpdateCapabilityPermissionResponse, RebornServicesError>;
 
-    /// List all skills available to the authenticated caller.
-    async fn list_skills(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-    ) -> Result<RebornListSkillsResponse, RebornServicesError>;
-
-    /// Install a skill from its SKILL.md content.
-    async fn install_skill(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-        content: String,
-        source_url: Option<String>,
-    ) -> Result<RebornSkillInstallResult, RebornServicesError>;
-
-    /// Remove a skill by name.
-    async fn remove_skill(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-        name: String,
-    ) -> Result<RebornSkillRemoveResult, RebornServicesError>;
-
     /// Safety configuration methods - default to "not implemented" so facades that
     /// don't wire safety config inherit a safe surface.
     async fn get_safety_sensitive_paths(
@@ -1463,19 +1340,6 @@ pub trait RebornServicesApi: Send + Sync {
         Err(interceptor_config::interceptor_config_unavailable())
     }
 
-    /// Export a v3 DB-stored skill as a SKILL.md formatted string (K.1.7).
-    async fn export_skill_as_skill_md(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _skill_id: String,
-    ) -> Result<String, RebornServicesError> {
-        Err(RebornServicesError::from_status(
-            RebornServicesErrorCode::InvalidRequest,
-            501,
-            false,
-        ))
-    }
-
     // ── Phase 6: Settings UI ───────────────────────────────────────────────
     //
     // All settings routes default to 501 (or 503 for DB endpoints) so facades
@@ -1622,6 +1486,36 @@ pub trait RebornServicesApi: Send + Sync {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Read one catalog component in full for the Settings UI detail pane.
+    ///
+    /// `component_type` is the raw `{type}` path segment; a segment that is
+    /// not a catalog tab is a 404, not a 400 — the URL simply addresses
+    /// nothing.
+    async fn get_settings_component(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _component_type: String,
+        _id: String,
+    ) -> Result<crate::settings::SettingsComponentDetail, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Read the catalog's cross-reference graph for the Settings UI.
+    async fn get_settings_component_graph(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsComponentGraph, RebornServicesError> {
         Err(RebornServicesError::from_status(
             RebornServicesErrorCode::InvalidRequest,
             501,
@@ -1881,7 +1775,6 @@ pub struct RebornServices {
     automation_facade: Arc<dyn AutomationProductFacade>,
     connectable_channels_facade: Arc<dyn ConnectableChannelsProductFacade>,
     outbound_preferences_facade: Arc<dyn OutboundPreferencesProductFacade>,
-    skills_facade: Arc<dyn SkillsProductFacade>,
     approval_interactions: Arc<dyn ApprovalInteractionService>,
     auth_interactions: Arc<dyn AuthInteractionService>,
     extension_credentials: Option<Arc<dyn ExtensionCredentialSetupService>>,
@@ -1967,7 +1860,6 @@ impl RebornServices {
             outbound_preferences_facade: Arc::new(
                 UnsupportedOutboundPreferencesProductFacade::new_static(),
             ),
-            skills_facade: Arc::new(UnsupportedSkillsProductFacade),
             approval_interactions: Arc::new(RejectingApprovalInteractionService),
             auth_interactions: Arc::new(RejectingAuthInteractionService),
             extension_credentials: None,
@@ -2037,11 +1929,6 @@ impl RebornServices {
         outbound_preferences_facade: Arc<dyn OutboundPreferencesProductFacade>,
     ) -> Self {
         self.outbound_preferences_facade = outbound_preferences_facade;
-        self
-    }
-
-    pub fn with_skills_facade(mut self, skills_facade: Arc<dyn SkillsProductFacade>) -> Self {
-        self.skills_facade = skills_facade;
         self
     }
 
@@ -3312,32 +3199,6 @@ impl RebornServicesApi for RebornServices {
             permission_mode: request.permission_mode,
             updated: true,
         })
-    }
-
-    async fn list_skills(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-    ) -> Result<RebornListSkillsResponse, RebornServicesError> {
-        self.skills_facade.list_skills(&caller).await
-    }
-
-    async fn install_skill(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-        content: String,
-        source_url: Option<String>,
-    ) -> Result<RebornSkillInstallResult, RebornServicesError> {
-        self.skills_facade
-            .install_skill(&caller, content, source_url)
-            .await
-    }
-
-    async fn remove_skill(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-        name: String,
-    ) -> Result<RebornSkillRemoveResult, RebornServicesError> {
-        self.skills_facade.remove_skill(&caller, &name).await
     }
 
     async fn get_safety_sensitive_paths(
@@ -4829,6 +4690,44 @@ impl RebornServicesApi for RebornServices {
             .map_err(map_settings_listing_error)
     }
 
+    async fn get_settings_component(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        component_type: String,
+        id: String,
+    ) -> Result<crate::settings::SettingsComponentDetail, RebornServicesError> {
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
+        let component_type =
+            crate::settings::SettingsComponentType::from_path_segment(component_type.as_str())
+                .ok_or_else(|| {
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::NotFound,
+                        RebornServicesErrorKind::NotFound,
+                        404,
+                        false,
+                    )
+                })?;
+        svc.get_component(component_type, id.as_str())
+            .await
+            .map_err(map_settings_listing_error)
+    }
+
+    async fn get_settings_component_graph(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsComponentGraph, RebornServicesError> {
+        let svc = self
+            .settings_listing
+            .as_ref()
+            .ok_or_else(settings_listing_unavailable)?;
+        svc.component_graph()
+            .await
+            .map_err(map_settings_listing_error)
+    }
+
     async fn get_settings_config(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -6150,6 +6049,23 @@ fn map_settings_listing_error(error: crate::settings::SettingsListingError) -> R
                 error
             );
             RebornServicesError::internal_invariant()
+        }
+        // A non-UUID id is a malformed request, not a missing row.
+        crate::settings::SettingsListingError::InvalidId(_) => {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::InvalidRequest,
+                RebornServicesErrorKind::Validation,
+                400,
+                false,
+            )
+        }
+        crate::settings::SettingsListingError::NotFound(_) => {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::NotFound,
+                RebornServicesErrorKind::NotFound,
+                404,
+                false,
+            )
         }
     }
 }

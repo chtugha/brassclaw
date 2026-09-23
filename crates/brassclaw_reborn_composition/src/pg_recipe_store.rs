@@ -1373,7 +1373,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         project_id: &str,
         recipe_id: &str,
         new_status: &str,
-        _feedback: Option<&str>,
+        feedback: Option<&str>,
     ) -> Result<
         brassclaw_product_workflow::UpdateValidationStatusResponse,
         brassclaw_product_workflow::RecipeStoreError,
@@ -1465,8 +1465,35 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 }
             }
         } else {
-            // Non-validated status transitions (rejected, pending, etc.) use
-            // the direct update path — these are not Q2 graduation events.
+            if new_status == "rejected" {
+                // Q2 rejection: the operator's reason lives on the queue row
+                // (`reborn_validation_queue.review_feedback`) — the component
+                // table no longer carries that column (V077). `reject` also
+                // performs the state 2 → 3 transition and bumps the counter.
+                // A queue row that is absent or not Q1-passed must not block
+                // the operator's manual status flip, so the error is soft.
+                let scope = ComponentScope {
+                    tenant_id: self.tenant_id.clone(),
+                    user_id: user_id.to_string(),
+                    agent_id: self.agent_id.clone(),
+                    project_id: project_id.to_string(),
+                };
+                if let Err(e) = self
+                    .queue_store
+                    .reject(&scope, uuid, feedback.unwrap_or_default())
+                    .await
+                {
+                    debug!(
+                        component_id = %uuid,
+                        error = %e,
+                        "update_recipe_validation_status: queue reject failed, \
+                         falling back to direct status update"
+                    );
+                }
+            }
+            // Non-validated status transitions (rejected, pending, etc.) also
+            // flip `validation_status` on the component row itself — `reject`
+            // only owns the queue row.
             self.inner
                 .update_validation_status(
                     &self.tenant_id,

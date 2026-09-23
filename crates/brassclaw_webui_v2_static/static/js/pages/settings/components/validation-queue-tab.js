@@ -12,6 +12,8 @@ import {
 import { matchesSearch } from "../lib/settings-search.js";
 import { SettingsSearchEmpty } from "./settings-search-empty.js";
 import { IntentTemplatePreviewPanel } from "./intent-template-preview-panel.js";
+import { ComponentDetailPane, componentTypeForClass } from "./component-detail-pane.js";
+import { Section } from "./component-detail-primitives.js";
 
 export function ValidationQueueTab({ searchQuery = "" }) {
   const t = useT();
@@ -95,23 +97,29 @@ function QueueRow({ item }) {
   const t = useT();
   const queryClient = useQueryClient();
   const [actionError, setActionError] = React.useState("");
+  const [expanded, setExpanded] = React.useState(false);
+  const [rejectOpen, setRejectOpen] = React.useState(false);
+  const [feedback, setFeedback] = React.useState("");
+
+  const invalidateQueue = () => {
+    queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue"] });
+    queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue", "count"] });
+  };
 
   const validateMutation = useMutation({
     mutationFn: () => validateComponent(item.class_code, item.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue"] });
-      queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue", "count"] });
-    },
+    onSuccess: invalidateQueue,
     onError: (err) => {
       setActionError(t("validationQueue.validateError", { message: err.message }));
     },
   });
 
   const rejectMutation = useMutation({
-    mutationFn: () => rejectComponent(item.class_code, item.id, null),
+    mutationFn: (reason) => rejectComponent(item.class_code, item.id, reason),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue"] });
-      queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue", "count"] });
+      setRejectOpen(false);
+      setFeedback("");
+      invalidateQueue();
     },
     onError: (err) => {
       setActionError(t("validationQueue.rejectError", { message: err.message }));
@@ -151,58 +159,159 @@ function QueueRow({ item }) {
       : t("validationQueue.auditFlagged")
     : null;
   const isBusy = validateMutation.isPending || rejectMutation.isPending;
+  const detailType = componentTypeForClass(item.class_code);
+  const trimmedFeedback = feedback.trim();
 
   return html`
-    <div
-      className="flex items-start justify-between border-t border-[var(--v2-panel-border)] py-4 first:border-0"
-    >
-      <div className="flex-1 min-w-0 pr-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-mono text-sm font-semibold text-[var(--v2-text-strong)]">
-            ${item.name}
-          </span>
-          ${item.class_label &&
-            html`<span className="text-xs text-[var(--v2-text-faint)]">${item.class_label}</span>`}
+    <div className="border-t border-[var(--v2-panel-border)] py-4 first:border-0">
+      <div className="flex items-start justify-between">
+        <div className="min-w-0 flex-1 pr-4">
+          <div
+            role="button"
+            tabIndex=${0}
+            onClick=${() => setExpanded((value) => !value)}
+            onKeyDown=${(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setExpanded((value) => !value);
+              }
+            }}
+            className="cursor-pointer text-left"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-[var(--v2-accent-text)]">${expanded ? "▲" : "▼"}</span>
+              <span className="font-mono text-sm font-semibold text-[var(--v2-text-strong)]">
+                ${item.name}
+              </span>
+              ${item.class_label &&
+                html`<span className="text-xs text-[var(--v2-text-faint)]">${item.class_label}</span>`}
+            </div>
+            ${item.description &&
+              html`<p className="mt-0.5 text-xs text-[var(--v2-text-muted)] truncate">
+                ${item.description}
+              </p>`}
+          </div>
+          ${actionError &&
+            html`<p className="mt-1 text-xs text-[var(--v2-danger-text)]">${actionError}</p>`}
         </div>
-        ${item.description &&
-          html`<p className="mt-0.5 text-xs text-[var(--v2-text-muted)] truncate">
-            ${item.description}
-          </p>`}
-        ${actionError &&
-          html`<p className="mt-1 text-xs text-[var(--v2-danger-text)]">${actionError}</p>`}
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <${Badge}
-          tone=${statusTone}
-          label=${item.validation_status ?? "unknown"}
-          size="sm"
-        />
-        ${actorBadge && html`<span title=${t("validationQueue.q2ActorLabel")} className="inline-flex">
+        <div className="flex items-center gap-2 shrink-0">
           <${Badge}
-            tone=${actorBadge.tone}
-            label=${actorBadge.label}
+            tone=${statusTone}
+            label=${item.validation_status ?? "unknown"}
             size="sm"
           />
-        </span>`}
-        ${isQ2 && html`
-          <button
-            onClick=${() => { setActionError(""); rejectMutation.mutate(); }}
-            disabled=${isBusy}
-            className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-danger-text)] hover:bg-[var(--v2-danger-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            ${t("validationQueue.reject")}
-          </button>
-          <button
-            onClick=${() => { setActionError(""); validateMutation.mutate(); }}
-            disabled=${isBusy || auditBlocked}
-            title=${validateTooltip ?? ""}
-            className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-accent-text)] hover:bg-[var(--v2-accent-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            ${t("validationQueue.validate")}
-          </button>
-        `}
+          ${actorBadge && html`<span title=${t("validationQueue.q2ActorLabel")} className="inline-flex">
+            <${Badge}
+              tone=${actorBadge.tone}
+              label=${actorBadge.label}
+              size="sm"
+            />
+          </span>`}
+          ${isQ2 && html`
+            <button
+              onClick=${() => {
+                setActionError("");
+                setRejectOpen((open) => !open);
+              }}
+              disabled=${isBusy}
+              className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-danger-text)] hover:bg-[var(--v2-danger-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ${t("validationQueue.reject")}
+            </button>
+            <button
+              onClick=${() => { setActionError(""); validateMutation.mutate(); }}
+              disabled=${isBusy || auditBlocked}
+              title=${validateTooltip ?? ""}
+              className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-accent-text)] hover:bg-[var(--v2-accent-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ${t("validationQueue.validate")}
+            </button>
+          `}
+        </div>
       </div>
+
+      ${rejectOpen && isQ2 &&
+        html`<div className="mt-3 rounded border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-2">
+          <label
+            htmlFor=${`reject-feedback-${item.id}`}
+            className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--v2-text-faint)]"
+          >
+            ${t("validationQueue.feedbackLabel")}
+          </label>
+          <textarea
+            id=${`reject-feedback-${item.id}`}
+            rows=${3}
+            value=${feedback}
+            onChange=${(event) => setFeedback(event.target.value)}
+            placeholder=${t("validationQueue.feedbackPlaceholder")}
+            className="mt-1 w-full rounded border border-[var(--v2-panel-border)] bg-[var(--v2-surface)] px-2 py-1 text-xs text-[var(--v2-text-strong)]"
+          />
+          <p className="mt-1 text-[11px] text-[var(--v2-text-muted)]">
+            ${t("validationQueue.feedbackHint")}
+          </p>
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              onClick=${() => { setRejectOpen(false); setFeedback(""); }}
+              disabled=${isBusy}
+              className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-text-muted)] hover:bg-[var(--v2-surface-muted)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ${t("common.cancel")}
+            </button>
+            <button
+              onClick=${() => { setActionError(""); rejectMutation.mutate(trimmedFeedback); }}
+              disabled=${isBusy || trimmedFeedback.length === 0}
+              title=${trimmedFeedback.length === 0 ? t("validationQueue.feedbackRequired") : ""}
+              className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-danger-text)] hover:bg-[var(--v2-danger-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ${t("validationQueue.confirmReject")}
+            </button>
+          </div>
+        </div>`}
+
+      ${expanded &&
+        html`<div className="mt-3 space-y-4">
+          <${LlmAuditPanel} item=${item} />
+          ${detailType
+            ? html`<${ComponentDetailPane}
+                componentType=${detailType}
+                id=${item.id}
+                classCode=${item.class_code}
+              />`
+            : html`<p className="text-xs text-[var(--v2-text-faint)]">
+                ${t("validationQueue.noDetail", { class: String(item.class_code) })}
+              </p>`}
+        </div>`}
     </div>
+  `;
+}
+
+/**
+ * LLM code-audit outcome for the classes where it gates Q1 → Q2
+ * (10 Orchestrator, 50 Scaffold). The reviewer sees why the Validate
+ * button is blocked and what the audit flagged, instead of a tooltip.
+ */
+function LlmAuditPanel({ item }) {
+  const t = useT();
+  if (!LLM_AUDIT_CLASS_CODES.has(item.class_code)) return null;
+  const status = item.llm_audit_status ?? "pending";
+  const tone =
+    status === "clean" ? "success" : status === "flagged" ? "danger" : "warning";
+  const findings = Array.isArray(item.llm_audit_findings) ? item.llm_audit_findings : [];
+
+  return html`
+    <${Section} title=${t("validationQueue.llmAudit")}>
+      <div className="space-y-2">
+        <${Badge} tone=${tone} label=${status} size="sm" />
+        ${findings.length > 0 &&
+          html`<ul className="list-disc space-y-1 pl-4">
+            ${findings.map(
+              (finding, i) => html`<li key=${i} className="text-xs text-[var(--v2-text-muted)]">
+                ${finding}
+              </li>`
+            )}
+          </ul>`}
+      </div>
+    <//>
   `;
 }
 

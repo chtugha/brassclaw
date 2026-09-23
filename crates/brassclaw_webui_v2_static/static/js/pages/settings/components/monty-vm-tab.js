@@ -105,7 +105,6 @@ export function MontyVmTab({ searchQuery = "" }) {
         prior_knowledge_token_budget: settings.prior_knowledge_token_budget,
         q4_retention_days: settings.q4_retention_days,
         forensic_packet_retention_days: settings.forensic_packet_retention_days,
-        active_orchestrator_id: settings.active_orchestrator_id || null,
       });
       if (updated?.settings) setSettings(updated.settings);
       setSavedOk(true);

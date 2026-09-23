@@ -117,8 +117,7 @@ pub use lifecycle::{
     LifecyclePackageId, LifecyclePackageKind, LifecyclePackageRef, LifecyclePhase,
     LifecycleProductAction, LifecycleProductContext, LifecycleProductFacade,
     LifecycleProductPayload, LifecycleProductResponse, LifecycleProductSurfaceContext,
-    LifecycleReadinessBlocker, LifecycleSkillSource, LifecycleSkillSummary,
-    UnsupportedLifecycleProductFacade,
+    LifecycleReadinessBlocker, UnsupportedLifecycleProductFacade,
 };
 // Product hosts use this outbound orchestration seam to wire outbound policy
 // decisions to adapter rendering without reaching into module internals.
@@ -137,9 +136,6 @@ pub use reborn_services::{
     InterceptorConfigService, InterceptorConfigServiceError, InterceptorConfigSnapshot,
     PrefixEntry, PrefixListResponse, PrefixRegenerateResponse, UpdateInterceptorConfigRequest,
     interceptor_config_unavailable, map_interceptor_config_error,
-};
-pub use reborn_services::{
-    RebornInstallSkillRequest, SkillsProductFacade, UnsupportedSkillsProductFacade,
 };
 pub use recipes::{
     ComponentAuditStatus, OutcomeKind, RecipeDetail, RecipeKind, RecipeListRequest,
@@ -163,11 +159,12 @@ pub use settings::{
     McpServerStartRequest, McpServerState, McpServerStatusResponse, MontyVmRestartRequest,
     MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsError, MontyVmSettingsResponse,
     MontyVmSettingsStore, MontyVmState, MontyVmStatusResponse, SecuritySettingsError,
-    SecuritySettingsStore, SettingsComponentSummary, SettingsConfigResponse, SettingsListResponse,
-    SettingsListingError, SettingsListingService, UpdateChatPreferenceRequest,
-    UpdateChatPreferenceResponse, UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest,
-    UpdateSettingRequest, UpdateSettingResponse, UpsertIntentInputRequest,
-    default_monty_vm_settings,
+    SecuritySettingsStore, SettingsComponentDetail, SettingsComponentGraph,
+    SettingsComponentGraphEdge, SettingsComponentGraphNode, SettingsComponentSummary,
+    SettingsComponentType, SettingsConfigResponse, SettingsListResponse, SettingsListingError,
+    SettingsListingService, UpdateChatPreferenceRequest, UpdateChatPreferenceResponse,
+    UpdateMcpServerSettingsRequest, UpdateMontyVmSettingsRequest, UpdateSettingRequest,
+    UpdateSettingResponse, UpsertIntentInputRequest, default_monty_vm_settings,
 };
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;
@@ -207,16 +204,15 @@ pub use reborn_services::{
     RebornExtensionOnboardingState, RebornExtensionRegistryEntry, RebornExtensionRegistryResponse,
     RebornExtensionSetupField, RebornExtensionSetupSecret, RebornFireAutomationNowResponse,
     RebornGetAutomationResponse, RebornGetRunStateRequest, RebornGetRunStateResponse,
-    RebornListAutomationsResponse, RebornListCapabilitiesResponse, RebornListSkillsResponse,
-    RebornListThreadsResponse, RebornOutboundDeliveryModality,
-    RebornOutboundDeliveryTargetCapabilities, RebornOutboundDeliveryTargetChannel,
-    RebornOutboundDeliveryTargetDescription, RebornOutboundDeliveryTargetDisplayName,
-    RebornOutboundDeliveryTargetId, RebornOutboundDeliveryTargetListResponse,
-    RebornOutboundDeliveryTargetOption, RebornOutboundDeliveryTargetSummary,
-    RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
-    RebornServices, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
-    RebornServicesErrorKind, RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse,
-    RebornSkillInfo, RebornSkillInstallResult, RebornSkillRemoveResult, RebornStreamEventsRequest,
+    RebornListAutomationsResponse, RebornListCapabilitiesResponse, RebornListThreadsResponse,
+    RebornOutboundDeliveryModality, RebornOutboundDeliveryTargetCapabilities,
+    RebornOutboundDeliveryTargetChannel, RebornOutboundDeliveryTargetDescription,
+    RebornOutboundDeliveryTargetDisplayName, RebornOutboundDeliveryTargetId,
+    RebornOutboundDeliveryTargetListResponse, RebornOutboundDeliveryTargetOption,
+    RebornOutboundDeliveryTargetSummary, RebornOutboundPreferencesResponse,
+    RebornResolveGateResponse, RebornResumeGateResponse, RebornServices, RebornServicesApi,
+    RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
+    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornStreamEventsRequest,
     RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
     RebornTimelineResponse, RebornUpdateAutomationResponse,
     RebornUpdateCapabilityPermissionRequest, RebornUpdateCapabilityPermissionResponse,

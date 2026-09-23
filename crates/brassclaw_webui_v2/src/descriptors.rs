@@ -43,9 +43,6 @@ pub const WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN: &str =
 pub const WEBUI_V2_ROUTE_START_CODEX_LOGIN: &str = "webui.v2.start_codex_login";
 pub const WEBUI_V2_ROUTE_LIST_TOOLS: &str = "webui.v2.list_tools";
 pub const WEBUI_V2_ROUTE_UPDATE_TOOL_PERMISSION: &str = "webui.v2.update_tool_permission";
-pub const WEBUI_V2_ROUTE_LIST_SKILLS: &str = "webui.v2.list_skills";
-pub const WEBUI_V2_ROUTE_INSTALL_SKILL: &str = "webui.v2.install_skill";
-pub const WEBUI_V2_ROUTE_REMOVE_SKILL: &str = "webui.v2.remove_skill";
 
 // Automations CRUD routes.
 pub const WEBUI_V2_ROUTE_CREATE_AUTOMATION: &str = "webui.v2.create_automation";
@@ -82,10 +79,6 @@ pub const WEBUI_V2_ROUTE_GET_INTERCEPTOR_CONFIG: &str = "webui.v2.get_intercepto
 pub const WEBUI_V2_ROUTE_UPDATE_INTERCEPTOR_CONFIG: &str = "webui.v2.update_interceptor_config";
 pub const WEBUI_V2_ROUTE_LIST_PREFIXES: &str = "webui.v2.list_prefixes";
 pub const WEBUI_V2_ROUTE_REGENERATE_PREFIX: &str = "webui.v2.regenerate_prefix";
-// Phase K.1.7 — SKILL.md on-demand export.
-pub const WEBUI_V2_ROUTE_EXPORT_SKILL: &str = "webui.v2.export_skill";
-pub const WEBUI_V2_PATTERN_EXPORT_SKILL: &str = "/api/webchat/v2/skills/{id}/export";
-
 // Automation sub-resource URL patterns.
 // Note: WEBUI_V2_PATTERN_LIST_AUTOMATIONS ("/api/webchat/v2/automations") is reused for GET + POST.
 pub const WEBUI_V2_PATTERN_AUTOMATION_ID: &str = "/api/webchat/v2/automations/{automation_id}";
@@ -112,6 +105,9 @@ pub const WEBUI_V2_ROUTE_GET_SETTINGS_TOOL_SKILLS: &str = "webui.v2.get_settings
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_PYTHON_CODE: &str = "webui.v2.get_settings_python_code";
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_EXTENSION_CATALOGUES: &str =
     "webui.v2.get_settings_extension_catalogues";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_COMPONENT: &str = "webui.v2.get_settings_component";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_COMPONENT_GRAPH: &str =
+    "webui.v2.get_settings_component_graph";
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_MONTY_VM: &str = "webui.v2.get_settings_monty_vm";
 pub const WEBUI_V2_ROUTE_PUT_SETTINGS_MONTY_VM: &str = "webui.v2.put_settings_monty_vm";
 pub const WEBUI_V2_ROUTE_POST_SETTINGS_MONTY_VM_RESTART: &str =
@@ -136,6 +132,13 @@ pub const WEBUI_V2_PATTERN_SETTINGS_TOOL_SKILLS: &str = "/api/settings/tool-skil
 pub const WEBUI_V2_PATTERN_SETTINGS_PYTHON_CODE: &str = "/api/settings/python-code";
 pub const WEBUI_V2_PATTERN_SETTINGS_EXTENSION_CATALOGUES: &str =
     "/api/settings/extension-catalogues";
+/// Cross-reference graph of the whole catalog. One path segment, so it does
+/// not collide with the two-segment component-detail wildcard below.
+pub const WEBUI_V2_PATTERN_SETTINGS_COMPONENT_GRAPH: &str = "/api/settings/component-graph";
+/// Detail read for one catalog component. The static settings patterns above
+/// take routing precedence over this two-segment wildcard, so `monty-vm/status`
+/// and friends keep resolving to their own handlers.
+pub const WEBUI_V2_PATTERN_SETTINGS_COMPONENT: &str = "/api/settings/{component_type}/{id}";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM: &str = "/api/settings/monty-vm";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART: &str = "/api/settings/monty-vm/restart";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS: &str = "/api/settings/monty-vm/status";
@@ -206,9 +209,6 @@ pub const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/
 pub const WEBUI_V2_PATTERN_LIST_TOOLS: &str = "/api/webchat/v2/tools";
 pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str =
     "/api/webchat/v2/tools/{capability_id}/permission";
-pub const WEBUI_V2_PATTERN_LIST_SKILLS: &str = "/api/webchat/v2/skills";
-pub const WEBUI_V2_PATTERN_INSTALL_SKILL: &str = "/api/webchat/v2/skills/install";
-pub const WEBUI_V2_PATTERN_REMOVE_SKILL: &str = "/api/webchat/v2/skills/{name}";
 
 // Phase 7 — Recipe-Skill-Tool learning pipeline.
 //
@@ -278,9 +278,6 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         start_codex_login_descriptor(),
         list_tools_descriptor(),
         update_tool_permission_descriptor(),
-        list_skills_descriptor(),
-        install_skill_descriptor(),
-        remove_skill_descriptor(),
         list_recipes_descriptor(),
         list_tool_skills_descriptor(),
         get_recipe_descriptor(),
@@ -300,8 +297,6 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         update_interceptor_config_descriptor(),
         list_prefixes_descriptor(),
         regenerate_prefix_descriptor(),
-        // Phase K.1.7 — SKILL.md export.
-        export_skill_descriptor(),
         // Phase 6 — Settings UI routes (10-tab editor).
         get_settings_skills_descriptor(),
         get_settings_tools_descriptor(),
@@ -313,6 +308,8 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         get_settings_tool_skills_descriptor(),
         get_settings_python_code_descriptor(),
         get_settings_extension_catalogues_descriptor(),
+        get_settings_component_descriptor(),
+        get_settings_component_graph_descriptor(),
         get_settings_monty_vm_descriptor(),
         put_settings_monty_vm_descriptor(),
         post_settings_monty_vm_restart_descriptor(),
@@ -774,48 +771,6 @@ fn update_tool_permission_descriptor() -> IngressRouteDescriptor {
     )
 }
 
-fn list_skills_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_LIST_SKILLS,
-        NetworkMethod::Get,
-        WEBUI_V2_PATTERN_LIST_SKILLS,
-        read_policy(
-            read_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProjectionOnly,
-            StreamingMode::None,
-        ),
-    )
-}
-
-fn install_skill_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_INSTALL_SKILL,
-        NetworkMethod::Post,
-        WEBUI_V2_PATTERN_INSTALL_SKILL,
-        mutation_policy(
-            body_limit_kib(512),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
-    )
-}
-
-fn remove_skill_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_REMOVE_SKILL,
-        NetworkMethod::Delete,
-        WEBUI_V2_PATTERN_REMOVE_SKILL,
-        mutation_policy(
-            BodyLimitPolicy::NoBody,
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
-    )
-}
-
 fn list_recipes_descriptor() -> IngressRouteDescriptor {
     descriptor(
         WEBUI_V2_ROUTE_LIST_RECIPES,
@@ -1055,21 +1010,6 @@ fn regenerate_prefix_descriptor() -> IngressRouteDescriptor {
     )
 }
 
-// Phase K.1.7 — SKILL.md on-demand export.
-fn export_skill_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_EXPORT_SKILL,
-        NetworkMethod::Get,
-        WEBUI_V2_PATTERN_EXPORT_SKILL,
-        read_policy(
-            read_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProjectionOnly,
-            StreamingMode::None,
-        ),
-    )
-}
-
 // Phase 6 — Settings UI descriptor builder functions.
 
 fn get_settings_skills_descriptor() -> IngressRouteDescriptor {
@@ -1203,6 +1143,34 @@ fn get_settings_extension_catalogues_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_ROUTE_GET_SETTINGS_EXTENSION_CATALOGUES,
         NetworkMethod::Get,
         WEBUI_V2_PATTERN_SETTINGS_EXTENSION_CATALOGUES,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_component_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_COMPONENT,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_COMPONENT,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_component_graph_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_COMPONENT_GRAPH,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_COMPONENT_GRAPH,
         read_policy(
             read_rate_limit(),
             AuditTraceClass::UserAction,

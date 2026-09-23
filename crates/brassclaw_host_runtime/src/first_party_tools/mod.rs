@@ -14,8 +14,6 @@ mod memory;
 mod model_visible_output;
 mod schemas;
 mod shell;
-mod skill_management;
-mod skill_url_install;
 mod spawn_subagent;
 mod time;
 mod trigger_management;
@@ -58,9 +56,6 @@ pub use memory::{
     MEMORY_WRITE_CAPABILITY_ID,
 };
 pub use shell::SHELL_CAPABILITY_ID;
-pub use skill_management::{
-    SKILL_INSTALL_CAPABILITY_ID, SKILL_LIST_CAPABILITY_ID, SKILL_REMOVE_CAPABILITY_ID,
-};
 pub use spawn_subagent::SPAWN_SUBAGENT_CAPABILITY_ID;
 pub use time::TIME_CAPABILITY_ID;
 #[cfg(any(test, feature = "test-support"))]
@@ -175,7 +170,6 @@ pub fn builtin_first_party_package() -> Result<ExtensionPackage, ExtensionError>
                 ];
                 capabilities.extend(memory::manifests()?);
                 capabilities.extend(coding_manifests()?);
-                capabilities.extend(skill_management::manifests()?);
                 capabilities.extend(trigger_management::manifests()?);
                 capabilities
             },
@@ -305,7 +299,6 @@ fn builtin_first_party_registry_from_tools(
         CapabilityId::new(COMPONENT_DB_CAPABILITY_ID)?,
         handler.clone(),
     );
-    skill_management::insert_handlers(&mut registry)?;
     Ok(registry)
 }
 

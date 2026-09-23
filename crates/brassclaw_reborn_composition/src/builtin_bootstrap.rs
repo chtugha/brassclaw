@@ -3286,12 +3286,6 @@ const SPAWN_SKILL_TAGS: &[&str] = &["02:orchestrator"];
 /// `leaf_skill(...)` rather than this const.
 const TRIGGER_SKILL_TAGS: &[&str] = &["02:orchestrator"];
 
-/// consumer_tags for the skill-management skills (skill-skill-list/install/remove
-/// leaf skills + the skill-skills domain) — transcribed verbatim from the doc.
-/// Orchestrator-only (the validator never mutates the installed skill library).
-/// The time/json leaf + domain skills use the full `LEAF_SKILL_TAGS` instead.
-const SKILL_MGMT_TAGS: &[&str] = &["02:orchestrator"];
-
 /// Build a `NewPgSkill` row from the variable parts. `intent_examples` is
 /// `json!([])` because the doc's leaf/domain skill definitions carry no
 /// intent examples (leaf skills are loaded via recipe steps, not direct intent
@@ -10548,7 +10542,7 @@ async fn seed_process_group(stores: &BootstrapStores) -> Result<(), SeedBuiltinB
 }
 
 // ---------------------------------------------------------------------------
-// Management group (Pass 5)
+// Management group (Pass 5) — time, json, echo
 // ---------------------------------------------------------------------------
 
 /// Seed the management & utility domain group: the primary `builtin-management`
@@ -10572,26 +10566,11 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
     let cat_json = stores
         .upsert_catalogue(ext_json_catalogue_row(&tenant), "ext-json")
         .await?;
-    let cat_skill_management = stores
-        .upsert_catalogue(
-            ext_skill_management_catalogue_row(&tenant),
-            "ext-skill-management",
-        )
-        .await?;
 
     // 2. Tool rows (class 0).
     let tool_time = stores.upsert_tool(tool_time_row(&tenant), "time").await?;
     let tool_json = stores.upsert_tool(tool_json_row(&tenant), "json").await?;
     let tool_echo = stores.upsert_tool(tool_echo_row(&tenant), "echo").await?;
-    let tool_skill_list = stores
-        .upsert_tool(tool_skill_list_row(&tenant), "skill_list")
-        .await?;
-    let tool_skill_install = stores
-        .upsert_tool(tool_skill_install_row(&tenant), "skill_install")
-        .await?;
-    let tool_skill_remove = stores
-        .upsert_tool(tool_skill_remove_row(&tenant), "skill_remove")
-        .await?;
 
     // 3. ToolSkill rows (class 13).
     let ts_time_now = stores
@@ -10617,15 +10596,6 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
         .await?;
     let ts_json_validate = stores
         .upsert_tool_skill(ts_json_validate_row(&tenant), "ts-json-validate")
-        .await?;
-    let ts_skill_list = stores
-        .upsert_tool_skill(ts_skill_list_row(&tenant), "ts-skill-list")
-        .await?;
-    let ts_skill_install = stores
-        .upsert_tool_skill(ts_skill_install_row(&tenant), "ts-skill-install")
-        .await?;
-    let ts_skill_remove = stores
-        .upsert_tool_skill(ts_skill_remove_row(&tenant), "ts-skill-remove")
         .await?;
     let ts_echo = stores
         .upsert_tool_skill(ts_echo_row(&tenant), "ts-echo")
@@ -10737,18 +10707,6 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             "pc-exec-json-validate",
         )
         .await?;
-    let pc_exec_skill_list = stores
-        .upsert_python_code(
-            pc_row(
-                &tenant,
-                "pc-exec-skill-list",
-                "Orchestrator executor: calls host.<tool> to list installed skills. \
-                 Input: scope (string). Output: [{name, class_code, …}].",
-                PC_EXEC_SKILL_LIST_CONTENT,
-            ),
-            "pc-exec-skill-list",
-        )
-        .await?;
     let pc_exec_echo = stores
         .upsert_python_code(
             pc_row(
@@ -10765,7 +10723,6 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
 
     // 5. Leaf Skills (class 1). time/json leaf skills carry the full
     //    LEAF_SKILL_TAGS [02:orchestrator, 05:validator]; skill-management
-    //    leaf skills are orchestrator-only (SKILL_MGMT_TAGS).
     let skill_time_now = stores
         .upsert_skill(
             leaf_skill(
@@ -10876,49 +10833,9 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             "skill-json-parse-and-query",
         )
         .await?;
-    let skill_skill_list = stores
-        .upsert_skill(
-            skill_row(
-                &tenant,
-                "skill-skill-list",
-                "Leaf skill: how to list installed skills in the active scope.",
-                SKILL_SKILL_LIST_BODY,
-                1,
-                SKILL_MGMT_TAGS,
-            ),
-            "skill-skill-list",
-        )
-        .await?;
-    let skill_skill_install = stores
-        .upsert_skill(
-            skill_row(
-                &tenant,
-                "skill-skill-install",
-                "Leaf skill: how to install a new skill from a URL or local path.",
-                SKILL_SKILL_INSTALL_BODY,
-                1,
-                SKILL_MGMT_TAGS,
-            ),
-            "skill-skill-install",
-        )
-        .await?;
-    let skill_skill_remove = stores
-        .upsert_skill(
-            skill_row(
-                &tenant,
-                "skill-skill-remove",
-                "Leaf skill: how to safely remove an installed skill.",
-                SKILL_SKILL_REMOVE_BODY,
-                1,
-                SKILL_MGMT_TAGS,
-            ),
-            "skill-skill-remove",
-        )
-        .await?;
 
     // 6. Domain Skills (class 2). skill-time / skill-json carry the long domain
-    //    text as body with a short one-line description (LEAF_SKILL_TAGS);
-    //    skill-skills is orchestrator-only (SKILL_MGMT_TAGS).
+    //    text as body with a short one-line description (LEAF_SKILL_TAGS).
     let skill_time = stores
         .upsert_skill(
             skill_row(
@@ -10945,22 +10862,8 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             "skill-json",
         )
         .await?;
-    let skill_skills = stores
-        .upsert_skill(
-            skill_row(
-                &tenant,
-                "skill-skills",
-                "Domain skill: skill management — list, install, remove.",
-                SKILL_SKILLS_BODY,
-                2,
-                SKILL_MGMT_TAGS,
-            ),
-            "skill-skills",
-        )
-        .await?;
 
-    // 7. Recipes (class 21). 15 Tier-0 (llm_call_required=false) + 2 Tier-1
-    //    (skill-install, skill-remove — 3-step LLM-confirm pattern).
+    // 7. Recipes (class 21). All Tier-0 (llm_call_required=false).
     let recipe_time_now = stores
         .seed_recipe(
             &tenant,
@@ -11344,197 +11247,6 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
             ],
         )
         .await?;
-    let recipe_skill_list = stores
-        .seed_recipe(
-            &tenant,
-            "skill-list",
-            "List all installed skills, optionally filtered by scope.",
-            true,
-            RECIPE_SKILL_LIST_YAML,
-            &[
-                step_entry(
-                    1,
-                    "rust",
-                    "Pre-load ts-skill-list ToolSkill binding",
-                    "component",
-                    &[ts_skill_list],
-                ),
-                step_entry(
-                    2,
-                    "orchestrator",
-                    "PythonCode calls host.skill_list(scope)",
-                    "component",
-                    &[pc_exec_skill_list],
-                ),
-            ],
-            &[
-                json!({"input": "list my skills", "class": 1}),
-                json!({"input": "what skills are installed", "class": 1}),
-                json!({"input": "show me available skills", "class": 1}),
-                json!({"input": "which skills do I have", "class": 1}),
-                json!({"input": "list system skills", "class": 2}),
-                json!({"input": "skill list", "class": 1}),
-                json!({"input": "show all installed skills", "class": 1}),
-                json!({"input": "what capabilities are loaded", "class": 2}),
-            ],
-        )
-        .await?;
-    let recipe_skill_list_user_only = stores
-        .seed_recipe(
-            &tenant,
-            "skill-list-user-only",
-            "List only user-installed skills (scope='user').",
-            true,
-            RECIPE_SKILL_LIST_USER_ONLY_YAML,
-            &[
-                step_entry(
-                    1,
-                    "rust",
-                    "Pre-load ts-skill-list ToolSkill binding",
-                    "component",
-                    &[ts_skill_list],
-                ),
-                step_entry(
-                    2,
-                    "orchestrator",
-                    "PythonCode calls host.skill_list(scope='user')",
-                    "component",
-                    &[pc_exec_skill_list],
-                ),
-            ],
-            &[
-                json!({"input": "what skills have I installed", "class": 1}),
-                json!({"input": "list my user-installed skills", "class": 1}),
-                json!({"input": "show only the skills I added", "class": 1}),
-                json!({"input": "which user skills do I have", "class": 1}),
-                json!({"input": "my custom skills list", "class": 2}),
-                json!({"input": "show skills installed by user", "class": 1}),
-                json!({"input": "list user-scope skills", "class": 1}),
-                json!({"input": "what have I installed as skills", "class": 2}),
-                json!({"input": "my skill library", "class": 2}),
-            ],
-        )
-        .await?;
-    let recipe_skill_list_system_only = stores
-        .seed_recipe(
-            &tenant,
-            "skill-list-system-only",
-            "List only system-provided built-in skills (scope='system').",
-            true,
-            RECIPE_SKILL_LIST_SYSTEM_ONLY_YAML,
-            &[
-                step_entry(
-                    1,
-                    "rust",
-                    "Pre-load ts-skill-list ToolSkill binding",
-                    "component",
-                    &[ts_skill_list],
-                ),
-                step_entry(
-                    2,
-                    "orchestrator",
-                    "PythonCode calls host.skill_list(scope='system')",
-                    "component",
-                    &[pc_exec_skill_list],
-                ),
-            ],
-            &[
-                json!({"input": "what built-in skills are available", "class": 1}),
-                json!({"input": "list system skills", "class": 1}),
-                json!({"input": "show me the built-in capabilities", "class": 1}),
-                json!({"input": "what system-level skills exist", "class": 1}),
-                json!({"input": "list the system builtins", "class": 1}),
-                json!({"input": "show only system-provided skills", "class": 1}),
-                json!({"input": "what skills come with the system", "class": 2}),
-                json!({"input": "list builtin skills scope system", "class": 1}),
-                json!({"input": "show factory-installed skills", "class": 2}),
-            ],
-        )
-        .await?;
-    let recipe_skill_install = stores
-        .seed_recipe(
-            &tenant,
-            "skill-install",
-            "Install a new skill from a URL, with user confirmation.",
-            false,
-            RECIPE_SKILL_INSTALL_YAML,
-            &[
-                step_entry(
-                    1,
-                    "orchestrator",
-                    "Load skill-skill-install leaf skill body (install procedure)",
-                    "component",
-                    &[skill_skill_install],
-                ),
-                step_entry(
-                    2,
-                    "orchestrator",
-                    "LLM confirms URL with user, explains pending state, calls ts-skill-install",
-                    "text",
-                    &[],
-                ),
-                step_entry(
-                    3,
-                    "rust",
-                    "Pre-load ToolSkill bindings for list (pre-check) and install",
-                    "component",
-                    &[ts_skill_list, ts_skill_install],
-                ),
-            ],
-            &[
-                json!({"input": "install a skill from this URL", "class": 1}),
-                json!({"input": "add a new skill", "class": 1}),
-                json!({"input": "install skill from https://...", "class": 1}),
-                json!({"input": "load skill from local path", "class": 2}),
-                json!({"input": "install this skill", "class": 1}),
-                json!({"input": "add skill from this path", "class": 2}),
-                json!({"input": "skill install", "class": 1}),
-                json!({"input": "set up this new skill", "class": 2}),
-            ],
-        )
-        .await?;
-    let recipe_skill_remove = stores
-        .seed_recipe(
-            &tenant,
-            "skill-remove",
-            "Remove an installed skill by name, with user confirmation.",
-            false,
-            RECIPE_SKILL_REMOVE_YAML,
-            &[
-                step_entry(
-                    1,
-                    "orchestrator",
-                    "Load skill-skill-remove leaf skill body (removal procedure)",
-                    "component",
-                    &[skill_skill_remove],
-                ),
-                step_entry(
-                    2,
-                    "orchestrator",
-                    "LLM confirms skill name, warns about irreversibility, calls ts-skill-remove",
-                    "text",
-                    &[],
-                ),
-                step_entry(
-                    3,
-                    "rust",
-                    "Pre-load ToolSkill bindings for list (pre-check) and remove",
-                    "component",
-                    &[ts_skill_list, ts_skill_remove],
-                ),
-            ],
-            &[
-                json!({"input": "remove skill X", "class": 1}),
-                json!({"input": "uninstall skill", "class": 1}),
-                json!({"input": "delete this skill", "class": 1}),
-                json!({"input": "remove my custom skill", "class": 2}),
-                json!({"input": "skill remove", "class": 1}),
-                json!({"input": "uninstall this skill from my agent", "class": 2}),
-                json!({"input": "delete skill by name", "class": 1}),
-                json!({"input": "remove the skill named X", "class": 1}),
-            ],
-        )
-        .await?;
     let recipe_echo_ping = stores
         .seed_recipe(
             &tenant,
@@ -11623,31 +11335,10 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
         recipe_json_validate,
         recipe_json_parse_and_query,
     ];
-    let ext_skill_management_children: Vec<Uuid> = vec![
-        tool_skill_list,
-        tool_skill_install,
-        tool_skill_remove,
-        ts_skill_list,
-        ts_skill_install,
-        ts_skill_remove,
-        pc_exec_skill_list,
-        skill_skill_list,
-        skill_skill_install,
-        skill_skill_remove,
-        skill_skills,
-        recipe_skill_list,
-        recipe_skill_list_user_only,
-        recipe_skill_list_system_only,
-        recipe_skill_install,
-        recipe_skill_remove,
-    ];
     let echo_children: Vec<Uuid> = vec![tool_echo, ts_echo, pc_exec_echo, recipe_echo_ping];
 
     stores.append_children(cat_time, &ext_time_children).await?;
     stores.append_children(cat_json, &ext_json_children).await?;
-    stores
-        .append_children(cat_skill_management, &ext_skill_management_children)
-        .await?;
     // Primary catalogue owns the union of all four child sets.
     stores
         .append_children(cat_management, &ext_time_children)
@@ -11656,15 +11347,10 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
         .append_children(cat_management, &ext_json_children)
         .await?;
     stores
-        .append_children(cat_management, &ext_skill_management_children)
-        .await?;
-    stores
         .append_children(cat_management, &echo_children)
         .await?;
 
-    tracing::debug!(
-        "seeded management group: 6 tools + 12 toolskills + 10 PythonCode + 13 leaf skills + 3 domain skills + 17 recipes (15 Tier-0 + 2 Tier-1) + 4 catalogues - management group COMPLETE (65 components; 61 non-catalogue children)"
-    );
+    tracing::debug!("seeded management group: time, json, echo - management group COMPLETE");
 
     Ok(())
 }
@@ -13303,7 +12989,7 @@ const RECIPE_SHELL_GIT_PULL_YAML: &str = r#"step_descriptions: [
 "#;
 
 // ---------------------------------------------------------------------------
-// Management group (Pass 5) — time, json, echo, skill_list/install/remove
+
 // ---------------------------------------------------------------------------
 
 /// Primary catalogue name for the management domain.
@@ -13311,22 +12997,9 @@ const CAT_MANAGEMENT: &str = "builtin-management";
 
 const CAT_MANAGEMENT_OVERVIEW: &str = r#"# Management & Utility Capabilities
 
-The management domain covers: skill lifecycle management, time operations, JSON
-manipulation, and the diagnostic echo passthrough.
 
-## Tools in this domain
-- builtin.skill_list    — list installed skills
-- builtin.skill_install — install a skill from URL/path (enters Q1/Q2)
-- builtin.skill_remove  — remove an installed skill (irreversible)
-- builtin.time          — time queries: now, parse, convert
 - builtin.json          — JSON operations: query, stringify, parse, validate
 - builtin.echo          — diagnostic passthrough (no user-facing recipe)
-
-## Skill management
-- Always list before installing (avoid duplicates).
-- Always confirm with user before installing from external URLs or removing.
-- After install, the skill is 'pending' — not usable until Q2 graduates it.
-- System-scope skills cannot be modified from user-scope authority.
 
 ## Time utilities
 - time/now: current UTC and local time in ISO 8601
@@ -13376,21 +13049,6 @@ Approaches:
 Always validate before parsing when the source is external or user-provided.
 "#;
 
-const CAT_EXT_SKILL_MANAGEMENT_OVERVIEW: &str = r#"# Skill Management Capability
-Tools: builtin.skill_list, builtin.skill_install, builtin.skill_remove
-Effects: Read (list), Write (install/remove)
-
-Manages the installed skill library. List is Tier 0. Install and Remove are Tier 1
-(user confirmation required — both have side effects on the capability stack).
-
-Approaches:
-- List all skills: → skill-list recipe (Tier 0)
-- List user skills only: → skill-list-user-only recipe (Tier 0)
-- List system skills only: → skill-list-system-only recipe (Tier 0)
-- Install a skill: → skill-install recipe (Tier 1)
-- Remove a skill: → skill-remove recipe (Tier 1)
-"#;
-
 // ---------------------------------------------------------------------------
 // Catalogue row builders — management group
 // ---------------------------------------------------------------------------
@@ -13402,13 +13060,11 @@ fn management_primary_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
         agent_id: SEED_AGENT.to_string(),
         project_id: SEED_PROJECT.to_string(),
         name: CAT_MANAGEMENT.to_string(),
-        description: "Management & utility domain capability catalogue (skill_list, \
-                       skill_install, skill_remove, time, json, echo)."
+        description: "Management & utility domain capability catalogue (time, json, echo)."
             .to_string(),
         version: "1.0".into(),
         overview_doc: CAT_MANAGEMENT_OVERVIEW.into(),
         task_groups: json!([
-            {"group_name": "skill-management", "description": "Skill lifecycle: list, install, remove"},
             {"group_name": "time-utilities",   "description": "Time queries, parsing, and conversion"},
             {"group_name": "json-utilities",   "description": "JSON query, stringify, parse, validate"},
             {"group_name": "diagnostics",      "description": "Echo passthrough (development/testing only)"}
@@ -13450,21 +13106,6 @@ fn ext_json_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
             {"group_name": "json-query",           "description": "Extract values by path"},
             {"group_name": "json-stringify-parse", "description": "Serialize and deserialize"},
             {"group_name": "json-validate",        "description": "Syntax validation"}
-        ]),
-    )
-}
-
-fn ext_skill_management_catalogue_row(tenant: &str) -> NewPgExtensionCatalogue {
-    ext_catalogue_row(
-        tenant,
-        "ext-skill-management",
-        "Per-tool extension catalogue for the skill-management tools (skill_list, \
-         skill_install, skill_remove).",
-        CAT_EXT_SKILL_MANAGEMENT_OVERVIEW,
-        json!([
-            {"group_name": "skill-list",   "description": "Enumerate installed skills (scope-filtered)"},
-            {"group_name": "skill-install", "description": "Install a new skill from URL/path"},
-            {"group_name": "skill-remove",  "description": "Remove an installed skill"}
         ]),
     )
 }
@@ -13570,87 +13211,6 @@ fn tool_echo_row(tenant: &str) -> NewPgTool {
         source: "system".into(),
         validation_status: "validated".into(),
         capability_id: "builtin.echo".into(),
-    }
-}
-
-fn tool_skill_list_row(tenant: &str) -> NewPgTool {
-    NewPgTool {
-        tenant_id: tenant.to_string(),
-        user_id: SEED_USER.to_string(),
-        agent_id: SEED_AGENT.to_string(),
-        project_id: SEED_PROJECT.to_string(),
-        name: "skill_list".to_string(),
-        description: "List all skills currently installed in the active scope.".to_string(),
-        param_schema: Some(json!({
-            "type": "object",
-            "properties": {
-                "scope": {"type": "string", "description": "Scope filter: 'all' | 'user' | 'system'. Defaults to 'all'."}
-            },
-            "required": []
-        })),
-        param_template: Some(json!({})),
-        effect_type: "read".to_string(),
-        preconditions: None,
-        error_handling: None,
-        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
-        source: "system".into(),
-        validation_status: "validated".into(),
-        capability_id: "builtin.skill_list".into(),
-    }
-}
-
-fn tool_skill_install_row(tenant: &str) -> NewPgTool {
-    NewPgTool {
-        tenant_id: tenant.to_string(),
-        user_id: SEED_USER.to_string(),
-        agent_id: SEED_AGENT.to_string(),
-        project_id: SEED_PROJECT.to_string(),
-        name: "skill_install".to_string(),
-        description: "Install a new skill from a URL or local path, entering the Q1/Q2 pipeline."
-            .to_string(),
-        param_schema: Some(json!({
-            "type": "object",
-            "properties": {
-                "source_url": {"type": "string", "description": "URL or local file path to skill manifest."},
-                "scope": {"type": "string", "description": "Target scope: 'user' (default) or 'system'."}
-            },
-            "required": ["source_url"]
-        })),
-        param_template: Some(json!({"source_url": "{{source_url}}"})),
-        effect_type: "write".to_string(),
-        preconditions: None,
-        error_handling: None,
-        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
-        source: "system".into(),
-        validation_status: "validated".into(),
-        capability_id: "builtin.skill_install".into(),
-    }
-}
-
-fn tool_skill_remove_row(tenant: &str) -> NewPgTool {
-    NewPgTool {
-        tenant_id: tenant.to_string(),
-        user_id: SEED_USER.to_string(),
-        agent_id: SEED_AGENT.to_string(),
-        project_id: SEED_PROJECT.to_string(),
-        name: "skill_remove".to_string(),
-        description: "Remove an installed skill by name. Irreversible.".to_string(),
-        param_schema: Some(json!({
-            "type": "object",
-            "properties": {
-                "skill_name": {"type": "string", "description": "Name of the skill to remove."},
-                "scope": {"type": "string", "description": "Scope: 'user' | 'system'. Defaults to 'user'."}
-            },
-            "required": ["skill_name"]
-        })),
-        param_template: Some(json!({"skill_name": "{{skill_name}}"})),
-        effect_type: "write".to_string(),
-        preconditions: None,
-        error_handling: None,
-        consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
-        source: "system".into(),
-        validation_status: "validated".into(),
-        capability_id: "builtin.skill_remove".into(),
     }
 }
 
@@ -13903,85 +13463,6 @@ fn ts_json_validate_row(tenant: &str) -> NewPgToolSkill {
     }
 }
 
-fn ts_skill_list_row(tenant: &str) -> NewPgToolSkill {
-    NewPgToolSkill {
-        tenant_id: tenant.to_string(),
-        user_id: SEED_USER.to_string(),
-        agent_id: SEED_AGENT.to_string(),
-        project_id: SEED_PROJECT.to_string(),
-        name: "ts-skill-list".to_string(),
-        description: "ToolSkill binding for builtin.skill_list — deterministic scope-filtered \
-                      listing."
-            .to_string(),
-        content: TS_SKILL_LIST_CONTENT.to_string(),
-        prior_knowledge_content: None,
-        override_prompt_creation: false,
-        tool_name: Some("skill_list".to_string()),
-        param_schema: Some(json!([
-            {"name": "scope", "param_type": "string", "required": false, "description": "Scope filter: 'all' | 'user' | 'system'. Defaults to 'all'."}
-        ])),
-        param_template: Some(json!({"scope": "{{scope}}"})),
-        consumer_tags: vec!["02:orchestrator".into()],
-        intent_examples: None,
-        source: "system".into(),
-        validation_status: "validated".into(),
-        includes: vec![],
-    }
-}
-
-fn ts_skill_install_row(tenant: &str) -> NewPgToolSkill {
-    NewPgToolSkill {
-        tenant_id: tenant.to_string(),
-        user_id: SEED_USER.to_string(),
-        agent_id: SEED_AGENT.to_string(),
-        project_id: SEED_PROJECT.to_string(),
-        name: "ts-skill-install".to_string(),
-        description: "ToolSkill binding for builtin.skill_install — installs a skill from \
-                      URL/path."
-            .to_string(),
-        content: TS_SKILL_INSTALL_CONTENT.to_string(),
-        prior_knowledge_content: None,
-        override_prompt_creation: false,
-        tool_name: Some("skill_install".to_string()),
-        param_schema: Some(json!([
-            {"name": "source_url", "param_type": "string", "required": true,  "description": "URL or local file path to skill manifest"},
-            {"name": "scope",      "param_type": "string", "required": false, "description": "Target scope: 'user' (default) or 'system'"}
-        ])),
-        param_template: Some(json!({"source_url": "{{source_url}}"})),
-        consumer_tags: vec!["02:orchestrator".into()],
-        intent_examples: None,
-        source: "system".into(),
-        validation_status: "validated".into(),
-        includes: vec![],
-    }
-}
-
-fn ts_skill_remove_row(tenant: &str) -> NewPgToolSkill {
-    NewPgToolSkill {
-        tenant_id: tenant.to_string(),
-        user_id: SEED_USER.to_string(),
-        agent_id: SEED_AGENT.to_string(),
-        project_id: SEED_PROJECT.to_string(),
-        name: "ts-skill-remove".to_string(),
-        description: "ToolSkill binding for builtin.skill_remove — removes a skill by name."
-            .to_string(),
-        content: TS_SKILL_REMOVE_CONTENT.to_string(),
-        prior_knowledge_content: None,
-        override_prompt_creation: false,
-        tool_name: Some("skill_remove".to_string()),
-        param_schema: Some(json!([
-            {"name": "skill_name", "param_type": "string", "required": true,  "description": "Name of the skill to remove"},
-            {"name": "scope",      "param_type": "string", "required": false, "description": "Scope: 'user' | 'system'. Defaults to 'user'."}
-        ])),
-        param_template: Some(json!({"skill_name": "{{skill_name}}"})),
-        consumer_tags: vec!["02:orchestrator".into()],
-        intent_examples: None,
-        source: "system".into(),
-        validation_status: "validated".into(),
-        includes: vec![],
-    }
-}
-
 fn ts_echo_row(tenant: &str) -> NewPgToolSkill {
     NewPgToolSkill {
         tenant_id: tenant.to_string(),
@@ -14119,56 +13600,6 @@ Never a tool error — invalid JSON returns {valid: false, error: "..."}.
 Use as a guard before json-parse when the source is external or user-provided.
 "#;
 
-const TS_SKILL_LIST_CONTENT: &str = r#"Tool: builtin.skill_list
-Effect: Read — returns a JSON array of installed skills.
-
-Parameters:
-- scope (string, optional): 'all' (default) | 'user' | 'system'. Use 'user' when the user
-  wants to see what they have installed. Use 'system' to inspect system-provided builtins.
-
-Output format:
-  [{name, class_code, description, source, validation_status, installed_at}]
-
-Scope isolation: a 'user' scope call never returns system-only components. The agent
-cannot modify system-scope skills without elevated authority.
-
-When to use:
-- Before installing a skill, list first to check whether it already exists.
-- When the user asks "what skills do I have?"
-- As the first step in any skill management recipe.
-"#;
-
-const TS_SKILL_INSTALL_CONTENT: &str = r#"Tool: builtin.skill_install
-Effect: Write — installs a skill, creating a pending component that enters Q1 → Q2.
-
-Parameters:
-- source_url (string, required): URL (https://) or absolute local path to a skill manifest
-  YAML/JSON. Remote URLs are fetched; the response must be a valid component manifest.
-- scope (string, optional): 'user' (default) | 'system'.
-
-Post-install state: the skill enters validation_status='pending' and goes through Q1.
-If Q1 fails, the install is rejected and logged. Q2 graduation is required before the
-skill is usable by the agent.
-
-Safety note: always confirm with the user before installing from an unknown source URL.
-Skills can contain PythonCode bodies that will execute in the orchestrator sandbox.
-"#;
-
-const TS_SKILL_REMOVE_CONTENT: &str = r#"Tool: builtin.skill_remove
-Effect: Write — permanently removes a skill from the scope. Irreversible.
-
-Parameters:
-- skill_name (string, required): exact name of the skill to remove.
-- scope (string, optional): 'user' (default) | 'system'.
-
-Safety invariants:
-- System-scope skills cannot be removed by user-scope calls.
-- Removal of a skill that is referenced by an active recipe will fail with an error
-  listing the dependent recipes. Resolve dependencies first.
-- Always confirm with the user before removal — this cannot be undone without
-  reinstalling.
-"#;
-
 const TS_ECHO_CONTENT: &str = r#"Tool: builtin.echo
 Effect: Read — returns the input message unchanged.
 
@@ -14252,11 +13683,6 @@ result = host.json(operation=_operation, data=_data)
 const PC_EXEC_JSON_VALIDATE_CONTENT: &str = r#"# Orchestrator executor body.
 _data = "{{vars.slot0}}"
 result = host.json(operation="validate", data=_data)
-"#;
-
-const PC_EXEC_SKILL_LIST_CONTENT: &str = r#"# Orchestrator executor body.
-_scope = "{{vars.slot0}}" if "{{vars.slot0}}" else "all"
-result = host.skill_list(scope=_scope)
 "#;
 
 const PC_EXEC_ECHO_CONTENT: &str = r#"# Diagnostic executor body. host.<tool> provided by runtime sandbox.
@@ -14780,30 +14206,9 @@ Alternatively, use pc-json-extract-field (pure Python) if the json tool is not b
 Always validate with json-validate before parse if the source is external or user-supplied.
 "#;
 
-const SKILL_SKILL_LIST_BODY: &str = r#"Use `ts-skill-list` (via pc-exec-skill-list) to retrieve a JSON array of all installed
-skills. Pass scope='user' to see only user-installed skills. Pass scope='system' to
-inspect system builtins. Omit scope (or pass 'all') to see everything.
-Check the returned array before deciding to install a skill — avoid duplicates.
-"#;
-
-const SKILL_SKILL_INSTALL_BODY: &str = r#"Use `ts-skill-install` to fetch and register a skill manifest. Always:
-1. Run `ts-skill-list` first to confirm the skill does not already exist.
-2. Confirm the source URL with the user before proceeding.
-3. After install, inform the user the skill enters validation_status='pending' and
-   cannot be used until Q1 and Q2 pass. Do not promise immediate availability.
-"#;
-
-const SKILL_SKILL_REMOVE_BODY: &str = r#"Use `ts-skill-remove` to permanently remove a skill by name. Always:
-1. Run `ts-skill-list` first to confirm the skill exists and note its scope.
-2. Confirm with the user that removal is intended and irreversible.
-3. If the tool returns a dependency error (recipes reference this skill), resolve those
-   first or inform the user of the blocker.
-"#;
-
 // Domain skills (class 2). skill-time / skill-json carry the long domain text as
 // their body (the doc places it in the `description` field); a short one-line
-// description is supplied at the seed call site. skill-skills follows the doc's
-// short-description + long-body split verbatim.
+// description is supplied at the seed call site.
 
 const SKILL_TIME_BODY: &str = r#"The time domain provides one tool for all time operations:
 
@@ -14865,29 +14270,9 @@ pc-json-extract-field is an alternative pure-Python extractor for multi-hop
 path resolution when the json tool is not available in the current context.
 "#;
 
-const SKILL_SKILLS_BODY: &str = r#"Skill management gives the agent and user visibility and control over the installed
-skill library. Use the right grain for each task:
-
-Listing skills:
-- skill-skill-list: enumerate the installed skill library (always start here)
-
-Installing a skill:
-- skill-skill-install: fetch a manifest from URL/path, confirm with user, enter Q1/Q2
-
-Removing a skill:
-- skill-skill-remove: confirm with user, check for dependent recipes, then remove
-
-Safety rules:
-- Never install from an untrusted URL without explicit user confirmation.
-- Never remove without explicit user confirmation — removal is irreversible.
-- System-scope skills cannot be modified from user-scope authority.
-- After install, the skill is 'pending' — not usable until Q2 graduates it.
-"#;
-
 // ---------------------------------------------------------------------------
 // Recipe YAML sources — management group (chunk 7c)
 // Transcribed verbatim from builtin_stuff_v3.md (the doc's flat step format).
-// 15 Tier-0 (llm_call_required=false) + 2 Tier-1 (skill-install, skill-remove).
 // ---------------------------------------------------------------------------
 
 const RECIPE_TIME_NOW_YAML: &str = r#"step_descriptions: [
@@ -15098,106 +14483,6 @@ const RECIPE_JSON_PARSE_AND_QUERY_YAML: &str = r#"step_descriptions: [
     "channel": "orchestrator",
     "include": ["<uuid:pc-exec-json-query>"],
     "label":   "PythonCode calls host.json(operation='query', path=slot1) on parsed data"
-  }
-]
-"#;
-
-const RECIPE_SKILL_LIST_YAML: &str = r#"step_descriptions: [
-  {
-    "step_id": "step-1",
-    "type":    "component",
-    "channel": "rust",
-    "include": ["<uuid:ts-skill-list>"],
-    "label":   "Pre-load ts-skill-list ToolSkill binding"
-  },
-  {
-    "step_id": "step-2",
-    "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:pc-exec-skill-list>"],
-    "label":   "PythonCode calls host.skill_list(scope)"
-  }
-]
-"#;
-
-const RECIPE_SKILL_LIST_USER_ONLY_YAML: &str = r#"step_descriptions: [
-  {
-    "step_id": "step-1",
-    "type":    "component",
-    "channel": "rust",
-    "include": ["<uuid:ts-skill-list>"],
-    "label":   "Pre-load ts-skill-list ToolSkill binding"
-  },
-  {
-    "step_id": "step-2",
-    "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:pc-exec-skill-list>"],
-    "label":   "PythonCode calls host.skill_list(scope='user')"
-  }
-]
-"#;
-
-const RECIPE_SKILL_LIST_SYSTEM_ONLY_YAML: &str = r#"step_descriptions: [
-  {
-    "step_id": "step-1",
-    "type":    "component",
-    "channel": "rust",
-    "include": ["<uuid:ts-skill-list>"],
-    "label":   "Pre-load ts-skill-list ToolSkill binding"
-  },
-  {
-    "step_id": "step-2",
-    "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:pc-exec-skill-list>"],
-    "label":   "PythonCode calls host.skill_list(scope='system')"
-  }
-]
-"#;
-
-const RECIPE_SKILL_INSTALL_YAML: &str = r#"step_descriptions: [
-  {
-    "step_id": "step-1",
-    "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:skill-skill-install>"],
-    "label":   "Load skill-skill-install leaf skill body (install procedure)"
-  },
-  {
-    "step_id": "step-2",
-    "type":    "llm",
-    "label":   "LLM confirms URL with user, explains pending state, calls ts-skill-install"
-  },
-  {
-    "step_id": "step-3",
-    "type":    "component",
-    "channel": "rust",
-    "include": ["<uuid:ts-skill-list>", "<uuid:ts-skill-install>"],
-    "label":   "Pre-load ToolSkill bindings for list (pre-check) and install"
-  }
-]
-"#;
-
-const RECIPE_SKILL_REMOVE_YAML: &str = r#"step_descriptions: [
-  {
-    "step_id": "step-1",
-    "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:skill-skill-remove>"],
-    "label":   "Load skill-skill-remove leaf skill body (removal procedure)"
-  },
-  {
-    "step_id": "step-2",
-    "type":    "llm",
-    "label":   "LLM confirms skill name, warns about irreversibility, calls ts-skill-remove"
-  },
-  {
-    "step_id": "step-3",
-    "type":    "component",
-    "channel": "rust",
-    "include": ["<uuid:ts-skill-list>", "<uuid:ts-skill-remove>"],
-    "label":   "Pre-load ToolSkill bindings for list (pre-check) and remove"
   }
 ]
 "#;

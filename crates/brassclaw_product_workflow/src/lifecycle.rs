@@ -84,7 +84,6 @@ bounded_lifecycle_string!(
 #[serde(rename_all = "snake_case")]
 pub enum LifecyclePackageKind {
     Extension,
-    Skill,
     Mcp,
     Wasm,
 }
@@ -191,17 +190,6 @@ pub enum LifecycleProductAction {
     ExtensionRemove {
         package_ref: LifecyclePackageRef,
     },
-    SkillSearch {
-        query: String,
-    },
-    SkillInstall {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<LifecyclePackageId>,
-        content: String,
-    },
-    SkillRemove {
-        package_ref: LifecyclePackageRef,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -214,13 +202,10 @@ pub enum LifecycleCommandKind {
     ExtensionActivate,
     ExtensionConfigure,
     ExtensionRemove,
-    SkillSearch,
-    SkillInstall,
-    SkillRemove,
 }
 
 impl LifecycleCommandKind {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 7] = [
         Self::ExtensionSearch,
         Self::ExtensionList,
         Self::ExtensionInstall,
@@ -228,9 +213,6 @@ impl LifecycleCommandKind {
         Self::ExtensionActivate,
         Self::ExtensionConfigure,
         Self::ExtensionRemove,
-        Self::SkillSearch,
-        Self::SkillInstall,
-        Self::SkillRemove,
     ];
 
     pub const fn command_name(self) -> &'static str {
@@ -242,9 +224,6 @@ impl LifecycleCommandKind {
             Self::ExtensionActivate => "extension_activate",
             Self::ExtensionConfigure => "extension_configure",
             Self::ExtensionRemove => "extension_remove",
-            Self::SkillSearch => "skill_search",
-            Self::SkillInstall => "skill_install",
-            Self::SkillRemove => "skill_remove",
         }
     }
 
@@ -266,9 +245,6 @@ impl LifecycleProductAction {
             Self::ExtensionActivate { .. } => LifecycleCommandKind::ExtensionActivate,
             Self::ExtensionConfigure { .. } => LifecycleCommandKind::ExtensionConfigure,
             Self::ExtensionRemove { .. } => LifecycleCommandKind::ExtensionRemove,
-            Self::SkillSearch { .. } => LifecycleCommandKind::SkillSearch,
-            Self::SkillInstall { .. } => LifecycleCommandKind::SkillInstall,
-            Self::SkillRemove { .. } => LifecycleCommandKind::SkillRemove,
         }
     }
 
@@ -284,11 +260,8 @@ impl LifecycleProductAction {
             | Self::ExtensionAuth { package_ref }
             | Self::ExtensionActivate { package_ref }
             | Self::ExtensionConfigure { package_ref, .. }
-            | Self::ExtensionRemove { package_ref }
-            | Self::SkillRemove { package_ref } => Some(package_ref),
-            Self::ExtensionSearch { .. } | Self::SkillSearch { .. } | Self::SkillInstall { .. } => {
-                None
-            }
+            | Self::ExtensionRemove { package_ref } => Some(package_ref),
+            Self::ExtensionSearch { .. } => None,
             Self::ExtensionList => None,
         }
     }
@@ -314,20 +287,6 @@ pub enum LifecycleProductPayload {
     },
     ExtensionRemove {
         removed: bool,
-    },
-    SkillSearch {
-        skills: Vec<LifecycleSkillSummary>,
-        count: usize,
-        limit: usize,
-        truncated: bool,
-    },
-    SkillInstall {
-        installed: bool,
-        name: LifecyclePackageId,
-    },
-    SkillRemove {
-        removed: bool,
-        name: LifecyclePackageId,
     },
 }
 
@@ -405,24 +364,6 @@ impl LifecycleExtensionRuntimeKind {
             Self::System => "system",
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LifecycleSkillSummary {
-    pub name: LifecyclePackageId,
-    pub version: String,
-    pub description: String,
-    pub source: LifecycleSkillSource,
-    pub keywords: Vec<String>,
-    pub tags: Vec<String>,
-    pub requires_skills: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LifecycleSkillSource {
-    System,
-    User,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -573,31 +514,6 @@ pub(crate) fn validate_lifecycle_string(
         });
     }
     Ok(trimmed.to_string())
-}
-
-/// Validates free-form lifecycle text that may contain control characters
-/// (e.g. newlines in skill markdown) but still blocks NUL.
-pub(crate) fn validate_lifecycle_text(
-    value: String,
-    label: &'static str,
-    max_bytes: usize,
-) -> Result<String, ProductWorkflowError> {
-    if value.trim().is_empty() {
-        return Err(ProductWorkflowError::InvalidBindingRequest {
-            reason: format!("{label} must not be empty"),
-        });
-    }
-    if value.len() > max_bytes {
-        return Err(ProductWorkflowError::InvalidBindingRequest {
-            reason: format!("{label} must be at most {max_bytes} bytes"),
-        });
-    }
-    if value.chars().any(|c| c == '\0') {
-        return Err(ProductWorkflowError::InvalidBindingRequest {
-            reason: format!("{label} must not contain NUL characters"),
-        });
-    }
-    Ok(value)
 }
 
 fn validate_optional_ref(

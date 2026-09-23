@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-09-23
+
+### Removed
+
+- *(skills)* **Removed the legacy SKILL.md plugin-package subsystem entirely.** This was v1 IronClaw residue: a live filesystem install/remove/export path (`/skills/<name>/SKILL.md`) whose corresponding read path had already been removed from the runtime in Phase P.1, leaving an orphaned write-only subsystem with no functional effect on agent behavior. Deleted `crates/brassclaw_reborn_cli/src/commands/skills.rs`, `crates/brassclaw_reborn_composition/src/{pg_skills_facade,skill_import,skill_listing}.rs`, `crates/brassclaw_host_runtime/src/first_party_tools/{skill_management,skill_url_install}.rs` (+ `skill_url_install/{bundle,github,zip_bundle}.rs`), `crates/brassclaw_first_party_extensions/src/skills.rs`, and the SKILL.md-specific modules in `crates/brassclaw_skills/src/{catalog,gating,install_metadata,management,parser,registry,selector}.rs`. The `brassclaw_skills` crate itself is retained, gutted to only the v3 class-code component types (`db_store.rs`, `types.rs`, `v2.rs`, `validation.rs`, `component_type.rs`) that back the class 1/2/3 Skill catalog. The "Skill Packages" Settings tab is removed from the WebUI. Repo-root `./skills/*.SKILL.md` files deleted; the directory no longer holds install artifacts. `CLAUDE.md` and `AGENTS.md` skills-system sections rewritten to describe only the v3 class-coded Skill/ToolSkill/Recipe model.
+
+### Fixed
+
+- *(webui / settings)* **Extensions › Installed tab was permanently empty.** It queried `reborn_extensions_unified` (classes 4-8) instead of `reborn_extension_catalogues` (class 23), so no installed Extension Catalogue could ever appear. Fixed the listing query to target the correct table.
+- *(webui / settings)* Removed the unused URL-install field from `SkillInstallPanel` that the backend never consumed, and removed the unconditionally-rendered Export link that always 501'd server-side.
+- *(webui / docs)* Corrected class-code documentation drift between `AGENTS.md`/`CLAUDE.md` and `retrieval_source.rs::class_code_to_table` (Actions was documented as class 11, code uses 16; classes 4-9 and 17 were undocumented). Added a regression test asserting doc and code agree.
+- *(webui)* Removed dead UI: unmounted `McpTab`, unreachable channel cards, an unbound `active_orchestrator_id`, and unwired intent-input CRUD handlers.
+
+### Changed
+
+- *(webui / settings)* Replaced the seven identical stub Component Catalog tabs with a class-aware detail pane backed by a new `GET /api/settings/{type}/{id}` endpoint, including a dedicated class-0 Tool catalog view and Tier 0/1 badges with Q1-Rule-2 violation flagging.
+- *(webui / settings)* Q2 human validation-queue review now shows the actual component body, prior audit status, and reject feedback instead of an opaque id-only row — reviewers can see what they are approving.
+- *(webui / settings)* Added a component relationship graph view surfacing Tool → ToolSkill → PythonCode → Recipe → ExtensionCatalogue links and Sempai/Tier economics (Tier 0 vs Tier 1 counts, validation-queue throughput) that previously had no UI at all.
+- *(webui / terminology)* Settled naming: *Component* = any class-coded catalog entry; *Integration* = an installable runtime unit; "Extension Catalogue" is always the full two-word phrase for class 23, never bare "Extension". Tab ids updated (`tools` → `tool-permissions`, legacy `skills` → `legacy-skill-packages` prior to its removal above); new `skills` tab now serves the v3 class 1/2/3 Skill catalog. New i18n namespace `skillComponents.*`.
+
 ## [1.4.2] - 2026-09-22
 
 ### Added

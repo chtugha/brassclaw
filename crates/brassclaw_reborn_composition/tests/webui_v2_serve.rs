@@ -360,27 +360,6 @@ impl RebornServicesApi for StubServices {
     > {
         Err(unused_services_error())
     }
-    async fn list_skills(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
-        Err(unused_services_error())
-    }
-    async fn install_skill(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _content: String,
-        _source_url: Option<String>,
-    ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError> {
-        Err(unused_services_error())
-    }
-    async fn remove_skill(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _name: String,
-    ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError> {
-        Err(unused_services_error())
-    }
 }
 
 fn unused_services_error() -> RebornServicesError {

@@ -41,7 +41,6 @@ brassclaw_run_state = { path = "../brassclaw_run_state" }
 brassclaw_runtime_policy = { path = "../brassclaw_runtime_policy" }
 brassclaw_safety = { path = "../brassclaw_safety" }
 brassclaw_secrets = { path = "../brassclaw_secrets" }
-brassclaw_skills = { path = "../brassclaw_skills" }
 brassclaw_triggers = { path = "../brassclaw_triggers" }
 brassclaw_trust = { path = "../brassclaw_trust" }
 brassclaw_turns = { path = "../brassclaw_turns" }
@@ -58,7 +57,6 @@ tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "rt-m
 tracing = "0.1"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 brassclaw_event_projections = { path = "../brassclaw_event_projections" }

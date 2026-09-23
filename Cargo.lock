@@ -1273,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "brassclaw"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1724,7 +1724,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "brassclaw_host_api",
- "brassclaw_skills",
  "brassclaw_turns",
  "futures",
  "thiserror 2.0.20",
@@ -1743,7 +1742,6 @@ dependencies = [
  "brassclaw_filesystem",
  "brassclaw_host_api",
  "brassclaw_safety",
- "brassclaw_skills",
  "futures-util",
  "glob",
  "regex",
@@ -1842,7 +1840,6 @@ dependencies = [
  "brassclaw_runtime_policy",
  "brassclaw_safety",
  "brassclaw_secrets",
- "brassclaw_skills",
  "brassclaw_triggers",
  "brassclaw_trust",
  "brassclaw_turns",
@@ -1868,7 +1865,6 @@ dependencies = [
  "url",
  "uuid",
  "zeroize",
- "zip",
 ]
 
 [[package]]
@@ -1940,7 +1936,6 @@ dependencies = [
  "brassclaw_process_sandbox",
  "brassclaw_resources",
  "brassclaw_safety",
- "brassclaw_skills",
  "brassclaw_threads",
  "brassclaw_trust",
  "brassclaw_turns",
@@ -2225,7 +2220,6 @@ dependencies = [
  "brassclaw_processes",
  "brassclaw_reborn_event_store",
  "brassclaw_resources",
- "brassclaw_skills",
  "brassclaw_threads",
  "brassclaw_trust",
  "brassclaw_turns",
@@ -2248,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "brassclaw_reborn_cli"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2333,7 +2327,6 @@ dependencies = [
  "brassclaw_runtime_policy",
  "brassclaw_safety",
  "brassclaw_secrets",
- "brassclaw_skills",
  "brassclaw_threads",
  "brassclaw_triggers",
  "brassclaw_trust",
@@ -2603,9 +2596,7 @@ dependencies = [
  "brassclaw_host_api",
  "brassclaw_pg",
  "chrono",
- "futures",
  "regex",
- "reqwest 0.12.28",
  "serde",
  "serde_json",
  "serde_yml",
@@ -2614,7 +2605,6 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
- "urlencoding",
  "uuid",
 ]
 

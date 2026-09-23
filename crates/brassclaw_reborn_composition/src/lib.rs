@@ -83,7 +83,6 @@ mod product_live_adapters;
 mod production_runtime_policy;
 mod projection;
 #[cfg(feature = "skills-db")]
-pub mod skill_import;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 #[cfg(feature = "postgres")]
 pub mod builtin_bootstrap;
@@ -133,7 +132,6 @@ pub(crate) mod pg_settings_listing;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_skill_store;
 #[cfg(feature = "postgres")]
-pub(crate) mod pg_skills_facade;
 pub(crate) mod pg_thread_engine_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_token_settings_store;
@@ -164,7 +162,6 @@ pub mod seed_builtin_host;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod sempai_proposal_sink;
 pub(crate) mod session_registry;
-mod skill_listing;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 mod tier_zero_llm_guard;
@@ -200,10 +197,6 @@ pub use brassclaw_auth::GoogleOAuthRouteConfig;
 pub use brassclaw_product_workflow::{
     LifecycleExtensionSource, LifecycleExtensionSummary, LifecyclePhase, LifecycleProductPayload,
     LifecycleProductResponse,
-};
-pub use brassclaw_skills::{
-    ManagedSkillSource as RebornSkillSource, SkillSummary as RebornSkillSummary,
-    skill_summary_json as reborn_skill_summary_json,
 };
 pub use brassclaw_triggers::TriggerId;
 pub use budget::build_default_budget_accountant;
@@ -269,7 +262,6 @@ pub use runtime_input::{
     RebornRuntimeIdentity, RebornRuntimeInput, TriggerFireAccessCheck, TriggerFireAccessChecker,
     TriggerFireAccessDecision, TriggerFireAccessError, TriggerPollerSettings, TurnRunnerSettings,
 };
-pub use skill_listing::{RebornSkillListError, list_reborn_local_skills};
 pub use webui::{RebornWebuiBundle, build_webui_services};
 pub use webui_rate_limit::RateLimitConfigError;
 pub use webui_serve::{

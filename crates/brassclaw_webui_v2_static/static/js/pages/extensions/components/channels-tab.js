@@ -2,12 +2,6 @@ import { StatusPill } from "../../../design-system/primitives.js";
 import { html } from "../../../lib/html.js";
 import { SlackChannelPicker } from "../../../components/slack-channel-picker.js";
 import { SlackPairingSection } from "../../../components/slack-pairing-section.js";
-import { ExtensionCard, RegistryCard } from "./extension-card.js";
-import { PairingSection } from "./pairing-section.js";
-
-function packageId(item) {
-  return item.package_ref?.id || "";
-}
 
 export function isSlackChannelEnabled(enabledChannels) {
   return ["slack", "slack_v2", "slack-v2"].some((channel) =>
@@ -72,17 +66,7 @@ export function SlackBuiltInConnectAction({
     : null;
 }
 
-export function ChannelsTab({
-  status,
-  channels,
-  connectableChannels,
-  channelRegistry,
-  onActivate,
-  onConfigure,
-  onRemove,
-  onInstall,
-  isBusy,
-}) {
+export function ChannelsTab({ status, connectableChannels }) {
   const enabledChannels = status.enabled_channels || [];
   const slackEnabled = isSlackChannelEnabled(enabledChannels);
   const slackConnectActions = findSlackConnectActions(connectableChannels);
@@ -135,57 +119,6 @@ export function ChannelsTab({
           detail="brassclaw run --repl"
         />
       </div>
-
-      ${channels.length > 0 &&
-      html`
-        <div className="v2-panel rounded-[18px] p-5 sm:p-6">
-          <h3
-            className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-signal"
-          >
-            Messaging channels
-          </h3>
-          <div className="grid grid-cols-1 gap-4">
-            ${channels.map(
-              (ch) => html`
-                <div key=${packageId(ch)} className="flex flex-col gap-3">
-                  <${ExtensionCard}
-                    ext=${ch}
-                    onActivate=${onActivate}
-                    onConfigure=${onConfigure}
-                    onRemove=${onRemove}
-                    isBusy=${isBusy}
-                  />
-                  ${(ch.onboarding_state === "pairing_required" ||
-                    ch.onboarding_state === "pairing") &&
-                  html` <${PairingSection} channel=${packageId(ch)} /> `}
-                </div>
-              `
-            )}
-          </div>
-        </div>
-      `}
-      ${channelRegistry.length > 0 &&
-      html`
-        <div className="v2-panel rounded-[18px] p-5 sm:p-6">
-          <h3
-            className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-signal"
-          >
-            Available channels
-          </h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-            ${channelRegistry.map(
-              (entry) => html`
-                <${RegistryCard}
-                  key=${packageId(entry)}
-                  entry=${entry}
-                  onInstall=${onInstall}
-                  isBusy=${isBusy}
-                />
-              `
-            )}
-          </div>
-        </div>
-      `}
     </div>
   `;
 }

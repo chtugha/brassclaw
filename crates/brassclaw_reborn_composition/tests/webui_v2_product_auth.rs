@@ -403,27 +403,6 @@ impl RebornServicesApi for UnusedServices {
     > {
         Err(rejecting_reborn_services_error())
     }
-    async fn list_skills(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
-        Err(rejecting_reborn_services_error())
-    }
-    async fn install_skill(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _content: String,
-        _source_url: Option<String>,
-    ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError> {
-        Err(rejecting_reborn_services_error())
-    }
-    async fn remove_skill(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _name: String,
-    ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError> {
-        Err(rejecting_reborn_services_error())
-    }
 }
 
 fn build_app_with_product_auth() -> (axum::Router, Arc<RecordingAuthDispatcher>) {

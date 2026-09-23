@@ -409,10 +409,11 @@ async fn append_tool_result_reference_accepts_multiline_provider_arguments() {
         .await
         .unwrap();
     let mut provider_call = provider_call_reference();
-    provider_call.capability_id = CapabilityId::new("builtin.skill_install").unwrap();
-    provider_call.provider_tool_name = "builtin__skill_install".to_string();
+    provider_call.capability_id = CapabilityId::new("builtin.write_file").unwrap();
+    provider_call.provider_tool_name = "builtin__write_file".to_string();
     provider_call.arguments = serde_json::json!({
-        "content": "---\nname: pasted-skill\n---\n\nUse multiline Markdown.\n"
+        "path": "notes.md",
+        "content": "# Notes\n\nUse multiline Markdown.\n"
     });
 
     let record = service

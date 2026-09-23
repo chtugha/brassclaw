@@ -12,15 +12,21 @@ export const SETTINGS_SECTIONS = [
     ],
   },
   {
+    // Class-coded catalog entries, in class-code order. `classCode` is the
+    // single frontend source of the class→tab mapping; it mirrors
+    // `class_code_to_table` in brassclaw_engine::memory::retrieval_source.
     sectionKey: "settings.section.componentCatalog",
     tabs: [
-      { id: "actions",              labelKey: "settings.actions",              icon: "bolt"   },
-      { id: "orchestrator",         labelKey: "settings.orchestrator",         icon: "layers" },
-      { id: "scaffold",             labelKey: "settings.scaffold",             icon: "folder" },
-      { id: "recipes",              labelKey: "settings.recipes",              icon: "copy"   },
-      { id: "tool-skills",          labelKey: "settings.toolSkills",           icon: "tool"   },
-      { id: "python-code",          labelKey: "settings.pythonCode",           icon: "list"   },
-      { id: "extension-catalogues", labelKey: "settings.extensionCatalogues",  icon: "layers" },
+      { id: "tools",                labelKey: "settings.tools",                icon: "tool",   classCode: 0 },
+      { id: "skills",               labelKey: "settings.skills",               icon: "file",   classCode: [1, 2, 3] },
+      { id: "orchestrator",         labelKey: "settings.orchestrators",        icon: "layers", classCode: 10 },
+      { id: "tool-skills",          labelKey: "settings.toolSkills",           icon: "tool",   classCode: 13 },
+      { id: "actions",              labelKey: "settings.actions",              icon: "bolt",   classCode: 16 },
+      { id: "docs",                 labelKey: "settings.docs",                 icon: "chat",   classCode: 17 },
+      { id: "recipes",              labelKey: "settings.recipes",              icon: "copy",   classCode: 21 },
+      { id: "python-code",          labelKey: "settings.pythonCode",           icon: "list",   classCode: 22 },
+      { id: "extension-catalogues", labelKey: "settings.extensionCatalogues",  icon: "folder", classCode: 23 },
+      { id: "scaffold",             labelKey: "settings.scaffolds",            icon: "layers", classCode: 50 },
     ],
   },
   {
@@ -36,11 +42,9 @@ export const SETTINGS_SECTIONS = [
   {
     sectionKey: "settings.section.accessOps",
     tabs: [
-      { id: "tools",       labelKey: "settings.toolPermissions", icon: "tool"   },
-      { id: "skills",      labelKey: "settings.skillPackages",   icon: "list"   },
-      { id: "users",       labelKey: "settings.users",           icon: "logout" },
-      { id: "docs",        labelKey: "settings.docs",            icon: "file"   },
-      { id: "reliability", labelKey: "settings.reliability",     icon: "clock"  },
+      { id: "tool-permissions",      labelKey: "settings.toolPermissions",      icon: "tool"     },
+      { id: "users",                 labelKey: "settings.users",                icon: "logout"   },
+      { id: "reliability",           labelKey: "settings.reliability",          icon: "clock"    },
     ],
   },
 ];

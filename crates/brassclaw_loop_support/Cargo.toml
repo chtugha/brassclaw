@@ -29,7 +29,6 @@ brassclaw_process_sandbox = { path = "../brassclaw_process_sandbox", version = "
 brassclaw_filesystem = { path = "../brassclaw_filesystem", version = "0.1.0" }
 brassclaw_resources = { path = "../brassclaw_resources", version = "0.1.0" }
 brassclaw_safety = { path = "../brassclaw_safety", version = "0.2.2" }
-brassclaw_skills = { path = "../brassclaw_skills", version = "0.3.0", default-features = false }
 brassclaw_memory = { path = "../brassclaw_memory", version = "0.1.0" }
 brassclaw_threads = { path = "../brassclaw_threads", version = "0.1.0" }
 brassclaw_turns = { path = "../brassclaw_turns", version = "0.1.0" }

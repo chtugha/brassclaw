@@ -29,6 +29,129 @@ pub struct SettingsListResponse {
     pub items: Vec<SettingsComponentSummary>,
 }
 
+// ── Component detail ──────────────────────────────────────────────────────────
+
+/// The class-coded catalog tabs that have a detail endpoint
+/// (`GET /api/settings/{type}/{id}`).
+///
+/// One variant per catalog tab, mapping 1:1 onto the list endpoints:
+/// Skills (1/2/3), Tools (0), Actions (16), Orchestrators (10),
+/// Scaffolds (50), Recipes (21), ToolSkills (13), PythonCode (22),
+/// ExtensionCatalogues (23).
+///
+/// `extensions` is deliberately absent: `/api/settings/extensions` lists
+/// `reborn_extensions_unified` (classes 4–8) — installable packages, not
+/// class-coded catalog components — and those have their own lifecycle API
+/// under `/api/webchat/v2/extensions/*`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SettingsComponentType {
+    Skills,
+    Tools,
+    Actions,
+    Orchestrators,
+    Scaffolds,
+    Recipes,
+    ToolSkills,
+    PythonCode,
+    ExtensionCatalogues,
+}
+
+impl SettingsComponentType {
+    /// Parse the `{type}` path segment of `GET /api/settings/{type}/{id}`.
+    /// Returns `None` for any segment that is not a catalog tab, so the
+    /// caller can answer 404 instead of guessing a table.
+    pub fn from_path_segment(segment: &str) -> Option<Self> {
+        match segment {
+            "skills" => Some(Self::Skills),
+            "tools" => Some(Self::Tools),
+            "actions" => Some(Self::Actions),
+            "orchestrators" => Some(Self::Orchestrators),
+            "scaffolds" => Some(Self::Scaffolds),
+            "recipes" => Some(Self::Recipes),
+            "tool-skills" => Some(Self::ToolSkills),
+            "python-code" => Some(Self::PythonCode),
+            "extension-catalogues" => Some(Self::ExtensionCatalogues),
+            _ => None,
+        }
+    }
+
+    /// The path segment this type is addressed by — the inverse of
+    /// [`Self::from_path_segment`].
+    pub fn as_path_segment(self) -> &'static str {
+        match self {
+            Self::Skills => "skills",
+            Self::Tools => "tools",
+            Self::Actions => "actions",
+            Self::Orchestrators => "orchestrators",
+            Self::Scaffolds => "scaffolds",
+            Self::Recipes => "recipes",
+            Self::ToolSkills => "tool-skills",
+            Self::PythonCode => "python-code",
+            Self::ExtensionCatalogues => "extension-catalogues",
+        }
+    }
+}
+
+/// Full row for one catalog component — `GET /api/settings/{type}/{id}`.
+///
+/// `component` is the entire DB row as opaque JSON, the same deliberate
+/// shape as [`crate::recipes::RecipeDetail`]: the class-specific fields the
+/// detail pane renders (a Recipe's `step_descriptions` / `variants`, a
+/// PythonCode body, a ToolSkill's `param_schema`, …) differ per class and
+/// grow with the engine, so they are passed through untyped instead of
+/// forcing a product-workflow recompile per added column.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsComponentDetail {
+    pub id: String,
+    pub class_code: u16,
+    pub component: serde_json::Value,
+}
+
+// ── Component graph ───────────────────────────────────────────────────────────
+
+/// One catalog component as a node of the cross-reference graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsComponentGraphNode {
+    pub id: String,
+    pub name: String,
+    pub class_code: u16,
+    pub validation_status: String,
+}
+
+/// A directed reference from one catalog component to another.
+///
+/// `kind` says where the reference was read from:
+/// - `step_include` — a Recipe `step_descriptions` step lists the target in
+///   its `include[]`; `channel` (`rust` / `orchestrator` / `both`),
+///   `step_ref` and `step_label` describe the step it came from.
+/// - `tool_binding` — a ToolSkill's `tool_name` resolves to a class-0 Tool.
+/// - `dependency` — an entry of the source's `dependency_registry`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsComponentGraphEdge {
+    pub from: String,
+    pub to: String,
+    pub kind: String,
+    pub channel: Option<String>,
+    pub step_ref: Option<String>,
+    pub step_label: Option<String>,
+}
+
+/// Response body for `GET /api/settings/component-graph`.
+///
+/// The whole catalog's wiring in one payload so the detail pane can resolve
+/// both directions of a reference — "what does this Recipe include" and
+/// "which Recipes include this PythonCode" — without fetching every row.
+///
+/// An edge whose `to` matches no node is kept: an `include[]` entry pointing
+/// at a component that was never seeded is exactly the drift an operator
+/// needs to see, not something to silently drop.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsComponentGraph {
+    pub nodes: Vec<SettingsComponentGraphNode>,
+    pub edges: Vec<SettingsComponentGraphEdge>,
+}
+
 // ── Monty VM settings ─────────────────────────────────────────────────────────
 
 /// The Monty VM runtime settings, backed by `reborn_monty_vm_settings`.
@@ -528,6 +651,26 @@ pub trait SettingsListingService: Send + Sync {
     /// the Settings UI.
     async fn list_extension_catalogues(&self)
     -> Result<SettingsListResponse, SettingsListingError>;
+
+    /// Read one catalog component's full row for the Settings UI detail pane
+    /// (`GET /api/settings/{type}/{id}`).
+    ///
+    /// Unlike the list endpoints this does not filter on `validation_status`:
+    /// the row is addressed by explicit id, and the Q2 reviewer needs to see
+    /// rejected and pending components too.
+    async fn get_component(
+        &self,
+        component_type: SettingsComponentType,
+        id: &str,
+    ) -> Result<SettingsComponentDetail, SettingsListingError>;
+
+    /// Read the whole catalog's cross-reference graph
+    /// (`GET /api/settings/component-graph`).
+    ///
+    /// Returned in one payload because reverse references ("which Recipes
+    /// include this PythonCode") are only answerable with every Recipe's
+    /// `step_descriptions` in hand.
+    async fn component_graph(&self) -> Result<SettingsComponentGraph, SettingsListingError>;
 }
 
 /// Error type returned by [`SettingsListingService`] methods.
@@ -544,4 +687,11 @@ pub enum SettingsListingError {
     /// empty tab.
     #[error("settings listing table missing: {0}")]
     MissingTable(String),
+    /// The requested component id is not a UUID. Every catalog table keys on
+    /// `id UUID`, so this is a malformed request, not a missing row.
+    #[error("settings component id is not a valid UUID: {0}")]
+    InvalidId(String),
+    /// No row with that id in this tenant's scope for the requested type.
+    #[error("settings component not found: {0}")]
+    NotFound(String),
 }

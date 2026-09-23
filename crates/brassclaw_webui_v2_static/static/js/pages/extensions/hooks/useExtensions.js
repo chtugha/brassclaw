@@ -126,9 +126,6 @@ export function useExtensions() {
   const registry = registryQuery.data?.entries || [];
   const connectableChannels = connectableChannelsQuery.data?.channels || [];
 
-  const channels = [];
-
-  const channelRegistry = [];
   const toolRegistry = registry.filter(
     (e) => e.kind !== "mcp_server" && !e.installed
   );
@@ -138,8 +135,6 @@ export function useExtensions() {
 
   return {
     status,
-    channels,
-    channelRegistry,
     toolRegistry,
     registry,
     connectableChannels,

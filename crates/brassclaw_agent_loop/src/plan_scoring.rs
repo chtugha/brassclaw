@@ -66,7 +66,7 @@ const WILSON_SCORE_INNER_DIVISOR: f64 = 4.0;
 )]
 #[serde(rename_all = "snake_case")]
 pub enum SkillMaturityTier {
-    /// Newly created; only exists as a workspace SKILL.md.
+    /// Newly created; not yet promoted beyond the authoring scope.
     #[default]
     Seedling,
     /// Accumulating confidence; `activation.tags` carries `"growing"`.

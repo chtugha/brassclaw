@@ -446,11 +446,6 @@ mod tests {
                 .grant(&CapabilityId::new("builtin.apply_patch").expect("capability id"))
                 .is_ok()
         );
-        assert!(
-            policy
-                .grant(&CapabilityId::new("builtin.skill_install").expect("capability id"))
-                .is_ok()
-        );
         assert_trigger_grant(
             &policy,
             "builtin.trigger_create",

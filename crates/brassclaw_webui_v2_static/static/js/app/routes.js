@@ -14,7 +14,7 @@ export const primaryRoutes = [
   { id: "routines", path: "/routines", labelKey: "nav.routines", hidden: true },
   { id: "automations", path: "/automations", labelKey: "nav.automations" },
   { id: "missions", path: "/missions", labelKey: "nav.missions", hidden: true },
-  { id: "extensions", path: "/extensions", labelKey: "nav.extensions" },
+  { id: "extensions", path: "/extensions", labelKey: "nav.integrations" },
   { id: "settings", path: "/settings", labelKey: "nav.settings", hidden: false },
   { id: "admin", path: "/admin", labelKey: "nav.admin", hidden: true },
 ];
@@ -38,12 +38,12 @@ export const SETTINGS_SUB_ROUTES = [
   // { id: "agent", labelKey: "settings.agent", icon: "bolt" },
   // { id: "channels", labelKey: "settings.channels", icon: "send" },
   // { id: "networking", labelKey: "settings.networking", icon: "pulse" },
-  { id: "tools",            labelKey: "settings.toolPermissions", icon: "tool"     },
-  { id: "skills",           labelKey: "settings.skillPackages",   icon: "list"     },
-  // Phase 6 — 10-tab Settings UI editor tabs.
+  { id: "tool-permissions",      labelKey: "settings.toolPermissions",     icon: "tool"     },
+  // Phase 6 — component catalog tabs (class-coded entries).
+  { id: "skills",           labelKey: "settings.skills",          icon: "file"     },
   { id: "actions",          labelKey: "settings.actions",         icon: "bolt"     },
-  { id: "orchestrator",     labelKey: "settings.orchestrator",    icon: "layers"   },
-  { id: "scaffold",         labelKey: "settings.scaffold",        icon: "folder"   },
+  { id: "orchestrator",     labelKey: "settings.orchestrators",   icon: "layers"   },
+  { id: "scaffold",         labelKey: "settings.scaffolds",       icon: "layers"   },
   { id: "monty-vm",         labelKey: "settings.montyVm",         icon: "pulse"    },
   { id: "mcp-server",       labelKey: "settings.mcpServer",       icon: "pulse"    },
   { id: "validation-queue", labelKey: "settings.validationQueue", icon: "check"    },

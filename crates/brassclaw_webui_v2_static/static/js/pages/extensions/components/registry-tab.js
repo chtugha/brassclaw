@@ -6,14 +6,9 @@ function packageId(entry) {
   return entry.package_ref?.id || "";
 }
 
-export function RegistryTab({
-  toolRegistry,
-  channelRegistry,
-  onInstall,
-  isBusy,
-}) {
+export function RegistryTab({ toolRegistry, onInstall, isBusy }) {
   const t = useT();
-  const allAvailable = [...toolRegistry, ...channelRegistry];
+  const allAvailable = toolRegistry;
   const [filter, setFilter] = React.useState("");
 
   const filtered = filter

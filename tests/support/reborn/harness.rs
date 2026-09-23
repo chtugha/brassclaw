@@ -50,8 +50,7 @@ use brassclaw_host_runtime::{
     LIST_DIR_CAPABILITY_ID, MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID,
     MEMORY_TREE_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, READ_FILE_CAPABILITY_ID,
     RuntimeCredentialAccessSecret, RuntimeCredentialAccountRequest,
-    RuntimeCredentialAccountResolver, SHELL_CAPABILITY_ID, SKILL_INSTALL_CAPABILITY_ID,
-    SKILL_LIST_CAPABILITY_ID, SKILL_REMOVE_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID,
+    RuntimeCredentialAccountResolver, SHELL_CAPABILITY_ID, SPAWN_SUBAGENT_CAPABILITY_ID,
     SurfaceKind, TIME_CAPABILITY_ID, TRIGGER_CREATE_CAPABILITY_ID, TRIGGER_GET_CAPABILITY_ID,
     TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID, TRIGGER_RUN_HISTORY_CAPABILITY_ID,
     TRIGGER_SET_STATE_CAPABILITY_ID, TRIGGER_UPDATE_CAPABILITY_ID, WRITE_FILE_CAPABILITY_ID,
@@ -613,20 +612,6 @@ impl RebornBinaryE2EHarness {
         model_gateway: RebornTraceReplayModelGateway,
     ) -> HarnessResult<Self> {
         let host_runtime = Arc::new(HostRuntimeCapabilityHarness::process_tools().await?);
-        Self::with_model_gateway_capability_mode(
-            conversation_id,
-            model_gateway,
-            HarnessCapabilityMode::HostRuntime(host_runtime),
-            false,
-        )
-        .await
-    }
-
-    pub async fn with_host_runtime_skill_management_capabilities(
-        conversation_id: &str,
-        model_gateway: RebornTraceReplayModelGateway,
-    ) -> HarnessResult<Self> {
-        let host_runtime = Arc::new(HostRuntimeCapabilityHarness::skill_management_tools().await?);
         Self::with_model_gateway_capability_mode(
             conversation_id,
             model_gateway,
@@ -1682,31 +1667,6 @@ impl HostRuntimeCapabilityHarness {
         .await
     }
 
-    async fn skill_management_tools() -> HarnessResult<Self> {
-        let mut harness = Self::new_with_mounts(
-            "reborn-e2e-skill-management-tools",
-            vec![
-                CapabilityId::new(SKILL_LIST_CAPABILITY_ID)?,
-                CapabilityId::new(SKILL_INSTALL_CAPABILITY_ID)?,
-                CapabilityId::new(SKILL_REMOVE_CAPABILITY_ID)?,
-            ],
-            vec![
-                EffectKind::DispatchCapability,
-                EffectKind::ReadFilesystem,
-                EffectKind::WriteFilesystem,
-                EffectKind::DeleteFilesystem,
-                EffectKind::Network,
-            ],
-            Vec::new(),
-            ExtensionId::new(BUILTIN_FIRST_PARTY_PROVIDER)?,
-            UserId::new("reborn-e2e-skill-management-user")?,
-            skill_mounts()?,
-        )
-        .await?;
-        harness.network_policy = http_test_policy();
-        Ok(harness)
-    }
-
     async fn trigger_management_tools() -> HarnessResult<Self> {
         Self::new_with_mounts(
             "reborn-e2e-trigger-management-tools",
@@ -2679,21 +2639,6 @@ fn memory_mounts(permissions: MountPermissions) -> HarnessResult<MountView> {
         VirtualPath::new("/memory")?,
         permissions,
     )])?)
-}
-
-fn skill_mounts() -> HarnessResult<MountView> {
-    Ok(MountView::new(vec![
-        MountGrant::new(
-            MountAlias::new("/skills")?,
-            VirtualPath::new("/projects/skills")?,
-            MountPermissions::read_write_list_delete(),
-        ),
-        MountGrant::new(
-            MountAlias::new("/system/skills")?,
-            VirtualPath::new("/projects/system/skills")?,
-            MountPermissions::read_only(),
-        ),
-    ])?)
 }
 
 fn capability_grants(
