@@ -1,6 +1,6 @@
-# Prefix Plan 2 — Bundle Assembly via Recipe (Architecture-Correct v6)
+# Prefix Plan 2 — Bundle Assembly via Recipe (Architecture-Correct v8)
 
-*Audit date: post-codebase-audit. All line numbers verified.*
+*Audit date: post-codebase-audit v3. All line numbers re-verified against current codebase.*
 
 ---
 
@@ -103,10 +103,32 @@ logic currently in `do_assemble_bundle` + `do_format_bundle` is split into two f
 | `do_assemble_bundle()` — includes `05:validator` filter | `interceptor_config_service.rs` | 288–411 |
 | `do_format_bundle()` | `interceptor_config_service.rs` | 417–443 |
 | `regenerate_prefix` calling `do_assemble_bundle` | `interceptor_config_service.rs` | 578–580 |
-| Seeder last slice | `seed_builtin_host.rs` | Slice 12 (ends line 1996) |
-| `compute_program()` join | `brassclaw_engine/src/memory/composition.rs` | 235 |
+| First-party capability seeder | `builtin_bootstrap.rs` | `seed_builtin_components()` — Passes 1–16 |
+| Host orchestrator seeder | `seed_builtin_host.rs` | Slices 1–12 (ends line 1996) — **not touched** |
+| `BootstrapStores::seed_recipe()` helper | `builtin_bootstrap.rs` | 516 |
+| `BootstrapStores::mark_recipe_tier0()` | `builtin_bootstrap.rs` | 477 |
+| `BootstrapStores::audit_builtin_graduation()` | `builtin_bootstrap.rs` | 123 |
+| `recipe_row()` factory | `builtin_bootstrap.rs` | 3365 |
+| `RebornRuntime::send_user_message()` | `runtime.rs` | 940 — `pub` |
+| `RebornRuntime::new_conversation()` | `runtime.rs` | 912 — `pub` |
+| `compose_program()` join | `brassclaw_engine/src/memory/composition.rs` | 235 |
+| Interceptor service wiring cfg gate | `webui.rs` | 377 — `#[cfg(all(postgres, root-llm-provider))]` |
 
-Nothing seeded. No new tools exist. `seed_builtin_host.rs` ends at Slice 12.
+Nothing seeded. No new tools exist.
+
+### Seeder architecture (critical)
+
+**`seed_builtin_host.rs`** (`HostStores`) seeds only Step 27 `host.*` orchestrator
+infrastructure (resolve_intent, compose_orchestrator, post_reply, etc.). It has **no**
+`mark_recipe_tier0`, no `audit_builtin_graduation`, no `seed_recipe()` helper.
+
+**`builtin_bootstrap.rs`** (`BootstrapStores`) is the Phase L seeder for all
+first-party capability tools (Passes 1–16). It has `seed_recipe()`, `mark_recipe_tier0()`,
+and the Phase P.0 audit trail. Called from `webui.rs:213` via `seed_builtin_components()`.
+
+The new `host.sweep_validated_components` and `host.store_prefix_bundle` are
+**capability tools** — they belong in `builtin_bootstrap.rs` as Pass 17, not in
+`seed_builtin_host.rs` as Slice 13.
 
 ---
 
@@ -285,10 +307,23 @@ Implements `StorePrefixBundleBackend`:
 
 ---
 
-### Change 4 — Slice 13: ToolSkills, PythonCode, Skills, Recipe
+### Change 4 — Pass 17 in `builtin_bootstrap.rs`: ToolSkills, PythonCode, Skills, Recipe
 
-Seeded in `seed_builtin_host.rs` as **Slice 13**
-(`seed_host_assemble_prefix_bundle()`), appended to the `child_ids` vector.
+Seeded in **`builtin_bootstrap.rs`** as Pass 17, inside `seed_builtin_components()`
+via a new `seed_prefix_bundle_group(&stores)` function. Called after Pass 16
+(Zencoder) in `seed_builtin_components()`.
+
+`BootstrapStores` is used throughout — it provides `seed_recipe()`, `mark_recipe_tier0()`,
+and the Phase P.0 audit trail (`audit_builtin_graduation`) automatically on every new
+insert. The new components are appended to a new `ExtensionCatalogue` row
+(`builtin-prefix-bundle`) via `stores.append_children(cat_id, &child_ids)`.
+
+**Seeder call site addition** in `seed_builtin_components()` after the Zencoder pass:
+
+```rust
+// Pass 17 — prefix-bundle group: sweep + store tools + recipe.
+seed_prefix_bundle_group(&stores).await?;
+```
 
 #### 4a. ToolSkill: `ts-host-sweep-components` (class 13)
 
@@ -387,81 +422,44 @@ consumer_tags: ["02:orchestrator"]
 
 #### 4g. Recipe: `host-assemble-prefix-bundle` (class 21)
 
-Seeded as Slice 13 in `seed_builtin_host.rs`.
+**Do NOT use `seed_recipe()` here.** `seed_recipe()` calls `recipe_row()` which
+synthesizes `variable_patterns: []` and cannot be overridden. This recipe requires
+`variable_patterns` with slot-capture rules. Follow the `doc-convert` pattern
+([`builtin_bootstrap.rs:16443`](crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs:16443)):
+build `NewPgRecipe` directly, call `stores.upsert_recipe()` + `stores.mark_recipe_tier0()`
++ `stores.audit_builtin_graduation()` in sequence.
 
-**`steps` JSONB** (Tier-0 — no LLM):
+**Step entries** — use the existing `step_entry()` helper
+([`builtin_bootstrap.rs:3332`](crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs:3332))
+which adds `tool_bindings: []` and `dependencies: null` automatically:
 
-```json
-{
-  "llm_call_required": false,
-  "tier": 0,
-  "rust_steps": [
-    {"tool": "host.sweep_validated_components",
-     "tool_skill": "ts-host-sweep-components"},
-    {"tool": "host.store_prefix_bundle",
-     "tool_skill": "ts-host-store-prefix-bundle"},
-    {"tool": "host.post_reply",
-     "tool_skill": "ts-host-post-reply"}
-  ],
-  "orchestrator_steps": [
-    {"python_code": "pc-host-sweep-components"},
-    {"python_code": "pc-host-store-prefix-bundle"},
-    {"python_code": "pc-host-post-reply"}
-  ]
-}
+```rust
+// Inside seed_prefix_bundle_group(), after all component UUIDs are minted:
+let steps = vec![
+    step_entry(1, "rust",         "Pre-load sweep tool binding",         "component", &[ts_sweep_id]),
+    step_entry(2, "orchestrator", "Sweep all validated components",       "component", &[pc_sweep_id, skill_sweep_id]),
+    step_entry(3, "rust",         "Pre-load store tool binding",          "component", &[ts_store_id]),
+    step_entry(4, "orchestrator", "Store bundle in PgBasicPromptStore",   "component", &[pc_store_id, skill_store_id]),
+    step_entry(5, "rust",         "Pre-load post-reply tool binding",     "component", &[ts_post_reply_id]),
+    step_entry(6, "orchestrator", "Emit confirmation reply",              "component", &[pc_post_reply_id]),
+];
 ```
-
-> **Note:** `pc-host-post-reply` is already seeded (Slice 4). The recipe reuses it.
-> The last block's `result = host.post_reply(answer=…)` terminates the assembled_program.
-
-**`step_descriptions`** (`desc_idx=0`):
 
 Skills are co-located **in the same step's `include` array** as the PythonCode they
-contextualise. `compose_program()` separates them automatically: PythonCode UUID →
-`executable_code` (into `assembled_program`); Skill UUIDs → `program.skills`
-(narrative context Monty receives). Skills are never separate steps.
+contextualise. `compose_program()` separates them: PythonCode UUID → `executable_code`
+(into `assembled_program`); Skill UUIDs → `program.skills` (narrative context for Monty).
 
-```json
-[
-  {"desc_idx": 0, "label": "Assemble prefix bundle", "yaml_source": "", "steps": [
-    {"stepnumber": 1, "knowledge": "rust", "goal": "Pre-load sweep tool binding",
-     "content": "ts-host-sweep-components", "type": "component",
-     "include": ["<uuid:ts-host-sweep-components>"]},
-    {"stepnumber": 2, "knowledge": "orchestrator",
-     "goal": "Sweep all validated components",
-     "content": "pc-host-sweep-components", "type": "component",
-     "include": [
-       "<uuid:pc-host-sweep-components>",
-       "<uuid:skill-sweep-validated-components>"
-     ]},
-    {"stepnumber": 3, "knowledge": "rust", "goal": "Pre-load store tool binding",
-     "content": "ts-host-store-prefix-bundle", "type": "component",
-     "include": ["<uuid:ts-host-store-prefix-bundle>"]},
-    {"stepnumber": 4, "knowledge": "orchestrator",
-     "goal": "Store bundle in PgBasicPromptStore",
-     "content": "pc-host-store-prefix-bundle", "type": "component",
-     "include": [
-       "<uuid:pc-host-store-prefix-bundle>",
-       "<uuid:skill-store-prefix-bundle>"
-     ]},
-    {"stepnumber": 5, "knowledge": "rust", "goal": "Pre-load post-reply tool binding",
-     "content": "ts-host-post-reply", "type": "component",
-     "include": ["<uuid:ts-host-post-reply>"]},
-    {"stepnumber": 6, "knowledge": "orchestrator", "goal": "Emit confirmation reply",
-     "content": "pc-host-post-reply", "type": "component",
-     "include": ["<uuid:pc-host-post-reply>"]}
-  ]}
-]
-```
+`ts_post_reply_id` / `pc_post_reply_id` resolved via
+`stores.tool_skill.get_id_by_name(..., "ts-host-post-reply")` /
+`stores.python_code.get_by_name(..., "pc-host-post-reply")` — guaranteed present
+because `seed_builtin_host_components()` (Slice 4) runs before `seed_builtin_components()`.
 
-**Single variant**:
+**Full `NewPgRecipe` construction**:
 
-```json
-{
-  "variant_key":  "default",
-  "step_link":    "0:1-0:E",
-  "description":  "Tier-0: assemble full prefix bundle — no LLM.",
-  "intent_examples": [
+```rust
+let recipe_name = "host-assemble-prefix-bundle";
+// Bare intent strings for the variant's intent_examples field:
+let intent_bare = vec![
     "regenerate prefix bundle",
     "assemble base prompt",
     "rebuild prefix cache",
@@ -475,36 +473,69 @@ contextualise. `compose_program()` separates them automatically: PythonCode UUID
     "regenerate prefix bundle user=foo project=bar",
     "update prefix knowledge base",
     "rebuild kohai prefix",
-    "freshen the base prompt"
-  ],
-  "variable_patterns": [
-    {"name": "slot0", "pattern": "user=(\\S+)",
-     "description": "user_id from user=<value>"},
-    {"name": "slot1", "pattern": "project=(\\S+)",
-     "description": "project_id from project=<value>"}
-  ]
-}
+    "freshen the base prompt",
+];
+// Top-level intent_examples (kept as {input,class} objects for Phase N graduation):
+let intent_examples_top: Vec<Value> = intent_bare
+    .iter()
+    .map(|s| json!({"input": s, "class": 0}))
+    .collect();
+
+let row = NewPgRecipe {
+    tenant_id: tenant.clone(),
+    user_id: SEED_USER.to_string(),
+    agent_id: SEED_AGENT.to_string(),
+    project_id: SEED_PROJECT.to_string(),
+    name: recipe_name.to_string(),
+    description: "Assemble and store the full prefix bundle (all validated components, \
+                  no consumer_tags filter, + CLAUDE.md + AGENTS.md). Tier-0, no LLM."
+        .to_string(),
+    trigger: None,
+    steps: json!([]),   // always empty — IBS reads step_descriptions
+    prior_knowledge_content: None,
+    override_prompt_creation: false,
+    consumer_tags: vec!["02:orchestrator".into(), "05:validator".into()],
+    intent_examples: Some(json!(intent_examples_top)),
+    source: "system".into(),
+    step_descriptions: Some(json!([{
+        "desc_idx": 0,
+        "label": "Assemble prefix bundle",
+        "yaml_source": "",
+        "steps": steps,
+    }])),
+    variants: Some(json!([{
+        "variant_key": recipe_name,
+        "step_link": "0:1-0:E",
+        "description": "Tier-0: assemble full prefix bundle — no LLM.",
+        "intent_examples": intent_bare,
+        "variable_patterns": [
+            {"name": "slot0", "pattern": "user=(\\S+)",    "description": "user_id"},
+            {"name": "slot1", "pattern": "project=(\\S+)", "description": "project_id"},
+        ],
+    }])),
+    dependency_registry: None,
+    validates_class_code: None,
+};
+
+let recipe_id = stores.upsert_recipe(row, recipe_name).await?;
+stores.mark_recipe_tier0(recipe_id).await?;
+stores.audit_builtin_graduation(recipe_id, 21, recipe_name).await;
 ```
 
-**Recipe metadata**:
-
-```
-name:          "host-assemble-prefix-bundle"
-description:   "Assemble and store the full prefix bundle (all validated components,
-                no consumer_tags filter, + CLAUDE.md + AGENTS.md). Tier-0, no LLM."
-consumer_tags: ["02:orchestrator"]
-source:        "system" / validation_status: "validated"
-```
-
-After insert: `stores.recipe.mark_mature(recipe_id)` — sets `tier='mature'`,
-`wilson_lower=1.0` so the recipe is Tier-0 eligible from first boot.
+**`consumer_tags`** includes `"05:validator"` — correct. Confirmed at
+[`builtin_bootstrap.rs:3362`](crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs:3362):
+"recipes are not subject to the SEC-01 delivery filter (only `pg_python_code` is)".
+`fetch_recipe_split_result` ([`retrieval_source.rs:801`](crates/brassclaw_engine/src/memory/retrieval_source.rs:801))
+queries `reborn_recipes` with scope filter only — no `consumer_tags` exclusion —
+so the recipe is fully routable through the intent system.
 
 ---
 
 ### Change 5 — `regenerate_prefix`: turn submission, not direct assembly
 
-`RebornInterceptorConfigService` gains a `runtime` field (already `pub(crate)` in the
-composition crate).
+`RebornInterceptorConfigService` gains a `runtime` field.
+`RebornRuntime::send_user_message()` is `pub` (not `pub(crate)`) so no visibility
+changes are needed anywhere.
 
 Add field:
 
@@ -552,9 +583,13 @@ runtime
 `PgBasicPromptStore::get_for_scope(user_id, project_id)` — same pattern already used
 for `assembled_at`/`prewarm_last_at` at lines 649–663.
 
-**`ensure_system_conversation`**: a new thin helper on `RebornRuntime` that gets or
-creates a stable internal conversation for system/operator-triggered turns in a given
-`(user_id, project_id)` scope.
+**`ensure_system_conversation`**: a new method on `RebornRuntime` (in `runtime.rs`).
+`new_conversation()` (existing, [`runtime.rs:912`](crates/brassclaw_reborn_composition/src/runtime.rs:912))
+always creates a **fresh** thread. `ensure_system_conversation` is a get-or-create
+keyed by a stable `ThreadId` derived from `(user_id, project_id)` — e.g.
+`ThreadId::new(format!("reborn-system-conv-{user_id}-{project_id}"))` — so
+repeated `regenerate_prefix` calls reuse the same thread rather than spawning a new
+one per call. It calls `thread_service.ensure_thread(...)` with the fixed id.
 
 **Delete** from `interceptor_config_service.rs`:
 - `COMPONENT_TABLES` const (lines 61–155)
@@ -569,37 +604,63 @@ reading back the stored entry, and the unchanged gateway prewarm block.
 
 ---
 
-### Change 6 — Wire backends and runtime into services (`webui.rs`)
+### Change 6 — Wire backends into `factory.rs`; wire runtime in `webui.rs`
 
-Two backend injections in the interceptor service construction block (around line 403):
+**Two separate wiring sites:**
 
-```rust
-// Sweep backend (reads component tables, formats bundle)
-let sweep_backend = Arc::new(PgSweepComponentsBackend::new(
-    Arc::clone(&pool),
-    tenant_id.clone(),
-));
-// Store backend (writes PgBasicPromptStore)
-let store_backend = Arc::new(PgStorePrefixBundleBackend::new(
-    Arc::clone(&pool),
-    tenant_id.clone(),
-));
-```
+#### 6a — Backend injection: `factory.rs` (alongside `component_db`)
 
-Register with tool states (same pattern as `PgComponentDbBackend`):
+The `component_db` backend is wired at
+[`factory.rs:1025–1056`](crates/brassclaw_reborn_composition/src/factory.rs:1025).
+The two new backends follow the identical pattern — built from the pool + tenant,
+passed into `BuiltinFirstPartyTools` before the `FirstPartyCapabilityRegistry` is built:
 
 ```rust
-tools.sweep_components.with_backend(sweep_backend);
-tools.store_prefix_bundle.with_backend(store_backend);
+// factory.rs — alongside the existing component_db_backend block (~line 1025):
+#[cfg(feature = "postgres")]
+let sweep_backend: Option<Arc<dyn brassclaw_host_runtime::SweepComponentsBackend>> = {
+    if let (Some(pool), Some(effective_tenant)) = (
+        pg_pool.as_ref(),
+        tenant_id.as_deref().or(Some("reborn-cli")),
+    ) {
+        let backend = PgSweepComponentsBackend::new(
+            Arc::clone(pool), effective_tenant,
+        );
+        Some(Arc::new(backend) as Arc<dyn brassclaw_host_runtime::SweepComponentsBackend>)
+    } else { None }
+};
+
+#[cfg(feature = "postgres")]
+let store_bundle_backend: Option<Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>> = {
+    if let (Some(pool), Some(effective_tenant)) = (
+        pg_pool.as_ref(),
+        tenant_id.as_deref().or(Some("reborn-cli")),
+    ) {
+        let basic_prompt = PgBasicPromptStore::new(Arc::clone(pool), effective_tenant, "default");
+        let backend = PgStorePrefixBundleBackend::new(Arc::clone(pool), effective_tenant, basic_prompt);
+        Some(Arc::new(backend) as Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>)
+    } else { None }
+};
 ```
 
-Wire runtime:
+Then in `builtin_first_party_registry_with_trigger_create_hook()` (or a new variant),
+chain the new `with_sweep_components()` / `with_store_prefix_bundle()` builders onto
+`BuiltinFirstPartyTools::default()` — exactly as `with_component_db()` is chained at
+[`factory.rs:1748`](crates/brassclaw_reborn_composition/src/factory.rs:1748).
+
+#### 6b — Runtime injection: `webui.rs`
+
+The `runtime` field of `RebornInterceptorConfigService` is wired in `webui.rs`
+inside the existing `#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]`
+block at [`webui.rs:377`](crates/brassclaw_reborn_composition/src/webui.rs:377):
 
 ```rust
-if let Some(runtime) = services.runtime.clone() {
-    interceptor_svc = interceptor_svc.with_runtime(runtime);
-}
+// webui.rs — inside the existing interceptor service cfg block (webui.rs:377–390):
+interceptor_svc = interceptor_svc.with_runtime(runtime.clone());
 ```
+
+`runtime` is the `&RebornRuntime` parameter of `build_webui_services_with_connectable_channels` —
+already in scope, no additional field needed.
 
 ---
 
@@ -612,18 +673,17 @@ if let Some(runtime) = services.runtime.clone() {
 | `crates/brassclaw_host_runtime/src/first_party_tools/mod.rs` | `mod sweep_components;` + `mod store_prefix_bundle;` + re-exports + manifests |
 | `crates/brassclaw_reborn_composition/src/pg_sweep_components_backend.rs` | **NEW** — implements `SweepComponentsBackend`: DB sweep (no `05:validator` filter), CLAUDE.md + AGENTS.md `include_str!`, Sempai schema footer |
 | `crates/brassclaw_reborn_composition/src/pg_store_prefix_bundle_backend.rs` | **NEW** — implements `StorePrefixBundleBackend`: calls `PgBasicPromptStore::store()` |
-| `crates/brassclaw_reborn_composition/src/seed_builtin_host.rs` | Slice 13: `seed_host_assemble_prefix_bundle()` — 2 ToolSkills + 2 PythonCode + 2 leaf Skills + Recipe |
-| `crates/brassclaw_reborn/src/runtime.rs` (or composition runtime) | Add `ensure_system_conversation()` helper |
+| `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` | **Pass 17**: new `seed_prefix_bundle_group()` fn + call in `seed_builtin_components()` after Pass 16; Tool rows + ToolSkills + PythonCode + Skills + Recipe + ExtensionCatalogue via `BootstrapStores` methods |
+| `crates/brassclaw_reborn_composition/src/runtime.rs` | Add `ensure_system_conversation(user_id, project_id)` — get-or-create by stable `ThreadId` |
 | `crates/brassclaw_reborn_composition/src/interceptor_config_service.rs` | Delete `COMPONENT_TABLES`, `class_label`, `do_assemble_bundle`, `do_format_bundle`; add `runtime` field + `with_runtime` builder; replace assembly call with turn submission |
-| `crates/brassclaw_reborn_composition/src/webui.rs` | Wire `RebornRuntime` + two backends into services |
+| `crates/brassclaw_reborn_composition/src/webui.rs` | Inside `#[cfg(all(postgres, root-llm-provider))]` gate: wire `runtime` + two backends into interceptor service |
 | `crates/brassclaw_reborn_composition/src/lib.rs` | `pub(crate) mod pg_sweep_components_backend;` + `pub(crate) mod pg_store_prefix_bundle_backend;` |
 
 **Unchanged**:
 - `pg_basic_prompt_store.rs` — `store`, `get_for_scope`, `mark_stale`, etc. untouched.
-- Gateway prewarm block in `regenerate_prefix` — untouched (reads stored bundle from
-  `PgBasicPromptStore` exactly as the fingerprint/timestamp block does).
-- Slices 1–12 in `seed_builtin_host.rs` — untouched.
-- `pc-host-post-reply` (Slice 4) — reused by the new recipe, not re-seeded.
+- Gateway prewarm block in `regenerate_prefix` — untouched.
+- `seed_builtin_host.rs` — Slices 1–12, no touch at all.
+- `pc-host-post-reply` / `ts-host-post-reply` (Slice 4) — looked up by name in Pass 17, not re-seeded.
 - `doc-sync` / `doc-convert` / `host-assemble-prior-knowledge` — untouched.
 - `list_prefix_entries` — untouched.
 
@@ -697,12 +757,15 @@ positional splitting.
 
 | Risk | Resolution |
 |------|-----------|
-| `send_user_message` is `pub(crate)` — accessible from `RebornInterceptorConfigService` | Confirmed — both live in `brassclaw_reborn_composition`. No visibility change needed. |
-| `ensure_system_conversation` does not exist yet | One new helper on `RebornRuntime`; thin wrapper over `SessionThreadService::ensure_thread` with a fixed system conversation key. |
-| Intent matching precision | 14+ intent examples + key=value encoding; the `%` template `"regenerate prefix bundle user=% project=%"` unambiguously captures both slots. |
-| `variable_patterns` regex correctness | `user=(\S+)` is standard and already used in similar recipes. Verify against `capture_variables` in `instruction_builder.rs:824`. |
+| `send_user_message` is `pub` | No visibility change needed — confirmed. |
+| `ensure_system_conversation` does not exist yet | New method on `RebornRuntime` in `runtime.rs`; calls `thread_service.ensure_thread()` with a stable `ThreadId::new(format!("reborn-system-conv-{user_id}-{project_id}"))`. |
+| `05:validator` in recipe `consumer_tags` blocking routing | **Non-issue — confirmed.** `fetch_recipe_split_result` uses scope filter only (no consumer_tags exclusion). Explicitly documented at `builtin_bootstrap.rs:3362`. |
+| Recipe variant key is recipe name, not `"default"` | Intent system matches by `step_link` value, not `variant_key` — no routing impact. |
+| PythonCode `validation_status` — must NOT be set in `NewPgPythonCode` | `BootstrapStores::upsert_python_code` inserts as `pending` then calls `update_validation_status("validated")` post-insert. Do not set in the struct. |
+| `ts-host-post-reply` / `pc-host-post-reply` availability at Pass 17 seed time | `seed_builtin_host_components()` (Slice 4) runs in `webui.rs:200` **before** `seed_builtin_components()` (line 213) — dependency always satisfied. |
+| Backend injection order in `factory.rs` | Must be wired before `builtin_first_party_registry_with_trigger_create_hook()` is called — same ordering constraint as `component_db` at line 1025. |
+| Intent matching precision | 14 intent examples + key=value encoding; `%`-template `"regenerate prefix bundle user=% project=%"` captures both slots. |
+| `variable_patterns` regex | `user=(\S+)` is standard. Verify against `capture_variables` in `instruction_builder.rs:824`. |
 | `include_str!` path depth | From `brassclaw_reborn_composition/src/` = 3 levels up = `"../../../"` ✓ |
-| `PrefixRegenerateResponse` fields after turn completes | `PgBasicPromptStore::get_for_scope` reads them back; same pattern already used at lines 649–663. |
+| `PrefixRegenerateResponse` fields after turn completes | `PgBasicPromptStore::get_for_scope` reads them back; same pattern already at lines 649–663. |
 | Turn latency | Acceptable: Regenerate was already slow; rate limit (1/min) remains. |
-| `pc-host-post-reply` body expected format | Must assign `result = host.post_reply(...)` at end; already seeded in Slice 4 with that pattern. |
-| Rust tool registration order | `sweep_components` and `store_prefix_bundle` must be registered before `seed_builtin_host_components` runs; wiring order in `webui.rs` must be checked. |
