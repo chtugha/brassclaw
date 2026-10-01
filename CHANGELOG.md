@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-09-23
+
+### Fixed
+
+- *(skills / write path)* **`DbSkillStore` rejected `source = "system"` rows**, causing `builtin_bootstrap.rs`-seeded components to fail validation on first boot. `"system"` is now an accepted value in `VALID_SOURCES` alongside `"user"` and `"extension"`.
+- *(skills / read path)* **Retired the v1 MemoryDoc fallback in `PgCompositionPort::list_skills`.** On any DB error the old code silently fell back to `list_skills_from_store`, which served v1-era `brassclaw_memory_docs` rows with keyword scoring and no consumer-tag gating — bypassing all v3 validation-status and class-code filtering. The fallback now logs a `debug!` trace and returns an empty list, matching the contract callers expect when the store is unavailable.
+- *(skills / executor)* `list_skills_from_store` in `orchestrator.rs` was callable from production paths even though its only legitimate use is test scaffolding. It is now gated `#[cfg(test)] pub(crate)` to prevent accidental reintroduction of the v1 fallback.
+
+### Changed
+
+- *(skills / feature flags)* Added `v1-types` and `v2-compat` Cargo feature flags to `brassclaw_skills`. The `types`, `component_type`, and `v2` modules are now gated: `v1-types` enables the base type definitions; `v2-compat` (implies `v1-types`) enables the legacy `V2SkillMetadata` and `CodeSnippet` types and marks them `#[deprecated(since = "0.3.0")]`. Only `brassclaw_engine` (the sole intentional consumer of those deprecated types) opts into `v2-compat`; all other crates compile with the leaner default surface. The always-compiled modules — `validation` and `db_store` — are unaffected.
+
+### Documentation
+
+- Removed stale `handle_execute_action` tombstone from `CLAUDE.md` §Runtime Security (the v2-era per-call wrapper has been gone since v3; the negative reference was noise).
+- Removed `ThreadManager → ExecutionLoop → execute_orchestrator` history note from `CLAUDE.md` §Monty VM Settings (none of those symbols exist in the codebase).
+- Corrected `brassclaw_pg` migration range in `CLAUDE.md` §Project Structure: `V000–V026` → `V000–V084` (59 migrations were added after the original doc was written).
+- Updated `brassclaw_engine` project structure description: replaced "Engine v2: planning, CodeAct, tool loop" with "Execution engine: intent matching, IBS, orchestrator executor, tool dispatch".
+- Corrected `CLAUDE.md` §Current Limitations item 2: the v1→v3 data migration (`migration.rs` Steps 3–7: config.toml, providers.json, secrets master key, libSQL DB → Postgres) **is** implemented — the "not yet implemented" text was factually wrong. Removed the struck-through WIT bindgen item (removed in Phase 4; renumbered remaining items 5–7).
+- Updated `AGENTS.md` §Where to Work skills row to document the new feature-gate prohibition (downstream crates must not enable `v2-compat` without explicit justification).
+- Added `docs/plans/claude_cleaning1.md` — the structured audit plan for all seven doc-only fixes above, retained for traceability.
+
 ## [1.4.4] - 2026-09-23
 
 ### Fixed
