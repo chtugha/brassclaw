@@ -52,6 +52,7 @@ use crate::pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore};
 use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
 use crate::pg_skill_store::{NewPgSkill, PgSkillStore};
 use crate::pg_tool_skill_store::{NewPgToolSkill, PgToolSkillStore};
+use crate::checksum::sha256_hex;
 use crate::pg_tool_store::{NewPgTool, PgToolStore};
 use crate::validation_queue::ValidationQueueStore;
 
@@ -62,6 +63,93 @@ const SEED_USER: &str = SYSTEM_RESERVED_ID;
 const SEED_AGENT: &str = "default";
 /// Marker `project_id` for seeded builtins.
 const SEED_PROJECT: &str = "system";
+
+// ---------------------------------------------------------------------------
+// Seed constants — embedded prose for source='system' component rows.
+//
+// These are the ONLY places these files are embedded via include_str!(). All
+// runtime call sites are replaced by port-trait queries or OnceLock accessors
+// (Steps 6–10). The seeder uses these constants to write DB rows on first boot;
+// the content integrity check (Step 4) uses EXPECTED_CHECKSUMS to verify the
+// stored rows match the compiled-in originals.
+// ---------------------------------------------------------------------------
+
+/// Seed content for the class-10 Orchestrator component (basic_mode.py).
+/// The ONLY place basic_mode.py is embedded via include_str!.
+pub(crate) const DEFAULT_ORCHESTRATOR_SEED: &str =
+    include_str!("../../brassclaw_engine/orchestrator/basic_mode.py");
+
+/// Seed content for the codeact_preamble (class 10).
+pub(crate) const CODEACT_PREAMBLE_SEED: &str =
+    include_str!("../../brassclaw_engine/prompts/codeact_preamble.md");
+
+/// Seed content for the codeact_postamble (class 10).
+pub(crate) const CODEACT_POSTAMBLE_SEED: &str =
+    include_str!("../../brassclaw_engine/prompts/codeact_postamble.md");
+
+/// Seed content for the failure_explanation skill (class 3).
+pub(crate) const FAILURE_EXPLANATION_SEED: &str =
+    include_str!("../../brassclaw_loop_support/prompts/failure_explanation.md");
+
+/// Seed content for the compaction_summarizer_fresh skill (class 10).
+pub(crate) const COMPACTION_SUMMARIZER_SEED: &str =
+    include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md");
+
+/// Seed content for the sempai_audit skill (class 10).
+pub(crate) const SEMPAI_AUDIT_SEED: &str =
+    include_str!("../../brassclaw_engine/prompts/sempai_audit.md");
+
+/// Seed content for the subagent:direction:general skill (class 10).
+pub(crate) const DIRECTION_GENERAL_SEED: &str =
+    include_str!("../../brassclaw_reborn/src/subagent/directions/general.md");
+
+/// Seed content for the subagent:direction:researcher skill (class 10).
+pub(crate) const DIRECTION_RESEARCHER_SEED: &str =
+    include_str!("../../brassclaw_reborn/src/subagent/directions/researcher.md");
+
+/// Seed content for the subagent:direction:explorer skill (class 10).
+pub(crate) const DIRECTION_EXPLORER_SEED: &str =
+    include_str!("../../brassclaw_reborn/src/subagent/directions/explorer.md");
+
+/// Seed content for the subagent:direction:coder skill (class 10).
+pub(crate) const DIRECTION_CODER_SEED: &str =
+    include_str!("../../brassclaw_reborn/src/subagent/directions/coder.md");
+
+/// Compile-time expected SHA-256 checksums for every source='system' component
+/// covered by the boot integrity check. Key = component name; value = hex
+/// digest of the seed constant. Derived automatically — no manual updates
+/// needed. Made pub(crate) so content_integrity.rs can import it directly.
+pub(crate) static EXPECTED_CHECKSUMS: std::sync::LazyLock<
+    std::collections::HashMap<&'static str, String>,
+> = std::sync::LazyLock::new(|| {
+    let mut m = std::collections::HashMap::new();
+    m.insert("orchestrator:main", sha256_hex(DEFAULT_ORCHESTRATOR_SEED));
+    m.insert("codeact_preamble", sha256_hex(CODEACT_PREAMBLE_SEED));
+    m.insert("codeact_postamble", sha256_hex(CODEACT_POSTAMBLE_SEED));
+    m.insert("failure_explanation", sha256_hex(FAILURE_EXPLANATION_SEED));
+    m.insert(
+        "compaction_summarizer_fresh",
+        sha256_hex(COMPACTION_SUMMARIZER_SEED),
+    );
+    m.insert("sempai_audit", sha256_hex(SEMPAI_AUDIT_SEED));
+    m.insert(
+        "subagent:direction:general",
+        sha256_hex(DIRECTION_GENERAL_SEED),
+    );
+    m.insert(
+        "subagent:direction:researcher",
+        sha256_hex(DIRECTION_RESEARCHER_SEED),
+    );
+    m.insert(
+        "subagent:direction:explorer",
+        sha256_hex(DIRECTION_EXPLORER_SEED),
+    );
+    m.insert(
+        "subagent:direction:coder",
+        sha256_hex(DIRECTION_CODER_SEED),
+    );
+    m
+});
 
 /// Errors raised by the builtin bootstrap seed.
 #[derive(Debug, Error)]
@@ -379,6 +467,39 @@ impl BootstrapStores {
             )
             .await
             .map_err(map)
+    }
+
+    /// Like [`Self::upsert_skill`] but `row.content_checksum` must be pre-filled
+    /// with `Some(checksum)`. Used for `source='system'` rows that participate in
+    /// the boot integrity check. The checksum is stored in the DB alongside the
+    /// body so `run_content_integrity_check` can verify it on the next boot.
+    async fn upsert_skill_with_checksum(
+        &self,
+        row: NewPgSkill,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        // Delegate — the checksum is already in the struct.
+        self.upsert_skill(row, name).await
+    }
+
+    /// Like [`Self::upsert_tool_skill`] but `row.content_checksum` must be
+    /// pre-filled with `Some(checksum)`.
+    async fn upsert_tool_skill_with_checksum(
+        &self,
+        row: NewPgToolSkill,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        self.upsert_tool_skill(row, name).await
+    }
+
+    /// Like [`Self::upsert_python_code`] but `row.content_checksum` must be
+    /// pre-filled with `Some(checksum)`.
+    async fn upsert_python_code_with_checksum(
+        &self,
+        row: NewPgPythonCode,
+        name: &str,
+    ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        self.upsert_python_code(row, name).await
     }
 
     /// Insert-or-recover an Action id (class 16). There is no `PgActionStore`,
