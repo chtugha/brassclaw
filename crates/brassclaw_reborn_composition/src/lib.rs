@@ -185,6 +185,8 @@ pub mod booted_db;
 #[cfg(feature = "postgres")]
 pub(crate) mod checksum;
 #[cfg(feature = "postgres")]
+pub mod content_integrity;
+#[cfg(feature = "postgres")]
 pub mod q1_orchestrator;
 #[cfg(feature = "postgres")]
 pub mod validation_queue;

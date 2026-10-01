@@ -240,6 +240,46 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             }
         }
 
+        // Step 4 — content integrity check.
+        // Verifies that all source='system' rows in the three prose-bearing
+        // tables match their compile-time expected checksums. Hard error on
+        // mismatch — the RebornWebuiBundle is NOT returned.
+        // Run `brassclaw repair` to restore corrupted rows.
+        {
+            let booted_db =
+                crate::booted_db::BootedDb::from_migrated_pool(pool.clone());
+            match crate::content_integrity::run_content_integrity_check(&booted_db).await {
+                Ok(crate::content_integrity::ContentIntegrityOutcome::Ok { checked }) => {
+                    tracing::debug!(
+                        checked,
+                        "content integrity: all system components verified"
+                    );
+                }
+                Ok(crate::content_integrity::ContentIntegrityOutcome::Corrupted(mismatches)) => {
+                    for m in &mismatches {
+                        tracing::error!(
+                            table = m.table,
+                            name = %m.name,
+                            expected = %m.expected,
+                            actual = %m.actual,
+                            "CONTENT INTEGRITY FAILURE: system component corrupted or \
+                             binary updated without repair. Run `brassclaw repair`."
+                        );
+                    }
+                    return Err(crate::error::RebornBuildError::ContentIntegrity(
+                        crate::content_integrity::ContentIntegrityError::Corrupted(mismatches),
+                    ));
+                }
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "content integrity check failed; aborting boot"
+                    );
+                    return Err(e.into());
+                }
+            }
+        }
+
         // Phase P Step 9 — doc-sync event wiring.
         //
         // Spawn the file-watcher (docs/agents-v3/*.md → doc-sync trigger)
