@@ -1,0 +1,311 @@
+# Agent Rules
+
+## Purpose and Precedence
+
+`AGENTS.md` is the quick-start routing map for AI coding agents entering the codebase. It is not the full architecture spec. Read the relevant subsystem spec before changing a complex area. When a crate spec exists, treat it as authoritative.
+
+Start with these deeper docs as needed:
+
+- `CLAUDE.md`
+- `crates/brassclaw_reborn_cli/AGENTS.md`
+- `crates/brassclaw_reborn/CLAUDE.md`
+- `crates/brassclaw_reborn_composition/CLAUDE.md`
+- `crates/brassclaw_agent_loop/CLAUDE.md`
+- `crates/brassclaw_llm/CLAUDE.md`
+- `crates/brassclaw_reborn_webui_ingress/CLAUDE.md`
+- `tests/e2e/CLAUDE.md`
+
+## Architecture Mental Model
+
+BrassClaw Reborn is organized in three conceptual layers:
+
+- **Products** own UX and surface-level composition. They wire together loops, capabilities, and host access for a specific deployment shape (CLI, web, daemon). Products do not implement agent logic directly.
+- **Loops** own agent behavior. They manage planning, tool dispatch, turn sequencing, approval gates, checkpointing, retries, and completion. A loop is the unit of agentic execution. Product code must not implement a second loop or bypass the loop runner.
+- **Kernel** owns authority. It controls trust decisions, secret resolution, safety policy enforcement, sandboxing, capability grants, and session identity. Kernel boundaries are not negotiable from product or loop code.
+
+New Reborn work belongs in `crates/`.
+
+## Orchestrator-First, LLM-Minimal Design (Mandatory)
+
+**The orchestrator IS the execution engine. Rust makes tools available. The LLM
+is consulted ONLY when a task requires creative reasoning, composition, or
+irreversible decisions the user must confirm. Everything else is Tier 0.**
+
+This principle governs all Recipe, Skill, PythonCode, and ToolSkill authoring.
+
+### Component Roles — What Each Type IS
+
+| Component | What it is | What it is NOT |
+|-----------|-----------|----------------|
+| **Tool** (class 0) | Rust implementation — registers the capability with `capability_id` | An executor; it never runs on its own |
+| **ToolSkill** (class 13) | Binding descriptor — param schema, preconditions, error handling | A runner; `channel: "rust"` only pre-loads the binding |
+| **PythonCode** (class 22) | The actual executor — calls `__execute_action__()` to dispatch Rust; utility helpers used inside a Recipe's orchestrator channel | A Skill; it is deterministic code, not narrative prose |
+| **Skill** (class 1–3) | Orchestrator-facing **prose description** of a task pattern (may span one or more tools) | A list of recipe steps; skills do NOT contain recipe steps or tool calls |
+| **Recipe** (class 21) | Complete turn script: one or more `RecipeVariant`s, each with `intent_examples`, a `step_link`, `StepDescriptions` JSONB, and optional `variable_patterns` | A place for LLM reasoning; Tier-0 recipes have zero LLM involvement |
+| **ExtensionCatalogue** (class 23) | Domain overview: `task_groups[]` pointing to recipe names; the bigger picture | A re-documentation of individual components it owns |
+
+**Grain rule — Skill vs PythonCode:** Use a **Skill** when the orchestrator needs narrative instructions for a task pattern that spans one or more tools. Use **PythonCode** when the component is a sub-orchestrator utility helper referenced inside a Recipe's orchestrator channel — not a standalone capability.
+
+**Rust never executes autonomously.** `channel: "rust"` pre-loads a ToolSkill binding into
+the execution context so the orchestrator knows which tool is available. The tool is
+invoked ONLY by a `channel: "orchestrator"` PythonCode step via `__execute_action__()`.
+There is no other execution path. A rust step without a matching orchestrator PythonCode
+step is a **Q1 hard error** (§tier0-orchestrator-channel Rule 2).
+
+### The Two-Channel Execution Model
+
+```
+channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute — availability only)
+channel: "orchestrator"   → PythonCode calls __execute_action__() to ACTUALLY run the tool
+```
+
+Every `rust` step MUST be immediately followed by a matching `channel: "orchestrator"`
+PythonCode step. One PythonCode executor = exactly one `__execute_action__()` call.
+The orchestrator **never** calls Rust directly — it always goes through `__execute_action__()`.
+
+### Tier Decision Hierarchy
+
+1. **Tier 0 first**: Can the task be done deterministically with known inputs? → Author a Tier-0 recipe with a PythonCode executor. This is the default target.
+2. **Split by variant**: Each distinct invocation pattern gets its own recipe + intent examples. Three narrowly-scoped Tier-0 recipes beat one Tier-1 recipe that asks the LLM to pick a path.
+3. **Tier 1 only when necessary**: LLM involvement ONLY for creative content, user-composed inputs, or confirmation of irreversible actions.
+4. **One leaf skill per approach**: A leaf skill describes exactly one approach to one tool. If a tool has 3 common usage patterns, author 3 leaf skills — not one monolithic skill that bundles them. A skill should never describe multiple tool calls.
+5. **10+ intent examples per recipe**: More examples = better routing precision. Cover both command-style inputs and natural language.
+
+### PythonCode Executor Pattern (Canonical Tier-0 body)
+
+```python
+# Channel: orchestrator | Class: 22 | No I/O, no imports except stdlib, no network.
+# IBS bakes {{vars.slotN}} values into the body text before execution — they arrive
+# as literals, not placeholders. __execute_action__ is provided by the runtime sandbox.
+result = __execute_action__("tool_name", {"param": "{{vars.slot0}}"})
+```
+
+**VM symbols available in every PythonCode body:**
+
+| Symbol | Purpose |
+|--------|---------|
+| `host.<tool>(...)` | Call a registered host tool/capability as a first-class callable (the rust-channel step binds it into the Monty namespace) |
+
+The retired `__execute_action__` / `__execute_code_step__` /
+`__execute_actions_parallel__` meta-primitives (and the `__check_budget__` /
+`__emit_event__` stage-machinery verbs) are gone — recipe PythonCode calls
+`host.<name>(...)` directly. See `builtin_stuff_v3.md` Step 27.
+
+**Required:** the body must assign `result = <value>` before returning.
+**Forbidden:** `import os`, `import subprocess`, `exec(`, `eval(`, `open(` — scanned at Q1.
+
+**Step isolation invariant:** each PythonCode step runs with a **fresh empty state dict `{}`**. A step does NOT see state mutations from previous steps. If step B needs data produced by step A, redesign: either combine both operations into one self-contained PythonCode body, or model the data handoff through template variables (`{{vars.name}}`).
+
+One PythonCode step = one `__execute_action__()` call. Pure-logic helpers (zero `__execute_action__()` calls) are valid. Never combine two independent tool dispatches into one PythonCode block.
+
+### What Forces Tier 1
+
+- Content composition (write_file, apply_patch, user-composed shell commands)
+- Ambiguous intent where the LLM must choose between distinct alternatives
+- Irreversible operations benefiting from LLM confirmation
+- User-supplied strings that must be validated before tool dispatch
+- Conditional logic where step B depends on the runtime output of step A in a way that cannot be pre-determined (split into two Tier-0 recipes instead where possible)
+
+### Q1 Hard Errors (enforced on all authored components)
+
+- **Rule 1**: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). Skill bodies are orchestrator-facing prose — they are not executable and must not be placed in recipe steps.
+- **Rule 2**: If `llm_call_required == false` AND `rust_steps` has tool bindings, then `orchestrator_steps` MUST contain ≥1 PythonCode UUID. A rust-only Tier-0 recipe is rejected.
+- **Rule 3**: One PythonCode executor block = exactly one `__execute_action__()` call. Multiple dispatches require multiple PythonCode blocks — one per tool call.
+- **Rule 4**: A leaf skill should describe exactly one tool usage pattern. Avoid bundling multiple tool calls or approaches into one skill body.
+- **§shell-guard**: Any Recipe using `builtin.shell` is `llm_call_required: true`. **Always. No shell command is ever Tier 0**, regardless of whether the command string is fixed or user-supplied. Known-safe commands (e.g. `cargo build`) may be Tier 1 at high confidence, never Tier 0.
+- **§spawn_subagent-guard**: Any Recipe referencing `builtin.spawn_subagent` is `llm_call_required: true`. Always.
+- **§no-snippet**: Step type `snippet` in `step_descriptions` is rejected. Use `text` (WebUI annotation, no runtime emission) or `component` (loads a component body).
+- **§body-scan**: PythonCode bodies are scanned at Q1 for `import os`, `import subprocess`, `exec(`, `eval(`, `open(`, and similar patterns — hard rejection on any match.
+- **§channel-isolation**: A ToolSkill UUID must never appear in `orchestrator_steps`. A Skill UUID must never appear in `rust_steps`. Channels must not overlap.
+
+### Recipe Tier Lifecycle — LLM as One-Time Cost
+
+**The LLM is a one-time cost. Recipes are the permanent return.**
+
+Each user-facing operation goes through exactly one of three tiers per turn:
+
+| Tier | Trigger | LLM call | Token cost |
+|------|---------|----------|------------|
+| **0** | Recipe matched, `llm_call_required: false` | ❌ Never | Zero |
+| **1** | Recipe matched, `llm_call_required: true` | ✅ Guided by recipe context | Low |
+| **2** | No recipe match (Non-Matching-Mode) | ✅ Full reasoning | Full |
+
+**Tier 2 is the seed.** The first time a user asks something new, no recipe matches. The LLM reasons through it (Tier 2). The **Sempai interceptor** watches every Tier-2 turn, evaluates the outcome, and proposes new Recipes + intent examples. Those proposals enter the **validation queue** (Q1 automated → Q2 human review). Once validated, the recipe is live — every future match for that intent pattern costs zero LLM calls.
+
+**Pre-seeded extensions skip the discovery cost.** An extension authored as `source: "system"` (via `builtin_bootstrap.rs`) bootstraps directly to `validated` state. All operations are Tier 0 from day one, without waiting for the system to encounter them.
+
+**The Sempai continues growing the library at runtime.** Novel combinations the author didn't anticipate — e.g. "list tasks filtered by assignee" for a task-management extension — emerge from Tier-2 turns, get proposed by the Sempai, and graduate to Tier 0 after Q1+Q2. The library compounds with use.
+
+**Step_descriptions structure (canonical — matches `builtin_stuff_v3.md`):**
+```json
+[
+  { "step_id": "step-0", "type": "component", "channel": "orchestrator",
+    "include": ["<uuid:skill-X>"], "label": "Load skill X as LLM context" },
+  { "step_id": "step-1", "type": "llm",
+    "label": "LLM reasons / composes (Tier-1 only)" },
+  { "step_id": "step-2", "type": "component", "channel": "rust",
+    "include": ["<uuid:ts-tool-Y>"], "label": "Pre-load ToolSkill binding" },
+  { "step_id": "step-3", "type": "component", "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-Y>"], "label": "Execute: host.tool_y(...)" }
+]
+```
+
+Valid `type` values: `component` (fetch+route a component), `llm` (LLM turn — Tier-1 only), `text` (WebUI annotation, never emitted to runtime), `snippet` (rejected at Q1 — promotes to `component` after Q1+Q2).
+
+**Posting output without an LLM:** use `host.post_reply(answer="...")` via `ts-host-post-reply` + `pc-host-post-reply`. This is the correct pattern for fixed-text Tier-0 responses. `builtin.echo` is diagnostic-only and must not be used in user-facing recipes.
+
+### Extension Authoring Reference
+
+Extension component stacks (Tools, ToolSkills, PythonCode, Leaf Skills, Domain Skills, Recipes, ExtensionCatalogues) are fully specified in:
+- `builtin_stuff_v3.md` — built-in capabilities
+- `tomedo_v3.md` — tomedo EMR integration example (reference implementation)
+- `docs/plans/zencoder-extension-plan.md` — Zencoder REST API extension (worked example with full step_descriptions JSONB)
+
+## Where to Work
+
+| Area | Location |
+|------|----------|
+| brassclaw CLI binary | `crates/brassclaw_reborn_cli/` |
+| Reborn runtime and driver registry | `crates/brassclaw_reborn/` |
+| Composition and wiring | `crates/brassclaw_reborn_composition/` |
+| Config resolution and profiles | `crates/brassclaw_reborn_config/` |
+| Agent loop driver | `crates/brassclaw_agent_loop/` |
+| LLM providers and routing | `crates/brassclaw_llm/` |
+| Skills system | `crates/brassclaw_skills/` |
+| Security, safety, prompt injection | `crates/brassclaw_safety/` |
+| WebUI v2 server (React SPA) | `crates/brassclaw_webui_v2/`, `crates/brassclaw_webui_v2_static/` |
+| WebUI ingress / gateway adapter | `crates/brassclaw_reborn_webui_ingress/` |
+| Extensions lifecycle | `crates/brassclaw_extensions/` |
+| Host runtime shell access | `crates/brassclaw_host_runtime/` (in-kernel capability host + runtime dispatcher; sandboxed subprocess execution via `services/process_executor` and `sandbox_process/`; first-party tools under `first_party_tools/`) |
+| Embeddings | `crates/brassclaw_embeddings/` |
+| Recipe-Skill-Tool library | `crates/brassclaw_engine/src/memory/` (types, matcher, validator, similarity), `crates/brassclaw_reborn_composition/src/recipe_store.rs` + `recipe_library.rs` (REST store + loop adapter), `crates/brassclaw_turns/src/run_profile/recipe_lookup.rs` (trait). Recipes use `RecipeVariant` + `step_link` + `StepDescriptions` JSONB + optional `variable_patterns` — read §0.3/§0.4/§0.5 of `saved_plan_to_v3.md` before touching. |
+| IBS (Instruction-Building-System) | `crates/brassclaw_engine/src/memory/ibs.rs` + `crates/brassclaw_engine/src/types/ibs.rs` (`build_instruction`, `BuildInstruction`, `IbsRecipeStep`, `ToolBinding`, `ErrorPolicy`). Compiles `step_link` + `StepDescriptions` → `BuildInstruction` at intent-match time. **Never stored** — ephemeral per call, memoised in-process. |
+| Component catalog (class codes 4–23) | `crates/brassclaw_engine/src/memory/retrieval_source.rs` (`PostgresSource`, `fetch_for_turn`, `FetchForTurnResult::SplitResult`/`ActionShortCircuit`, `class_code_to_table` — the single source of truth for class→table dispatch; the full class→table table is in `CLAUDE.md` §Component Catalog and is regression-tested against the code). Tables: `reborn_extensions_unified` (4–9, extension packages) + `reborn_specs/tool_skills/plans/summaries` (12–15) + `reborn_actions` (**16**, not 11 — class 11 is unallocated) + `reborn_docus` (17) + `reborn_lessons/issues/notes` (18–20) + `reborn_recipes` (21) + `reborn_python_code` (22, Phase B) + `reborn_extension_catalogues` (23, Phase C). Classes 10 (Orchestrator) and 50 (Scaffold) are **not** separate tables — they live in `reborn_skills`, filtered by `class_code`, alongside classes 1–3. All components carry `dependency_registry JSONB` (Phase J). `reborn_component_catalog` (`crates/brassclaw_pg/migrations/V084__reborn_component_catalog_view.sql`) is a read-only Postgres VIEW — not a table — that `UNION ALL`s all 14 prompt-bearing class tables (excluding `reborn_tools`, class 0) for ad hoc/Settings-API querying; it applies no per-request scope filtering, callers add their own `WHERE`. |
+| Settings API / WebUI catalog tabs | `crates/brassclaw_reborn_composition/src/pg_settings_listing.rs` (`PgSettingsListingService::list`, single parameterised query backing every `GET /api/settings/{type}` tab — Skills, Tool Permissions, Actions, Extensions, Orchestrators, Scaffolds, Recipes, ToolSkills, PythonCode, ExtensionCatalogues; a genuinely missing table fails loud with `SettingsListingError::MissingTable`, never silently empty), `crates/brassclaw_product_workflow/src/settings.rs` + `reborn_services.rs` (`RebornServicesApi` trait methods), `crates/brassclaw_webui_v2/src/{descriptors,handlers,router}.rs` (routes). Frontend: `crates/brassclaw_webui_v2_static/.../settings-schema.js` + `settings-tabs.js` (sidebar sections: Runtime Config / Component Catalog / Security & Governance / Access & Ops) + per-tab `*-tab.js` files. The SKILL.md plugin installer ("Skill Packages") and the runtime tool-permission list ("Tool Permissions") are UI-distinct from the class-code Skill/ToolSkill catalog tabs — do not conflate them. |
+| Validation queue | `reborn_validation_queue` table (V051, Phase A.5). Two-gate pipeline: Q1 (orchestrated, sandboxed) → Q2 (**manual, human-only — only the operator can approve**). All non-builtin components (user-authored, Sempai-authored) must go through Q1+Q2. `source='system'` builtins (`builtin_bootstrap.rs`) are **exempt** — they insert as `validated` directly; the no-bypass invariant does not apply to them. Q2 is never automated; there is no `auto-system` graduation actor. The `q2_actor` column (Phase P.0, V078) records either `'human'` (Q2 reviewer) or `'builtin'` (bootstrap seeder) — the latter being an audit label only, not a bypass of the human-review requirement (builtins are already exempt). |
+| Builtin bootstrap seeder | `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` (Phase L). Seeds full v3 component stack (Tools + ToolSkills + Skills + PythonCode + Recipes + ExtensionCatalogues) for all 23 first-party tools at boot, if not already present. Idempotent. |
+| BasicPromptStore / prefix | `crates/brassclaw_reborn_composition/src/pg_basic_prompt_store.rs` (Phase K.1). Stores the operator-editable base-prompt prefix; regenerated via `regenerate_prefix`. |
+| Intent system | `crates/brassclaw_engine/src/memory/intent_system.rs` (`resolve_intent`, 4-class classifier, `record_disambiguation_choice`), `reborn_intent_inputs` table (V028 + V058 variable-template columns). Intent expressions support `%` slot markers for variable capture (Phase M). |
+| Monty VM settings | `crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs` (`PgMontyVmSettingsStore`, reads/writes `reborn_monty_vm_settings` V034 migration) |
+| User chat preferences | `crates/brassclaw_reborn_composition/src/pg_user_preference_store.rs` (`PgUserPreferenceStore`, `reborn_user_preferences` V035 migration) |
+| Component import (MemoryDoc migration) | `crates/brassclaw_reborn_composition/src/component_import.rs` (`run_component_import` — migrates legacy `brassclaw_memory_docs` rows into class-specific tables at boot) |
+| Interceptor / Sempai-Kohai | `crates/brassclaw_interceptor/` (Sempai/Kohai review loop, persona, base-prompt assembly, `SempaiProposalSink`, `SempaiReviewOutcome`). Sempai auto-creates **all** component types (not just recipes) — proposals enter the validation queue at `'pending'`. Wired in composition via `InterceptorConfigService`. |
+
+When a task touches only `crates/` there is no longer a v1 `src/` tree — all v1 code was removed in Phase 6.
+
+## Subagent and Loop Rules
+
+- Subagent spawn creates and wires child runs only. It must not implement a second agent loop.
+- Child planning, execution, capability calls, checkpointing, gates, retries, and completion must go through the existing loop runner/driver/executor path.
+- Host-trusted trigger ingress is sealed by trigger-worker-owned request minting plus private conversation-owned trusted inbound construction.
+- Product adapters, product workflow, first-party capabilities, and host-runtime handlers must use untrusted inbound requests and must not mint `TrustedInboundTurnRequest` or call trusted trigger submitter factories.
+
+## Repo-Wide Coding Rules
+
+- No `.unwrap()` or `.expect()` in production code. They are acceptable in tests and for truly infallible invariants (e.g., compiled-in literals, regexes) with a safety comment.
+- Keep clippy clean with zero warnings: `cargo clippy --all --benches --tests --examples --all-features -- -D warnings`.
+- Prefer `crate::` for cross-module imports. `super::` is fine in tests and intra-module refs.
+- Use strong types and enums over stringly-typed control flow when the shape is known.
+- Use `thiserror` for error types in `error.rs`. Map errors with context: `.map_err(|e| SomeError::Variant { reason: e.to_string() })?`.
+- No `pub use` re-exports unless exposing to downstream consumers.
+- Comments for non-obvious logic only.
+- Multi-line prompt strings go in `crates/brassclaw_engine/prompts/*.md` and are loaded via `include_str!()`. Never inline large prompt templates as Rust string constants.
+- `info!` and `warn!` output appears in the REPL and corrupts the terminal UI. Use `debug!` for internal diagnostics. Background tasks must never use `info!`.
+
+## Database Rules
+
+- All persistence uses Postgres. In-memory backends are acceptable for unit tests only.
+- Treat bootstrap config, DB-backed settings, and encrypted secrets as distinct layers; do not collapse them.
+- Do not break config precedence, bootstrap env loading, DB-backed config reload, or post-secrets LLM re-resolution.
+
+## Security Invariants
+
+- Review any change touching listeners, routes, auth, secrets, sandboxing, approvals, or outbound HTTP with a security mindset.
+- Do not weaken bearer-token auth, webhook auth, CORS/origin checks, body limits, rate limits, allowlists, or secret-handling guarantees.
+- Treat Docker containers and external services as untrusted.
+- Session, thread, and turn state matters. Submission parsing happens before normal chat handling.
+- Skills are selected deterministically. Tool approval and auth flows are special paths and must not be mixed into normal chat history.
+- Persistent memory is the workspace system, not just transcript storage.
+
+### Capability Lease Authority Invariants (`brassclaw_authorization`)
+
+Capability leases are authority-bearing records — the rules below are not style preferences:
+
+1. **`PgCapabilityLeaseStore` mutations must be atomic.** Every `revoke`, `claim`, and `consume` must run inside a single Postgres transaction with `SELECT … FOR UPDATE`. Never split the read and write across separate connections or pool checkouts. A TOCTOU gap here is a double-authority bug.
+2. **`UPDATE` predicates must include `user_id`.** Reading is scoped to `(id, tenant_id, user_id)`; writing must use the same triple. Omitting `user_id` from the `WHERE` clause allows mutations to cross user boundaries.
+3. **`consume` must call `ensure_consumable` and decrement `max_invocations`.** Directly setting `Consumed` without these steps grants additional invocations on multi-use leases and bypasses the unclaimed-fingerprint guard.
+4. **`FilesystemCapabilityLeaseStore` must not silently downgrade `CasExpectation::Version` to `Any`.** The indexed-projection fallback (stripping `entry.indexed` for byte-only backends) is acceptable. Downgrading the CAS version expectation is not — it removes the cross-process ordering guarantee. If the backend cannot provide versioned CAS, fail closed.
+5. **`LocalFilesystem` is not an accepted backend for authority-bearing stores.** Production wires `InMemoryBackend` (local-dev, under `/tenants`) and `PostgresRootFilesystem` (hosted). Tests that exercise mutation paths must use `InMemoryBackend`, not `LocalFilesystem`.
+6. **`issue` must not return success when zero rows were inserted.** `ON CONFLICT DO NOTHING` silently absorbs duplicate-key conflicts; check `rows_affected == 1` before returning the lease to the caller.
+
+## Testing Rules
+
+- Add the narrowest tests that validate the change: unit tests for local logic, integration tests for runtime/DB/routing behavior, E2E or trace coverage for gateway, approvals, extensions, or other user-visible flows.
+- Test through the caller, not just the helper. When a predicate/classifier/transform helper gates a side effect (HTTP, DB write, OAuth flow, UI mutation, tool execution) and has any wrapper or computed input between it and that side effect, a unit test on the helper alone is not sufficient regression coverage. Add a test that drives the actual call site at the integration tier or higher.
+- Mocks of multi-arg runtime APIs must capture every argument the production caller passes.
+
+## Key Environment Variables
+
+**Bootstrap tier** (fixed set, read before the DB starts — set in the systemd unit's `Environment=` block):
+
+| Variable | Purpose |
+|----------|---------|
+| `BRASSCLAW_REBORN_HOME` | Reborn state root (default: `~/.brassclaw/reborn`) |
+| `BRASSCLAW_RUNTIME_PROFILE` | Per-invocation capability policy: `local_dev` (default), `local_safe`, `local_yolo`, `hosted_safe`, etc. — see `brassclaw runtime-profile list`. Controls the security resolver only; does **not** affect which storage backend is used (Postgres is always used). Setting `BRASSCLAW_REBORN_PROFILE` (old composition-profile name) is a hard startup error. |
+| `BRASSCLAW_REBORN_LOG` | Log filter for Reborn runtime (e.g., `brassclaw=debug`) |
+| `BRASSCLAW_PG_URL` | External Postgres URL. Optional for single-host local deployments (embedded Postgres is used when absent). Required for all non-local `BRASSCLAW_RUNTIME_PROFILE` values. |
+| `BRASSCLAW_EMBEDDED_PG_PORT` | Override embedded Postgres port (default: 5434) |
+| `BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES` | Override embedded Postgres listen addresses (default: `127.0.0.1`). Set to `0.0.0.0` for LAN access. First-boot only (written to `postgresql.conf` by `initdb`). |
+| `BRASSCLAW_SECRETS_PASSPHRASE_FILE` | Path to master-key file; set only when using passphrase-wrapped ceremony |
+
+**Operator-trusted tier** (data-driven, read by configured name after the DB is up — set in `secrets.env` via `EnvironmentFile=`):
+
+The *names* of these env vars are stored in `brassclaw_config`; the *values* are read from the environment at runtime and never persisted. Includes: `BRASSCLAW_REBORN_WEBUI_TOKEN`, `BRASSCLAW_REBORN_WEBUI_USER_ID`, provider API keys, OAuth secrets, trigger auth tokens.
+
+## Build and Test
+
+> **Mandatory:** Every `cargo build`/`test`/`clippy`/`check` **must** set
+> `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` (NVMe) — never build in-place on the
+> slow external repo drive. **Before** compiling, check free space on that volume and clean
+> it if it is too full:
+>
+> ```bash
+> df -h /Users/ollama/brassclaw-target          # check before every compile
+> # If Avail < 15 GB or Capacity > 90%, clean first:
+> CARGO_TARGET_DIR=/Users/ollama/brassclaw-target cargo clean
+> # Then run the actual command with the target dir set:
+> CARGO_TARGET_DIR=/Users/ollama/brassclaw-target cargo <build|test|clippy|check> ...
+> ```
+>
+> The NVMe target dir accumulates multi-GB artifacts and can fill the 228 GB volume
+> mid-build, starving/corrupting the run — the space check + clean is mandatory, not optional.
+
+```bash
+# Build the Reborn binary with WebUI v2
+cargo build --release --bin brassclaw 
+
+# Format
+cargo fmt
+
+# Lint a specific crate (zero warnings)
+cargo clippy -p <crate_name> --all-targets -- -D warnings
+
+# Lint everything
+cargo clippy --all --benches --tests --examples --all-features -- -D warnings
+
+# Unit tests for a specific crate
+cargo test -p <crate_name>
+
+# All unit tests
+cargo test
+
+# Integration tests (requires PostgreSQL)
+cargo test --features integration
+```
+
+## Before Finishing
+
+- Confirm whether behavior changes require updates to specs, API docs, or `CHANGELOG.md`.
+- Run the most targeted tests and clippy checks that cover the change.
+- Re-check security-sensitive paths when touching auth, secrets, network listeners, sandboxing, or approvals.
+- Keep the final diff scoped to the task. Avoid unrelated file churn.

@@ -92,6 +92,10 @@ pub(crate) struct NewPgSkill {
     pub(crate) intent_examples: Value,
     pub(crate) source: String,
     pub(crate) validation_status: String,
+    /// SHA-256 hex digest of `body`. Set to `Some(checksum)` for
+    /// `source='system'` rows that participate in the boot integrity check.
+    /// `None` for user-authored rows and rows not covered by the check.
+    pub(crate) content_checksum: Option<String>,
 }
 
 /// Postgres-backed store for `reborn_skills` (classes 1-3).
@@ -126,8 +130,8 @@ impl PgSkillStore {
                     (tenant_id, user_id, agent_id, project_id,
                      name, description, body,
                      class_code, consumer_tags, intent_examples,
-                     source, validation_status)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                     source, validation_status, content_checksum)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",
@@ -144,6 +148,7 @@ impl PgSkillStore {
                     &row.intent_examples,
                     &row.source,
                     &row.validation_status,
+                    &row.content_checksum,
                 ],
             )
             .await

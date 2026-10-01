@@ -161,6 +161,11 @@ pub(crate) struct NewPgPythonCode {
     /// C.4.5.2 — component UUIDs the composer inlines for `{{component_name}}`
     /// structural-include placeholders. Empty for leaf bodies (no includes).
     pub(crate) includes: Vec<Uuid>,
+    /// SHA-256 hex digest of `content`. Set to `Some(checksum)` for
+    /// `source='system'` rows that participate in the boot integrity check.
+    /// `None` for user-authored rows and rows not covered by the check.
+    /// Distinct from `content_hash` (which is used for similarity deduplication).
+    pub(crate) content_checksum: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -254,8 +259,8 @@ impl PgPythonCodeStore {
                      name, description, content,
                      prior_knowledge_content, override_prompt_creation,
                      consumer_tags, intent_examples, source, dependency_registry,
-                     includes)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                     includes, content_checksum)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -272,6 +277,7 @@ impl PgPythonCodeStore {
                     &row.source,
                     &row.dependency_registry,
                     &includes_json,
+                    &row.content_checksum,
                 ],
             )
             .await
@@ -616,6 +622,7 @@ mod tests {
                 source: "authored".into(),
                 dependency_registry: None,
                 includes: vec![],
+                content_checksum: None,
             }
         }
 

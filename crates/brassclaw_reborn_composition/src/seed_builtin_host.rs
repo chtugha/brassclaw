@@ -435,6 +435,7 @@ async fn seed_host_resolve_intent(stores: &HostStores) -> Result<Vec<Uuid>, Seed
                 source: "system".into(),
                 validation_status: "validated".into(),
                 includes: vec![],
+                content_checksum: None,
             },
             "ts-host-resolve-intent",
         )
@@ -462,6 +463,7 @@ async fn seed_host_resolve_intent(stores: &HostStores) -> Result<Vec<Uuid>, Seed
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-resolve-intent",
         )
@@ -490,6 +492,7 @@ async fn seed_host_resolve_intent(stores: &HostStores) -> Result<Vec<Uuid>, Seed
                 intent_examples: json!([]),
                 source: "system".into(),
                 validation_status: "validated".into(),
+                content_checksum: None,
             },
             "skill-host-resolve-intent",
         )
@@ -641,6 +644,7 @@ async fn seed_host_compose_orchestrator(
                 source: "system".into(),
                 validation_status: "validated".into(),
                 includes: vec![],
+                content_checksum: None,
             },
             "ts-host-compose-orchestrator",
         )
@@ -682,6 +686,7 @@ async fn seed_host_compose_orchestrator(
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-compose-orchestrator",
         )
@@ -713,6 +718,7 @@ async fn seed_host_compose_orchestrator(
                 intent_examples: json!([]),
                 source: "system".into(),
                 validation_status: "validated".into(),
+                content_checksum: None,
             },
             "skill-host-compose-orchestrator",
         )
@@ -837,6 +843,7 @@ async fn seed_host_post_reply(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuil
                 source: "system".into(),
                 validation_status: "validated".into(),
                 includes: vec![],
+                content_checksum: None,
             },
             "ts-host-post-reply",
         )
@@ -862,6 +869,7 @@ async fn seed_host_post_reply(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuil
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-post-reply",
         )
@@ -886,6 +894,7 @@ async fn seed_host_post_reply(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuil
                 intent_examples: json!([]),
                 source: "system".into(),
                 validation_status: "validated".into(),
+                content_checksum: None,
             },
             "skill-host-post-reply",
         )
@@ -1012,6 +1021,7 @@ async fn seed_host_fetch_component(stores: &HostStores) -> Result<Vec<Uuid>, See
                 source: "system".into(),
                 validation_status: "validated".into(),
                 includes: vec![],
+                content_checksum: None,
             },
             "ts-host-fetch-component",
         )
@@ -1038,6 +1048,7 @@ async fn seed_host_fetch_component(stores: &HostStores) -> Result<Vec<Uuid>, See
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-fetch-component",
         )
@@ -1063,6 +1074,7 @@ async fn seed_host_fetch_component(stores: &HostStores) -> Result<Vec<Uuid>, See
                 intent_examples: json!([]),
                 source: "system".into(),
                 validation_status: "validated".into(),
+                content_checksum: None,
             },
             "skill-host-fetch-component",
         )
@@ -1162,6 +1174,7 @@ async fn seed_host_kohai_complete(stores: &HostStores) -> Result<Vec<Uuid>, Seed
                 source: "system".into(),
                 validation_status: "validated".into(),
                 includes: vec![],
+                content_checksum: None,
             },
             "ts-host-kohai-complete",
         )
@@ -1190,6 +1203,7 @@ async fn seed_host_kohai_complete(stores: &HostStores) -> Result<Vec<Uuid>, Seed
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-kohai-complete",
         )
@@ -1218,6 +1232,7 @@ async fn seed_host_kohai_complete(stores: &HostStores) -> Result<Vec<Uuid>, Seed
                 intent_examples: json!([]),
                 source: "system".into(),
                 validation_status: "validated".into(),
+                content_checksum: None,
             },
             "skill-host-kohai-complete",
         )
@@ -1275,6 +1290,7 @@ for k, v in summary.items():
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-history-format",
         )
@@ -1309,6 +1325,7 @@ for k, v in summary.items():
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-memory-write",
         )
@@ -1424,6 +1441,7 @@ result = "\n".join(_lines)
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-fallback-prior-knowledge",
         )
@@ -1529,6 +1547,7 @@ prompt = {
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-assemble-non-match-prompt",
         )
@@ -1649,6 +1668,7 @@ async fn seed_host_check_signals(stores: &HostStores) -> Result<Vec<Uuid>, SeedB
                 source: "system".into(),
                 validation_status: "validated".into(),
                 includes: vec![],
+                content_checksum: None,
             },
             "ts-host-check-signals",
         )
@@ -1675,6 +1695,7 @@ async fn seed_host_check_signals(stores: &HostStores) -> Result<Vec<Uuid>, SeedB
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-check-signals",
         )
@@ -1698,6 +1719,7 @@ async fn seed_host_check_signals(stores: &HostStores) -> Result<Vec<Uuid>, SeedB
                 intent_examples: json!([]),
                 source: "system".into(),
                 validation_status: "validated".into(),
+                content_checksum: None,
             },
             "skill-host-check-signals",
         )
@@ -1801,6 +1823,7 @@ async fn seed_host_validate_component(
                 source: "system".into(),
                 validation_status: "validated".into(),
                 includes: vec![],
+                content_checksum: None,
             },
             "ts-host-validate-component",
         )
@@ -1827,6 +1850,7 @@ async fn seed_host_validate_component(
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-validate-component",
         )
@@ -1853,6 +1877,7 @@ async fn seed_host_validate_component(
                 intent_examples: json!([]),
                 source: "system".into(),
                 validation_status: "validated".into(),
+                content_checksum: None,
             },
             "skill-host-validate-component",
         )
@@ -1936,6 +1961,7 @@ async fn seed_host_resolve_component_by_name(
                 source: "system".into(),
                 validation_status: "validated".into(),
                 includes: vec![],
+                content_checksum: None,
             },
             "ts-host-resolve-component-by-name",
         )
@@ -1962,6 +1988,7 @@ async fn seed_host_resolve_component_by_name(
                 intent_examples: None,
                 source: "system".into(),
                 dependency_registry: None,
+                content_checksum: None,
             },
             "pc-host-resolve-component-by-name",
         )
@@ -1987,6 +2014,7 @@ async fn seed_host_resolve_component_by_name(
                 intent_examples: json!([]),
                 source: "system".into(),
                 validation_status: "validated".into(),
+                content_checksum: None,
             },
             "skill-host-resolve-component-by-name",
         )

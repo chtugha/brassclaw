@@ -194,6 +194,7 @@ mod inner {
                 intent_examples: None,
                 dependency_registry: None,
                 includes: vec![],
+                content_checksum: None,
             };
 
             match self

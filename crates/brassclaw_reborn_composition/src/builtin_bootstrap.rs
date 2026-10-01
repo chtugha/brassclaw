@@ -3031,6 +3031,7 @@ fn ts_read_file_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -3063,6 +3064,7 @@ fn ts_write_file_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -3100,6 +3102,7 @@ fn ts_list_dir_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -3139,6 +3142,7 @@ fn ts_glob_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -3189,6 +3193,7 @@ fn ts_grep_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -3233,6 +3238,7 @@ fn ts_apply_patch_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -3263,6 +3269,7 @@ fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPy
         source: "system".into(),
         dependency_registry: None,
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -3311,6 +3318,7 @@ fn skill_row(
         intent_examples: json!([]),
         source: "system".into(),
         validation_status: "validated".into(),
+        content_checksum: None,
     }
 }
 
@@ -5404,6 +5412,7 @@ fn ts_http_fetch_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -5446,6 +5455,7 @@ fn ts_http_save_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -5492,6 +5502,7 @@ fn ts_web_search_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -7176,6 +7187,7 @@ fn ts_memory_search_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -7214,6 +7226,7 @@ fn ts_memory_write_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -7244,6 +7257,7 @@ fn ts_memory_read_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -7275,6 +7289,7 @@ fn ts_memory_tree_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -11808,6 +11823,7 @@ fn ts_shell_run_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -11863,6 +11879,7 @@ When NOT to delegate:
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -11907,6 +11924,7 @@ escalate privilege beyond the scope in which they were created.
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -11942,6 +11960,7 @@ Always list before creating to avoid duplicate trigger names.
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -11977,6 +11996,7 @@ Safety:
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13252,6 +13272,7 @@ fn ts_time_now_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13281,6 +13302,7 @@ fn ts_time_parse_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13311,6 +13333,7 @@ fn ts_time_convert_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13344,6 +13367,7 @@ fn ts_time_diff_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13375,6 +13399,7 @@ fn ts_time_format_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13404,6 +13429,7 @@ fn ts_json_query_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13432,6 +13458,7 @@ fn ts_json_stringify_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13460,6 +13487,7 @@ fn ts_json_validate_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -13486,6 +13514,7 @@ fn ts_echo_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -16734,6 +16763,7 @@ fn ts_component_db_row(tenant: &str) -> NewPgToolSkill {
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 

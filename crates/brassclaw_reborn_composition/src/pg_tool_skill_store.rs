@@ -81,6 +81,10 @@ pub(crate) struct NewPgToolSkill {
     /// structural-include placeholders in this ToolSkill's description. Empty
     /// for leaf descriptions.
     pub(crate) includes: Vec<Uuid>,
+    /// SHA-256 hex digest of `content`. Set to `Some(checksum)` for
+    /// `source='system'` rows that participate in the boot integrity check.
+    /// `None` for user-authored rows and rows not covered by the check.
+    pub(crate) content_checksum: Option<String>,
 }
 
 /// Postgres-backed store for `reborn_tool_skills` (class 13).
@@ -117,8 +121,8 @@ impl PgToolSkillStore {
                      prior_knowledge_content, override_prompt_creation,
                      tool_name, param_schema, param_template,
                      consumer_tags, intent_examples, source, validation_status,
-                     includes)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                     includes, content_checksum)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",
@@ -140,6 +144,7 @@ impl PgToolSkillStore {
                     &row.source,
                     &row.validation_status,
                     &includes_json,
+                    &row.content_checksum,
                 ],
             )
             .await

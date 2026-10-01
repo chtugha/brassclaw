@@ -1225,6 +1225,7 @@ fn ts_row(
         source: "system".into(),
         validation_status: "validated".into(),
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -1365,6 +1366,7 @@ fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPy
         source: "system".into(),
         dependency_registry: None,
         includes: vec![],
+        content_checksum: None,
     }
 }
 
@@ -1389,6 +1391,7 @@ fn skill_row(
         intent_examples: json!([]),
         source: "system".into(),
         validation_status: "validated".into(),
+        content_checksum: None,
     }
 }
 
