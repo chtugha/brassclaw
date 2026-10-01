@@ -2566,29 +2566,22 @@ async fn handle_get_actions(
 }
 
 /// Load all `DocType::Skill` MemoryDocs visible to `thread` from the legacy
-/// in-memory `Store` fallback path (`host.skill_list` / `__list_skills__` when
-/// the skills-db fast path is unavailable). The Python orchestrator handles
+/// in-memory `Store` fallback path. The Python orchestrator handles
 /// scoring, selection, and injection — this just provides data access.
 ///
 /// ## Setup-marker exclusion (v2 parity with v1 selector)
 ///
 /// Before returning the skill list, this function filters out any
 /// skill whose `metadata.activation.setup_marker` is already present
-/// as a MemoryDoc title in the current project. In v2, workspace
-/// files are stored as MemoryDocs keyed by title, so "does the marker
-/// file exist" maps to "is there a MemoryDoc with that title" — and
-/// we already have the full doc list in scope for the skill filter,
-/// so this costs zero extra store calls.
+/// as a MemoryDoc title in the current project.
 ///
-/// This is the v2 equivalent of the `satisfied_setup_markers`
-/// argument threaded through `brassclaw_skills::prefilter_skills` on
-/// the v1 path. Both paths implement the same rule: a one-time setup
-/// skill whose marker file has been written has finished its job and
-/// should not keep burning activation budget on every subsequent turn.
-///
-/// Extracted (C.6 slice 4c-prep) so the composition-side `ComponentPort` impl
-/// can delegate its MemoryDoc fallback here without duplicating the rule.
-pub async fn list_skills_from_store(
+/// Extracted (C.6 slice 4c-prep). The composition-side `ComponentPort` no
+/// longer uses this as a fallback (v1 MemoryDoc semantics retired per FIND-05;
+/// the production `PgCompositionPort::list_skills` returns an empty list on DB
+/// error instead). This function is retained only for test coverage of the
+/// MemoryDoc skill-visibility contract.
+#[cfg(test)]
+pub(crate) async fn list_skills_from_store(
     store: &Arc<dyn Store>,
     thread: &Thread,
 ) -> Vec<serde_json::Value> {
@@ -2669,10 +2662,11 @@ pub async fn list_skills_from_store(
 /// skills explicitly.
 ///
 /// Thin-calls [`ComponentPort::list_skills`] (the composition-side impl runs the
-/// skills-db fast path — sorted `reborn_skills` — with the MemoryDoc `Store`
-/// fallback above). Returns a Python list of skill dicts; the Python orchestrator
-/// handles scoring, selection, and injection. No bridge (`None` port, e.g.
-/// non-skills-db config / unit-test path with no store) → an empty list.
+/// v3 `reborn_skills` fast path — sorted by `(class_code, prompt_uid)` with
+/// `consumer_tags` + `validation_status` filtering). Returns a Python list of
+/// skill dicts; the Python orchestrator handles scoring, selection, and
+/// injection. No port wired (e.g. non-skills-db config / unit-test path) →
+/// empty list.
 async fn handle_list_skills(
     _args: &[MontyObject],
     thread: &Thread,

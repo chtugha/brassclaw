@@ -3,6 +3,21 @@
 //! Tracks usage and success/failure metrics for auto-extracted skills.
 //! After each thread completes, the active skills' metrics are updated
 //! based on whether the thread succeeded or failed.
+//!
+//! # Deprecation note
+//!
+//! This module is the sole intentional consumer of the deprecated
+//! `V2SkillMetadata` / `CodeSnippet` bridge types from `brassclaw_skills::v2`.
+//! The `#[allow(deprecated)]` below covers only this file; no new code should
+//! use those types. When this module is retired, remove `v2-compat` from
+//! `brassclaw_engine`'s dependency on `brassclaw_skills` and delete v2.rs.
+
+// Sole intentional consumer of the deprecated v2 MemoryDoc bridge types in
+// brassclaw_skills::v2. This allow covers only this file; do not add new
+// consumers of V2SkillMetadata or CodeSnippet elsewhere.
+// When this module is retired, remove v2-compat from brassclaw_engine's
+// brassclaw_skills dependency and delete v2.rs.
+#![allow(deprecated)]
 
 use std::sync::Arc;
 

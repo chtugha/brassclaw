@@ -1,5 +1,12 @@
 # Agent Rules
 
+> **Primary Rule — read this first:**
+> When a user asks you to add, change, or fix a capability in BrassClaw, your first answer
+> is a **Recipe** — not Rust code. The component library (Recipes + PythonCode + Skills +
+> ToolSkills) is where almost all behaviour lives. New Rust code is only warranted when a
+> genuinely new system-level Tool is needed that no existing Tool can provide. When in doubt,
+> ask: "Can this be done by wiring existing tools in a Recipe?" If yes, write the Recipe.
+
 ## Purpose and Precedence
 
 `AGENTS.md` is the quick-start routing map for AI coding agents entering the codebase. It is not the full architecture spec. Read the relevant subsystem spec before changing a complex area. When a crate spec exists, treat it as authoritative.
@@ -17,13 +24,15 @@ Start with these deeper docs as needed:
 
 ## Architecture Mental Model
 
-BrassClaw Reborn is organized in three conceptual layers:
+BrassClaw Reborn is organized in five conceptual layers:
 
 - **Products** own UX and surface-level composition. They wire together loops, capabilities, and host access for a specific deployment shape (CLI, web, daemon). Products do not implement agent logic directly.
 - **Loops** own agent behavior. They manage planning, tool dispatch, turn sequencing, approval gates, checkpointing, retries, and completion. A loop is the unit of agentic execution. Product code must not implement a second loop or bypass the loop runner.
 - **Kernel** owns authority. It controls trust decisions, secret resolution, safety policy enforcement, sandboxing, capability grants, and session identity. Kernel boundaries are not negotiable from product or loop code.
+- **Infrastructure** — Shared services: LLM providers, Postgres persistence, embeddings, extensions, and observability. Lives in `crates/`.
+- **Component Library** — Recipes, Skills, ToolSkills, PythonCode snippets, and ExtensionCatalogues stored in Postgres. **This is where most new capabilities are added.** No crate change required to add a Recipe, PythonCode snippet, or Skill. See `builtin_bootstrap.rs` for how first-party components are seeded.
 
-New Reborn work belongs in `crates/`.
+New Reborn work that genuinely requires new infrastructure belongs in `crates/`. New *capabilities* belong in the Component Library first.
 
 ## Orchestrator-First, LLM-Minimal Design (Mandatory)
 
@@ -33,22 +42,82 @@ irreversible decisions the user must confirm. Everything else is Tier 0.**
 
 This principle governs all Recipe, Skill, PythonCode, and ToolSkill authoring.
 
+### Turn Execution Flow — the complete picture
+
+Every user input travels one of two paths. **Understand this before authoring anything.**
+
+```
+User Input
+    │
+    ▼
+Orchestrator (Monty) — one long-persisting main process per input
+    │
+    ▼
+Intent-Matching System  (resolve_intent / fetch_for_turn)
+    │
+    ├─── MATCH ──────────────────────────────────────────────────────────────────┐
+    │                                                                            │
+    │  Composition system fetches the matched Recipe                            │
+    │      │                                                                     │
+    │      ▼                                                                     │
+    │  IBS (Instruction-Building-System)                                         │
+    │  step_link + StepDescriptions JSONB  →  build_instruction()               │
+    │  →  BuildInstruction { rust_steps, orchestrator_steps }                   │
+    │      │                                                                     │
+    │      ▼                                                                     │
+    │  Orchestrator executes steps in order:                                     │
+    │    channel:"rust"         → bind ToolSkill into Monty namespace            │
+    │    channel:"orchestrator" → PythonCode: result = host.<tool>(...)          │
+    │                              ↳ Rust Tool executes, returns result          │
+    │    channel:"orchestrator" → (Tier 1 only) LLM step with recipe context     │
+    │    channel:"orchestrator" → host.post_reply(answer="...") → user           │
+    │                                                                            │
+    │  History saved → main process exits.                                       │
+    │                                                                            │
+    └─── NO MATCH ───────────────────────────────────────────────────────────────┘
+         │
+         ▼
+     Orchestrator assembles LLM prompt (Tier 2 / Non-Matching-Mode):
+         1. User's question
+         2. Conversation history for this turn
+         3. base-prompt prefix  (added by Kohai — precompiled from the entire
+            component library: tools, recipes, skills, descriptions; ~250k–1M tokens)
+         │
+         ▼
+     LLM answers over the assembled prompt → posted to user
+         │
+         ▼
+     Sempai intercepts the completed turn →
+     proposes new Recipe + intent examples →
+     Q1 (auto audit) → Q2 (human approval) →
+     next identical request runs at Tier 0 (zero LLM)
+```
+
+**What this means for authoring:**
+- **Match path = Recipe.** Every capability on the Match path lives in a Recipe. To add behaviour, add a Recipe — not Rust.
+- **IBS is the compiler.** It reads the Recipe's `step_descriptions` JSONB at match time and produces the `BuildInstruction`. Ephemeral — never stored. You never call IBS directly; you author correct `step_descriptions`.
+- **Two-step tool invocation — always in this order:** `channel:"rust"` binds the ToolSkill (makes `host.<tool>` available), then `channel:"orchestrator"` PythonCode calls it (`result = host.<tool>(...)`). One does nothing without the other.
+- **No-Match path = base-prompt.** The base-prompt is compiled from the component library by Kohai. It is not hardcoded. Adding components grows what the LLM knows in Non-Matching-Mode.
+- **Sempai closes the loop.** Tier-2 turns that work well become Tier-0 recipes after Q1+Q2. The library grows with use.
+
 ### Component Roles — What Each Type IS
 
 | Component | What it is | What it is NOT |
 |-----------|-----------|----------------|
-| **Tool** (class 0) | Rust implementation — registers the capability with `capability_id` | An executor; it never runs on its own |
-| **ToolSkill** (class 13) | Binding descriptor — param schema, preconditions, error handling | A runner; `channel: "rust"` only pre-loads the binding |
-| **PythonCode** (class 22) | The actual executor — calls `__execute_action__()` to dispatch Rust; utility helpers used inside a Recipe's orchestrator channel | A Skill; it is deterministic code, not narrative prose |
-| **Skill** (class 1–3) | Orchestrator-facing **prose description** of a task pattern (may span one or more tools) | A list of recipe steps; skills do NOT contain recipe steps or tool calls |
-| **Recipe** (class 21) | Complete turn script: one or more `RecipeVariant`s, each with `intent_examples`, a `step_link`, `StepDescriptions` JSONB, and optional `variable_patterns` | A place for LLM reasoning; Tier-0 recipes have zero LLM involvement |
-| **ExtensionCatalogue** (class 23) | Domain overview: `task_groups[]` pointing to recipe names; the bigger picture | A re-documentation of individual components it owns |
+| **Tool** (class 0) | Rust callable registered in the host namespace. Executes one operation and returns. | An autonomous runner; it only executes when the Orchestrator calls `host.<tool>(...)` |
+| **ToolSkill** (class 13) | Rust-side binding descriptor for IBS: which Tool to bind, param schema, preconditions, error policy. Lives in `reborn_tool_skills`. | Orchestrator instructions; it carries no prose for the Orchestrator, only metadata for IBS |
+| **PythonCode** (class 22) | A Python code snippet stored in the component library. The Orchestrator runs it as a step. A tool-calling snippet calls `host.<tool>(...)` exactly once; a pure-logic snippet makes zero tool calls. | An executor — the Orchestrator is the executor; the PythonCode snippet is what gets run |
+| **Skill** (class 1–3) | Orchestrator-facing **prose** describing a task pattern — loaded as LLM context in Tier-1 steps. Not executable. | A ToolSkill; Skills carry no Rust binding metadata and are never referenced in `channel:"rust"` steps |
+| **Recipe** (class 21) | A turn template — like RNA. Carries `step_descriptions` JSONB listing component UUIDs in sequence. IBS reads it to assemble the `BuildInstruction` the Orchestrator executes. | A program; the Recipe is a template, IBS assembles the runnable structure from it |
+| **ExtensionCatalogue** (class 23) | Domain overview: `task_groups[]` pointing to recipe names | A re-documentation of individual components it owns |
 
-**Grain rule — Skill vs PythonCode:** Use a **Skill** when the orchestrator needs narrative instructions for a task pattern that spans one or more tools. Use **PythonCode** when the component is a sub-orchestrator utility helper referenced inside a Recipe's orchestrator channel — not a standalone capability.
+**ToolSkill vs Skill — do not conflate:**
+- **ToolSkill** (class 13): consumed by **IBS** to prepare a Rust Tool binding. Referenced in `channel:"rust"` steps. No prose.
+- **Skill** (class 1–3): consumed by the **Orchestrator** as LLM context. Referenced in `channel:"orchestrator"` steps. No binding metadata.
 
 **Rust never executes autonomously.** `channel: "rust"` pre-loads a ToolSkill binding into
 the execution context so the orchestrator knows which tool is available. The tool is
-invoked ONLY by a `channel: "orchestrator"` PythonCode step via `__execute_action__()`.
+invoked ONLY by a `channel: "orchestrator"` PythonCode step calling `host.<tool>(...)`.
 There is no other execution path. A rust step without a matching orchestrator PythonCode
 step is a **Q1 hard error** (§tier0-orchestrator-channel Rule 2).
 
@@ -56,28 +125,29 @@ step is a **Q1 hard error** (§tier0-orchestrator-channel Rule 2).
 
 ```
 channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute — availability only)
-channel: "orchestrator"   → PythonCode calls __execute_action__() to ACTUALLY run the tool
+channel: "orchestrator"   → PythonCode calls host.<tool>(...) to ACTUALLY run the tool
 ```
 
 Every `rust` step MUST be immediately followed by a matching `channel: "orchestrator"`
-PythonCode step. One PythonCode executor = exactly one `__execute_action__()` call.
-The orchestrator **never** calls Rust directly — it always goes through `__execute_action__()`.
+PythonCode step. One PythonCode snippet = exactly one `host.<tool>(...)` call.
+The orchestrator **never** calls Rust directly — it always goes through `host.<tool>(...)`.
 
 ### Tier Decision Hierarchy
 
-1. **Tier 0 first**: Can the task be done deterministically with known inputs? → Author a Tier-0 recipe with a PythonCode executor. This is the default target.
+0. **Rust gate (ask this before anything else):** Does this task require a new system-level capability not provided by any existing Tool? If **no** → author a Recipe that calls existing Tools. Do not write Rust. Only if a genuinely new primitive is needed should you proceed to write a new Rust Tool, and even then it must be accompanied by a full set of components (Recipe + PythonCode snippet + ToolSkill + Leaf Skill) seeded in `builtin_bootstrap.rs`.
+1. **Tier 0 first**: Can the task be done deterministically with known inputs? → Author a Tier-0 Recipe with a PythonCode snippet the Orchestrator will run. This is the default target.
 2. **Split by variant**: Each distinct invocation pattern gets its own recipe + intent examples. Three narrowly-scoped Tier-0 recipes beat one Tier-1 recipe that asks the LLM to pick a path.
 3. **Tier 1 only when necessary**: LLM involvement ONLY for creative content, user-composed inputs, or confirmation of irreversible actions.
 4. **One leaf skill per approach**: A leaf skill describes exactly one approach to one tool. If a tool has 3 common usage patterns, author 3 leaf skills — not one monolithic skill that bundles them. A skill should never describe multiple tool calls.
 5. **10+ intent examples per recipe**: More examples = better routing precision. Cover both command-style inputs and natural language.
 
-### PythonCode Executor Pattern (Canonical Tier-0 body)
+### PythonCode Snippet Pattern (Canonical Tier-0 body)
 
 ```python
 # Channel: orchestrator | Class: 22 | No I/O, no imports except stdlib, no network.
 # IBS bakes {{vars.slotN}} values into the body text before execution — they arrive
-# as literals, not placeholders. __execute_action__ is provided by the runtime sandbox.
-result = __execute_action__("tool_name", {"param": "{{vars.slot0}}"})
+# as literals, not placeholders. Tools are first-class callables in the Monty namespace.
+result = host.tool_name(param="{{vars.slot0}}")
 ```
 
 **VM symbols available in every PythonCode body:**
@@ -86,17 +156,17 @@ result = __execute_action__("tool_name", {"param": "{{vars.slot0}}"})
 |--------|---------|
 | `host.<tool>(...)` | Call a registered host tool/capability as a first-class callable (the rust-channel step binds it into the Monty namespace) |
 
-The retired `__execute_action__` / `__execute_code_step__` /
-`__execute_actions_parallel__` meta-primitives (and the `__check_budget__` /
-`__emit_event__` stage-machinery verbs) are gone — recipe PythonCode calls
-`host.<name>(...)` directly. See `builtin_stuff_v3.md` Step 27.
+> **Retired intrinsics (never use):** `__execute_action__`, `__execute_code_step__`,
+> `__execute_actions_parallel__`, `__check_budget__`, `__emit_event__` — all retired in v3.
+> Any PythonCode body that uses these will fail Q1. Call `host.<name>(...)` directly.
+> See `builtin_stuff_v3.md` Step 27 for the full migration record.
 
 **Required:** the body must assign `result = <value>` before returning.
 **Forbidden:** `import os`, `import subprocess`, `exec(`, `eval(`, `open(` — scanned at Q1.
 
 **Step isolation invariant:** each PythonCode step runs with a **fresh empty state dict `{}`**. A step does NOT see state mutations from previous steps. If step B needs data produced by step A, redesign: either combine both operations into one self-contained PythonCode body, or model the data handoff through template variables (`{{vars.name}}`).
 
-One PythonCode step = one `__execute_action__()` call. Pure-logic helpers (zero `__execute_action__()` calls) are valid. Never combine two independent tool dispatches into one PythonCode block.
+One PythonCode step = exactly one `host.<tool>(...)` call. Pure-logic helpers (zero tool calls) are valid. Never combine two independent tool dispatches into one PythonCode block.
 
 ### What Forces Tier 1
 
@@ -110,7 +180,7 @@ One PythonCode step = one `__execute_action__()` call. Pure-logic helpers (zero 
 
 - **Rule 1**: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). Skill bodies are orchestrator-facing prose — they are not executable and must not be placed in recipe steps.
 - **Rule 2**: If `llm_call_required == false` AND `rust_steps` has tool bindings, then `orchestrator_steps` MUST contain ≥1 PythonCode UUID. A rust-only Tier-0 recipe is rejected.
-- **Rule 3**: One PythonCode executor block = exactly one `__execute_action__()` call. Multiple dispatches require multiple PythonCode blocks — one per tool call.
+- **Rule 3**: One PythonCode snippet = exactly one `host.<tool>(...)` call. Multiple tool dispatches require multiple PythonCode snippets — one per tool call.
 - **Rule 4**: A leaf skill should describe exactly one tool usage pattern. Avoid bundling multiple tool calls or approaches into one skill body.
 - **§shell-guard**: Any Recipe using `builtin.shell` is `llm_call_required: true`. **Always. No shell command is ever Tier 0**, regardless of whether the command string is fixed or user-supplied. Known-safe commands (e.g. `cargo build`) may be Tier 1 at high confidence, never Tier 0.
 - **§spawn_subagent-guard**: Any Recipe referencing `builtin.spawn_subagent` is `llm_call_required: true`. Always.
@@ -156,22 +226,52 @@ Valid `type` values: `component` (fetch+route a component), `llm` (LLM turn — 
 
 ### Extension Authoring Reference
 
-Extension component stacks (Tools, ToolSkills, PythonCode, Leaf Skills, Domain Skills, Recipes, ExtensionCatalogues) are fully specified in:
-- `builtin_stuff_v3.md` — built-in capabilities
-- `tomedo_v3.md` — tomedo EMR integration example (reference implementation)
-- `docs/plans/zencoder-extension-plan.md` — Zencoder REST API extension (worked example with full step_descriptions JSONB)
+**Start here for any new capability.** Extension component stacks (Tools, ToolSkills, PythonCode, Leaf Skills, Domain Skills, Recipes, ExtensionCatalogues) are fully specified in:
+- `builtin_stuff_v3.md` — complete list of all built-in v3 capabilities, tool signatures, and ToolSkill/PythonCode templates
+- `tomedo_v3.md` — tomedo EMR integration: full reference implementation of an extension component stack
+- `docs/plans/zencoder-extension-plan.md` — **best starting point**: Zencoder REST API extension with complete annotated `step_descriptions` JSONB, intent examples, and bootstrap seeding pattern
+
+When adding any new capability, read `docs/plans/zencoder-extension-plan.md` first — it is the worked example closest to the authoring workflow you will follow.
+
+## Adding a New Capability (Start Here)
+
+**Work through this hierarchy top-down. Stop at the first level that solves the problem — do not skip ahead.**
+
+| Level | What to do | What gets created |
+|-------|-----------|-------------------|
+| **1** | Add intent examples to an existing `RecipeVariant` | Rows in `reborn_intent_inputs` only — zero new components |
+| **2** | Add a new `RecipeVariant` to an existing `Recipe` | One variant + intent examples — reuses existing PythonCode snippets and ToolSkills by UUID |
+| **3** | Reference an existing PythonCode snippet in the new variant's `step_descriptions` | No new PythonCode row — slot the existing UUID into `channel:"orchestrator"` step |
+| **4** | Reference an existing ToolSkill in the new variant's `channel:"rust"` step | No new ToolSkill row — slot the existing UUID |
+| **5** | Author new component rows in `builtin_bootstrap.rs` or extension seeder | New Postgres rows — no new Rust code |
+| **6** | Write a new Rust Tool, then do level 5 | Only when no existing Tool provides the primitive needed |
+
+**Before doing anything:** search `builtin_stuff_v3.md` and the existing component library for existing PythonCode snippets, ToolSkills, and Leaf Skills that already cover what you need. Reuse by UUID reference first.
+
+**If you reach level 5, author components in this order** (Recipe-first — define what you want, then fill in what it needs):
+
+1. **Recipe** (class 21) — define the `RecipeVariant`: intent examples, `step_descriptions` JSONB with placeholders for component UUIDs, `variable_patterns` if needed
+2. **PythonCode snippet** (class 22) — the code snippet the Orchestrator will run at the relevant step; calls `host.<tool>(param=value)` exactly once per tool-calling snippet; assign `result = ...`
+3. **ToolSkill** (class 13) — binding descriptor for IBS: which Tool to bind, param schema, preconditions, error policy. Referenced by the `channel:"rust"` step in the Recipe's `step_descriptions`
+4. **Leaf Skill** (class 1) — one prose description per usage pattern, for LLM context in Tier-1 steps. Not executable — the Orchestrator reads it, does not run it
+5. **ExtensionCatalogue** (class 23) — update `task_groups[]` if this belongs to an existing domain
+
+Fill in the UUID references in the Recipe's `step_descriptions` as you create each component.
+
+**Verify:** intent resolves at Class 1 or 2 confidence → Q1 passes → executes at Tier 0 (zero LLM calls for a Tier-0 recipe).
 
 ## Where to Work
 
 | Area | Location |
 |------|----------|
+| **New user-facing capability (first stop)** | Author Recipe + ToolSkill + PythonCode + Leaf Skill in `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs`. **No new crate or Rust function needed** unless a genuinely new system-level primitive is required. |
 | brassclaw CLI binary | `crates/brassclaw_reborn_cli/` |
 | Reborn runtime and driver registry | `crates/brassclaw_reborn/` |
 | Composition and wiring | `crates/brassclaw_reborn_composition/` |
 | Config resolution and profiles | `crates/brassclaw_reborn_config/` |
 | Agent loop driver | `crates/brassclaw_agent_loop/` |
 | LLM providers and routing | `crates/brassclaw_llm/` |
-| Skills system | `crates/brassclaw_skills/` |
+| Skills system | `crates/brassclaw_skills/` — v3 DB-backed store (`db-store` feature), validation helpers (always compiled). **Do not** consume the `v1-types` or `v2-compat` feature gates from new code — they are migration-importer and legacy bridge paths only. New first-party skills: `PgSkillStore::insert(NewPgSkill { ... })` in `builtin_bootstrap.rs`. |
 | Security, safety, prompt injection | `crates/brassclaw_safety/` |
 | WebUI v2 server (React SPA) | `crates/brassclaw_webui_v2/`, `crates/brassclaw_webui_v2_static/` |
 | WebUI ingress / gateway adapter | `crates/brassclaw_reborn_webui_ingress/` |
@@ -181,19 +281,21 @@ Extension component stacks (Tools, ToolSkills, PythonCode, Leaf Skills, Domain S
 | Recipe-Skill-Tool library | `crates/brassclaw_engine/src/memory/` (types, matcher, validator, similarity), `crates/brassclaw_reborn_composition/src/recipe_store.rs` + `recipe_library.rs` (REST store + loop adapter), `crates/brassclaw_turns/src/run_profile/recipe_lookup.rs` (trait). Recipes use `RecipeVariant` + `step_link` + `StepDescriptions` JSONB + optional `variable_patterns` — read §0.3/§0.4/§0.5 of `saved_plan_to_v3.md` before touching. |
 | IBS (Instruction-Building-System) | `crates/brassclaw_engine/src/memory/ibs.rs` + `crates/brassclaw_engine/src/types/ibs.rs` (`build_instruction`, `BuildInstruction`, `IbsRecipeStep`, `ToolBinding`, `ErrorPolicy`). Compiles `step_link` + `StepDescriptions` → `BuildInstruction` at intent-match time. **Never stored** — ephemeral per call, memoised in-process. |
 | Component catalog (class codes 4–23) | `crates/brassclaw_engine/src/memory/retrieval_source.rs` (`PostgresSource`, `fetch_for_turn`, `FetchForTurnResult::SplitResult`/`ActionShortCircuit`, `class_code_to_table` — the single source of truth for class→table dispatch; the full class→table table is in `CLAUDE.md` §Component Catalog and is regression-tested against the code). Tables: `reborn_extensions_unified` (4–9, extension packages) + `reborn_specs/tool_skills/plans/summaries` (12–15) + `reborn_actions` (**16**, not 11 — class 11 is unallocated) + `reborn_docus` (17) + `reborn_lessons/issues/notes` (18–20) + `reborn_recipes` (21) + `reborn_python_code` (22, Phase B) + `reborn_extension_catalogues` (23, Phase C). Classes 10 (Orchestrator) and 50 (Scaffold) are **not** separate tables — they live in `reborn_skills`, filtered by `class_code`, alongside classes 1–3. All components carry `dependency_registry JSONB` (Phase J). `reborn_component_catalog` (`crates/brassclaw_pg/migrations/V084__reborn_component_catalog_view.sql`) is a read-only Postgres VIEW — not a table — that `UNION ALL`s all 14 prompt-bearing class tables (excluding `reborn_tools`, class 0) for ad hoc/Settings-API querying; it applies no per-request scope filtering, callers add their own `WHERE`. |
-| Settings API / WebUI catalog tabs | `crates/brassclaw_reborn_composition/src/pg_settings_listing.rs` (`PgSettingsListingService::list`, single parameterised query backing every `GET /api/settings/{type}` tab — Skills, Tool Permissions, Actions, Extensions, Orchestrators, Scaffolds, Recipes, ToolSkills, PythonCode, ExtensionCatalogues; a genuinely missing table fails loud with `SettingsListingError::MissingTable`, never silently empty), `crates/brassclaw_product_workflow/src/settings.rs` + `reborn_services.rs` (`RebornServicesApi` trait methods), `crates/brassclaw_webui_v2/src/{descriptors,handlers,router}.rs` (routes). Frontend: `crates/brassclaw_webui_v2_static/.../settings-schema.js` + `settings-tabs.js` (sidebar sections: Runtime Config / Component Catalog / Security & Governance / Access & Ops) + per-tab `*-tab.js` files. The SKILL.md plugin installer ("Skill Packages") and the runtime tool-permission list ("Tool Permissions") are UI-distinct from the class-code Skill/ToolSkill catalog tabs — do not conflate them. |
-| Validation queue | `reborn_validation_queue` table (V051, Phase A.5). Two-gate pipeline: Q1 (orchestrated, sandboxed) → Q2 (**manual, human-only — only the operator can approve**). All non-builtin components (user-authored, Sempai-authored) must go through Q1+Q2. `source='system'` builtins (`builtin_bootstrap.rs`) are **exempt** — they insert as `validated` directly; the no-bypass invariant does not apply to them. Q2 is never automated; there is no `auto-system` graduation actor. The `q2_actor` column (Phase P.0, V078) records either `'human'` (Q2 reviewer) or `'builtin'` (bootstrap seeder) — the latter being an audit label only, not a bypass of the human-review requirement (builtins are already exempt). |
+| Settings API / WebUI catalog tabs | `crates/brassclaw_reborn_composition/src/pg_settings_listing.rs` (`PgSettingsListingService::list`, single parameterised query backing every `GET /api/settings/{type}` tab — Skills, Tool Permissions, Actions, Extensions, Orchestrators, Scaffolds, Recipes, ToolSkills, PythonCode, ExtensionCatalogues; a genuinely missing table fails loud with `SettingsListingError::MissingTable`, never silently empty), `crates/brassclaw_product_workflow/src/settings.rs` + `reborn_services.rs` (`RebornServicesApi` trait methods), `crates/brassclaw_webui_v2/src/{descriptors,handlers,router}.rs` (routes). Frontend: `crates/brassclaw_webui_v2_static/.../settings-schema.js` + `settings-tabs.js` (sidebar sections: Runtime Config / Component Catalog / Security & Governance / Access & Ops) + per-tab `*-tab.js` files. The runtime tool-permission list ("Tool Permissions") is UI-distinct from the class-code Skill/ToolSkill catalog tabs — do not conflate them. Note: the old v1 SKILL.md plugin installer ("Skill Packages") UI was removed; the Skills tab now shows `reborn_skills` DB rows only. |
+| Validation queue | `reborn_validation_queue` table (V051, Phase A.5). Four-state pipeline: **Q1** `auto` (orchestrated, sandboxed LLM audit) → **Q2** `manual` (operator review — human-only, never automated) → **Q3** `revision` (automated revision by class-09 extension, if flagged) → **Q4** `rejection` (rejected; retained for `q4_retention_days` then wiped). All non-builtin components must pass Q1+Q2. `source='system'` builtins are **exempt** — they insert as `validated` directly. **Recovery from Q4 rejection:** read the Q1 audit output, fix the component (check for forbidden symbols, wrong class codes, missing `result =`, channel isolation violations), and re-submit. Do **not** rewrite the capability as Rust because a recipe was rejected — fix the recipe. |
 | Builtin bootstrap seeder | `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` (Phase L). Seeds full v3 component stack (Tools + ToolSkills + Skills + PythonCode + Recipes + ExtensionCatalogues) for all 23 first-party tools at boot, if not already present. Idempotent. |
 | BasicPromptStore / prefix | `crates/brassclaw_reborn_composition/src/pg_basic_prompt_store.rs` (Phase K.1). Stores the operator-editable base-prompt prefix; regenerated via `regenerate_prefix`. |
 | Intent system | `crates/brassclaw_engine/src/memory/intent_system.rs` (`resolve_intent`, 4-class classifier, `record_disambiguation_choice`), `reborn_intent_inputs` table (V028 + V058 variable-template columns). Intent expressions support `%` slot markers for variable capture (Phase M). |
 | Monty VM settings | `crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs` (`PgMontyVmSettingsStore`, reads/writes `reborn_monty_vm_settings` V034 migration) |
 | User chat preferences | `crates/brassclaw_reborn_composition/src/pg_user_preference_store.rs` (`PgUserPreferenceStore`, `reborn_user_preferences` V035 migration) |
-| Component import (MemoryDoc migration) | `crates/brassclaw_reborn_composition/src/component_import.rs` (`run_component_import` — migrates legacy `brassclaw_memory_docs` rows into class-specific tables at boot) |
+| Legacy MemoryDoc migration (v1→v3, read-only concern) | `crates/brassclaw_reborn_composition/src/component_import.rs` (`run_component_import` — migrates old v1 `brassclaw_memory_docs` rows into class-specific tables at first boot on old databases). **Do not add new components via `brassclaw_memory_docs`** — author them directly in `builtin_bootstrap.rs` or the extension seeder. |
 | Interceptor / Sempai-Kohai | `crates/brassclaw_interceptor/` (Sempai/Kohai review loop, persona, base-prompt assembly, `SempaiProposalSink`, `SempaiReviewOutcome`). Sempai auto-creates **all** component types (not just recipes) — proposals enter the validation queue at `'pending'`. Wired in composition via `InterceptorConfigService`. |
 
 When a task touches only `crates/` there is no longer a v1 `src/` tree — all v1 code was removed in Phase 6.
 
 ## Subagent and Loop Rules
+
+In v3, a subagent's behaviour is defined by the **Recipe it receives** — not by configuring loop driver code. The Orchestrator running the subagent executes the Recipe's steps. To change what a subagent does, change its Recipe; do not modify loop driver or executor Rust code.
 
 - Subagent spawn creates and wires child runs only. It must not implement a second agent loop.
 - Child planning, execution, capability calls, checkpointing, gates, retries, and completion must go through the existing loop runner/driver/executor path.
@@ -209,7 +311,7 @@ When a task touches only `crates/` there is no longer a v1 `src/` tree — all v
 - Use `thiserror` for error types in `error.rs`. Map errors with context: `.map_err(|e| SomeError::Variant { reason: e.to_string() })?`.
 - No `pub use` re-exports unless exposing to downstream consumers.
 - Comments for non-obvious logic only.
-- Multi-line prompt strings go in `crates/brassclaw_engine/prompts/*.md` and are loaded via `include_str!()`. Never inline large prompt templates as Rust string constants.
+- Multi-line prompt strings for **Rust-internal boot-time paths** go in `crates/brassclaw_engine/prompts/*.md` via `include_str!()`. Behavioural prompts that guide orchestrator behaviour belong in the component library as Skills (class 1–3) in `builtin_bootstrap.rs`, not as hardcoded files.
 - `info!` and `warn!` output appears in the REPL and corrupts the terminal UI. Use `debug!` for internal diagnostics. Background tasks must never use `info!`.
 
 ## Database Rules
@@ -309,3 +411,5 @@ cargo test --features integration
 - Run the most targeted tests and clippy checks that cover the change.
 - Re-check security-sensitive paths when touching auth, secrets, network listeners, sandboxing, or approvals.
 - Keep the final diff scoped to the task. Avoid unrelated file churn.
+- **Capability check:** If behaviour was added or changed — is it expressed as a Recipe + PythonCode, or did it end up as Rust logic that belongs in a Recipe? Rust-only behaviour changes are incomplete unless a genuinely new system primitive was required.
+- **Component set check:** If a new Rust Tool was written — do its Recipe + PythonCode snippet + ToolSkill + Leaf Skill + ≥10 intent examples all exist in `builtin_bootstrap.rs`? A Tool with no Recipe is unreachable at Tier 0.

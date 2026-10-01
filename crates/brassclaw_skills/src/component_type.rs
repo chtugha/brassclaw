@@ -1,5 +1,13 @@
 //! Component type tags for the Sempai–Kohai system.
 //!
+//! # Feature gate
+//!
+//! This module is gated on the `v1-types` Cargo feature.
+//! `ComponentType`/`ComponentTypeSet` implement the v2-era role-intersection
+//! dispatch model (Llm/Kohai/Sempai/Agent). In v3 this is superseded by the
+//! `consumer_tags` column on `reborn_skills` and is enforced at query time by
+//! `PostgresSource`. Enable `v1-types` only for SKILL.md manifest parsing.
+//!
 //! Every recipe, skill, and tool declares which execution contexts it applies
 //! to via a set of [`ComponentType`] tags.  The registry uses
 //! [`ComponentTypeSet`] to filter components by the caller's role context so

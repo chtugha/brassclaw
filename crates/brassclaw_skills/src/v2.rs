@@ -1,5 +1,15 @@
 //! V2 engine skill types.
 //!
+//! # Feature gate
+//!
+//! This module is gated on the `v2-compat` Cargo feature.
+//! These are bridge types for the MemoryDoc-backed v2 engine path
+//! (`brassclaw_engine::memory::skill_tracker`). They are serialized into
+//! `MemoryDoc.metadata` JSON. In v3, skill telemetry is stored in
+//! `reborn_skills` columns (`usage_count`, `success_count`, `failure_count`,
+//! `wilson_lower`, `confidence`). Enable only for the legacy `skill_tracker`
+//! path; do not add new consumers.
+//!
 //! These types extend the v1 skill model with capabilities needed by the v2
 //! engine: executable code snippets, usage/confidence metrics, and versioning.
 //! They are serialized into `MemoryDoc.metadata` JSON in the engine crate.
@@ -26,6 +36,17 @@ pub enum V2SkillSource {
 ///
 /// Registered as a callable function in the CodeAct/Monty runtime so the LLM
 /// can call it directly without reconstructing the logic from scratch.
+///
+/// # Deprecation
+///
+/// In v3 executable snippets are first-class `PythonCode` components (class 22)
+/// stored in `reborn_python_code`. This type is a bridge for the legacy
+/// MemoryDoc-backed path only. Do not add new consumers.
+#[deprecated(
+    since = "0.3.0",
+    note = "Use PythonCode components (class 22, reborn_python_code) instead. \
+            This type is a MemoryDoc-backed v2 bridge; do not add new consumers."
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodeSnippet {
     /// Function name (e.g., "fetch_issues"). Must be a valid Python identifier.
@@ -133,6 +154,18 @@ pub struct SkillRepairRecord {
 /// Serialized to/from the `metadata` JSON field of a `MemoryDoc` with
 /// `DocType::Skill`. All fields use `#[serde(default)]` for forward
 /// compatibility — old skills missing new fields deserialize gracefully.
+///
+/// # Deprecation
+///
+/// In v3 skill telemetry is stored in the `reborn_skills` columns
+/// (`usage_count`, `success_count`, `failure_count`, `wilson_lower`,
+/// `confidence`). This type is a bridge for the MemoryDoc-backed
+/// `skill_tracker` path only. Do not add new consumers.
+#[deprecated(
+    since = "0.3.0",
+    note = "Use reborn_skills DB columns for skill telemetry instead. \
+            This type is a MemoryDoc-backed v2 bridge; do not add new consumers."
+)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct V2SkillMetadata {
     /// Skill name (matches the MemoryDoc title minus the "skill:" prefix).

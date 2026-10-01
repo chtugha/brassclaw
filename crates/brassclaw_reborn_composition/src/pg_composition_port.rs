@@ -71,8 +71,6 @@ use brassclaw_engine::executor::db_skill_loader::{
     fetch_llm_skills_as_json, scope_from_thread_ids,
 };
 #[cfg(feature = "skills-db")]
-use brassclaw_engine::executor::orchestrator::list_skills_from_store;
-#[cfg(feature = "skills-db")]
 use brassclaw_engine::executor::{ComponentPort, ComponentPortError};
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::memory::composition::compose_program;
@@ -534,26 +532,38 @@ impl ComponentPort for PgCompositionPort {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<serde_json::Value>, ComponentPortError>> + Send + '_>>
     {
         // skills-db fast path: `reborn_skills` sorted by (class_code, prompt_uid)
-        // for deterministic injection order. On any DB error (or absent rows)
-        // fall back to the MemoryDoc `Store` path (`list_skills_from_store`:
-        // shared-skills multi-tenant visibility + setup-marker exclusion). No
-        // store wired → empty list.
+        // for deterministic injection order (consumer_tags + validation_status
+        // filtering enforced by the SQL query in fetch_llm_skills_as_json).
+        //
+        // Fallback policy: on DB error, emit a debug diagnostic and return an
+        // empty list. We do NOT fall back to the MemoryDoc Store path because
+        // that path applies v1/v2 semantics (keyword scoring, setup-marker
+        // exclusion, no consumer_tag gating, no validation_status enforcement)
+        // which are incompatible with v3 skill delivery. An empty list is
+        // correct: skill injection will be skipped for this turn. The MemoryDoc
+        // fallback has been retired here per the v3 architecture audit (FIND-05).
+        //
+        // The MemoryDoc Store parameter is retained on PgCompositionPort for
+        // the existing callers that wire it; it is no longer consulted here.
         let pool = self.pool.clone();
-        let store = self.store.clone();
         let scope = scope_from_thread_ids(
             thread.tenant_id.clone(),
             thread.user_id.clone(),
             thread.agent_id.clone(),
             thread.project_id.to_string(),
         );
-        let thread = thread.clone();
         Box::pin(async move {
             match fetch_llm_skills_as_json(&pool, &scope).await {
                 Ok(skills) => Ok(skills),
-                Err(_) => match store {
-                    Some(store) => Ok(list_skills_from_store(&store, &thread).await),
-                    None => Ok(Vec::new()),
-                },
+                Err(e) => {
+                    tracing::debug!(
+                        err = %e,
+                        "list_skills: reborn_skills DB fast path failed; \
+                         returning empty skill list for this turn (v1 MemoryDoc \
+                         fallback retired — see v3 architecture audit FIND-05)"
+                    );
+                    Ok(Vec::new())
+                }
             }
         })
     }

@@ -19,6 +19,20 @@ workspace = true
 default = []
 # DB-backed skill store backed by brassclaw_pg.
 db-store = ["dep:brassclaw_pg", "dep:uuid"]
+# v1 SKILL.md filesystem types: SkillManifest, LoadedSkill, SkillSource,
+# ActivationCriteria, GatingRequirements, SkillCredentialSpec, SkillOAuthConfig,
+# SkillCredentialLocation, ProviderRefreshStrategy, MAX_PROMPT_FILE_SIZE.
+# Also gates component_type (ComponentType/ComponentTypeSet), which was the
+# v2-era role-intersection dispatch model superseded by consumer_tags in v3.
+# Enable only for the v1→v3 migration importer and SKILL.md parsing paths.
+v1-types = []
+# v2 MemoryDoc skill metadata types: V2SkillMetadata, CodeSnippet,
+# SkillRevision, SkillRepairRecord, V2SkillSource, SkillMetrics.
+# These are bridge types for the MemoryDoc-backed v2 engine path.
+# Implies v1-types because V2SkillMetadata embeds ActivationCriteria /
+# GatingRequirements from types.rs.
+# Enable only for brassclaw_engine's skill_tracker (MemoryDoc fallback).
+v2-compat = ["v1-types"]
 
 [dependencies]
 async-trait = "0.1"

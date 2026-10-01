@@ -2,6 +2,14 @@
 //!
 //! Contains the data structures for skill manifests, activation criteria,
 //! and loaded skills.
+//!
+//! # Feature gate
+//!
+//! This entire module is gated on the `v1-types` Cargo feature.
+//! These types belong to the v1 SKILL.md filesystem subsystem (install/remove,
+//! host-FS registry, keyword scoring, credential specs) and are not part of
+//! the v3 component model. Enable `v1-types` only from the v1→v3 migration
+//! importer and legacy SKILL.md parsing paths.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

@@ -21,13 +21,16 @@ workspace = true
 # Load tools from reborn_tools DB table into the ToolRegistry capability surface.
 # Both require a live brassclaw_pg pool to be threaded in.
 skills-db = ["brassclaw_skills/db-store", "dep:brassclaw_pg", "dep:brassclaw_capabilities", "dep:tokio-postgres"]
+# skill_tracker.rs uses V2SkillMetadata / SkillRevision / V2SkillSource for
+# the MemoryDoc-backed v2 skill telemetry path (legacy bridge — do not expand).
+v2-skill-tracker = ["brassclaw_skills/v2-compat"]
 
 [dependencies]
 async-trait = "0.1"
 cron = "0.13"
 brassclaw_capabilities = { path = "../brassclaw_capabilities", optional = true }
 brassclaw_common = { path = "../brassclaw_common", version = "0.4.2" }
-brassclaw_skills = { path = "../brassclaw_skills", version = "0.3.0", default-features = false }
+brassclaw_skills = { path = "../brassclaw_skills", version = "0.3.0", default-features = false, features = ["v2-compat"] }
 brassclaw_pg = { path = "../brassclaw_pg", version = "0.1.0", optional = true }
 tokio-postgres = { version = "0.7", optional = true }
 chrono = { version = "0.4", features = ["serde"] }

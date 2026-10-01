@@ -3,6 +3,18 @@
 //! Provides CRUD over `reborn_skills` (V027 migration) and wires in the
 //! existing validation helpers so every write is fail-closed.
 //!
+//! # Write-path note
+//!
+//! **For new v3 first-party skills (system source), use [`crate::pg_skill_store::PgSkillStore`]
+//! in `brassclaw_reborn_composition` instead.** `DbSkillStore` is primarily
+//! the write path for the v1→v3 migration importer (`component_import.rs`) and
+//! the validation queue (Q1/Q2 state transitions). It carries legacy fields
+//! (`compatibility`, `license`, `allowed_tools`, `setup_marker`, etc.) that are
+//! not part of the v3 component model but are preserved for migration fidelity.
+//!
+//! If you are authoring a new first-party skill, seed it in `builtin_bootstrap.rs`
+//! via `PgSkillStore::insert(NewPgSkill { ... })` with the minimal v3 field set.
+//!
 //! # Scope isolation
 //! Every read and write filters on the full
 //! `(tenant_id, user_id, agent_id, project_id)` 4-tuple. Queries that span
@@ -386,11 +398,15 @@ mod inner {
                 .push("intent_examples must be a JSON array".into());
         }
 
-        // 7. Source provenance label
-        const VALID_SOURCES: &[&str] = &["authored", "extracted", "migrated", "imported"];
+        // 7. Source provenance label.
+        // "system" is accepted so that PgSkillStore (the v3 bootstrap seeder) and
+        // DbSkillStore share the same validation logic for first-party builtins.
+        // "authored", "extracted", "migrated", "imported" are the user-facing labels.
+        const VALID_SOURCES: &[&str] =
+            &["authored", "extracted", "migrated", "imported", "system"];
         if !VALID_SOURCES.contains(&input.source.as_str()) {
             result.errors.push(format!(
-                "skill source '{}' is not valid; must be one of: authored, extracted, migrated, imported",
+                "skill source '{}' is not valid; must be one of: authored, extracted, migrated, imported, system",
                 input.source
             ));
         }
