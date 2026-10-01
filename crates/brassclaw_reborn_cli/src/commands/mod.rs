@@ -11,6 +11,7 @@ pub(crate) mod maintenance;
 pub(crate) mod migrate;
 pub(crate) mod models;
 pub(crate) mod repl;
+pub(crate) mod repair;
 pub(crate) mod run;
 pub(crate) mod runtime_profile;
 pub(crate) mod secrets;
@@ -43,6 +44,9 @@ pub(crate) enum Command {
     Migrate(migrate::MigrateCommand),
     /// Inspect Reborn model slots and route status.
     Models(models::ModelsCommand),
+    /// Force-overwrite all source='system' component rows from compiled-in seed
+    /// constants. Run after `brassclaw serve` fails with CONTENT INTEGRITY FAILURE.
+    Repair(repair::RepairCommand),
     /// Inspect supported Reborn runtime profiles.
     #[clap(name = "runtime-profile")]
     RuntimeProfile(runtime_profile::RuntimeProfileCommand),
@@ -83,6 +87,9 @@ impl Command {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
             Self::Models(command) => command.execute(),
+            Self::Repair(command) => {
+                command.execute(crate::context::RebornCliContext::resolve_from_env()?)
+            }
             Self::RuntimeProfile(command) => command.execute(),
             Self::Repl(command) => {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
