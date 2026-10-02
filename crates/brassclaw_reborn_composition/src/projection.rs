@@ -38,7 +38,7 @@ mod display_preview;
 mod live_progress;
 mod runtime_replay;
 mod turn_events;
-use crate::AuthChallengeProvider;
+use crate::auth_prompt::AuthChallengeProvider;
 use display_preview::{
     CapabilityDisplayPreviewResolution, CapabilityDisplayPreviewSource,
     NoopCapabilityDisplayPreviewSource,

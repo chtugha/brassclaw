@@ -27,7 +27,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
-use crate::AuthChallengeView;
+use crate::auth_prompt::AuthChallengeView;
 use crate::oauth_dcr_protocol::{
     AuthorizationServerMetadata, DcrRegistrationRequest, DcrRegistrationResponse,
     ProtectedResourceMetadata, StoredDcrClientMaterial, authorization_server_metadata_url,

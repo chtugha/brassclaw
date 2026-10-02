@@ -812,6 +812,167 @@ async fn seed_orchestrator(stores: &BootstrapStores) -> Result<(), SeedBuiltinBo
         )
         .await?;
 
+    // failure_explanation (class 3 — loop-support skill)
+    let checksum = crate::checksum::sha256_hex(FAILURE_EXPLANATION_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "failure_explanation".into(),
+                description: "Failure explanation prompt for loop-support (class 3)".into(),
+                body: FAILURE_EXPLANATION_SEED.into(),
+                class_code: 3,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "failure_explanation",
+        )
+        .await?;
+
+    // compaction_summarizer_fresh (class 10 — loop compaction summarizer)
+    let checksum = crate::checksum::sha256_hex(COMPACTION_SUMMARIZER_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "compaction_summarizer_fresh".into(),
+                description: "Compaction summarizer system prompt (class 10)".into(),
+                body: COMPACTION_SUMMARIZER_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "compaction_summarizer_fresh",
+        )
+        .await?;
+
+    // sempai_audit (class 10 — Sempai audit prompt)
+    let checksum = crate::checksum::sha256_hex(SEMPAI_AUDIT_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "sempai_audit".into(),
+                description: "Sempai proposal audit prompt (class 10)".into(),
+                body: SEMPAI_AUDIT_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "sempai_audit",
+        )
+        .await?;
+
+    // subagent:direction:general (class 10 — subagent direction skill)
+    let checksum = crate::checksum::sha256_hex(DIRECTION_GENERAL_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "subagent:direction:general".into(),
+                description: "General subagent direction prompt (class 10)".into(),
+                body: DIRECTION_GENERAL_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "subagent:direction:general",
+        )
+        .await?;
+
+    // subagent:direction:researcher (class 10)
+    let checksum = crate::checksum::sha256_hex(DIRECTION_RESEARCHER_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "subagent:direction:researcher".into(),
+                description: "Researcher subagent direction prompt (class 10)".into(),
+                body: DIRECTION_RESEARCHER_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "subagent:direction:researcher",
+        )
+        .await?;
+
+    // subagent:direction:explorer (class 10)
+    let checksum = crate::checksum::sha256_hex(DIRECTION_EXPLORER_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "subagent:direction:explorer".into(),
+                description: "Explorer subagent direction prompt (class 10)".into(),
+                body: DIRECTION_EXPLORER_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "subagent:direction:explorer",
+        )
+        .await?;
+
+    // subagent:direction:coder (class 10)
+    let checksum = crate::checksum::sha256_hex(DIRECTION_CODER_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "subagent:direction:coder".into(),
+                description: "Coder subagent direction prompt (class 10)".into(),
+                body: DIRECTION_CODER_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "subagent:direction:coder",
+        )
+        .await?;
+
     Ok(())
 }
 

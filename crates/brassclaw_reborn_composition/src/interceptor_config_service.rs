@@ -243,15 +243,15 @@ impl RebornInterceptorConfigService {
                 .find(|(k, _)| k == KEY_PERSONA)
                 .map(|(_, v)| v)
                 .unwrap_or_else(|| {
-                    brassclaw_reborn::loop_driver_host::DEFAULT_SEMPAI_PERSONA.to_string()
+                    brassclaw_reborn::loop_driver_host::sempai_persona().to_string()
                 }),
             Err(e) => {
                 tracing::debug!(
                     tenant_id = %self.tenant_id,
                     error = %e,
-                    "interceptor load_persona: DB unavailable, using default"
+                    "interceptor load_persona: DB unavailable, using boot-loaded default"
                 );
-                brassclaw_reborn::loop_driver_host::DEFAULT_SEMPAI_PERSONA.to_string()
+                brassclaw_reborn::loop_driver_host::sempai_persona().to_string()
             }
         }
     }

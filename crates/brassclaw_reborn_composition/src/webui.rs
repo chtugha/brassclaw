@@ -280,6 +280,71 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             }
         }
 
+        // Initialise process-local prompt OnceLocks from DB rows seeded above.
+        // These must run after run_content_integrity_check so we only load rows
+        // that have passed the integrity check. Failures here are boot-fatal.
+        {
+            let fe_body = load_system_skill_body(&pool, &host_tenant_id, "failure_explanation")
+                .await
+                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                    reason: format!("failed to load failure_explanation skill from DB: {e}"),
+                })?;
+            brassclaw_loop_support::init_failure_explanation_prompt(fe_body);
+        }
+
+        {
+            let comp_body =
+                load_system_skill_body(&pool, &host_tenant_id, "compaction_summarizer_fresh")
+                    .await
+                    .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                        reason: format!(
+                            "failed to load compaction_summarizer_fresh skill from DB: {e}"
+                        ),
+                    })?;
+            brassclaw_reborn::loop_driver_host::init_compaction_summarizer(comp_body);
+        }
+
+        #[cfg(feature = "root-llm-provider")]
+        {
+            let sempai_body =
+                load_system_skill_body(&pool, &host_tenant_id, "sempai_audit")
+                    .await
+                    .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                        reason: format!("failed to load sempai_audit skill from DB: {e}"),
+                    })?;
+            brassclaw_reborn::loop_driver_host::init_sempai_persona(sempai_body);
+        }
+
+        {
+            let general = load_system_skill_body(
+                &pool, &host_tenant_id, "subagent:direction:general")
+                .await
+                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                    reason: format!("failed to load subagent:direction:general from DB: {e}"),
+                })?;
+            let researcher = load_system_skill_body(
+                &pool, &host_tenant_id, "subagent:direction:researcher")
+                .await
+                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                    reason: format!("failed to load subagent:direction:researcher from DB: {e}"),
+                })?;
+            let explorer = load_system_skill_body(
+                &pool, &host_tenant_id, "subagent:direction:explorer")
+                .await
+                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                    reason: format!("failed to load subagent:direction:explorer from DB: {e}"),
+                })?;
+            let coder = load_system_skill_body(
+                &pool, &host_tenant_id, "subagent:direction:coder")
+                .await
+                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                    reason: format!("failed to load subagent:direction:coder from DB: {e}"),
+                })?;
+            brassclaw_reborn::subagent::directions::init_directions(
+                general, researcher, explorer, coder,
+            );
+        }
+
         // Phase P Step 9 — doc-sync event wiring.
         //
         // Spawn the file-watcher (docs/agents-v3/*.md → doc-sync trigger)
@@ -642,4 +707,34 @@ pub(crate) async fn seed_builtin_providers(
 
     tracing::debug!(count = seeded, "seeded builtin LLM providers into DB");
     Ok(())
+}
+
+/// Load the body of a validated `source='system'` skill row from the DB.
+///
+/// Used in the boot chain to populate `OnceLock` prompt accessors after
+/// `run_content_integrity_check` has verified the rows are uncorrupted.
+///
+/// Returns `Err` if the pool checkout fails, the row is missing, or the query
+/// fails. A missing row indicates seeding did not run or was rolled back.
+#[cfg(feature = "postgres")]
+async fn load_system_skill_body(
+    pool: &brassclaw_pg::PgPool,
+    tenant_id: &str,
+    name: &str,
+) -> Result<String, String> {
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| format!("pool checkout failed loading system skill '{name}': {e}"))?;
+    let row = client
+        .query_one(
+            "SELECT body FROM reborn_skills
+              WHERE tenant_id = $1 AND name = $2
+                AND source = 'system' AND validation_status = 'validated'
+              LIMIT 1",
+            &[&tenant_id, &name],
+        )
+        .await
+        .map_err(|e| format!("DB query failed loading system skill '{name}': {e}"))?;
+    Ok(row.get::<_, String>(0))
 }

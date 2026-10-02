@@ -102,14 +102,46 @@ pub use subagent_spawn_port::{
     SubagentThreadMetadata,
 };
 pub use system_inference::{GuardedSystemInferencePort, ModelGatewayBackedSystemInferencePort};
-pub const FAILURE_EXPLANATION_SYSTEM_PROMPT: &str =
-    include_str!("../prompts/failure_explanation.md");
 pub use token_estimator::{
     CHARS_PER_TOKEN_DEFAULT, EstimatedTokenCount, estimate_tokens_from_chars,
 };
 pub use turn_event_publisher::EventPublishingTurnRunTransitionPort;
 
+use std::sync::OnceLock;
 use tokio::sync::{Mutex, OnceCell};
+
+// ---------------------------------------------------------------------------
+// Failure explanation system prompt — loaded from DB at boot
+// ---------------------------------------------------------------------------
+
+/// Process-local storage for the failure explanation system prompt.
+/// Populated by `init_failure_explanation_prompt()` during the boot sequence
+/// in `webui.rs`. Panics on first access if not initialised.
+static FAILURE_EXPLANATION_PROMPT: OnceLock<String> = OnceLock::new();
+
+/// Returns the failure explanation system prompt body.
+///
+/// # Panics
+///
+/// Panics if [`init_failure_explanation_prompt`] was not called before this
+/// function. This will happen in test contexts unless the test initialises
+/// the prompt; the panic message identifies the fix.
+pub fn failure_explanation_system_prompt() -> &'static str {
+    FAILURE_EXPLANATION_PROMPT
+        .get()
+        .expect(
+            "failure_explanation_prompt not initialised; \
+             call brassclaw_loop_support::init_failure_explanation_prompt() \
+             at boot (after run_content_integrity_check in webui.rs)",
+        )
+}
+
+/// Initialise the failure explanation prompt from the DB row loaded at boot.
+/// Called once from `webui.rs` after `run_content_integrity_check` passes.
+/// Subsequent calls after first initialisation are silently ignored.
+pub fn init_failure_explanation_prompt(body: String) {
+    let _ = FAILURE_EXPLANATION_PROMPT.set(body);
+}
 
 use async_trait::async_trait;
 use brassclaw_threads::{

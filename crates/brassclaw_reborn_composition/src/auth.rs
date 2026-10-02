@@ -33,7 +33,7 @@ use crate::oauth_gate::{GoogleOAuthGateProviderRegistry, OAuthGateChallengeReque
 use crate::product_auth_runtime_credentials::{
     ProductAuthRuntimeCredentialAccountSelector, RuntimeCredentialAccountSelectionService,
 };
-use crate::{AuthChallengeProvider, AuthChallengeView};
+use crate::auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 
 /// Dispatches a typed continuation event once an OAuth callback flow has
 /// completed.

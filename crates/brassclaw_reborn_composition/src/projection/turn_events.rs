@@ -24,7 +24,7 @@ use tokio::sync::{Mutex, OnceCell, Semaphore};
 
 use brassclaw_reborn::failure_categories::MODEL_CREDITS_EXHAUSTED_CATEGORY;
 
-use crate::AuthChallengeProvider;
+use crate::auth_prompt::AuthChallengeProvider;
 use crate::auth_prompt::auth_prompt_view_for_blocked_auth;
 
 pub(super) const WEBUI_TURN_EVENT_PAGE_LIMIT: usize = 256;
@@ -597,7 +597,7 @@ fn failure_explanation_request(input: &FailureExplanationInput) -> Option<System
 }
 
 fn failure_explanation_system_prompt() -> &'static str {
-    brassclaw_loop_support::FAILURE_EXPLANATION_SYSTEM_PROMPT
+    brassclaw_loop_support::failure_explanation_system_prompt()
 }
 
 fn failure_explanation_user_prompt(input: &FailureExplanationInput) -> String {

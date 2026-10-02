@@ -2592,12 +2592,13 @@ pub async fn build_reborn_runtime(
         #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
         let (component_port, kohai_port): MontyPortPair = (None, None);
 
-        // Wire PgOrchestratorCodePort — gated on postgres only (independent of
-        // root-llm-provider). Falls back to a stub that returns NotFound when
-        // no pool is available (non-postgres builds). Since we are inside the
-        // skills-db block, a pool is always expected; log a warning if missing.
-        let orchestrator_code_port: Arc<dyn brassclaw_engine::executor::OrchestratorCodePort> = {
-            #[cfg(feature = "postgres")]
+        // Wire PgOrchestratorCodePort — postgres builds use the DB-backed port;
+        // non-postgres builds fall back to a stub that returns NotFound.
+        // The module pg_orchestrator_code_port is gated on (postgres + skills-db)
+        // and we are already inside the skills-db block, so the two #[cfg] bindings
+        // here mirror that combined gate.
+        #[cfg(feature = "postgres")]
+        let orchestrator_code_port: Arc<dyn brassclaw_engine::executor::OrchestratorCodePort> =
             if let Some(pool) = services.pg_pool.as_ref() {
                 Arc::new(
                     crate::pg_orchestrator_code_port::PgOrchestratorCodePort::new(
@@ -2611,10 +2612,10 @@ pub async fn build_reborn_runtime(
                      (run `brassclaw serve` to start Postgres)"
                 );
                 Arc::new(FallbackOrchestratorCodePort)
-            }
-            #[cfg(not(feature = "postgres"))]
-            Arc::new(FallbackOrchestratorCodePort)
-        };
+            };
+        #[cfg(not(feature = "postgres"))]
+        let orchestrator_code_port: Arc<dyn brassclaw_engine::executor::OrchestratorCodePort> =
+            Arc::new(FallbackOrchestratorCodePort);
 
         let driver = crate::persistent_monty_driver::PersistentMontyDriver::new(
             Arc::new(crate::session_registry::MontySessionRegistry::new()),

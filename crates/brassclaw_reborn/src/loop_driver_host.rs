@@ -62,6 +62,39 @@ const LEGACY_TEXT_ONLY_DRIVER_VERSION: u64 = 1;
 const LEGACY_TEXT_ONLY_CHECKPOINT_SCHEMA_ID: &str = "interactive_checkpoint_v1";
 const LEGACY_TEXT_ONLY_CHECKPOINT_SCHEMA_VERSION: u64 = 1;
 
+// ---------------------------------------------------------------------------
+// Compaction summarizer prompt — loaded from DB at boot
+// ---------------------------------------------------------------------------
+
+/// Process-local storage for the compaction summarizer prompt.
+/// Populated by `init_compaction_summarizer()` during the boot sequence
+/// in `webui.rs`.  Panics on first access if not initialised.
+static COMPACTION_SUMMARIZER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Returns the compaction summarizer prompt body.
+///
+/// # Panics
+///
+/// Panics if [`init_compaction_summarizer`] was not called before this
+/// function.  This will happen in test contexts unless the test initialises
+/// the prompt; the panic message identifies the fix.
+pub fn compaction_summarizer_prompt() -> &'static str {
+    COMPACTION_SUMMARIZER
+        .get()
+        .expect(
+            "compaction_summarizer not initialised; \
+             call brassclaw_reborn::loop_driver_host::init_compaction_summarizer() \
+             at boot (after run_content_integrity_check in webui.rs)",
+        )
+}
+
+/// Initialise the compaction summarizer prompt from the DB row loaded at boot.
+/// Called once from `webui.rs` after `run_content_integrity_check` passes.
+/// Subsequent calls after first initialisation are silently ignored.
+pub fn init_compaction_summarizer(body: String) {
+    let _ = COMPACTION_SUMMARIZER.set(body);
+}
+
 use brassclaw_turns::{
     CheckpointStateStore, LoopCheckpointStateRef, LoopCheckpointStore, RunProfileId,
     TurnCheckpointId, TurnError, TurnRunWake, TurnRunWakeNotifier, TurnRunWakeNotifyError,
@@ -1125,7 +1158,7 @@ where
             system_inference,
             Arc::clone(&self.thread_service),
             self.effective_thread_scope(run_context),
-            include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md"),
+            compaction_summarizer_prompt(),
         )
     }
 
@@ -2165,9 +2198,9 @@ impl RebornLoopDriverHost {
                 None
             };
 
-        // Part B: Sempai persona (compiled-in default; editable in WebUI
+        // Part B: Sempai persona (DB-loaded at boot; editable in WebUI
         // via interceptor config service).
-        let persona_text = DEFAULT_SEMPAI_PERSONA;
+        let persona_text = sempai_persona();
 
         // Part C: per-turn volatile tail — the actual Kohai messages plus a
         // JSON manifest of the component refs extracted from the snapshot.
@@ -2367,14 +2400,39 @@ impl RebornLoopDriverHost {
     }
 }
 
-/// Default Sempai persona (Part B of the 3-part audit prompt).
-///
-/// This is the compiled-in default, loaded via `include_str!` from
-/// `crates/brassclaw_engine/prompts/sempai_audit.md`.  The operator can
-/// override it via `POST /api/interceptor/config` in the WebUI.
+/// Process-local storage for the Sempai persona prompt (Part B of the
+/// 3-part audit prompt).  Populated by `init_sempai_persona()` during the
+/// boot sequence in `webui.rs`.  The operator can override the stored value
+/// via `POST /api/interceptor/config` in the WebUI; the boot-loaded body is
+/// the system default used when no operator override is present.
 #[cfg(feature = "root-llm-provider")]
-pub const DEFAULT_SEMPAI_PERSONA: &str =
-    include_str!("../../brassclaw_engine/prompts/sempai_audit.md");
+static SEMPAI_PERSONA: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Returns the Sempai persona prompt body.
+///
+/// # Panics
+///
+/// Panics if [`init_sempai_persona`] was not called before this function.
+/// This will happen in test contexts unless the test initialises the prompt;
+/// the panic message identifies the fix.
+#[cfg(feature = "root-llm-provider")]
+pub fn sempai_persona() -> &'static str {
+    SEMPAI_PERSONA
+        .get()
+        .expect(
+            "sempai_persona not initialised; \
+             call brassclaw_reborn::loop_driver_host::init_sempai_persona() \
+             at boot (after run_content_integrity_check in webui.rs)",
+        )
+}
+
+/// Initialise the Sempai persona prompt from the DB row loaded at boot.
+/// Called once from `webui.rs` after `run_content_integrity_check` passes.
+/// Subsequent calls after first initialisation are silently ignored.
+#[cfg(feature = "root-llm-provider")]
+pub fn init_sempai_persona(body: String) {
+    let _ = SEMPAI_PERSONA.set(body);
+}
 
 #[async_trait]
 impl LoopContextPort for RebornLoopDriverHost {

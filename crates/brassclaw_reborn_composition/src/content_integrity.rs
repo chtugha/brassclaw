@@ -208,15 +208,15 @@ fn check_row(
 
     // Check 2: stored digest must equal compile-time expected digest (detects
     // binary update without repair).
-    if let Some(expected) = EXPECTED_CHECKSUMS.get(name) {
-        if stored_checksum != expected.as_str() {
-            out.push(ContentIntegrityMismatch {
-                table,
-                name: name.to_string(),
-                expected: expected.clone(),
-                actual: stored_checksum.to_string(),
-            });
-        }
+    if let Some(expected) = EXPECTED_CHECKSUMS.get(name)
+        && stored_checksum != expected.as_str()
+    {
+        out.push(ContentIntegrityMismatch {
+            table,
+            name: name.to_string(),
+            expected: expected.clone(),
+            actual: stored_checksum.to_string(),
+        });
     }
     // Rows not in EXPECTED_CHECKSUMS are operator-added system rows — not
     // subject to the compile-time check, only to the DB-mutation check above.

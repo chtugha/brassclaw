@@ -20,7 +20,7 @@ use chrono::{Duration as ChronoDuration, Utc};
 use secrecy::SecretString;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::AuthChallengeView;
+use crate::auth_prompt::AuthChallengeView;
 use crate::input::OAuthClientConfig;
 
 const GATE_FLOW_TTL_SECONDS: i64 = 600;
