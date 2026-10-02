@@ -49,8 +49,6 @@ use crate::traits::store::Store;
 use crate::types::error::{EngineError, OrchestratorFailure, OrchestratorFailureKind};
 use crate::types::event::{EventKind, ThreadEvent};
 use crate::types::message::ThreadMessage;
-use crate::types::project::ProjectId;
-use crate::types::shared_owner_id;
 use crate::types::step::{ActionCall, StepId, TokenUsage};
 use crate::types::thread::{Thread, ThreadState};
 
@@ -65,15 +63,6 @@ pub(crate) const RUNTIME_CHECKPOINT_METADATA_KEY: &str = "runtime_checkpoint";
 /// bare tool name and `method_call = true`. The id is arbitrary — it never keys into
 /// Monty's type table; it only identifies the `host` object for repr/equality.
 const HOST_NAMESPACE_TYPE_ID: u64 = 0x484F_5354; // "HOST"
-
-/// The compiled-in default orchestrator (v0).
-pub(crate) const DEFAULT_ORCHESTRATOR: &str = include_str!("../../orchestrator/basic_mode.py");
-
-/// Well-known title for orchestrator code in the Store.
-pub const ORCHESTRATOR_TITLE: &str = "orchestrator:main";
-
-/// Well-known tag for orchestrator code docs.
-pub const ORCHESTRATOR_TAG: &str = "orchestrator_code";
 
 /// Outcome of a Tier-0 (no-LLM) recipe execution, surfaced from the
 /// Tier-0 recipe branch through [`OrchestratorResult`] (v3 Phase H4.6,
@@ -295,11 +284,6 @@ fn orchestrator_vm_panic(prefix: &str, phase: &'static str) -> OrchestratorFailu
     )
 }
 
-/// Maximum consecutive failures before auto-rollback.
-const MAX_FAILURES_BEFORE_ROLLBACK: u64 = 3;
-
-/// Well-known title for orchestrator failure tracking.
-const FAILURE_TRACKER_TITLE: &str = "orchestrator:failures";
 const LEASE_REFRESH_WARN_INTERVAL_SECS: u64 = 60;
 
 // ── Dynamic lease refresh ────────────────────────────────────
@@ -420,204 +404,6 @@ fn warn_on_lease_refresh_failure(context: &'static str, error: &crate::types::er
     } else {
         debug!(context, error = %error, "dynamic lease refresh failed");
     }
-}
-
-/// Load orchestrator code: runtime version from Store, or compiled-in default.
-///
-/// When `allow_self_modify` is false, always uses the compiled-in default
-/// regardless of any runtime versions in the Store. This is the safe default
-/// for production — runtime orchestrator patching is opt-in.
-///
-/// Checks the failure tracker — if the latest version has >= 3 consecutive
-/// failures, falls back to the previous version (or compiled-in default).
-pub async fn load_orchestrator(
-    store: Option<&Arc<dyn Store>>,
-    project_id: ProjectId,
-    allow_self_modify: bool,
-) -> (String, u64) {
-    if !allow_self_modify {
-        debug!("orchestrator self-modification disabled, using compiled-in default (v0)");
-        return (DEFAULT_ORCHESTRATOR.to_string(), 0);
-    }
-
-    let Some(store) = store else {
-        debug!("using compiled-in default orchestrator (v0, no store)");
-        return (DEFAULT_ORCHESTRATOR.to_string(), 0);
-    };
-
-    let docs = match store.list_shared_memory_docs(project_id).await {
-        Ok(d) => d,
-        Err(_) => {
-            debug!("using compiled-in default orchestrator (v0, store error)");
-            return (DEFAULT_ORCHESTRATOR.to_string(), 0);
-        }
-    };
-
-    load_orchestrator_from_docs(&docs, allow_self_modify)
-}
-
-/// Load orchestrator from pre-fetched system memory docs.
-///
-/// When the caller already has the `list_memory_docs` result, use this to
-/// avoid a duplicate Store query. Returns `(code, version)`.
-///
-/// Respects `allow_self_modify` — when false, always returns the compiled-in
-/// default.
-pub fn load_orchestrator_from_docs(
-    docs: &[crate::types::memory::MemoryDoc],
-    allow_self_modify: bool,
-) -> (String, u64) {
-    if !allow_self_modify {
-        return (DEFAULT_ORCHESTRATOR.to_string(), 0);
-    }
-
-    // Find all orchestrator versions, sorted by version number descending
-    let mut versions: Vec<_> = docs
-        .iter()
-        .filter(|d| d.title == ORCHESTRATOR_TITLE && d.tags.contains(&ORCHESTRATOR_TAG.to_string()))
-        .collect();
-    versions.sort_by(|a, b| {
-        let va = a
-            .metadata
-            .get("version")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let vb = b
-            .metadata
-            .get("version")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        vb.cmp(&va) // descending
-    });
-
-    if versions.is_empty() {
-        debug!("using compiled-in default orchestrator (v0)");
-        return (DEFAULT_ORCHESTRATOR.to_string(), 0);
-    }
-
-    // Check failure count for the latest version
-    let failures = load_failure_count(docs);
-
-    for doc in &versions {
-        let version = doc
-            .metadata
-            .get("version")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1);
-
-        // Skip versions with too many failures (only check the latest)
-        if version
-            == versions[0]
-                .metadata
-                .get("version")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(1)
-            && failures >= MAX_FAILURES_BEFORE_ROLLBACK
-        {
-            debug!(
-                version,
-                failures, "orchestrator version has too many failures, skipping"
-            );
-            continue;
-        }
-
-        debug!(version, "loaded runtime orchestrator");
-        return (doc.content.clone(), version);
-    }
-
-    // All versions failed — fall back to compiled-in default
-    debug!("all orchestrator versions failed, using compiled-in default (v0)");
-    (DEFAULT_ORCHESTRATOR.to_string(), 0)
-}
-
-/// Record a failure for the current orchestrator version.
-pub async fn record_orchestrator_failure(
-    store: &Arc<dyn Store>,
-    project_id: ProjectId,
-    version: u64,
-) {
-    use crate::types::memory::{DocType, MemoryDoc};
-
-    let docs = match store.list_shared_memory_docs(project_id).await {
-        Ok(docs) => docs,
-        Err(e) => {
-            debug!("failed to list memory docs for failure tracker: {e}");
-            return;
-        }
-    };
-    let existing = docs.iter().find(|d| d.title == FAILURE_TRACKER_TITLE);
-
-    let mut tracker = if let Some(doc) = existing {
-        doc.clone()
-    } else {
-        MemoryDoc::new(
-            project_id,
-            shared_owner_id(),
-            DocType::Note,
-            FAILURE_TRACKER_TITLE,
-            "",
-        )
-        .with_tags(vec!["orchestrator_meta".to_string()])
-    };
-
-    // Store failure count as JSON in content: {"version": N, "count": M}
-    let current: serde_json::Value =
-        serde_json::from_str(&tracker.content).unwrap_or(serde_json::json!({}));
-    let current_version = current.get("version").and_then(|v| v.as_u64()).unwrap_or(0);
-    let current_count = current.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
-
-    let new_count = if current_version == version {
-        current_count + 1
-    } else {
-        1 // new version, reset count
-    };
-
-    tracker.content = serde_json::json!({
-        "version": version,
-        "count": new_count,
-    })
-    .to_string();
-    tracker.updated_at = chrono::Utc::now();
-
-    // The failure tracker carries the `orchestrator:` title prefix and is
-    // therefore gated by `is_protected_orchestrator_doc` in the store.
-    // Enter the trusted-internal-writes scope so the system-initiated save
-    // is admitted without being mistaken for an LLM-authored patch.
-    if let Err(e) =
-        crate::runtime::with_trusted_internal_writes(store.save_memory_doc(&tracker)).await
-    {
-        debug!("failed to save orchestrator failure tracker: {e}");
-    }
-
-    debug!(version, count = new_count, "recorded orchestrator failure");
-}
-
-/// Reset the failure counter (called after successful execution).
-pub async fn reset_orchestrator_failures(store: &Arc<dyn Store>, project_id: ProjectId) {
-    let docs = store
-        .list_shared_memory_docs(project_id)
-        .await
-        .unwrap_or_default();
-    let existing = docs.iter().find(|d| d.title == FAILURE_TRACKER_TITLE);
-
-    if let Some(doc) = existing {
-        let mut tracker = doc.clone();
-        tracker.content = serde_json::json!({"version": 0, "count": 0}).to_string();
-        tracker.updated_at = chrono::Utc::now();
-        // Same rationale as `record_orchestrator_failure`: the tracker doc
-        // has an `orchestrator:` title so the store gate triggers. Enter
-        // the trusted-writes scope for this system-initiated reset.
-        let _ = crate::runtime::with_trusted_internal_writes(store.save_memory_doc(&tracker)).await;
-    }
-}
-
-/// Load failure count for the latest orchestrator version.
-fn load_failure_count(docs: &[crate::types::memory::MemoryDoc]) -> u64 {
-    docs.iter()
-        .find(|d| d.title == FAILURE_TRACKER_TITLE)
-        .and_then(|d| serde_json::from_str::<serde_json::Value>(&d.content).ok())
-        .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
-        .unwrap_or(0)
 }
 
 /// Parsed + started orchestrator VM session.
@@ -1090,26 +876,16 @@ impl MontySession {
 /// steps are NOT replicated here.
 pub async fn prepare_monty_session(
     thread: &Thread,
-    store: Option<&Arc<dyn Store>>,
+    orchestrator_port: &Arc<dyn crate::executor::OrchestratorCodePort>,
     max_duration_override: Option<std::time::Duration>,
 ) -> Result<MontySession, EngineError> {
-    // Pre-fetch shared memory docs — only consulted when self-modification is
-    // enabled; otherwise load_orchestrator_from_docs returns the compiled-in
-    // DEFAULT_ORCHESTRATOR and the docs are unused.
-    let system_docs = match store {
-        Some(store) => match store.list_shared_memory_docs(thread.project_id).await {
-            Ok(docs) => docs,
-            Err(error) => {
-                debug!("failed to load shared docs for orchestrator: {error}");
-                Vec::new()
-            }
-        },
-        None => Vec::new(),
-    };
-
     let allow_self_modify = crate::runtime::self_modify_enabled();
-    let (orchestrator_code, _orchestrator_version) =
-        load_orchestrator_from_docs(&system_docs, allow_self_modify);
+    let orchestrator_code = orchestrator_port
+        .load_orchestrator_code(allow_self_modify)
+        .await
+        .map_err(|e| EngineError::OrchestratorLoad {
+            reason: e.to_string(),
+        })?;
 
     let persisted_state = thread
         .metadata
@@ -3383,6 +3159,26 @@ mod tests {
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
 
+    /// Test-local compiled-in orchestrator. Used by tests that drive the Monty VM
+    /// directly (e.g. `default_orchestrator_parses_and_parks_at_first_await_next_turn`)
+    /// without going through the production port path. No runtime fallback uses this
+    /// constant — the production path exclusively uses `OrchestratorCodePort`.
+    const BASIC_MODE_PY: &str = include_str!("../../orchestrator/basic_mode.py");
+
+    /// Mock [`OrchestratorCodePort`] that always returns a fixed script body.
+    /// Used by `prepare_monty_session` tests to avoid a live Postgres connection.
+    struct FixedOrchestratorCodePort(&'static str);
+
+    #[async_trait]
+    impl crate::executor::OrchestratorCodePort for FixedOrchestratorCodePort {
+        async fn load_orchestrator_code(
+            &self,
+            _allow_self_modify: bool,
+        ) -> Result<String, crate::executor::OrchestratorCodeError> {
+            Ok(self.0.to_string())
+        }
+    }
+
     // ── C.3 slice 5: dynamic cdylib Tool dispatch fallthrough ───────────────
     use crate::executor::DynamicToolPortError;
 
@@ -4177,9 +3973,8 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_monty_session_constructs_from_fresh_thread() {
-        // A brand-new thread (no runtime checkpoint metadata, not yet
-        // transitioned to Running) must yield a session: prepare_monty_session
-        // loads the compiled-in DEFAULT_ORCHESTRATOR and an empty
+        // A brand-new thread must yield a session: prepare_monty_session loads
+        // the orchestrator from the port and builds a session with empty
         // persisted_state without requiring any Model-A bootstrap step.
         let thread = Thread::new(
             "goal",
@@ -4188,7 +3983,8 @@ mod tests {
             "test-user",
             crate::types::thread::ThreadConfig::default(),
         );
-        let session = prepare_monty_session(&thread, None, None).await;
+        let port = Arc::new(FixedOrchestratorCodePort(BASIC_MODE_PY));
+        let session = prepare_monty_session(&thread, &(port as Arc<dyn crate::executor::OrchestratorCodePort>), None).await;
         assert!(
             session.is_ok(),
             "prepare_monty_session must construct a session from a fresh thread"
@@ -4197,15 +3993,15 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_monty_session_loads_real_orchestrator_and_parks() {
-        // End-to-end: prepare_monty_session loads the real basic_mode.py
-        // (DEFAULT_ORCHESTRATOR), builds the session, and the first drive parks
-        // at host.await_next_turn() — the same gate as
-        // default_orchestrator_parses_and_parks_at_first_await_next_turn, but
-        // driven through the prepare helper the composition driver will use.
+        // End-to-end: prepare_monty_session loads basic_mode.py via the port,
+        // builds the session, and the first drive parks at host.await_next_turn()
+        // — the same gate as default_orchestrator_parses_and_parks_at_first_await_next_turn,
+        // but driven through the prepare helper the composition driver will use.
         let (effects, leases, policy, gate) = session_host_deps();
         let mut thread = session_fresh_thread();
         let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
-        let mut session = prepare_monty_session(&thread, None, None)
+        let port = Arc::new(FixedOrchestratorCodePort(BASIC_MODE_PY));
+        let mut session = prepare_monty_session(&thread, &(port as Arc<dyn crate::executor::OrchestratorCodePort>), None)
             .await
             .expect("prepare must construct a session");
         let yielded = session
@@ -4227,15 +4023,24 @@ mod tests {
             .expect("first drive must not error");
         assert!(
             matches!(yielded, OrchestratorYield::AwaitNextTurn),
-            "prepared real DEFAULT_ORCHESTRATOR must park at first await_next_turn"
+            "prepared basic_mode.py via port must park at first await_next_turn"
         );
+    }
+
+    /// Regression test: `load_orchestrator_code(false)` returns the expected body.
+    #[tokio::test]
+    async fn orchestrator_loads_from_port() {
+        use crate::executor::orchestrator_code_port::OrchestratorCodePort;
+        let port = FixedOrchestratorCodePort(BASIC_MODE_PY);
+        let code = port.load_orchestrator_code(false).await.expect("port must return code");
+        assert!(code.contains("def main"), "orchestrator body must contain def main");
+        assert!(code.contains("host.resolve_intent"), "orchestrator body must contain host.resolve_intent");
     }
 
     #[tokio::test]
     async fn default_orchestrator_parses_and_parks_at_first_await_next_turn() {
         // C.6 slice 2: the reworked basic_mode.py is a `while True` loop that
-        // parks at host.await_next_turn(). No other test drives the real
-        // DEFAULT_ORCHESTRATOR end-to-end, so this is the gate that verifies
+        // parks at host.await_next_turn(). This is the gate that verifies
         // the whole script (helpers + `while True` + host.check_signals +
         // host.await_next_turn) parses in Monty 0.0.16 and the first drive
         // parks at the await_next_turn (after the leading check_signals
@@ -4244,7 +4049,7 @@ mod tests {
         let mut thread = session_fresh_thread();
         let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
         let state = serde_json::json!({});
-        let mut session = MontySession::new(DEFAULT_ORCHESTRATOR, &thread, &state, None)
+        let mut session = MontySession::new(BASIC_MODE_PY, &thread, &state, None)
             .expect("basic_mode.py must parse + start in Monty 0.0.16");
         let yielded = session
             .drive_to_yield(
@@ -4328,10 +4133,10 @@ mod tests {
         // basic_mode.py has no helper section (the v3 script is a single
         // `def main`), so the slice before `def main` is just the comment
         // header — harmless to prepend to a standalone snippet.
-        let helpers_end = DEFAULT_ORCHESTRATOR
+        let helpers_end = BASIC_MODE_PY
             .find("\ndef main(")
-            .unwrap_or(DEFAULT_ORCHESTRATOR.len());
-        let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end]; // safety: find() returns a char boundary on this ASCII-only constant
+            .unwrap_or(BASIC_MODE_PY.len());
+        let helpers = &BASIC_MODE_PY[..helpers_end]; // safety: find() returns a char boundary on this ASCII-only constant
 
         let code = format!("{helpers}\nFINAL({expr})");
         match run_python_final(code) {
@@ -4343,10 +4148,10 @@ mod tests {
     /// Run a Python program (with orchestrator helpers in scope) that ends
     /// with `FINAL(int_expr)` and return the integer value.
     fn eval_python_int(program: &str) -> i64 {
-        let helpers_end = DEFAULT_ORCHESTRATOR
+        let helpers_end = BASIC_MODE_PY
             .find("\ndef main(")
-            .unwrap_or(DEFAULT_ORCHESTRATOR.len());
-        let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end];
+            .unwrap_or(BASIC_MODE_PY.len());
+        let helpers = &BASIC_MODE_PY[..helpers_end];
 
         let code = format!("{helpers}\n{program}");
         match run_python_final(code) {
@@ -4373,196 +4178,6 @@ mod tests {
         // Invalid pattern should return false silently (the host function
         // swallows the compile error).
         assert!(!eval_python_bool(r#"bool(__regex_match__("[", "abc"))"#));
-    }
-
-    #[tokio::test]
-    async fn load_orchestrator_without_store_returns_default() {
-        let (code, version) = load_orchestrator(None, ProjectId::new(), true).await;
-        assert_eq!(version, 0);
-        assert!(code.contains("def main"));
-        assert!(code.contains("host.resolve_intent"));
-    }
-
-    #[tokio::test]
-    async fn load_orchestrator_with_runtime_version() {
-        let project_id = ProjectId::new();
-        let mut doc = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            ORCHESTRATOR_TITLE,
-            "custom_orchestrator_code()",
-        )
-        .with_tags(vec![ORCHESTRATOR_TAG.to_string()]);
-        doc.metadata = serde_json::json!({"version": 1});
-
-        let store = Arc::new(crate::tests::InMemoryStore::with_docs(vec![doc]));
-        let (code, version) =
-            load_orchestrator(Some(&(store as Arc<dyn Store>)), project_id, true).await;
-        assert_eq!(version, 1);
-        assert!(code.contains("custom_orchestrator_code"));
-    }
-
-    #[tokio::test]
-    async fn load_orchestrator_picks_highest_version() {
-        let project_id = ProjectId::new();
-        let mut doc_v1 = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            ORCHESTRATOR_TITLE,
-            "v1_code()",
-        )
-        .with_tags(vec![ORCHESTRATOR_TAG.to_string()]);
-        doc_v1.metadata = serde_json::json!({"version": 1});
-
-        let mut doc_v3 = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            ORCHESTRATOR_TITLE,
-            "v3_code()",
-        )
-        .with_tags(vec![ORCHESTRATOR_TAG.to_string()]);
-        doc_v3.metadata = serde_json::json!({"version": 3});
-
-        let mut doc_v2 = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            ORCHESTRATOR_TITLE,
-            "v2_code()",
-        )
-        .with_tags(vec![ORCHESTRATOR_TAG.to_string()]);
-        doc_v2.metadata = serde_json::json!({"version": 2});
-
-        let store = Arc::new(crate::tests::InMemoryStore::with_docs(vec![
-            doc_v1, doc_v3, doc_v2,
-        ]));
-        let (code, version) =
-            load_orchestrator(Some(&(store as Arc<dyn Store>)), project_id, true).await;
-        assert_eq!(version, 3);
-        assert!(code.contains("v3_code"));
-    }
-
-    #[tokio::test]
-    async fn rollback_after_max_failures() {
-        let project_id = ProjectId::new();
-
-        // Create v2 orchestrator
-        let mut doc_v2 = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            ORCHESTRATOR_TITLE,
-            "v2_buggy()",
-        )
-        .with_tags(vec![ORCHESTRATOR_TAG.to_string()]);
-        doc_v2.metadata = serde_json::json!({"version": 2});
-
-        // Create v1 orchestrator (fallback)
-        let mut doc_v1 = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            ORCHESTRATOR_TITLE,
-            "v1_stable()",
-        )
-        .with_tags(vec![ORCHESTRATOR_TAG.to_string()]);
-        doc_v1.metadata = serde_json::json!({"version": 1});
-
-        // Create failure tracker showing v2 has 3 failures
-        let tracker = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            FAILURE_TRACKER_TITLE,
-            r#"{"version": 2, "count": 3}"#,
-        )
-        .with_tags(vec!["orchestrator_meta".to_string()]);
-
-        let store = Arc::new(crate::tests::InMemoryStore::with_docs(vec![
-            doc_v2, doc_v1, tracker,
-        ]));
-        let (code, version) =
-            load_orchestrator(Some(&(store as Arc<dyn Store>)), project_id, true).await;
-
-        // Should skip v2 (too many failures) and load v1
-        assert_eq!(version, 1);
-        assert!(code.contains("v1_stable"));
-    }
-
-    #[tokio::test]
-    async fn rollback_to_default_when_all_versions_fail() {
-        let project_id = ProjectId::new();
-
-        // Single version with 3 failures
-        let mut doc_v1 = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            ORCHESTRATOR_TITLE,
-            "v1_broken()",
-        )
-        .with_tags(vec![ORCHESTRATOR_TAG.to_string()]);
-        doc_v1.metadata = serde_json::json!({"version": 1});
-
-        let tracker = MemoryDoc::new(
-            project_id,
-            "system",
-            DocType::Note,
-            FAILURE_TRACKER_TITLE,
-            r#"{"version": 1, "count": 5}"#,
-        )
-        .with_tags(vec!["orchestrator_meta".to_string()]);
-
-        let store = Arc::new(crate::tests::InMemoryStore::with_docs(vec![
-            doc_v1, tracker,
-        ]));
-        let (code, version) =
-            load_orchestrator(Some(&(store as Arc<dyn Store>)), project_id, true).await;
-
-        // Should fall back to compiled-in default (v0)
-        assert_eq!(version, 0);
-        assert!(code.contains("def main"));
-    }
-
-    #[tokio::test]
-    async fn record_and_reset_failures() {
-        let project_id = ProjectId::new();
-        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
-
-        // Record 3 failures
-        record_orchestrator_failure(&store, project_id, 2).await;
-        record_orchestrator_failure(&store, project_id, 2).await;
-        record_orchestrator_failure(&store, project_id, 2).await;
-
-        let docs = store.list_shared_memory_docs(project_id).await.unwrap();
-        let count = load_failure_count(&docs);
-        assert_eq!(count, 3);
-
-        // Reset
-        reset_orchestrator_failures(&store, project_id).await;
-        let docs = store.list_shared_memory_docs(project_id).await.unwrap();
-        let count = load_failure_count(&docs);
-        assert_eq!(count, 0);
-    }
-
-    #[tokio::test]
-    async fn failure_count_resets_on_new_version() {
-        let project_id = ProjectId::new();
-        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
-
-        // Record failures for version 1
-        record_orchestrator_failure(&store, project_id, 1).await;
-        record_orchestrator_failure(&store, project_id, 1).await;
-
-        // Switch to version 2 — count should reset to 1
-        record_orchestrator_failure(&store, project_id, 2).await;
-
-        let docs = store.list_shared_memory_docs(project_id).await.unwrap();
-        let count = load_failure_count(&docs);
-        assert_eq!(count, 1);
     }
 
     #[test]
@@ -5998,10 +5613,14 @@ FINAL(batch_error_count)
     async fn validate_component_protected_title_sets_validator_tag_and_audit_flag() {
         let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
         let thread = make_validate_thread();
-        // "orchestrator:main" is a protected title (class 10 / Orchestrator)
+        // "orchestrator:main" and "codeact_preamble" are protected titles (class 10)
         assert!(
             crate::executor::prompt::is_protected_component_title("orchestrator:main"),
             "orchestrator:main must be a protected component"
+        );
+        assert!(
+            crate::executor::prompt::is_protected_component_title("codeact_preamble"),
+            "codeact_preamble must be a protected component"
         );
         let args = vec![
             MontyObject::String("orchestrator:main".into()),

@@ -8,32 +8,54 @@
 //! - blocked managed integrations are rendered separately under
 //!   `Activatable Integrations`
 //!
-//! Prompt templates live in `crates/brassclaw_engine/prompts/` as plain
-//! markdown files for easy inspection and iteration. They are embedded
-//! at compile time via `include_str!` and can be extended at runtime with
-//! prompt overlays stored as MemoryDocs.
-
-use std::sync::Arc;
-
-use crate::traits::store::Store;
-use crate::types::capability::{
-    ActionDef, CapabilityStatus, CapabilitySummary, CapabilitySummaryKind, ModelToolSurface,
-};
-use crate::types::message::{MessageRole, ThreadMessage};
-use crate::types::project::ProjectId;
+//! The CodeAct preamble (`codeact_preamble`) and postamble (`codeact_postamble`)
+//! are seeded as class-10 `reborn_skills` rows by `builtin_bootstrap.rs` and
+//! flow to the LLM via the Kohai prefix bundle assembled by `do_assemble_bundle`.
+//! They are NOT loaded per-turn by the executor.
 
 // Runtime platform metadata lives in `brassclaw_common`. Re-exported
 // from this module's path for back-compat with prior call sites.
 pub use brassclaw_common::PlatformInfo;
 
-/// The main instruction block (before tool listing).
-const CODEACT_PREAMBLE: &str = include_str!("../../prompts/codeact_preamble.md");
+// All constants, helper functions, and the prompt builder below are
+// test-only: the preamble/postamble reach the LLM via the Kohai prefix
+// bundle; they are NOT loaded per-turn by the executor.
 
-/// The strategy/closing block appended after the dynamic metadata sections.
-const CODEACT_POSTAMBLE: &str = include_str!("../../prompts/codeact_postamble.md");
 
-/// Structured-tools-only preamble used when `BRASSCLAW_DISABLE_CODEACT` is set.
-const STRUCTURED_TOOL_PREAMBLE: &str = r#"You are BrassClaw, a personal AI assistant.
+/// Returns `true` if `title` identifies a protected component that must pass the
+/// validation gate (Q1 → Q2) before being applied.
+///
+/// Protected components:
+/// - `orchestrator:main` — the class-10 Python loop driver (self-modifiable).
+/// - `codeact_preamble`  — the class-10 CodeAct preamble.
+///
+/// Any `memory_write` targeting these titles is intercepted by the Rust bridge
+/// and routed through `__validate_component__` instead (spec §3.5 / §3.6).
+pub fn is_protected_component_title(title: &str) -> bool {
+    // orchestrator:main (class 10) and codeact_preamble (class 10) require
+    // Q1 LLM audit + Q2 manual validation before any memory_write is applied.
+    title == "orchestrator:main" || title == "codeact_preamble"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::capability::{
+        ActionDef, CapabilityStatus, CapabilitySummary, CapabilitySummaryKind, ModelToolSurface,
+    };
+    use crate::types::message::{MessageRole, ThreadMessage};
+
+    /// `CODEACT_PREAMBLE` and `CODEACT_POSTAMBLE` are only needed in tests.
+    /// Production code must not use these compiled-in constants: the preamble
+    /// and postamble reach the LLM via the Kohai prefix bundle, which queries
+    /// class-10 `reborn_skills` rows seeded by `builtin_bootstrap.rs`.
+    const CODEACT_PREAMBLE: &str = include_str!("../../prompts/codeact_preamble.md");
+    const CODEACT_POSTAMBLE: &str = include_str!("../../prompts/codeact_postamble.md");
+
+    // ── All constants and helpers used only by the test prompt builder ──────
+
+    /// Structured-tools-only preamble used when `BRASSCLAW_DISABLE_CODEACT` is set.
+    const STRUCTURED_TOOL_PREAMBLE: &str = r#"You are BrassClaw, a personal AI assistant.
 
 ## Execution mode
 
@@ -45,8 +67,8 @@ Only the provider-level `tool_calls` field invokes tools. If you need a tool, re
 When no action is needed, answer in plain text.
 "#;
 
-/// Structured-tools-only postamble used when `BRASSCLAW_DISABLE_CODEACT` is set.
-const STRUCTURED_TOOL_POSTAMBLE: &str = r#"
+    /// Structured-tools-only postamble used when `BRASSCLAW_DISABLE_CODEACT` is set.
+    const STRUCTURED_TOOL_POSTAMBLE: &str = r#"
 ## Strategy
 
 Use structured tool calls when you need data, persistence, external effects, or system state.
@@ -54,529 +76,299 @@ After tool results are available, continue with another structured tool call or 
 Some integrations use literal UI blocks such as `[[choice_set]]...[[/choice_set]]` in final user-facing text. These are UI markup only; do not invent other bracketed control blocks, especially `[[call_tool ...]]`.
 "#;
 
-/// Whether CodeAct (Tier 1 Python execution) is disabled by env var.
-pub fn codeact_disabled() -> bool {
-    matches!(
-        std::env::var("BRASSCLAW_DISABLE_CODEACT").as_deref(),
-        Ok("true" | "1")
-    )
-}
-
-/// Marker for the engine-owned CodeAct system prompt.
-const CODEACT_SYSTEM_PROMPT_MARKER: &str = "<!-- brassclaw:codeact-system-prompt -->\n";
-const CODEACT_LEGACY_OPENING: &str = "You are an AI assistant with a Python REPL environment.";
-const CODEACT_STRATEGY_HEADING: &str = "\n## Strategy\n";
-const CODEACT_CAPABILITIES_HEADING: &str = "\n## Available capabilities (background status)\n";
-const CODEACT_BACKGROUND_CAPABILITIES_HEADING: &str = "\n## Capabilities\n";
-const CODEACT_ENABLED_TOOLS_HEADING: &str = "\n## Enabled Tools\n";
-const CODEACT_ACTIVATABLE_INTEGRATIONS_HEADING: &str = "\n## Activatable Integrations\n";
-const PRIOR_KNOWLEDGE_HEADING: &str = "\n\n## Prior Knowledge (from completed threads)\n";
-const ACTIVE_SKILLS_HEADING: &str = "\n\n## Active Skills\n";
-const MISSING_SKILLS_PREFIX: &str =
-    "\n\nThe user explicitly requested slash skill(s) that are not installed or were not found:";
-
-/// Well-known title for the CodeAct preamble overlay.
-pub const PREAMBLE_OVERLAY_TITLE: &str = "prompt:codeact_preamble";
-
-/// Well-known tag for prompt overlay docs.
-pub const PROMPT_OVERLAY_TAG: &str = "prompt_overlay";
-
-/// Maximum size for a prompt overlay document (in chars).
-const MAX_PROMPT_OVERLAY_CHARS: usize = 4000;
-
-/// Returns `true` if `title` identifies a protected component that must pass the
-/// validation gate (Q1 → Q2) before being applied.
-///
-/// Protected components are:
-/// - `orchestrator:main` — the self-modifiable Python loop driver (class 10).
-/// - `prompt:codeact_preamble` — the prompt overlay (Level 1 self-modification).
-///
-/// Any `memory_write` targeting these titles is intercepted by the Rust bridge
-/// and routed through `__validate_component__` instead (spec §3.5 / §3.6).
-pub fn is_protected_component_title(title: &str) -> bool {
-    use crate::executor::orchestrator::ORCHESTRATOR_TITLE;
-    title == ORCHESTRATOR_TITLE || title == PREAMBLE_OVERLAY_TITLE
-}
-
-/// Build the system prompt for CodeAct/RLM execution.
-///
-/// The prompt instructs the LLM to:
-/// - Write Python code in ```repl fenced blocks
-/// - Call tools as regular Python functions
-/// - Use llm_query(prompt, context) for sub-agent calls
-/// - Use FINAL(answer) to return the final answer
-/// - Access thread context via the `context` variable
-///
-/// If a Store is provided, checks for a runtime prompt overlay (a MemoryDoc
-/// with tag "prompt_overlay" and title "prompt:codeact_preamble") and appends
-/// its content after the compiled preamble. This enables the self-improvement
-/// mission to evolve the system prompt at runtime.
-pub async fn build_codeact_system_prompt(
-    capabilities: &[CapabilitySummary],
-    compact_actions: &[ActionDef],
-    store: Option<&Arc<dyn Store>>,
-    project_id: ProjectId,
-    platform: Option<&PlatformInfo>,
-) -> String {
-    let overlay = if let Some(store) = store {
-        load_prompt_overlay(store, project_id).await
-    } else {
-        None
-    };
-    build_codeact_system_prompt_inner(
-        codeact_disabled(),
-        capabilities,
-        compact_actions,
-        overlay.as_deref(),
-        platform,
-    )
-}
-
-/// Build the system prompt using pre-fetched memory docs.
-///
-/// When the caller already has the `list_memory_docs` result (e.g. because
-/// `load_orchestrator` fetched it), pass the docs here to avoid a duplicate
-/// Store query.
-pub fn build_codeact_system_prompt_with_docs(
-    capabilities: &[CapabilitySummary],
-    compact_actions: &[ActionDef],
-    system_docs: &[crate::types::memory::MemoryDoc],
-    platform: Option<&PlatformInfo>,
-) -> String {
-    let overlay = extract_prompt_overlay(system_docs);
-    build_codeact_system_prompt_inner(
-        codeact_disabled(),
-        capabilities,
-        compact_actions,
-        overlay.as_deref(),
-        platform,
-    )
-}
-
-/// Shared prompt builder used by both the async and pre-fetched-docs variants.
-///
-/// `disable_codeact` is threaded as an explicit parameter (rather than read
-/// from the env directly) so tests can exercise both branches without
-/// process-global env mutation.
-pub(crate) fn build_codeact_system_prompt_inner(
-    disable_codeact: bool,
-    capabilities: &[CapabilitySummary],
-    compact_actions: &[ActionDef],
-    overlay: Option<&str>,
-    platform: Option<&PlatformInfo>,
-) -> String {
-    tracing::debug!(codeact_disabled = disable_codeact, "engine v2 prompt mode");
-    let (preamble, postamble) = if disable_codeact {
-        (STRUCTURED_TOOL_PREAMBLE, STRUCTURED_TOOL_POSTAMBLE)
-    } else {
-        (CODEACT_PREAMBLE, CODEACT_POSTAMBLE)
-    };
-
-    let mut prompt = String::from(CODEACT_SYSTEM_PROMPT_MARKER);
-    prompt.push_str(preamble);
-
-    // Inject platform identity and runtime metadata
-    if let Some(info) = platform {
-        prompt.push_str(&info.to_prompt_section());
+    /// Whether CodeAct (Tier 1 Python execution) is disabled by env var.
+    fn codeact_disabled() -> bool {
+        matches!(
+            std::env::var("BRASSCLAW_DISABLE_CODEACT").as_deref(),
+            Ok("true" | "1")
+        )
     }
 
-    // Append runtime prompt overlay if available
-    if let Some(overlay) = overlay {
-        prompt.push_str("\n\n## Learned Rules (from self-improvement)\n\n");
-        prompt.push_str(overlay);
-    }
+    const CODEACT_SYSTEM_PROMPT_MARKER: &str = "<!-- brassclaw:codeact-system-prompt -->\n";
+    const CODEACT_LEGACY_OPENING: &str = "You are an AI assistant with a Python REPL environment.";
+    const CODEACT_STRATEGY_HEADING: &str = "\n## Strategy\n";
+    const CODEACT_CAPABILITIES_HEADING: &str = "\n## Available capabilities (background status)\n";
+    const CODEACT_BACKGROUND_CAPABILITIES_HEADING: &str = "\n## Capabilities\n";
+    const CODEACT_ENABLED_TOOLS_HEADING: &str = "\n## Enabled Tools\n";
+    const CODEACT_ACTIVATABLE_INTEGRATIONS_HEADING: &str = "\n## Activatable Integrations\n";
+    const PRIOR_KNOWLEDGE_HEADING: &str = "\n\n## Prior Knowledge (from completed threads)\n";
+    const ACTIVE_SKILLS_HEADING: &str = "\n\n## Active Skills\n";
+    const MISSING_SKILLS_PREFIX: &str =
+        "\n\nThe user explicitly requested slash skill(s) that are not installed or were not found:";
 
-    let (mut activatable_integrations, mut background_capabilities): (Vec<_>, Vec<_>) =
-        capabilities
-            .iter()
-            .partition(|capability| is_activatable_integration(capability));
-    // Deterministic ordering of capabilities in the system prompt is required
-    // for vLLM/Anthropic prefix-cache hits — the capability list is part of
-    // the stable system-prompt prefix, so reordering between turns
-    // invalidates the cache. Track this alongside the LLM tool list (see
-    // `complete_model_request` in `brassclaw_reborn::model_gateway`).
-    background_capabilities.sort_by(|a, b| a.name.cmp(&b.name));
-    activatable_integrations.sort_by(|a, b| a.name.cmp(&b.name));
-
-    if !background_capabilities.is_empty() {
-        prompt.push_str(CODEACT_BACKGROUND_CAPABILITIES_HEADING);
-        prompt.push('\n');
-        for capability in background_capabilities {
-            prompt.push_str(&render_background_capability(capability));
+    const fn capability_status_label(status: CapabilityStatus) -> &'static str {
+        match status {
+            CapabilityStatus::Ready => "ready",
+            CapabilityStatus::ReadyScoped => "ready_scoped",
+            CapabilityStatus::NeedsAuth => "needs_auth",
+            CapabilityStatus::NeedsSetup => "needs_setup",
+            CapabilityStatus::Inactive => "inactive",
+            CapabilityStatus::Latent => "latent",
+            CapabilityStatus::Error => "error",
+            CapabilityStatus::AvailableNotInstalled => "available_not_installed",
         }
     }
 
-    // In disabled-CodeAct mode the "Enabled Tools" listing is omitted:
-    // compact actions are emitted into the provider tool list (see
-    // `LlmBridgeAdapter::complete`) with their full schemas, so the prompt
-    // would only duplicate that surface and the `tool_info` schema-lookup
-    // instruction wouldn't apply. Without this guard, compact tools used to
-    // appear in the prompt as "available" but never made it into
-    // `tool_calls`, leaving them effectively unreachable (PR #3665 review).
-    if !disable_codeact {
-        let mut compact_actions: Vec<&ActionDef> = compact_actions
-            .iter()
-            .filter(|action| matches!(action.model_tool_surface, ModelToolSurface::CompactToolInfo))
-            .collect();
-        // Deterministic ordering of the Enabled Tools list is required for
-        // vLLM/Anthropic prefix-cache hits — the listing is part of the
-        // stable system-prompt prefix, so any reordering between turns
-        // invalidates the cache. Mirrors the background-capabilities /
-        // activatable-integrations sort above and the tool-list sort in
-        // `complete_model_request`.
-        compact_actions.sort_by(|a, b| a.name.cmp(&b.name));
+    const fn capability_kind_label(kind: CapabilitySummaryKind) -> &'static str {
+        match kind {
+            CapabilitySummaryKind::Channel => "channel",
+            CapabilitySummaryKind::Provider => "provider",
+            CapabilitySummaryKind::Runtime => "runtime",
+        }
+    }
 
-        if !compact_actions.is_empty() {
-            prompt.push_str(CODEACT_ENABLED_TOOLS_HEADING);
+    fn is_activatable_integration(capability: &CapabilitySummary) -> bool {
+        matches!(
+            capability.kind,
+            CapabilitySummaryKind::Provider | CapabilitySummaryKind::Channel
+        ) && matches!(
+            capability.status,
+            CapabilityStatus::NeedsSetup
+                | CapabilityStatus::Inactive
+                | CapabilityStatus::Latent
+                | CapabilityStatus::AvailableNotInstalled
+        )
+    }
+
+    fn render_background_capability(capability: &CapabilitySummary) -> String {
+        let mut line = format!(
+            "- `{}` [{}] — {}",
+            capability.name,
+            capability_kind_label(capability.kind),
+            capability_status_label(capability.status)
+        );
+        if let Some(display_name) = &capability.display_name
+            && display_name != &capability.name
+        {
+            line.push_str(&format!(" ({display_name})"));
+        }
+        if let Some(routing_hint) = &capability.routing_hint {
+            line.push_str(&format!(". {routing_hint}"));
+        }
+        if let Some(description) = &capability.description {
+            line.push_str(&format!(". {description}"));
+        }
+        line.push('\n');
+        line
+    }
+
+    fn render_enabled_tool(action: &ActionDef) -> String {
+        format!(
+            "- `{}` — {}\n",
+            action.discovery_name(),
+            compact_prompt_description(&action.description)
+        )
+    }
+
+    fn compact_prompt_description(description: &str) -> String {
+        description.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn render_activatable_integration(capability: &CapabilitySummary) -> String {
+        let mut line = format!(
+            "- `{}` [{}]",
+            capability.name,
+            capability_kind_label(capability.kind)
+        );
+        if let Some(display_name) = &capability.display_name
+            && display_name != &capability.name
+        {
+            line.push_str(&format!(" ({display_name})"));
+        }
+        if let Some(description) = &capability.description {
+            line.push_str(&format!(" — {description}"));
+        }
+        if !capability.action_preview.is_empty() {
+            line.push_str(&format!(
+                ". Unlocks: {}",
+                format_action_preview(&capability.action_preview)
+            ));
+        }
+        line.push('\n');
+        line
+    }
+
+    fn format_action_preview(actions: &[String]) -> String {
+        const MAX_PREVIEW: usize = 3;
+
+        let mut rendered = actions
+            .iter()
+            .take(MAX_PREVIEW)
+            .map(|action| format!("`{action}`"))
+            .collect::<Vec<_>>();
+        if actions.len() > MAX_PREVIEW {
+            rendered.push(format!("+{} more", actions.len() - MAX_PREVIEW));
+        }
+        rendered.join(", ")
+    }
+
+    /// Shared prompt builder for CodeAct/RLM system prompts.
+    ///
+    /// `disable_codeact` is threaded as an explicit parameter (rather than read
+    /// from the env directly) so tests can exercise both branches without
+    /// process-global env mutation.
+    fn build_codeact_system_prompt_inner(
+        disable_codeact: bool,
+        capabilities: &[CapabilitySummary],
+        compact_actions: &[ActionDef],
+        overlay: Option<&str>,
+        platform: Option<&PlatformInfo>,
+    ) -> String {
+        let (preamble, postamble) = if disable_codeact {
+            (STRUCTURED_TOOL_PREAMBLE, STRUCTURED_TOOL_POSTAMBLE)
+        } else {
+            (CODEACT_PREAMBLE, CODEACT_POSTAMBLE)
+        };
+
+        let mut prompt = String::from(CODEACT_SYSTEM_PROMPT_MARKER);
+        prompt.push_str(preamble);
+
+        if let Some(info) = platform {
+            prompt.push_str(&info.to_prompt_section());
+        }
+        if let Some(overlay) = overlay {
+            prompt.push_str("\n\n## Learned Rules (from self-improvement)\n\n");
+            prompt.push_str(overlay);
+        }
+
+        let (mut activatable_integrations, mut background_capabilities): (Vec<_>, Vec<_>) =
+            capabilities
+                .iter()
+                .partition(|capability| is_activatable_integration(capability));
+        background_capabilities.sort_by(|a, b| a.name.cmp(&b.name));
+        activatable_integrations.sort_by(|a, b| a.name.cmp(&b.name));
+
+        if !background_capabilities.is_empty() {
+            prompt.push_str(CODEACT_BACKGROUND_CAPABILITIES_HEADING);
             prompt.push('\n');
-            prompt.push_str(
-                "These enabled tools are shown in compact form. Before calling one, always check its schema with `tool_info(name=\"<tool>\", detail=\"schema\")`.\n\n",
-            );
-            for action in compact_actions {
-                prompt.push_str(&render_enabled_tool(action));
+            for capability in background_capabilities {
+                prompt.push_str(&render_background_capability(capability));
             }
         }
+
+        if !disable_codeact {
+            let mut compact_actions: Vec<&ActionDef> = compact_actions
+                .iter()
+                .filter(|action| matches!(action.model_tool_surface, ModelToolSurface::CompactToolInfo))
+                .collect();
+            compact_actions.sort_by(|a, b| a.name.cmp(&b.name));
+
+            if !compact_actions.is_empty() {
+                prompt.push_str(CODEACT_ENABLED_TOOLS_HEADING);
+                prompt.push('\n');
+                prompt.push_str(
+                    "These enabled tools are shown in compact form. Before calling one, always check its schema with `tool_info(name=\"<tool>\", detail=\"schema\")`.\n\n",
+                );
+                for action in compact_actions {
+                    prompt.push_str(&render_enabled_tool(action));
+                }
+            }
+        }
+
+        if !activatable_integrations.is_empty() {
+            prompt.push_str(CODEACT_ACTIVATABLE_INTEGRATIONS_HEADING);
+            prompt.push('\n');
+            prompt.push_str(
+                "These integrations need user setup before their tools become callable. \
+                 When the user asks to connect/install/enable one of them, call \
+                 `tool_install(name=\"<name>\")` directly — don't enumerate alternatives or \
+                 describe manual UI steps. If credentials are missing the engine raises an \
+                 auth gate at execute time and the user is prompted in chat. \
+                 For parameter details before installing, call \
+                 `tool_info(name=\"<tool>\", detail=\"summary\")` on a preview tool.\n\n",
+            );
+            for capability in activatable_integrations {
+                prompt.push_str(&render_activatable_integration(capability));
+            }
+        }
+
+        prompt.push_str(postamble);
+        prompt
     }
 
-    if !activatable_integrations.is_empty() {
-        prompt.push_str(CODEACT_ACTIVATABLE_INTEGRATIONS_HEADING);
-        prompt.push('\n');
-        prompt.push_str(
-            "These integrations need user setup before their tools become callable. \
-             When the user asks to connect/install/enable one of them, call \
-             `tool_install(name=\"<name>\")` directly — don't enumerate alternatives or \
-             describe manual UI steps. If credentials are missing the engine raises an \
-             auth gate at execute time and the user is prompted in chat. \
-             For parameter details before installing, call \
-             `tool_info(name=\"<tool>\", detail=\"summary\")` on a preview tool.\n\n",
-        );
-        for capability in activatable_integrations {
-            prompt.push_str(&render_activatable_integration(capability));
+    fn is_codeact_system_prompt(content: &str) -> bool {
+        content.starts_with(CODEACT_SYSTEM_PROMPT_MARKER) || is_legacy_codeact_system_prompt(content)
+    }
+
+    fn refresh_codeact_system_prompt(existing_content: &str, system_prompt: &str) -> String {
+        if !is_codeact_system_prompt(existing_content) {
+            return system_prompt.to_string();
+        }
+
+        let suffix = codeact_system_prompt_suffix(existing_content).unwrap_or_default();
+
+        if suffix.is_empty() {
+            system_prompt.to_string()
+        } else {
+            let mut refreshed = String::from(system_prompt);
+            refreshed.push_str(suffix);
+            refreshed
         }
     }
 
-    prompt.push_str(postamble);
-    prompt
-}
+    fn upsert_codeact_system_prompt(
+        messages: &mut Vec<ThreadMessage>,
+        system_prompt: String,
+    ) -> bool {
+        if let Some(message) = messages.iter_mut().find(|message| {
+            message.role == MessageRole::System && is_codeact_system_prompt(&message.content)
+        }) {
+            let refreshed = refresh_codeact_system_prompt(&message.content, &system_prompt);
+            if message.content == refreshed {
+                return false;
+            }
+            message.content = refreshed;
+            return true;
+        }
 
-pub fn is_codeact_system_prompt(content: &str) -> bool {
-    content.starts_with(CODEACT_SYSTEM_PROMPT_MARKER) || is_legacy_codeact_system_prompt(content)
-}
-
-pub fn refresh_codeact_system_prompt(existing_content: &str, system_prompt: &str) -> String {
-    if !is_codeact_system_prompt(existing_content) {
-        return system_prompt.to_string();
-    }
-
-    let suffix = codeact_system_prompt_suffix(existing_content).unwrap_or_default();
-
-    if suffix.is_empty() {
-        system_prompt.to_string()
-    } else {
-        let mut refreshed = String::from(system_prompt);
-        refreshed.push_str(suffix);
-        refreshed
-    }
-}
-
-pub fn upsert_codeact_system_prompt(
-    messages: &mut Vec<ThreadMessage>,
-    system_prompt: String,
-) -> bool {
-    if let Some(message) = messages.iter_mut().find(|message| {
-        message.role == MessageRole::System && is_codeact_system_prompt(&message.content)
-    }) {
-        let refreshed = refresh_codeact_system_prompt(&message.content, &system_prompt);
-        if message.content == refreshed {
+        if messages
+            .iter()
+            .any(|message| message.role == MessageRole::System)
+        {
             return false;
         }
-        message.content = refreshed;
-        return true;
+
+        messages.insert(0, ThreadMessage::system(system_prompt));
+        true
     }
 
-    if messages
-        .iter()
-        .any(|message| message.role == MessageRole::System)
-    {
-        return false;
+    fn is_legacy_codeact_system_prompt(content: &str) -> bool {
+        content.starts_with(CODEACT_LEGACY_OPENING)
+            && content.contains("```repl")
+            && (content.contains(CODEACT_STRATEGY_HEADING)
+                || content.contains(CODEACT_CAPABILITIES_HEADING))
     }
 
-    messages.insert(0, ThreadMessage::system(system_prompt));
-    true
-}
+    fn codeact_system_prompt_suffix(existing_content: &str) -> Option<&str> {
+        let append_markers = [
+            PRIOR_KNOWLEDGE_HEADING,
+            ACTIVE_SKILLS_HEADING,
+            MISSING_SKILLS_PREFIX,
+        ];
 
-fn is_legacy_codeact_system_prompt(content: &str) -> bool {
-    content.starts_with(CODEACT_LEGACY_OPENING)
-        && content.contains("```repl")
-        && (content.contains(CODEACT_STRATEGY_HEADING)
-            || content.contains(CODEACT_CAPABILITIES_HEADING))
-}
+        let suffix_start = append_markers
+            .iter()
+            .filter_map(|marker| existing_content.find(marker))
+            .min()
+            .or_else(|| {
+                existing_content
+                    .rfind(CODEACT_POSTAMBLE)
+                    .map(|idx| idx + CODEACT_POSTAMBLE.len())
+            })?;
 
-fn codeact_system_prompt_suffix(existing_content: &str) -> Option<&str> {
-    let append_markers = [
-        PRIOR_KNOWLEDGE_HEADING,
-        ACTIVE_SKILLS_HEADING,
-        MISSING_SKILLS_PREFIX,
-    ];
-
-    let suffix_start = append_markers
-        .iter()
-        .filter_map(|marker| existing_content.find(marker))
-        .min()
-        .or_else(|| {
-            existing_content
-                .rfind(CODEACT_POSTAMBLE)
-                .map(|idx| idx + CODEACT_POSTAMBLE.len())
-        })?;
-
-    existing_content.get(suffix_start..)
-}
-
-const fn capability_status_label(status: CapabilityStatus) -> &'static str {
-    match status {
-        CapabilityStatus::Ready => "ready",
-        CapabilityStatus::ReadyScoped => "ready_scoped",
-        CapabilityStatus::NeedsAuth => "needs_auth",
-        CapabilityStatus::NeedsSetup => "needs_setup",
-        CapabilityStatus::Inactive => "inactive",
-        CapabilityStatus::Latent => "latent",
-        CapabilityStatus::Error => "error",
-        CapabilityStatus::AvailableNotInstalled => "available_not_installed",
+        existing_content.get(suffix_start..)
     }
-}
 
-const fn capability_kind_label(kind: CapabilitySummaryKind) -> &'static str {
-    match kind {
-        CapabilitySummaryKind::Channel => "channel",
-        CapabilitySummaryKind::Provider => "provider",
-        CapabilitySummaryKind::Runtime => "runtime",
-    }
-}
-
-fn is_activatable_integration(capability: &CapabilitySummary) -> bool {
-    // NeedsAuth is intentionally NOT here: post-#3133, installed-but-unauthed
-    // provider tools are direct-callable (the engine's auth preflight raises
-    // an Authentication gate at execute time) so they live in the regular
-    // action inventory, not in the separate setup-required section.
-    matches!(
-        capability.kind,
-        CapabilitySummaryKind::Provider | CapabilitySummaryKind::Channel
-    ) && matches!(
-        capability.status,
-        CapabilityStatus::NeedsSetup
-            | CapabilityStatus::Inactive
-            | CapabilityStatus::Latent
-            | CapabilityStatus::AvailableNotInstalled
-    )
-}
-
-fn render_background_capability(capability: &CapabilitySummary) -> String {
-    let mut line = format!(
-        "- `{}` [{}] — {}",
-        capability.name,
-        capability_kind_label(capability.kind),
-        capability_status_label(capability.status)
-    );
-    if let Some(display_name) = &capability.display_name
-        && display_name != &capability.name
-    {
-        line.push_str(&format!(" ({display_name})"));
-    }
-    if let Some(routing_hint) = &capability.routing_hint {
-        line.push_str(&format!(". {routing_hint}"));
-    }
-    if let Some(description) = &capability.description {
-        line.push_str(&format!(". {description}"));
-    }
-    line.push('\n');
-    line
-}
-
-fn render_enabled_tool(action: &ActionDef) -> String {
-    format!(
-        "- `{}` — {}\n",
-        action.discovery_name(),
-        compact_prompt_description(&action.description)
-    )
-}
-
-fn compact_prompt_description(description: &str) -> String {
-    description.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn render_activatable_integration(capability: &CapabilitySummary) -> String {
-    let mut line = format!(
-        "- `{}` [{}]",
-        capability.name,
-        capability_kind_label(capability.kind)
-    );
-    if let Some(display_name) = &capability.display_name
-        && display_name != &capability.name
-    {
-        line.push_str(&format!(" ({display_name})"));
-    }
-    if let Some(description) = &capability.description {
-        line.push_str(&format!(" — {description}"));
-    }
-    if !capability.action_preview.is_empty() {
-        line.push_str(&format!(
-            ". Unlocks: {}",
-            format_action_preview(&capability.action_preview)
-        ));
-    }
-    line.push('\n');
-    line
-}
-
-fn format_action_preview(actions: &[String]) -> String {
-    const MAX_PREVIEW: usize = 3;
-
-    let mut rendered = actions
-        .iter()
-        .take(MAX_PREVIEW)
-        .map(|action| format!("`{action}`"))
-        .collect::<Vec<_>>();
-    if actions.len() > MAX_PREVIEW {
-        rendered.push(format!("+{} more", actions.len() - MAX_PREVIEW));
-    }
-    rendered.join(", ")
-}
-
-/// Load the prompt overlay from the Store, if one exists for this project.
-async fn load_prompt_overlay(store: &Arc<dyn Store>, project_id: ProjectId) -> Option<String> {
-    let docs = store.list_shared_memory_docs(project_id).await.ok()?;
-    extract_prompt_overlay(&docs)
-}
-
-/// Extract the prompt overlay from a pre-fetched list of system memory docs.
-pub fn extract_prompt_overlay(docs: &[crate::types::memory::MemoryDoc]) -> Option<String> {
-    let overlay = docs.iter().find(|d| {
-        d.title == PREAMBLE_OVERLAY_TITLE && d.tags.contains(&PROMPT_OVERLAY_TAG.to_string())
-    })?;
-
-    let content: String = overlay
-        .content
-        .chars()
-        .take(MAX_PROMPT_OVERLAY_CHARS)
-        .collect();
-    if content.is_empty() {
-        return None;
-    }
-    Some(content)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::types::memory::{DocId, DocType, MemoryDoc};
-    use crate::types::shared_owner_id;
-
-    #[tokio::test]
-    async fn prompt_without_store_uses_compiled_preamble() {
-        let prompt =
-            build_codeact_system_prompt(&[], &[], None, ProjectId(uuid::Uuid::nil()), None).await;
+    #[test]
+    fn prompt_without_store_uses_compiled_preamble() {
+        let prompt = build_codeact_system_prompt_inner(false, &[], &[], None, None);
         assert!(prompt.contains("Python REPL environment"));
         assert!(prompt.contains("Strategy"));
         assert!(!prompt.contains("Learned Rules"));
     }
 
-    #[tokio::test]
-    async fn prompt_with_overlay_appends_rules() {
-        let project_id = ProjectId(uuid::Uuid::new_v4());
-        let overlay = MemoryDoc {
-            id: DocId::new(),
-            project_id,
-            user_id: shared_owner_id().into(),
-            doc_type: DocType::Note,
-            title: PREAMBLE_OVERLAY_TITLE.into(),
-            content: "9. Never call web_fetch — use http() instead.".into(),
-            source_thread_id: None,
-            tags: vec![PROMPT_OVERLAY_TAG.into()],
-            metadata: serde_json::json!({}),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        };
-
-        let store = Arc::new(crate::tests::InMemoryStore::with_docs(vec![overlay]));
-        let prompt = build_codeact_system_prompt(
-            &[],
-            &[],
-            Some(&(store as Arc<dyn Store>)),
-            project_id,
-            None,
-        )
-        .await;
-        assert!(prompt.contains("Learned Rules"));
-        assert!(prompt.contains("Never call web_fetch"));
-    }
-
-    #[tokio::test]
-    async fn prompt_overlay_size_is_capped() {
-        let project_id = ProjectId(uuid::Uuid::new_v4());
-        // Exceed the limit by OVERLAY_OVERFLOW_MARGIN chars to guarantee truncation is triggered.
-        const OVERLAY_OVERFLOW_MARGIN: usize = 1000;
-        let huge_content = "\u{2603}".repeat(MAX_PROMPT_OVERLAY_CHARS + OVERLAY_OVERFLOW_MARGIN); // snowman
-        let overlay = MemoryDoc {
-            id: DocId::new(),
-            project_id,
-            user_id: shared_owner_id().into(),
-            doc_type: DocType::Note,
-            title: PREAMBLE_OVERLAY_TITLE.into(),
-            content: huge_content,
-            source_thread_id: None,
-            tags: vec![PROMPT_OVERLAY_TAG.into()],
-            metadata: serde_json::json!({}),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        };
-
-        let store = Arc::new(crate::tests::InMemoryStore::with_docs(vec![overlay]));
-        let prompt = build_codeact_system_prompt(
-            &[],
-            &[],
-            Some(&(store as Arc<dyn Store>)),
-            project_id,
-            None,
-        )
-        .await;
-
-        let snowman_count = prompt.chars().filter(|c| *c == '\u{2603}').count();
-        assert_eq!(snowman_count, MAX_PROMPT_OVERLAY_CHARS);
-    }
-
-    #[tokio::test]
-    async fn prompt_ignores_wrong_project_overlay() {
-        let project_id = ProjectId(uuid::Uuid::new_v4());
-        let other_project = ProjectId(uuid::Uuid::new_v4());
-        let overlay = MemoryDoc {
-            id: DocId::new(),
-            project_id: other_project,
-            user_id: shared_owner_id().into(),
-            doc_type: DocType::Note,
-            title: PREAMBLE_OVERLAY_TITLE.into(),
-            content: "Should not appear".into(),
-            source_thread_id: None,
-            tags: vec![PROMPT_OVERLAY_TAG.into()],
-            metadata: serde_json::json!({}),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        };
-
-        let store = Arc::new(crate::tests::InMemoryStore::with_docs(vec![overlay]));
-        let prompt = build_codeact_system_prompt(
-            &[],
-            &[],
-            Some(&(store as Arc<dyn Store>)),
-            project_id,
-            None,
-        )
-        .await;
-        assert!(!prompt.contains("Should not appear"));
-        assert!(!prompt.contains("Learned Rules"));
-    }
-
-    #[tokio::test]
-    async fn prompt_with_platform_info_injects_identity() {
+    #[test]
+    fn prompt_with_platform_info_injects_identity() {
         let info = PlatformInfo {
             version: Some("1.2.3".into()),
             llm_backend: Some("nearai".into()),
@@ -586,9 +378,7 @@ mod tests {
             owner_id: Some("alice.near".into()),
             repo_url: Some("https://github.com/chtugha/brassclaw".into()),
         };
-        let prompt =
-            build_codeact_system_prompt(&[], &[], None, ProjectId(uuid::Uuid::nil()), Some(&info))
-                .await;
+        let prompt = build_codeact_system_prompt_inner(false, &[], &[], None, Some(&info));
         assert!(prompt.contains("BrassClaw"));
         assert!(prompt.contains("1.2.3"));
         assert!(prompt.contains("nearai"));
@@ -599,16 +389,16 @@ mod tests {
         assert!(prompt.contains("github.com/chtugha/brassclaw"));
     }
 
-    #[tokio::test]
-    async fn prompt_without_platform_info_has_no_platform_section() {
-        let prompt =
-            build_codeact_system_prompt(&[], &[], None, ProjectId(uuid::Uuid::nil()), None).await;
+    #[test]
+    fn prompt_without_platform_info_has_no_platform_section() {
+        let prompt = build_codeact_system_prompt_inner(false, &[], &[], None, None);
         assert!(!prompt.contains("## Platform"));
     }
 
     #[test]
     fn prompt_with_capabilities_includes_background_statuses() {
-        let prompt = build_codeact_system_prompt_with_docs(
+        let prompt = build_codeact_system_prompt_inner(
+            false,
             &[
                 CapabilitySummary {
                     name: "telegram".into(),
@@ -634,7 +424,7 @@ mod tests {
                 },
             ],
             &[],
-            &[],
+            None,
             None,
         );
 
@@ -674,7 +464,8 @@ mod tests {
     /// verifies the rendered order matches the alphabetic invariant.
     #[test]
     fn prompt_capabilities_are_alphabetic_for_prefix_cache_stability() {
-        let prompt = build_codeact_system_prompt_with_docs(
+        let prompt = build_codeact_system_prompt_inner(
+            false,
             &[
                 // Background capability, listed FIRST but sorted AFTER
                 // `discord` because 'd' < 't'.
@@ -700,7 +491,7 @@ mod tests {
                 },
             ],
             &[],
-            &[],
+            None,
             None,
         );
 
@@ -752,7 +543,7 @@ mod tests {
                 discovery: None,
             },
         ];
-        let prompt = build_codeact_system_prompt_with_docs(&[], &actions, &[], None);
+        let prompt = build_codeact_system_prompt_inner(false, &[], &actions, None, None);
 
         let mission_pos = prompt
             .find("- `mission_create`")
@@ -771,7 +562,8 @@ mod tests {
 
     #[test]
     fn prompt_renders_compact_enabled_tools_once_with_schema_instruction() {
-        let prompt = build_codeact_system_prompt_with_docs(
+        let prompt = build_codeact_system_prompt_inner(
+            false,
             &[CapabilitySummary {
                 name: "gmail".into(),
                 display_name: Some("Gmail".into()),
@@ -804,7 +596,7 @@ mod tests {
                     discovery: None,
                 },
             ],
-            &[],
+            None,
             None,
         );
 
@@ -826,7 +618,8 @@ mod tests {
         // OAuth) is direct-callable. The auth gate raises at execute
         // time, so the capability does NOT belong in the Activatable
         // Integrations section.
-        let prompt = build_codeact_system_prompt_with_docs(
+        let prompt = build_codeact_system_prompt_inner(
+            false,
             &[CapabilitySummary {
                 name: "gmail".into(),
                 display_name: Some("Gmail".into()),
@@ -837,7 +630,7 @@ mod tests {
                 routing_hint: None,
             }],
             &[],
-            &[],
+            None,
             None,
         );
         assert!(!prompt.contains("## Activatable Integrations"));
@@ -845,7 +638,7 @@ mod tests {
 
     #[test]
     fn prompt_no_longer_duplicates_callable_tool_inventory() {
-        let prompt = build_codeact_system_prompt_with_docs(&[], &[], &[], None);
+        let prompt = build_codeact_system_prompt_inner(false, &[], &[], None, None);
 
         assert!(!prompt.contains("## Available tools (call as Python functions)"));
         assert!(!prompt.contains("`message(text)`"));
@@ -853,7 +646,7 @@ mod tests {
 
     #[test]
     fn prompt_keeps_callable_tools_out_of_extra_prompt_sections() {
-        let prompt = build_codeact_system_prompt_with_docs(&[], &[], &[], None);
+        let prompt = build_codeact_system_prompt_inner(false, &[], &[], None, None);
 
         assert!(!prompt.contains("## Lookup-only tools"));
         assert!(!prompt.contains("## Deferred large tools"));
@@ -864,8 +657,9 @@ mod tests {
 
     #[test]
     fn upsert_replaces_engine_owned_system_prompt() {
-        let old_prompt = build_codeact_system_prompt_with_docs(&[], &[], &[], None);
-        let new_prompt = build_codeact_system_prompt_with_docs(
+        let old_prompt = build_codeact_system_prompt_inner(false, &[], &[], None, None);
+        let new_prompt = build_codeact_system_prompt_inner(
+            false,
             &[CapabilitySummary {
                 name: "telegram".into(),
                 display_name: None,
@@ -876,7 +670,7 @@ mod tests {
                 routing_hint: Some("Usable through message".into()),
             }],
             &[],
-            &[],
+            None,
             None,
         );
         let mut messages = vec![ThreadMessage::system(old_prompt), ThreadMessage::user("hi")];
@@ -892,11 +686,12 @@ mod tests {
 
     #[test]
     fn refresh_preserves_step_zero_system_appends() {
-        let old_prompt = build_codeact_system_prompt_with_docs(&[], &[], &[], None);
+        let old_prompt = build_codeact_system_prompt_inner(false, &[], &[], None, None);
         let existing = format!(
             "{old_prompt}\n\n## Prior Knowledge (from completed threads)\n\n### [LESSON] Use http\n\n<skill name=\"github\" version=\"1\">\nGitHub API Skill\n</skill>\n\nThe user explicitly requested slash skill(s) that are not installed."
         );
-        let new_prompt = build_codeact_system_prompt_with_docs(
+        let new_prompt = build_codeact_system_prompt_inner(
+            false,
             &[CapabilitySummary {
                 name: "slack".into(),
                 display_name: None,
@@ -907,7 +702,7 @@ mod tests {
                 routing_hint: None,
             }],
             &[],
-            &[],
+            None,
             None,
         );
 
@@ -923,7 +718,7 @@ mod tests {
         let legacy_prompt = format!(
             "{CODEACT_LEGACY_OPENING}\n\nLegacy prompt body.\n\n```repl\nprint('hi')\n```\n{CODEACT_STRATEGY_HEADING}\nLegacy strategy text.\n"
         );
-        let new_prompt = build_codeact_system_prompt_with_docs(&[], &[], &[], None);
+        let new_prompt = build_codeact_system_prompt_inner(false, &[], &[], None, None);
         let mut messages = vec![
             ThreadMessage::system(legacy_prompt),
             ThreadMessage::user("resume me"),
@@ -941,7 +736,8 @@ mod tests {
         let legacy_prompt = format!(
             "{CODEACT_LEGACY_OPENING}\n\nLegacy prompt body.\n\n```repl\nprint('hi')\n```\n{CODEACT_STRATEGY_HEADING}\nLegacy strategy text.\n{PRIOR_KNOWLEDGE_HEADING}\n### [LESSON] Use http\n\n## Active Skills\n\n<skill name=\"github\" version=\"1\">\nGitHub API Skill\n</skill>\n\nThe user explicitly requested slash skill(s) that are not installed or were not found: /missing."
         );
-        let new_prompt = build_codeact_system_prompt_with_docs(
+        let new_prompt = build_codeact_system_prompt_inner(
+            false,
             &[CapabilitySummary {
                 name: "slack".into(),
                 display_name: None,
@@ -952,7 +748,7 @@ mod tests {
                 routing_hint: None,
             }],
             &[],
-            &[],
+            None,
             None,
         );
 

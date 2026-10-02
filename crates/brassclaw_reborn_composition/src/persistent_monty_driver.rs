@@ -80,7 +80,7 @@ use brassclaw_engine::{
     Store,
     capability::{lease::LeaseManager, policy::PolicyEngine},
     executor::{
-        ComponentPort, DynamicToolPort, KohaiPort,
+        ComponentPort, DynamicToolPort, KohaiPort, OrchestratorCodePort,
         orchestrator::{MontySession, OrchestratorYield, prepare_monty_session},
     },
     gate::GateController,
@@ -257,6 +257,9 @@ pub(crate) struct PersistentMontyDriver {
     dynamic_tools: Option<Arc<dyn DynamicToolPort>>,
     component_port: Option<Arc<dyn ComponentPort>>,
     kohai_port: Option<Arc<dyn KohaiPort>>,
+    /// Port for loading the orchestrator code (class-10 `reborn_skills` row).
+    /// Non-optional — the compiled-in fallback no longer exists.
+    orchestrator_code_port: Arc<dyn OrchestratorCodePort>,
     /// DB-backed max wall-clock budget override for the Monty VM.
     max_duration_secs: Option<u64>,
     /// Thread service used to persist assistant messages added by
@@ -279,6 +282,7 @@ impl PersistentMontyDriver {
         dynamic_tools: Option<Arc<dyn DynamicToolPort>>,
         component_port: Option<Arc<dyn ComponentPort>>,
         kohai_port: Option<Arc<dyn KohaiPort>>,
+        orchestrator_code_port: Arc<dyn OrchestratorCodePort>,
         max_duration_secs: Option<u64>,
         session_thread_service: Arc<dyn SessionThreadService>,
     ) -> Self {
@@ -294,6 +298,7 @@ impl PersistentMontyDriver {
             dynamic_tools,
             component_port,
             kohai_port,
+            orchestrator_code_port,
             max_duration_secs,
             session_thread_service,
         }
@@ -391,7 +396,7 @@ impl PersistentMontyDriver {
             }
             None => {
                 let mut fresh =
-                    prepare_monty_session(thread, Some(&self.store), max_duration_override)
+                    prepare_monty_session(thread, &self.orchestrator_code_port, max_duration_override)
                         .await
                         .map_err(|e| AgentLoopDriverError::Failed {
                             reason_kind: format!("monty turn driver: prepare session failed: {e}"),

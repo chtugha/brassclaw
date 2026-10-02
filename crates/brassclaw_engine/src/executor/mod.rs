@@ -9,6 +9,7 @@ pub mod db_skill_loader;
 pub mod dynamic_tool_port;
 pub mod kohai_port;
 pub mod orchestrator;
+pub mod orchestrator_code_port;
 pub mod prompt;
 pub mod scripting;
 pub mod structured;
@@ -23,5 +24,6 @@ pub use orchestrator::{
     PkrAssemblyResult, TierZeroChannelResult, assemble_prior_knowledge_with_hint,
     execute_tier_zero_channel,
 };
+pub use orchestrator_code_port::{OrchestratorCodeError, OrchestratorCodePort};
 pub use scripting::{run_python_code_body, validate_python_syntax};
 pub use tier_zero_orchestrator::{TierZeroOrchestrator, TierZeroOrchestratorBuilder};

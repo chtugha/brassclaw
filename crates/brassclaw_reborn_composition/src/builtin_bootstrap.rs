@@ -675,6 +675,11 @@ pub async fn seed_builtin_components(
 ) -> Result<(), SeedBuiltinBootstrapError> {
     let stores = BootstrapStores::new(pool, tenant_id);
 
+    // Pass 0 — orchestrator + system prompts (class-10 DB rows).
+    // Must run before all capability passes so the orchestrator is available
+    // when the first turn runs.
+    seed_orchestrator(&stores).await?;
+
     // Pass 1 — filesystem group (read_file, write_file, list_dir, glob, grep,
     // apply_patch).
     seed_filesystem_group(&stores).await?;
@@ -726,6 +731,86 @@ pub async fn seed_builtin_components(
     // `webui.rs` BEFORE `seed_builtin_components` is called, so the
     // dependency is always satisfied.
     crate::zencoder_bootstrap::seed_zencoder_extension(stores.pool.clone(), tenant_id).await?;
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Orchestrator group (Pass 0)
+// ---------------------------------------------------------------------------
+
+/// Seed the class-10 Orchestrator component row and its sibling system
+/// prompt rows. Called at the top of `seed_builtin_components` before all
+/// capability passes.
+async fn seed_orchestrator(stores: &BootstrapStores) -> Result<(), SeedBuiltinBootstrapError> {
+    // orchestrator:main
+    let checksum = crate::checksum::sha256_hex(DEFAULT_ORCHESTRATOR_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "orchestrator:main".into(),
+                description: "Main orchestrator loop (class 10)".into(),
+                body: DEFAULT_ORCHESTRATOR_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "orchestrator:main",
+        )
+        .await?;
+
+    // codeact_preamble (class 10 — flows through Kohai prefix bundle)
+    let checksum = crate::checksum::sha256_hex(CODEACT_PREAMBLE_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "codeact_preamble".into(),
+                description: "CodeAct system prompt preamble (class 10)".into(),
+                body: CODEACT_PREAMBLE_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "codeact_preamble",
+        )
+        .await?;
+
+    // codeact_postamble (class 10 — flows through Kohai prefix bundle)
+    let checksum = crate::checksum::sha256_hex(CODEACT_POSTAMBLE_SEED);
+    stores
+        .upsert_skill_with_checksum(
+            NewPgSkill {
+                tenant_id: stores.tenant.clone(),
+                user_id: SEED_USER.to_string(),
+                agent_id: SEED_AGENT.to_string(),
+                project_id: SEED_PROJECT.to_string(),
+                name: "codeact_postamble".into(),
+                description: "CodeAct system prompt postamble (class 10)".into(),
+                body: CODEACT_POSTAMBLE_SEED.into(),
+                class_code: 10,
+                consumer_tags: vec![],
+                intent_examples: serde_json::json!([]),
+                source: "system".into(),
+                validation_status: "validated".into(),
+                content_checksum: Some(checksum),
+            },
+            "codeact_postamble",
+        )
+        .await?;
 
     Ok(())
 }

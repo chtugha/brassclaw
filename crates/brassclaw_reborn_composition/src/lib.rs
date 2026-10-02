@@ -118,6 +118,8 @@ pub(crate) mod pg_docus_store;
 pub(crate) mod pg_extension_catalogue_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_intent_inputs_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_orchestrator_code_port;
 pub(crate) mod pg_kohai_port;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_memory_doc_store;

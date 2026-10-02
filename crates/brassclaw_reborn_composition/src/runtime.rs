@@ -2502,6 +2502,23 @@ pub async fn build_reborn_runtime(
     // Under `skills-db` the driver is wired into `TurnRunnerWorker` directly so
     // every production turn bypasses the canonical stage pipeline (C6-1=B / C6-3=B).
     // Under the default feature set the slot stays `None` (pre-C.6 path remains active).
+
+    /// No-pool fallback for OrchestratorCodePort. Returns NotFound immediately.
+    /// Used when no Postgres pool is available at driver-construction time.
+    #[cfg(feature = "skills-db")]
+    struct FallbackOrchestratorCodePort;
+
+    #[cfg(feature = "skills-db")]
+    #[async_trait::async_trait]
+    impl brassclaw_engine::executor::OrchestratorCodePort for FallbackOrchestratorCodePort {
+        async fn load_orchestrator_code(
+            &self,
+            _allow_self_modify: bool,
+        ) -> Result<String, brassclaw_engine::executor::OrchestratorCodeError> {
+            Err(brassclaw_engine::executor::OrchestratorCodeError::NotFound)
+        }
+    }
+
     #[cfg(feature = "skills-db")]
     let monty_driver: Option<Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>> = {
         use brassclaw_engine::{
@@ -2575,6 +2592,30 @@ pub async fn build_reborn_runtime(
         #[cfg(not(all(feature = "postgres", feature = "root-llm-provider")))]
         let (component_port, kohai_port): MontyPortPair = (None, None);
 
+        // Wire PgOrchestratorCodePort — gated on postgres only (independent of
+        // root-llm-provider). Falls back to a stub that returns NotFound when
+        // no pool is available (non-postgres builds). Since we are inside the
+        // skills-db block, a pool is always expected; log a warning if missing.
+        let orchestrator_code_port: Arc<dyn brassclaw_engine::executor::OrchestratorCodePort> = {
+            #[cfg(feature = "postgres")]
+            if let Some(pool) = services.pg_pool.as_ref() {
+                Arc::new(
+                    crate::pg_orchestrator_code_port::PgOrchestratorCodePort::new(
+                        Arc::clone(pool),
+                        validated_identity.tenant_id.as_str(),
+                    ),
+                )
+            } else {
+                tracing::warn!(
+                    "no Postgres pool available; orchestrator will fail to load \
+                     (run `brassclaw serve` to start Postgres)"
+                );
+                Arc::new(FallbackOrchestratorCodePort)
+            }
+            #[cfg(not(feature = "postgres"))]
+            Arc::new(FallbackOrchestratorCodePort)
+        };
+
         let driver = crate::persistent_monty_driver::PersistentMontyDriver::new(
             Arc::new(crate::session_registry::MontySessionRegistry::new()),
             Arc::new(crate::persistent_monty_driver::SignalBroker::new()),
@@ -2587,6 +2628,7 @@ pub async fn build_reborn_runtime(
             None, // dynamic_tools — no cdylib tools wired yet (C.3 deferred)
             component_port,
             kohai_port,
+            orchestrator_code_port,
             resolved_max_turn_duration.map(|d| d.as_secs()),
             Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
         );

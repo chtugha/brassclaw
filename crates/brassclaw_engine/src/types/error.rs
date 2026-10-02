@@ -150,6 +150,9 @@ pub enum EngineError {
         resume_output: Option<Box<serde_json::Value>>,
         paused_lease: Option<Box<crate::types::capability::CapabilityLease>>,
     },
+
+    #[error("orchestrator load failed: {reason}")]
+    OrchestratorLoad { reason: String },
 }
 
 impl EngineError {
