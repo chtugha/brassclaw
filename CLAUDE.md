@@ -81,7 +81,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Prefer strong types over strings (enums, newtypes)
 - Keep functions focused, extract helpers when logic is reused
 - Comments for non-obvious logic only
-- Multi-line prompt strings for **Rust-internal boot-time paths** (fixed boot-time strings that are not recipe-driven) go in `crates/brassclaw_engine/prompts/*.md` and are loaded via `include_str!()`. Do not put behavioural prompts here — prompts that guide orchestrator behaviour belong in the component library as Skills (class 1–3) or Orchestrator components (class 10) in `builtin_bootstrap.rs`, not as hardcoded `include_str!()` files. Single-line format strings are fine inline.
+- **Do not introduce new `include_str!()` constants for behavioural prompts or scripts in production code paths.** All prompt bodies (`orchestrator:main`, `codeact_preamble`, `codeact_postamble`, `failure_explanation`, `compaction_summarizer_fresh`, `sempai_audit`, `subagent:direction:*`) are seeded as `source='system'` DB rows via `builtin_bootstrap.rs` and loaded at boot via `OnceLock` accessors. `include_str!()` is only permitted in `builtin_bootstrap.rs` seed constants and in `#[cfg(test)]` modules. Single-line format strings are fine inline.
 - `info!` and `warn!` output appears in the REPL and corrupts the terminal UI. Use `debug!` for internal diagnostics (trace analysis, reflection results, engine internals). Reserve `info!` for user-facing status that the REPL intentionally renders. Background tasks must never use `info!`.
 - Test through the caller, not just the helper: when a predicate/classifier/transform helper gates a side effect (HTTP, DB write, OAuth, UI mutation, tool execution) and has any wrapper or computed input between it and that side effect, a unit test on the helper alone is not sufficient regression coverage. Add a test that drives the call site at the integration tier or higher. See `.claude/rules/testing.md` for the full rule.
 
@@ -138,6 +138,8 @@ Classes 10 and 50 are **not** separate tables — Orchestrator and Scaffold rows
 Class **11 is unallocated** (`class_code_to_table` returns `None`) — Actions are class **16**. The `class_code_to_table_matches_claude_md_table` test in `retrieval_source.rs` parses the table above and fails if it drifts from the code again.
 
 `reborn_component_catalog` (`crates/brassclaw_pg/migrations/V084__reborn_component_catalog_view.sql`) is a read-only Postgres **VIEW** — not a table — that `UNION ALL`s the 14 prompt-bearing class tables above (excluding `reborn_tools`, class 0, which carries no prompt text) into one relation for ad hoc querying. It intentionally does not bake in per-request scope/validation filtering (tenant/user/agent/project scope, `validation_status = 'validated'`, consumer-tag checks) — callers apply their own `WHERE` clause on top, exactly as `PgSettingsListingService::list()` does per-table.
+
+**V085 migration** adds a nullable `content_checksum TEXT` column to `reborn_skills`, `reborn_tool_skills`, and `reborn_python_code`. For `source='system'` rows seeded by `builtin_bootstrap.rs`, this column holds the SHA-256 hex of the prose field (`body` or `content`). `run_content_integrity_check` (called at boot in `webui.rs`) verifies these checksums and halts the process on mismatch. Distinct from `content_hash` on `reborn_python_code` (similarity deduplication). Run `brassclaw repair` to restore corrupted system rows.
 
 Legacy `brassclaw_memory_docs` rows are migrated into the appropriate class table at boot by `run_component_import` (`crates/brassclaw_reborn_composition/src/component_import.rs`).
 
@@ -515,6 +517,37 @@ State transitions enforced by `is_valid_transition` in `brassclaw_product_workfl
 
 `PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (V034 migration). `max_duration_secs` bounds the Orchestrator's main-process turn. The legacy `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` env var is a DB-less fallback only.
 
+### Orchestrator Code Load Path
+
+The orchestrator code body (`basic_mode.py`) is loaded at session start via `OrchestratorCodePort` (engine-side port, `orchestrator_code_port.rs`), implemented by `PgOrchestratorCodePort` (`brassclaw_reborn_composition`, gated `postgres+skills-db`). The body is stored as a class-10 `reborn_skills` row with `name='orchestrator:main'`, `source='system'`, seeded by `seed_orchestrator()` in `builtin_bootstrap.rs`. There is no compiled-in fallback — a missing DB row produces `OrchestratorCodeError::NotFound` (run `brassclaw repair` to restore). The failure-count/version-rollback mechanism (`MAX_FAILURES_BEFORE_ROLLBACK`, `load_orchestrator_from_docs`, `record_orchestrator_failure`) was removed; failure handling is Tier-2 degradation only.
+
+The preamble/postamble (`codeact_preamble`, `codeact_postamble`) are also class-10 rows seeded by `seed_orchestrator()`. They reach the LLM via the Kohai prefix bundle assembled by `do_assemble_bundle` in `interceptor_config_service.rs` — not per-turn by the executor. No `OnceLock` or `init_*` call is needed for them; the bundle assembler queries `reborn_skills` directly.
+
+### Boot Sequence (seeding + integrity)
+
+The seeding boot chain lives in `crates/brassclaw_reborn_composition/src/webui.rs`, within the `#[cfg(feature = "postgres")]` block. Driver port wiring happens separately in `runtime.rs` at `PersistentMontyDriver::new()`. Sequence:
+
+```
+BootedDb::from_migrated_pool(pool)   ← type-level proof migrations completed
+  → seed_builtin_host_components(&booted_db)  ← host.* Tool stack
+  → seed_builtin_components(&booted_db)       ← all first-party capabilities + system prompts
+       └─ seed_orchestrator() seeds class-10 rows with content_checksum
+  → run_boot_integrity_check(&booted_db)      ← Phase N: re-queue non-validated components
+  → run_content_integrity_check(&booted_db)   ← HARD ERROR on SHA-256 mismatch
+  → init_failure_explanation_prompt(body)     ← OnceLock: failure_explanation
+  → init_compaction_summarizer(body)          ← OnceLock: compaction_summarizer_fresh
+  → init_sempai_persona(body)  [root-llm-provider]  ← OnceLock: sempai_audit
+  → init_directions(general, researcher, explorer, coder)  ← OnceLock: direction prompts
+  [remaining webui.rs wiring ...]
+  → RebornWebuiBundle returned to caller
+```
+
+`BootedDb` (`crates/brassclaw_reborn_composition/src/booted_db.rs`) is a newtype that enforces migration-before-seeding at the type level. `run_content_integrity_check` (`content_integrity.rs`) is **distinct** from `run_boot_integrity_check` (`boot_integrity.rs`) — the former checks SHA-256 prose checksums, the latter re-queues non-validated components.
+
+### `brassclaw repair` Command
+
+`brassclaw repair [--dry-run]` force-reseeds all `source='system'` component rows from compiled-in seed constants using `ON CONFLICT DO UPDATE` (unlike the normal seeder which uses `ON CONFLICT DO NOTHING`). Run this after a binary update that changes system prompt content to fix the content integrity check failure. The `repair_builtin_components()` function lives in `crates/brassclaw_reborn_composition/src/repair.rs`; the CLI entry point in `crates/brassclaw_reborn_cli/src/commands/repair.rs`.
+
 ### PKC Formatting Split (§3.13/§3.14)
 
 `format_prior_knowledge_for_llm()` in `orchestrator.rs` produces deterministic JSON from `PriorKnowledgeResult` items: ordered by `(class_code asc, prompt_uid asc)`, `class_code_label()` for string names, NULL fields omitted. The `formatted_content` surface is the only surface sent to the LLM; raw `content` is never sent.
@@ -540,6 +573,9 @@ The Sempai/Kohai review loop intercepts each agent turn:
 | `Hook` | `crates/brassclaw_hooks/` | Lifecycle hook points |
 | `TurnCoordinator` | `crates/brassclaw_turns/` | Turn coordination contract |
 | `HostRuntime` | `crates/brassclaw_host_runtime/` | Host service access |
+| `ComponentPort` | `crates/brassclaw_engine/src/executor/composition_port.rs` | Engine-side port for component lookup (impl: `PgCompositionPort` in composition) |
+| `KohaiPort` | `crates/brassclaw_engine/src/executor/kohai_port.rs` | Engine-side port for Kohai LLM bundle (impl: `PgKohaiPort` in composition) |
+| `OrchestratorCodePort` | `crates/brassclaw_engine/src/executor/orchestrator_code_port.rs` | Engine-side port for loading the class-10 Orchestrator body from `reborn_skills` (impl: `PgOrchestratorCodePort` in composition, gated `postgres+skills-db`) |
 
 All I/O is async with tokio. Use `Arc<T>` for shared state, `RwLock` for concurrent access.
 
@@ -676,13 +712,13 @@ crates/
 │   └── brassclaw_reborn_webui_ingress/  # WebUI v2 gateway adapter and ingress
 │
 ├── Persistence
-│   ├── brassclaw_pg/               # Postgres pool, migration runner, SQL migrations V000–V084
+│   ├── brassclaw_pg/               # Postgres pool, migration runner, SQL migrations V000–V086
 │   └── brassclaw_embedded_postgres/ # Self-managed embedded Postgres lifecycle
 │
 ├── Agent loops and engine
 │   ├── brassclaw_agent_loop/       # Planned AgentLoop driver
 │   ├── brassclaw_engine/           # Execution engine: intent matching, IBS, orchestrator executor, tool dispatch
-│   │   └── prompts/                # Prompt templates loaded via include_str!()
+│   │   └── prompts/                # Prompt .md source files (seed source for builtin_bootstrap.rs; test reference only — never loaded at runtime via include_str!() outside tests)
 │   └── brassclaw_engine_types/     # Shared engine types and traits
 │
 ├── LLM and embeddings
