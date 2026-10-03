@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-24
+
+### Added
+
+- *(boot / integrity)* **Content-checksum boot integrity check.** All `source='system'` rows in `reborn_skills`, `reborn_tool_skills`, and `reborn_python_code` now carry a `content_checksum` (SHA-256 hex, V085 migration). `run_content_integrity_check` verifies every checksum at boot after seeding and halts the process on any mismatch — preventing silent divergence between the running binary and its DB-backed prompt corpus.
+- *(boot / integrity)* **`BootedDb` newtype** (`crates/brassclaw_reborn_composition/src/booted_db.rs`). All seeding functions (`seed_builtin_host_components`, `seed_builtin_components`, `run_boot_integrity_check`, `run_content_integrity_check`, `load_system_skill_body`) now accept `&BootedDb` instead of a raw `Arc<PgPool>`, making migration-before-seeding an enforced compile-time ordering guarantee.
+- *(cli)* **`brassclaw repair [--dry-run]`** command. Force-reseeds all `source='system'` component rows from compiled-in seed constants using `ON CONFLICT DO UPDATE`, providing a deterministic, auditable recovery path when the content integrity check fails after a binary update.
+- *(engine / port)* **`OrchestratorCodePort`** trait (`crates/brassclaw_engine/src/executor/orchestrator_code_port.rs`). Engine-side port following the `ComponentPort`/`KohaiPort` pattern. Implemented by `PgOrchestratorCodePort` (`crates/brassclaw_reborn_composition`, gated `postgres+skills-db`), which queries `reborn_skills` for the `orchestrator:main` class-10 row.
+
+### Changed
+
+- *(boot / prompts)* **All behavioural prompt bodies are now DB rows, not compiled-in constants.** The following `include_str!()` production constants are removed and replaced with `source='system'` `reborn_skills` rows seeded by `builtin_bootstrap.rs`, loaded into process memory via `OnceLock` accessors initialised in the `webui.rs` boot chain:
+  - `DEFAULT_ORCHESTRATOR` (`basic_mode.py`) → `orchestrator:main` (class 10) via `OrchestratorCodePort`
+  - `CODEACT_PREAMBLE` / `CODEACT_POSTAMBLE` → class-10 rows (reach LLM via Kohai prefix bundle; no `OnceLock` needed)
+  - `FAILURE_EXPLANATION_SYSTEM_PROMPT` → `failure_explanation` (class 3) via `brassclaw_loop_support::failure_explanation_system_prompt()`
+  - `DEFAULT_SEMPAI_PERSONA` → `sempai_audit` (class 10) via `brassclaw_reborn::loop_driver_host::sempai_persona()`
+  - Inline compaction `include_str!` → `compaction_summarizer_fresh` (class 10) via `brassclaw_reborn::loop_driver_host::compaction_summarizer_prompt()`
+  - `GENERAL_DIRECTION` / `RESEARCHER_DIRECTION` / `EXPLORER_DIRECTION` / `CODER_DIRECTION` → `subagent:direction:{id}` (class 10) via `brassclaw_reborn::subagent::directions::direction_prompt()`
+- *(engine / orchestrator)* `prepare_monty_session()` now loads the orchestrator code via `OrchestratorCodePort` instead of the v1 `load_orchestrator_from_docs()` / `brassclaw_memory_docs` path.
+- *(boot)* The `webui.rs` seeding boot chain is now gated behind the `BootedDb` type token throughout. All five seeding/integrity callers pass `&BootedDb`; raw `Arc<PgPool>` is no longer accepted.
+
+### Removed
+
+- *(engine / orchestrator)* Deleted the v1 orchestrator load path: `DEFAULT_ORCHESTRATOR` constant, `ORCHESTRATOR_TITLE`, `ORCHESTRATOR_TAG`, `load_orchestrator()`, `load_orchestrator_from_docs()`, `record_orchestrator_failure()`, `reset_orchestrator_failures()`, `load_failure_count()`, `MAX_FAILURES_BEFORE_ROLLBACK`, `FAILURE_TRACKER_TITLE`. The failure-count/version-rollback mechanism is removed; failure handling is Tier-2 degradation only.
+- *(engine / prompt)* Deleted v1 preamble overlay path: `PREAMBLE_OVERLAY_TITLE`, `PROMPT_OVERLAY_TAG`, `load_prompt_overlay()`, `extract_prompt_overlay()`, `build_codeact_system_prompt()` (async overlay variant), `build_codeact_system_prompt_with_docs()`. `CODEACT_PREAMBLE`/`CODEACT_POSTAMBLE` and `build_codeact_system_prompt_inner` moved to `#[cfg(test)]`.
+- *(directions)* The four `include_str!()` direction constants (`GENERAL_DIRECTION` etc.) are removed from `directions/mod.rs`; `direction_prompt()` now requires `init_directions()` to be called at boot.
+
+### Fixed
+
+- *(composition / imports)* Fixed pre-existing `AuthChallengeProvider`/`AuthChallengeView` unresolved import errors in `projection.rs`, `turn_events.rs`, `auth.rs`, `oauth_dcr.rs`, `oauth_gate.rs`, `product_auth_serve/mod.rs`, `product_auth_serve/oauth.rs`, and `projection/tests.rs` — all were using the `skills-db`-feature-gated `crate::AuthChallengeProvider` re-export; changed to the always-available `crate::auth_prompt::AuthChallengeProvider` direct path.
+- *(composition / pg_orchestrator_code_port)* Fixed `unreachable-pub` and `dead_code` clippy lints by flattening the inner module and re-gating the module on `all(postgres, skills-db)` to match its only consumer in `runtime.rs`.
+- *(composition / test)* Fixed 3 panicking tests in `projection::tests::failure_explanation` that called `ModelFailureExplanationProvider::explain_failure()` without initialising the `failure_explanation_system_prompt` `OnceLock` — added `init_test_failure_explanation()` test helper.
+
+### Database
+
+- **V085** — `content_checksum TEXT` (nullable) added to `reborn_skills`, `reborn_tool_skills`, `reborn_python_code`. Populated for `source='system'` rows by the builtin bootstrap seeder.
+- **V086** — `reborn_skills.name` CHECK constraint relaxed to allow colons and underscores, required for class-10 names like `orchestrator:main` and `subagent:direction:general`.
+
 ## [1.4.5] - 2026-09-23
 
 ### Fixed
