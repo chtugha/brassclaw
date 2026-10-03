@@ -22,7 +22,6 @@
 #![forbid(unsafe_code)]
 
 use brassclaw_engine::memory::retrieval_source::ComponentScope;
-use brassclaw_pg::PgPool;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -137,9 +136,9 @@ fn build_integrity_query() -> String {
 /// In steady state (V077 populate ran successfully) there should be zero missing
 /// rows and the function returns immediately after the scan.
 pub(crate) async fn run_boot_integrity_check(
-    pool: &std::sync::Arc<PgPool>,
+    booted_db: &crate::booted_db::BootedDb,
 ) -> Result<u64, BootIntegrityError> {
-    let client = pool.get().await.map_err(|e| BootIntegrityError::Pool {
+    let client = booted_db.pool().get().await.map_err(|e| BootIntegrityError::Pool {
         reason: e.to_string(),
     })?;
 
@@ -180,7 +179,7 @@ pub(crate) async fn run_boot_integrity_check(
     );
 
     // Re-enqueue each missing component at state 1.
-    let store = ValidationQueueStore::new(std::sync::Arc::clone(pool));
+    let store = ValidationQueueStore::new(std::sync::Arc::clone(booted_db.pool()));
     let mut recovered: u64 = 0;
     for comp in &components {
         let scope = ComponentScope {

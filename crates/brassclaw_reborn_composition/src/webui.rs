@@ -196,8 +196,13 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     #[cfg(feature = "postgres")]
     if let Some(pool) = services.pg_pool.clone() {
         let host_tenant_id = runtime.webui_tenant_id().to_string();
+        // Wrap the pool in a BootedDb token.  Migrations were run upstream
+        // (by the caller of build_webui_bundle, e.g. serve.rs / factory.rs);
+        // this token is proof of that contract and enforces ordering below.
+        let booted_db = crate::booted_db::BootedDb::from_migrated_pool(pool.clone());
+
         if let Err(e) =
-            crate::seed_builtin_host::seed_builtin_host_components(pool.clone(), &host_tenant_id)
+            crate::seed_builtin_host::seed_builtin_host_components(&booted_db, &host_tenant_id)
                 .await
         {
             tracing::warn!(
@@ -211,7 +216,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         // (read_file, write_file, shell, …). Distinct from the host.* stack
         // above. Idempotent; safe on every boot.
         if let Err(e) =
-            crate::builtin_bootstrap::seed_builtin_components(pool.clone(), &host_tenant_id).await
+            crate::builtin_bootstrap::seed_builtin_components(&booted_db, &host_tenant_id).await
         {
             tracing::warn!(
                 error = %e,
@@ -223,7 +228,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         // Phase N — N.5 boot integrity check.
         // Finds non-validated components with no queue entry (crash-recovery /
         // manual imports / restored backups) and re-submits them to Q1.
-        match crate::boot_integrity::run_boot_integrity_check(&pool).await {
+        match crate::boot_integrity::run_boot_integrity_check(&booted_db).await {
             Ok(0) => {} // steady state — nothing to recover
             Ok(n) => {
                 tracing::warn!(
@@ -246,8 +251,6 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         // mismatch — the RebornWebuiBundle is NOT returned.
         // Run `brassclaw repair` to restore corrupted rows.
         {
-            let booted_db =
-                crate::booted_db::BootedDb::from_migrated_pool(pool.clone());
             match crate::content_integrity::run_content_integrity_check(&booted_db).await {
                 Ok(crate::content_integrity::ContentIntegrityOutcome::Ok { checked }) => {
                     tracing::debug!(
@@ -284,7 +287,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         // These must run after run_content_integrity_check so we only load rows
         // that have passed the integrity check. Failures here are boot-fatal.
         {
-            let fe_body = load_system_skill_body(&pool, &host_tenant_id, "failure_explanation")
+            let fe_body = load_system_skill_body(&booted_db, &host_tenant_id, "failure_explanation")
                 .await
                 .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
                     reason: format!("failed to load failure_explanation skill from DB: {e}"),
@@ -294,7 +297,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
 
         {
             let comp_body =
-                load_system_skill_body(&pool, &host_tenant_id, "compaction_summarizer_fresh")
+                load_system_skill_body(&booted_db, &host_tenant_id, "compaction_summarizer_fresh")
                     .await
                     .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
                         reason: format!(
@@ -307,7 +310,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         #[cfg(feature = "root-llm-provider")]
         {
             let sempai_body =
-                load_system_skill_body(&pool, &host_tenant_id, "sempai_audit")
+                load_system_skill_body(&booted_db, &host_tenant_id, "sempai_audit")
                     .await
                     .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
                         reason: format!("failed to load sempai_audit skill from DB: {e}"),
@@ -317,25 +320,25 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
 
         {
             let general = load_system_skill_body(
-                &pool, &host_tenant_id, "subagent:direction:general")
+                &booted_db, &host_tenant_id, "subagent:direction:general")
                 .await
                 .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
                     reason: format!("failed to load subagent:direction:general from DB: {e}"),
                 })?;
             let researcher = load_system_skill_body(
-                &pool, &host_tenant_id, "subagent:direction:researcher")
+                &booted_db, &host_tenant_id, "subagent:direction:researcher")
                 .await
                 .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
                     reason: format!("failed to load subagent:direction:researcher from DB: {e}"),
                 })?;
             let explorer = load_system_skill_body(
-                &pool, &host_tenant_id, "subagent:direction:explorer")
+                &booted_db, &host_tenant_id, "subagent:direction:explorer")
                 .await
                 .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
                     reason: format!("failed to load subagent:direction:explorer from DB: {e}"),
                 })?;
             let coder = load_system_skill_body(
-                &pool, &host_tenant_id, "subagent:direction:coder")
+                &booted_db, &host_tenant_id, "subagent:direction:coder")
                 .await
                 .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
                     reason: format!("failed to load subagent:direction:coder from DB: {e}"),
@@ -718,11 +721,12 @@ pub(crate) async fn seed_builtin_providers(
 /// fails. A missing row indicates seeding did not run or was rolled back.
 #[cfg(feature = "postgres")]
 async fn load_system_skill_body(
-    pool: &brassclaw_pg::PgPool,
+    booted_db: &crate::booted_db::BootedDb,
     tenant_id: &str,
     name: &str,
 ) -> Result<String, String> {
-    let client = pool
+    let client = booted_db
+        .pool()
         .get()
         .await
         .map_err(|e| format!("pool checkout failed loading system skill '{name}': {e}"))?;

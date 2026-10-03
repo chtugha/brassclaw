@@ -670,10 +670,10 @@ impl BootstrapStores {
 /// seeded independently (filesystem → network → memory → process →
 /// management). All five groups are implemented.
 pub async fn seed_builtin_components(
-    pool: Arc<PgPool>,
+    booted_db: &crate::booted_db::BootedDb,
     tenant_id: &str,
 ) -> Result<(), SeedBuiltinBootstrapError> {
-    let stores = BootstrapStores::new(pool, tenant_id);
+    let stores = BootstrapStores::new(Arc::clone(booted_db.pool()), tenant_id);
 
     // Pass 0 — orchestrator + system prompts (class-10 DB rows).
     // Must run before all capability passes so the orchestrator is available

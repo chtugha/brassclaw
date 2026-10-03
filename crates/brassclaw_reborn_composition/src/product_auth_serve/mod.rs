@@ -1317,7 +1317,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AuthChallengeProvider;
+    use crate::auth_prompt::AuthChallengeProvider;
     use crate::oauth_dcr::{OAuthDcrProvider, OAuthDcrProviderConfig, OAuthDcrProviderRegistry};
     use crate::oauth_dcr_protocol::flow_secret_handle;
     use crate::{RebornAuthContinuationDispatcher, notion_oauth::notion_provider_spec};

@@ -1,5 +1,15 @@
 use super::*;
 
+/// Initialise the failure explanation prompt OnceLock for tests that exercise
+/// the ModelFailureExplanationProvider.  Safe to call multiple times; subsequent
+/// calls are silently ignored by the OnceLock.
+fn init_test_failure_explanation() {
+    const SEED: &str = include_str!(
+        "../../../../brassclaw_loop_support/prompts/failure_explanation.md"
+    );
+    brassclaw_loop_support::init_failure_explanation_prompt(SEED.to_string());
+}
+
 #[tokio::test]
 async fn webui_event_stream_projects_failed_run_failure_summary() {
     assert_failed_run_status_summary(
@@ -383,6 +393,7 @@ async fn webui_event_stream_projects_recovery_required_failure_summary() {
 
 #[tokio::test]
 async fn failure_details_returns_fallback_when_model_gateway_times_out() {
+    init_test_failure_explanation();
     let tenant_id = TenantId::new("webui-events-tenant").unwrap();
     let user_id = UserId::new("webui-events-user").unwrap();
     let agent_id = AgentId::new("webui-events-agent").unwrap();
@@ -470,6 +481,7 @@ fn bounded_failure_explanation_returns_none_for_empty_or_whitespace_input() {
 
 #[tokio::test]
 async fn model_failure_explainer_returns_bounded_assistant_reply() {
+    init_test_failure_explanation();
     let gateway = Arc::new(RecordingFailureGateway {
         response: Mutex::new(Ok(SystemInferenceResponse {
             task_id: SystemInferenceTaskId::new(),
@@ -504,6 +516,7 @@ async fn model_failure_explainer_returns_bounded_assistant_reply() {
 
 #[tokio::test]
 async fn model_failure_explainer_returns_none_when_gateway_fails() {
+    init_test_failure_explanation();
     let gateway = Arc::new(RecordingFailureGateway {
         response: Mutex::new(Err(SystemInferenceError::Failed {
             safe_summary: LoopSafeSummary::new("model unavailable").unwrap(),

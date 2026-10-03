@@ -221,10 +221,10 @@ impl HostStores {
 /// minted ids to `builtin-host.child_component_ids`. All builtins are
 /// `source = "system"` + `validation_status = "validated"` (bypassing Q1).
 pub async fn seed_builtin_host_components(
-    pool: Arc<PgPool>,
+    booted_db: &crate::booted_db::BootedDb,
     tenant_id: &str,
 ) -> Result<(), SeedBuiltinHostError> {
-    let stores = HostStores::new(pool, tenant_id);
+    let stores = HostStores::new(Arc::clone(booted_db.pool()), tenant_id);
 
     // get-or-insert the class-23 `builtin-host` catalogue row → cat_id.
     let cat_id = match stores
