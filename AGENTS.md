@@ -180,7 +180,17 @@ One PythonCode step = exactly one `host.<tool>(...)` call. Pure-logic helpers (z
 
 - **Rule 1**: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). Skill bodies are orchestrator-facing prose — they are not executable and must not be placed in recipe steps.
 - **Rule 2**: If `llm_call_required == false` AND `rust_steps` has tool bindings, then `orchestrator_steps` MUST contain ≥1 PythonCode UUID. A rust-only Tier-0 recipe is rejected.
-- **Rule 3**: One PythonCode snippet = exactly one `host.<tool>(...)` call. Multiple tool dispatches require multiple PythonCode snippets — one per tool call.
+- **Rule 3**: One PythonCode snippet = exactly one **independent** `host.<tool>(...)` call. Multiple **independent** dispatches (tool A and tool B are separately useful, their outputs do not flow directly into each other) require separate PythonCode snippets — one per tool call.
+
+  **Exception — dependent sequential chain:** If tool B's input is the direct runtime output of tool A (B literally cannot run without A's result), both calls may share one PythonCode body. This is valid because they execute in a single `host.run_program` context and share local scope. The pair must form a single logical unit (e.g. sweep → store, read → transform). Example:
+  ```python
+  bundle_parts = host.sweep_validated_components(user_id="{{vars.slot0}}", project_id="{{vars.slot1}}")
+  result = host.store_prefix_bundle(
+      user_id="{{vars.slot0}}", project_id="{{vars.slot1}}",
+      bundle=bundle_parts["bundle"], generation_ms=bundle_parts["generation_ms"]
+  )
+  ```
+  Two `host.*` calls, one body — valid because `bundle_parts["bundle"]` is the direct input to the store call. Do **not** use this exception to bundle unrelated tool calls for convenience.
 - **Rule 4**: A leaf skill should describe exactly one tool usage pattern. Avoid bundling multiple tool calls or approaches into one skill body.
 - **§shell-guard**: Any Recipe using `builtin.shell` is `llm_call_required: true`. **Always. No shell command is ever Tier 0**, regardless of whether the command string is fixed or user-supplied. Known-safe commands (e.g. `cargo build`) may be Tier 1 at high confidence, never Tier 0.
 - **§spawn_subagent-guard**: Any Recipe referencing `builtin.spawn_subagent` is `llm_call_required: true`. Always.

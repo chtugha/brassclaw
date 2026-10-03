@@ -81,7 +81,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Prefer strong types over strings (enums, newtypes)
 - Keep functions focused, extract helpers when logic is reused
 - Comments for non-obvious logic only
-- **Do not introduce new `include_str!()` constants for behavioural prompts or scripts in production code paths.** All prompt bodies (`orchestrator:main`, `codeact_preamble`, `codeact_postamble`, `failure_explanation`, `compaction_summarizer_fresh`, `sempai_audit`, `subagent:direction:*`) are seeded as `source='system'` DB rows via `builtin_bootstrap.rs` and loaded at boot via `OnceLock` accessors. `include_str!()` is only permitted in `builtin_bootstrap.rs` seed constants and in `#[cfg(test)]` modules. Single-line format strings are fine inline.
+- **Do not introduce new `include_str!()` constants for behavioural prompts or scripts in production code paths.** All prompt bodies (`orchestrator:main`, `codeact_preamble`, `codeact_postamble`, `failure_explanation`, `compaction_summarizer_fresh`, `sempai_audit`, `subagent:direction:*`) are seeded as `source='system'` DB rows via `builtin_bootstrap.rs` and loaded at boot via `OnceLock` accessors. `include_str!()` is only permitted in `builtin_bootstrap.rs` seed constants and in `#[cfg(test)]` modules. Single-line format strings are fine inline. This also applies to reference documentation files embedded for runtime use (e.g. `CLAUDE.md`, `AGENTS.md`): if such a file must be included at compile time, its `include_str!()` constant belongs in `builtin_bootstrap.rs` as a `pub(crate) const`, not in any other production file. The backend or handler that uses the constant imports it as `crate::builtin_bootstrap::SOME_CONST`.
 - `info!` and `warn!` output appears in the REPL and corrupts the terminal UI. Use `debug!` for internal diagnostics (trace analysis, reflection results, engine internals). Reserve `info!` for user-facing status that the REPL intentionally renders. Background tasks must never use `info!`.
 - Test through the caller, not just the helper: when a predicate/classifier/transform helper gates a side effect (HTTP, DB write, OAuth, UI mutation, tool execution) and has any wrapper or computed input between it and that side effect, a unit test on the helper alone is not sufficient regression coverage. Add a test that drives the call site at the integration tier or higher. See `.claude/rules/testing.md` for the full rule.
 
@@ -232,6 +232,14 @@ Intent-Matching System (resolve_intent / fetch_for_turn, currently Rust)
 - A `channel:"rust"` step only *binds* the ToolSkill (makes `host.<tool>` callable). A `channel:"orchestrator"` PythonCode step *calls* it. Two steps, always in that order.
 - The base-prompt is assembled by the Kohai from the component library — it is not hardcoded. It grows as new components are added.
 - Tier 0: no LLM involved at all. Tier 1: LLM guided by recipe prior-knowledge. Tier 2: LLM over full base-prompt (no recipe matched).
+
+> **Anti-pattern — do not merge primitives into Rust to solve cross-step isolation:**
+> The step isolation invariant (each `host.run_program` call gets a fresh empty state)
+> is not a reason to merge two independent operations into a single monolithic Rust tool.
+> If tool B needs tool A's output, place both calls in **one PythonCode body** (they share
+> local scope within one `host.run_program` execution). Only combine into one Rust tool if
+> the operations are genuinely inseparable at the system level (e.g. an atomic DB transaction
+> that cannot be split). Convenience and data flow alone do not justify a new monolithic tool.
 
 #### One single main process (ground truth)
 
