@@ -422,6 +422,14 @@ impl MontyTurnDriverPort for PanickingMontyDriver {
     ) -> Result<LoopExit, AgentLoopDriverError> {
         panic!("simulated Monty driver panic")
     }
+    async fn stop_attempt(
+        &self,
+        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
+    ) -> Result<(), AgentLoopDriverError> {
+        // The panicked drive future owns all execution in this test adapter.
+        // It has already unwound; there is no independent task to reconcile.
+        Ok(())
+    }
 }
 
 // ─── Test-double host (mock driver never calls host methods) ─────────────────
@@ -1424,12 +1432,21 @@ async fn cancellation_ack_timeout_stops_new_worker_claims() {
         make_applier(port.clone()),
         Arc::new(MockHostFactory),
         wake_receiver,
-    ).with_monty_driver(driver.clone());
+    )
+    .with_monty_driver(driver.clone());
     let cancel = CancellationToken::new();
-    tokio::time::timeout(MONTY_STOP_ACK_TIMEOUT + Duration::from_secs(2),
-        worker.run(cancel.clone())).await.expect("worker must stop after failed cancellation");
+    tokio::time::timeout(
+        MONTY_STOP_ACK_TIMEOUT + Duration::from_secs(2),
+        worker.run(cancel.clone()),
+    )
+    .await
+    .expect("worker must stop after failed cancellation");
     assert!(cancel.is_cancelled());
     assert_eq!(driver.drive_requests.lock().expect("lock").len(), 1);
     assert_eq!(driver.stop_attempts.lock().expect("lock").len(), 1);
     assert_first_terminal_failure_matches_first_claim(&port, run_id);
+    assert_eq!(
+        first_terminal_failure_category(&port),
+        "monty_stop_unacknowledged"
+    );
 }

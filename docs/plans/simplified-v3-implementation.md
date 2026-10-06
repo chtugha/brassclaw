@@ -322,3 +322,84 @@ the latest 600-second compiled defaults, bounded stop acknowledgement and option
 full-history lookup changes collected at staging. The checks above ran during
 collection and do not certify every final concurrent edit in this checkpoint.
 The final staged diff passed `git diff --cached --check`.
+
+## Corrections and resource prerequisites implemented after the latest review
+
+The user additionally requires a WebUI duration change to affect Rust and Monty
+through one effective revision. Phase 3a now explicitly requires that shared
+publication, preserved task consumption and runtime acknowledgement; an independent
+Rust wall-clock copy is not an acceptable compute-time implementation.
+
+Implemented and checked in this batch:
+
+- Complete eligible submitted history can be requested explicitly with `None`;
+  an explicit window remains available. A 131-message regression checks the full
+  transcript exceeds the old 128-message window without changing the admitted
+  input or cutoff. Redaction policy remains exercised. This API still needs the
+  global production prompt adapter; it is not an unbounded resident VM cache.
+- Stop acknowledgement is bounded to five seconds. Failed/unacknowledged stop
+  prevents this worker from taking another claim and persists
+  `monty_stop_unacknowledged`, rather than reporting a safely stopped task.
+  Global-service fencing/supervision remains required before production cutover.
+- The instance authorizer returns the admitted revision and rejects legacy
+  operation-approval resumes. `LiveInstanceToolPolicy` publishes whole coherent
+  generations using compare-and-publish. A production-host test publishes a
+  block during awaited preparation, verifies cleanup and zero dispatch, and
+  verifies stale publication cannot overwrite it. Technical changes, missing
+  rules and unavailable policy also prevent dispatch. Legacy production factory
+  wiring has not yet been replaced; no global permission cutover is claimed.
+- Shared task settings publish time/allocation/token mode atomically via watch.
+  Task consumption is retained across changes and accounting overflow fails
+  closed. Rust and VM subscribers observe the same revision. These primitives
+  require the durable settings/driver bridge, not separate startup snapshots.
+- The pinned Monty custom `ResourceTracker` seam is implemented. Real parked-VM
+  tests prove live allocation and duration enforcement without resetting recorded
+  consumption. Time consumption in the duration test is injected as accumulated
+  active segments: this is a tracker API proof, not actual production compute-time
+  measurement or a fairness proof. Pure-Python quantum/yield and task-isolated
+  resource failure still need their separate production prerequisites.
+- Adaptive heap calculation accounts for additional capacity plus existing heap,
+  then subtracts reserve once. It grows in configured increments on demand,
+  rejects unsafe manual caps, leaves automatic reductions below live heap pending,
+  applies backpressure, and retains a finite limit on absent/stale/future/overflowing
+  measurements. Its parameters have no guessed RAM-percentage defaults. Platform
+  measurement, reclamation, shared heap ownership and runtime/UI bridge remain
+  explicit implementation requirements; calculator tests do not prove those.
+- V090 changes only new-row defaults to 600 seconds and token budgets disabled.
+  Native PostgreSQL tests apply it twice and verify stored 300-second/enabled
+  choices survive. V034/V060 checksums remain untouched. Compiled duration defaults
+  also use 600; existing explicitly stored values remain authoritative until the
+  controlled instance-settings migration.
+
+Verification ran in sequential background screen queues, never simultaneous
+Cargo. Free NVMe space was checked before each Cargo execution. Passed: 12 exact
+input tests, 19 worker tests, capability all-target tests, 4 focused instance-policy
+caller tests, authorization library tests, 8 Monty resource-calculation/accounting
+tests, 2 actual parked-VM tracker tests, and the native PostgreSQL V090 test.
+Final strict all-target Clippy passed for engine, resources, authorization,
+capabilities, Reborn, threads and composition with `skills-db`. No warning was
+suppressed and no failing/ignored test was converted into a success.
+
+During this batch another publication produced checkpoint `9469c496`, including
+some concurrent history/default/cancellation edits. The tests above subsequently
+checked the current files; the earlier checkpoint's checks were not treated as
+certification of concurrent changes.
+
+Remaining production work is material: the WebUI still uses legacy scoped settings
+and Rust retains a startup wall-clock snapshot; Monty sessions still use the old
+tracker. Connect one durable instance-settings revision to both consumers and
+actual compute accounting, then complete measured fairness and the global VM
+service. Retrieval/prior-knowledge fixed caps must consume the same token switch.
+Component/intent revisions and safe override activation, migration backup/restore,
+and the seven previously recorded composition failures remain open. These are
+unfinished plan work, not resolved issues or evidence that the WebUI already
+changes an active global service.
+
+Upstream API review: current Monty has changed its tracker/API substantially; its
+public [RunProgress source](https://github.com/pydantic/monty/blob/main/crates/monty/src/run_progress.rs)
+shows host-call/name/future suspension states, without a general CPU-quantum yield
+variant. Its [resource-limit documentation](https://pydantic.dev/docs/monty/limitations/resource_limits/)
+still describes resource-error termination. Updating blindly cannot be counted as
+proof of fair, resumable pure-Python execution. The tested custom tracker targets
+the repository's pinned version; a dependency upgrade must undergo the same
+continuation, failure-isolation and fairness acceptance before production wiring.

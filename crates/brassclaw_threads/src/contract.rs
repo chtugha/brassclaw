@@ -409,7 +409,8 @@ pub struct ContextMessages {
     pub messages: Vec<ContextMessage>,
 }
 
-/// One admitted input and its policy-filtered, bounded prior transcript.
+/// One admitted input and its policy-filtered prior transcript.
+/// The caller explicitly chooses complete history or a bounded context window.
 /// The input is separate so callers append it exactly once to model context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubmittedTurnInput {

@@ -38,10 +38,14 @@ pub struct CapabilitySpawnRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityInvocationResult {
     pub dispatch: CapabilityDispatchResult,
+    /// Instance settings revision admitted at dispatch; None for legacy paths.
+    pub policy_revision: Option<u64>,
 }
 
 /// Caller-facing capability spawn result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilitySpawnResult {
     pub process: ProcessRecord,
+    /// Instance settings revision admitted at spawn; None for legacy paths.
+    pub policy_revision: Option<u64>,
 }

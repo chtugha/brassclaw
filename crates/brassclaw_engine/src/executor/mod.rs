@@ -11,6 +11,7 @@ pub mod kohai_port;
 pub mod orchestrator;
 pub mod orchestrator_code_port;
 pub mod prompt;
+pub mod resource_tracker;
 pub mod scripting;
 pub mod structured;
 pub(crate) mod thread_context;

@@ -1,4 +1,7 @@
 mod common;
+#[path = "runtime/monty_settings_defaults.rs"]
+mod monty_settings_defaults;
+
 #[path = "runtime/turn_snapshot_tree.rs"]
 mod turn_snapshot_tree;
 

@@ -1,5 +1,18 @@
 # brassclaw_authorization guardrails
 
+## Simplified v3 target
+
+[simplified_v3.md](../../simplified_v3.md) §§1.1/9 supersede the scoped grant
+and operation-approval requirements below for the v3 cutover. Instance tools
+use one live, versioned allow/block policy plus technical rules. ToolSkill
+bindings grant no permission. `LiveInstanceToolPolicy` publishes complete
+generations with compare-and-publish; prepared admission reads the current
+revision and returns it to the caller. Missing/failed policy reads fail closed.
+No settings lock is held across tool execution. Durable settings publication
+and production wiring remain composition responsibilities; the new source alone
+does not certify removal of legacy approval paths. Existing grants/leases below
+describe transitional implementations and migration evidence.
+
 - Own grant matching, lease state, and dispatch/spawn authorization decisions.
 - Do not execute capabilities, persist run-state, resolve approvals, reserve resources, prompt users, or import runtime/process/dispatcher/capability workflow crates.
 - Authorization is default-deny and resource-owner/invocation scoped (tenant/user/agent/project/mission/thread plus invocation where applicable).

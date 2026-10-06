@@ -59,6 +59,7 @@ src/
 │   ├── kohai_port.rs             # KohaiPort — host.kohai_complete LLM gateway facade
 │   ├── orchestrator.rs           # Tier-1 Monty orchestrator: prepare_monty_session, assemble_prior_knowledge_with_hint, execute_tier_zero_channel
 │   ├── prompt.rs                 # System prompt construction (CodeAct preamble/postamble)
+│   ├── resource_tracker.rs       # Custom live resource-tracker port; pinned-VM resume tests, production bridge still required
 │   ├── scripting.rs              # Tier 1: embedded Python via Monty (CodeAct/RLM)
 │   ├── structured.rs             # Tier 0: structured tool call execution
 │   ├── thread_context.rs         # Build ThreadExecutionContext from current thread state (pub(crate))

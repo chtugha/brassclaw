@@ -458,6 +458,7 @@ impl TurnRunnerWorker {
                 self.apply_exit(&claimed, exit).await;
             }
             Err(err) => {
+                let mut stop_unacknowledged = false;
                 if let Some(monty) = self.monty_driver.as_ref() {
                     let stop_result = tokio::time::timeout(
                         MONTY_STOP_ACK_TIMEOUT,
@@ -471,13 +472,17 @@ impl TurnRunnerWorker {
                     match stop_result {
                         Ok(Ok(())) => {}
                         Ok(Err(stop_error)) => {
+                            stop_unacknowledged = true;
                             error!(?run_id, error = %stop_error,
                                 "Monty cancellation failed; stopping worker admission");
                             cancel.cancel();
                         }
                         Err(_) => {
-                            error!(?run_id,
-                                "Monty cancellation acknowledgement timed out; stopping worker admission");
+                            stop_unacknowledged = true;
+                            error!(
+                                ?run_id,
+                                "Monty cancellation acknowledgement timed out; stopping worker admission"
+                            );
                             cancel.cancel();
                         }
                     }
@@ -488,7 +493,12 @@ impl TurnRunnerWorker {
                     error = %err,
                     "driver invocation stopped; applying claimed-run recovery"
                 );
-                self.record_terminal_failure(run_id, runner_id, lease_token, &err)
+                let recovery_error = if stop_unacknowledged {
+                    DriverInvocationError::MontyStopUnacknowledged
+                } else {
+                    err
+                };
+                self.record_terminal_failure(run_id, runner_id, lease_token, &recovery_error)
                     .await;
             }
         }
@@ -636,6 +646,7 @@ impl TurnRunnerWorker {
                     DriverInvocationError::DriverPanic => "driver_panic",
                     DriverInvocationError::HeartbeatFailed(_) => "heartbeat_failed",
                     DriverInvocationError::TurnTimeout => "turn_timeout",
+                    DriverInvocationError::MontyStopUnacknowledged => "monty_stop_unacknowledged",
                     // WorkerCancelled and HeartbeatStopped handled by relinquish branch above.
                     DriverInvocationError::WorkerCancelled
                     | DriverInvocationError::HeartbeatStopped
@@ -793,6 +804,8 @@ enum DriverInvocationError {
     WorkerCancelled,
     /// Turn exceeded the configured `max_turn_duration` wall-clock budget.
     TurnTimeout,
+    /// Service ownership is unclear: stop admission and require reconciliation.
+    MontyStopUnacknowledged,
 }
 
 impl std::fmt::Display for DriverInvocationError {
@@ -805,6 +818,7 @@ impl std::fmt::Display for DriverInvocationError {
             Self::HeartbeatStopped => write!(f, "heartbeat stopped before driver completed"),
             Self::WorkerCancelled => write!(f, "worker cancelled before driver completed"),
             Self::TurnTimeout => write!(f, "turn exceeded the configured wall-clock budget"),
+            Self::MontyStopUnacknowledged => write!(f, "Monty attempt stop was not acknowledged"),
         }
     }
 }

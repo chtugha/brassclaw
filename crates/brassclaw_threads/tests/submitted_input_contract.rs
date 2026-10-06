@@ -235,3 +235,58 @@ async fn accepted_but_unsubmitted_message_is_rejected() {
         Err(SessionThreadError::SubmittedInputPending { .. })
     ));
 }
+
+#[tokio::test]
+async fn complete_submitted_history_exceeds_old_context_window() {
+    let (service, first) = fixture().await;
+    let mut last = first.clone();
+    for index in 0..130 {
+        let accepted = service
+            .accept_inbound_message(AcceptInboundMessageRequest {
+                scope: first.scope.clone(),
+                thread_id: first.thread_id.clone(),
+                actor_id: "owner".into(),
+                source_binding_id: None,
+                reply_target_binding_id: None,
+                external_event_id: None,
+                content: MessageContent::text(format!("history {index}")),
+            })
+            .await
+            .unwrap();
+        let turn_id = format!("turn-history-{index}");
+        let turn_run_id = format!("run-history-{index}");
+        service
+            .mark_message_submitted(
+                &first.scope,
+                &first.thread_id,
+                accepted.message_id,
+                turn_id.clone(),
+                turn_run_id.clone(),
+            )
+            .await
+            .unwrap();
+        last = SubmittedUserMessageRequest {
+            message_id: accepted.message_id,
+            turn_id,
+            turn_run_id,
+            ..first.clone()
+        };
+    }
+    let complete = service
+        .submitted_turn_input(last.clone(), None)
+        .await
+        .unwrap();
+    assert_eq!(complete.prior_context.messages.len(), 131);
+    assert_eq!(complete.prior_context.messages[0].content, "first input");
+    assert_eq!(complete.message.content.as_deref(), Some("history 129"));
+    let window = service.submitted_turn_input(last, Some(128)).await.unwrap();
+    assert_eq!(window.prior_context.messages.len(), 128);
+    assert_eq!(window.message.message_id, complete.message.message_id);
+    assert!(
+        complete
+            .prior_context
+            .messages
+            .iter()
+            .all(|entry| entry.sequence < complete.message.sequence)
+    );
+}

@@ -158,18 +158,6 @@ where
         }
         debug!("capability invocation started");
 
-        let invocation_fingerprint = invocation_fingerprint_for_kind(
-            CapabilityActionKind::Dispatch,
-            &scope,
-            &request.capability_id,
-            &request.estimate,
-            &request.input,
-        )
-        .map_err(|source| CapabilityInvocationError::InvocationFingerprint {
-            capability: request.capability_id.clone(),
-            source,
-        })?;
-
         if let Some(run_state) = self.run_state {
             run_state
                 .start(RunStart {
@@ -261,6 +249,42 @@ where
             Decision::RequireApproval {
                 request: mut approval,
             } => {
+                if !self.authorizer.supports_operation_approval() {
+                    fail_run_if_configured(
+                        self.run_state,
+                        &scope,
+                        invocation_id,
+                        "UnexpectedApproval",
+                    )
+                    .await;
+                    return Err(CapabilityInvocationError::AuthorizationDenied {
+                        capability: request.capability_id,
+                        reason: DenyReason::InternalInvariantViolation,
+                    });
+                }
+                let invocation_fingerprint = match invocation_fingerprint_for_kind(
+                    CapabilityActionKind::Dispatch,
+                    &scope,
+                    &request.capability_id,
+                    &request.estimate,
+                    &request.input,
+                ) {
+                    Ok(fingerprint) => fingerprint,
+                    Err(source) => {
+                        fail_run_if_configured(
+                            self.run_state,
+                            &scope,
+                            invocation_id,
+                            "InvocationFingerprint",
+                        )
+                        .await;
+                        return Err(CapabilityInvocationError::InvocationFingerprint {
+                            capability: request.capability_id.clone(),
+                            source,
+                        });
+                    }
+                };
+
                 let approval_request_id = approval.id;
                 debug!(
                     approval_request_id = %approval_request_id,
@@ -435,17 +459,17 @@ where
             }
         }
 
-        if !self
+        let admission = self
             .authorizer
-            .validate_prepared_dispatch(
+            .admit_prepared_dispatch(
                 &request.context,
                 descriptor,
                 &request.estimate,
                 &request.trust_decision,
                 obligations.as_slice(),
             )
-            .await
-        {
+            .await;
+        if let Err(reason) = admission {
             self.abort_obligations(
                 CapabilityObligationPhase::Invoke,
                 &request.context,
@@ -458,9 +482,11 @@ where
             fail_run_if_configured(self.run_state, &scope, invocation_id, "PolicyChanged").await;
             return Err(CapabilityInvocationError::AuthorizationDenied {
                 capability: request.capability_id,
-                reason: DenyReason::PolicyDenied,
+                reason,
             });
         }
+        let policy_revision = admission.ok().flatten();
+        debug!(?policy_revision, "prepared capability dispatch admitted");
 
         debug!("capability dispatch starting");
         let dispatch = match self
@@ -560,7 +586,10 @@ where
         }
 
         debug!("capability invocation completed");
-        Ok(CapabilityInvocationResult { dispatch })
+        Ok(CapabilityInvocationResult {
+            dispatch,
+            policy_revision,
+        })
     }
 
     pub async fn resume_json(
@@ -940,7 +969,10 @@ where
             "dispatch",
         )
         .await;
-        Ok(CapabilityInvocationResult { dispatch })
+        Ok(CapabilityInvocationResult {
+            dispatch,
+            policy_revision: None,
+        })
     }
 
     pub async fn resume_spawn_json(
@@ -1280,7 +1312,10 @@ where
 
         complete_run_after_side_effect(run_state, &scope, invocation_id, &capability_id, "spawn")
             .await;
-        Ok(CapabilitySpawnResult { process })
+        Ok(CapabilitySpawnResult {
+            process,
+            policy_revision: None,
+        })
     }
 
     pub async fn spawn_json(
@@ -1301,18 +1336,6 @@ where
                 reason: DenyReason::InternalInvariantViolation,
             });
         }
-
-        let invocation_fingerprint = invocation_fingerprint_for_kind(
-            CapabilityActionKind::Spawn,
-            &scope,
-            &request.capability_id,
-            &request.estimate,
-            &request.input,
-        )
-        .map_err(|source| CapabilityInvocationError::InvocationFingerprint {
-            capability: request.capability_id.clone(),
-            source,
-        })?;
 
         if let Some(run_state) = self.run_state {
             run_state
@@ -1390,6 +1413,42 @@ where
             Decision::RequireApproval {
                 request: mut approval,
             } => {
+                if !self.authorizer.supports_operation_approval() {
+                    fail_run_if_configured(
+                        self.run_state,
+                        &scope,
+                        invocation_id,
+                        "UnexpectedApproval",
+                    )
+                    .await;
+                    return Err(CapabilityInvocationError::AuthorizationDenied {
+                        capability: request.capability_id,
+                        reason: DenyReason::InternalInvariantViolation,
+                    });
+                }
+                let invocation_fingerprint = match invocation_fingerprint_for_kind(
+                    CapabilityActionKind::Spawn,
+                    &scope,
+                    &request.capability_id,
+                    &request.estimate,
+                    &request.input,
+                ) {
+                    Ok(fingerprint) => fingerprint,
+                    Err(source) => {
+                        fail_run_if_configured(
+                            self.run_state,
+                            &scope,
+                            invocation_id,
+                            "InvocationFingerprint",
+                        )
+                        .await;
+                        return Err(CapabilityInvocationError::InvocationFingerprint {
+                            capability: request.capability_id.clone(),
+                            source,
+                        });
+                    }
+                };
+
                 if let Err(error) = validate_approval_request_matches_invocation(
                     &approval,
                     &request.context,
@@ -1516,17 +1575,17 @@ where
             }
         }
 
-        if !self
+        let admission = self
             .authorizer
-            .validate_prepared_dispatch(
+            .admit_prepared_dispatch(
                 &request.context,
                 &spawn_descriptor_for_policy(descriptor),
                 &request.estimate,
                 &request.trust_decision,
                 obligations.as_slice(),
             )
-            .await
-        {
+            .await;
+        if let Err(reason) = admission {
             self.abort_obligations(
                 CapabilityObligationPhase::Spawn,
                 &request.context,
@@ -1539,9 +1598,11 @@ where
             fail_run_if_configured(self.run_state, &scope, invocation_id, "PolicyChanged").await;
             return Err(CapabilityInvocationError::AuthorizationDenied {
                 capability: request.capability_id,
-                reason: DenyReason::PolicyDenied,
+                reason,
             });
         }
+        let policy_revision = admission.ok().flatten();
+        debug!(?policy_revision, "prepared capability dispatch admitted");
 
         let effective_mounts = obligation_outcome
             .mounts
@@ -1596,7 +1657,10 @@ where
             .await;
         }
 
-        Ok(CapabilitySpawnResult { process })
+        Ok(CapabilitySpawnResult {
+            process,
+            policy_revision,
+        })
     }
 
     async fn prepare_obligations(

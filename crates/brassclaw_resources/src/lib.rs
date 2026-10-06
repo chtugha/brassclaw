@@ -22,6 +22,8 @@ mod cas_snapshot;
 mod event;
 mod filesystem_store;
 mod gate;
+mod monty_heap_budget;
+mod monty_task_budget;
 mod period;
 pub mod pg_store;
 
@@ -33,6 +35,14 @@ pub use filesystem_store::{FilesystemBudgetGateStore, FilesystemResourceGovernor
 pub use gate::{
     BudgetApprovalGate, BudgetGateError, BudgetGateId, BudgetGateOutcome, BudgetGateStatus,
     BudgetGateStore, InMemoryBudgetGateStore,
+};
+pub use monty_heap_budget::{
+    AdaptiveMontyHeapBudget, MontyHeapAdjustmentReason, MontyHeapBudgetConfig,
+    MontyHeapBudgetDecision, MontyHeapBudgetError, MontyMemoryPressure, MontyMemorySample,
+};
+pub use monty_task_budget::{
+    LiveMontyTaskSettings, MontyTaskBudgetError, MontyTaskLimits, MontyTaskSettingsRevision,
+    MontyTaskUsage,
 };
 pub use period::{
     BudgetPeriod, BudgetThresholds, BudgetThresholdsError, PeriodUnit, period_bounds,

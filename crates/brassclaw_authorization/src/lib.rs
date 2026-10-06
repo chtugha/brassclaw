@@ -7,8 +7,8 @@
 
 mod instance_policy;
 pub use instance_policy::{
-    InstanceToolAuthorizer, InstanceToolPolicyError, InstanceToolPolicySource, InstanceToolRule,
-    ToolExecutionRules,
+    InstanceToolAuthorizer, InstanceToolPolicyError, InstanceToolPolicySnapshot,
+    InstanceToolPolicySource, InstanceToolRule, LiveInstanceToolPolicy, ToolExecutionRules,
 };
 
 pub mod pg_store;
@@ -66,17 +66,20 @@ pub trait TrustAwareCapabilityDispatchAuthorizer: Send + Sync {
         true
     }
 
-    /// Recheck a live instance policy after preparing technical obligations.
-    /// Legacy grant adapters retain their existing behavior until cutover.
-    async fn validate_prepared_dispatch(
+    /// Admit a prepared dispatch against the current policy. A successful
+    /// instance-policy snapshot is the start of the call for live revocation:
+    /// later publication affects following admissions, not replay of this call.
+    /// Sources must serialize snapshot reads with settings publication. Returns
+    /// the applied revision; legacy adapters return None until cutover.
+    async fn admit_prepared_dispatch(
         &self,
         _context: &ExecutionContext,
         _descriptor: &CapabilityDescriptor,
         _estimate: &ResourceEstimate,
         _trust_decision: &TrustDecision,
         _prepared: &[Obligation],
-    ) -> bool {
-        true
+    ) -> Result<Option<u64>, DenyReason> {
+        Ok(None)
     }
 
     /// Authorize a background-process spawn using both explicit grants/leases
