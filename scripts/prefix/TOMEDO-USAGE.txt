@@ -1,0 +1,146 @@
+HOW TO CREATE A TOMEDO PREFIX — EXACT PROMPT
+
+BEGIN PROMPT
+Create a large tomedo, REST API, macOS, PostgreSQL, GOÄ, EBM and ICD-10-GM
+reference prefix with scripts/prefix/tomedo-compiler.py. Exclude clinical
+medicine, diagnostic decision-making and treatment guidance. Retain ICD coding
+rules for already documented diagnoses and billing/documentation requirements.
+Use a separate compiler environment and a new tomedo evidence cache. Use the
+pinned deployed Ornith tokenizer/config. Target 100000 tokens and reserve at
+least 31072 tokens for requests and output. Use local evidence extraction,
+without model synthesis. Preserve literal German text, code, qualifications,
+source versions, raw originals and hashes. Keep all source/domain/topic gates.
+Import selected API findings from docs/archive/tomedo_v3.md and the attributed
+technical forum replies configured in the compiler. Preserve source line ranges,
+post authors/dates, hashes, local failure cautions and unknown release labels.
+If an official installed-release API export is available, import it additionally.
+Never label forum examples or local probes as a vendor API contract. Build the
+immutable artifacts and report manifest coverage and stable token-prefix counts.
+Do not deploy or warm this prefix or change any running inference service.
+END PROMPT
+
+COPY-PASTE EXAMPLE — LINUX OR MACOS
+
+Run from the repository root. Replace the model path below. The local findings
+file defaults to docs/archive/tomedo_v3.md relative to the compiler location;
+TOMEDO_FINDINGS_DOCUMENT can override it. Selected forum posts are fetched by
+--mode api, without importing whole discussion threads into the prefix.
+An OPTIONAL API document must be an authorized, sanitized official
+Markdown, text or PDF export, preserving its full schemas, examples,
+authentication rules and limitations. Export OpenAPI JSON/YAML into complete
+readable documentation before importing; this compiler does not resolve an
+OpenAPI dependency graph. Never supply database dumps, patient exports, private
+keys or credentials. The importer is not a patient-data sanitization tool.
+
+python3 -m venv .tomedo-compiler-venv
+.tomedo-compiler-venv/bin/python -m pip install openai httpx transformers jinja2 pypdf fonttools
+export PREFIX_PYTHON="$PWD/.tomedo-compiler-venv/bin/python"
+export PREFIX_COMPILER="$PWD/scripts/prefix/tomedo-compiler.py"
+export CODING_DISTILL_CACHE="$PWD/tomedo-evidence"
+export ORNITH_MODEL_CONFIG="/absolute/path/to/pinned/model/config.json"
+export TOKENIZER_MODEL="$(dirname "$ORNITH_MODEL_CONFIG")"
+export TRIAGE_MODE=local
+export TOMEDO_ICD_YEAR=2026
+export TOMEDO_EBM_QUARTER=2026Q4
+export TOMEDO_POSTGRES_MAJOR=17
+
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode api
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode collect
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode web
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode atoms
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode triage
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode distill
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode reduce
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode context --offline --context-tokens 100000
+"$PREFIX_PYTHON" -m pip freeze > "$CODING_DISTILL_CACHE/compiler-requirements.txt"
+
+To add a vendor export as an additional source before --mode api, set:
+export TOMEDO_API_DOCUMENT="/absolute/path/to/sanitized-official-api.md"
+export TOMEDO_API_VERSION="ACTUAL_VENDOR_API_RELEASE"
+If the API document has an official source URL, also set TOMEDO_API_SOURCE_URL.
+For that optional export, its local file URI otherwise identifies provenance; operator-supplied publisher
+authenticity is not independently verified. TOMEDO_API_VERSION must match the
+installation, not a guessed release. PostgreSQL 17 is a reference default,
+not a claim about the tomedo database. Set the actual supported major before
+collecting. Set the ICD year and EBM quarter for the applicable service date.
+For another EBM quarter, also provide TOMEDO_EBM_PDF_URL copied from the official
+KBV publication page. No automatic substitution of an older PDF is performed.
+A failed fetch or missing topic blocks publication; do not waive coverage gates.
+
+On brassclaw2, after explicitly copying the new compiler there, suitable paths
+are /root/prefix-compiler/tomedo-compiler.py and a NEW cache
+/root/prefix-compiler/tomedo-evidence. The existing isolated compiler interpreter
+is /root/prefix-compiler/.venv/bin/python and its pinned tokenizer/config is
+/root/prefix-compiler/model/. These paths do not assert a remote copy exists.
+Also make the archive available on that compiler machine and set
+TOMEDO_FINDINGS_DOCUMENT to its actual absolute path, or use a complete repo
+checkout with the default docs/archive/tomedo_v3.md location. Copying only the
+compiler does not supply the archive. No model weights or GPU are needed for
+local collection and tokenization.
+
+OUTPUT AND STABILITY
+
+Artifacts are under "$CODING_DISTILL_CACHE/generations/<hash>/":
+context_100k.md, vllm_prefix_template.jinja, evidence_cards.jsonl and
+prefix_manifest.json. The manifest records selected source/domain/topic cards,
+source version profile, rendered token counts, shared leading tokens and hybrid
+cache-block geometry. Builds preserve published generations on failure.
+Unchanged evidence and tokenizer produce a stable rendered prefix; refreshed
+sources can intentionally change it. Offline geometry is an assumption until
+verified against the actual serving configuration. Building does not create
+vLLM attention KV or recurrent state and does not prove task accuracy.
+
+This is reference context, not model training. The inherited Ornith profile
+checks 24 linear-attention and 8 full-attention layers and treats recurrent
+state separately from FP8 attention KV. INT4 weights do not imply INT4 KV.
+Actual cache reuse requires identical leading token IDs and runtime measurement.
+Activating a generated chat template automatically prepends this reference to
+all chat requests served by that template. Select a domain in a router/client
+if conditional use is desired; never add the same reference twice.
+
+SOURCES AND QUALITY LIMITS
+
+Configured primary sources are tomedo's public application and Server-Tools
+manuals, selected local API findings, attributed forum replies, an optional official API
+export, OpenAPI 3.1.1, HTTP RFC 9110,
+problem-details RFC 9457, OAuth security RFC 9700, mTLS RFC 8705, PostgreSQL and
+Psycopg manuals, Apple deployment/security guides, enacted GOÄ legal text and
+catalogue, the selected quarterly KBV EBM, KBV coding guidance, the selected
+annual BfArM ICD-10-GM, and BGB §§ 630f/630g for documentation and record access.
+Exact URLs, scope limits, versions and required topics are in the compiler.
+Generic OAuth/mTLS standards do not establish tomedo authentication behavior.
+No clinical guidelines or disease-management curriculum are configured.
+
+Original HTML bytes and declared character encodings are retained, including
+German umlauts. PDF originals and page-labelled derived text have separate
+hashes; neighboring pages accompany page cards. Tables may still require
+inspection of the original PDF. Whole cards are kept or omitted, never trimmed
+mid-clause to meet a token target. Mandatory topics must fit complete cards;
+coverage checks establish presence, not legal applicability or model expertise.
+Review cross-references, effective dates and local KV billing rules separately.
+
+LOCAL FINDINGS AND FORUM QUALIFICATIONS
+
+The archive selections retain endpoint tables, observed failure modes, partial
+write cautions and the three-step write sequence with the letzterNutzer warning.
+Original archive SHA256, source line ranges and excerpt hashes identify each
+selection. Patient/incident IDs, host addresses, retired component architecture,
+destructive SQL cleanup and clinical examples are omitted from the prefix.
+The original archive remains in the repo, unchanged; the compiler does not copy
+its entire potentially sensitive contents into the evidence cache.
+
+Local observations are dated 2026-08-22; the actual API/server release is unknown.
+This is a snapshot version, not an invented product release. Forum sources are
+Toni Ringling's two access/gateway replies dated 2026-07-16 and Jan-Ole Finkeisen's
+LLM-service instructions dated 2025-10-17. Full fetched HTML is retained locally
+for provenance, but only the selected technical answers enter the reference.
+The importer requires author, date and selection text to match; unexpected
+missing/ambiguous posts fail rather than importing unrelated clinical comments.
+
+The internal mTLS API findings and partner gateway restrictions describe different
+interfaces. Local HTTP success is not proof of supported use on every installation.
+Annotated JSON in the archive is pseudocode. The forum LLM curl/messages example
+has formatting/schema problems; preserve the quotation and its caution, validate
+against the actual interface, and never silently present it as tested runnable code.
+Claims about model availability, privacy and retention remain attributed statements,
+not independently verified deployment facts. No live production endpoint is probed.

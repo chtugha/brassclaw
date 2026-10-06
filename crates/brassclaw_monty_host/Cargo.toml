@@ -1,0 +1,23 @@
+[package]
+name = "brassclaw_monty_host"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Isolated Monty 1.0 task program hosting for the global orchestrator cutover"
+
+# Keep the new ABI outside the application graph until Phase 3a acceptance.
+[workspace]
+
+[dependencies]
+brassclaw_resources = { path = "../brassclaw_resources" }
+monty = { path = "../../vendor/monty-control/crates/monty" }
+monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
+sha2 = "0.10"
+num-traits = "0.2"
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[lints.rust]
+unsafe_code = "forbid"

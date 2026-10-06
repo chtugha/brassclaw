@@ -37,3 +37,23 @@ pinning and the global production dispatcher remain Phase 3a requirements.
 The original seven composition failures are still blocked by UUID-only legacy
 Thread loading; this test workspace neither bypasses that path nor activates the
 new global source.
+
+The isolated [`brassclaw_monty_host`](../../crates/brassclaw_monty_host/README.md)
+candidate now has ten real child-interpreter cases in `tests/child_host.rs`.
+They cover typed hostile text/u64/nested values, retained locals and mandatory
+result assignment, actual parent/child computation and independent task progress,
+foreign/stale/late continuation evidence, parked and busy cancellation, live
+shared duration changes without a usage reset, unsupported values/unbound calls,
+explicit source/stdout limits, eager async resumption and catchable-versus-terminal
+child exceptions. A completed child result remains evidence when a later live
+budget check rejects the parent. These cases are VM-boundary evidence; the
+candidate remains outside the production graph.
+
+Five `tests/global_host.rs` cases exercise the root hosting candidate against
+actual `global_mode.py`: complete boot work waits, early/incomplete/busy boot,
+opaque and empty-input task interleaving, an actual child exception, pending-call
+retention, malformed/oversized/extra-field rejection, foreign/stale replies and
+explicit shutdown. No successful Recipe/provider/durable finish is fabricated.
+Together with the ten child cases, these 15 checks and strict library/caller
+lints passed sequentially. Production dependency pins and driver wiring remain
+unchanged; this is not the seven composition tests' acceptance.

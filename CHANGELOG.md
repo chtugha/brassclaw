@@ -9,12 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(Monty / upgrade candidate)* Add an isolated root/child VM hosting crate with typed inputs/results, retained locals, correlated continuations, boot work-wait readiness and explicit cancellation/shutdown. Fifteen real-interpreter host tests and strict host/caller lints pass; production driver integration and the seven existing composition failures remain outstanding.
+- *(components / documentation)* Add the ToolSkill authoring guide covering IBS binding descriptors, Skill/PythonCode associations, immutable version selection, approval evidence and the distinction between binding and Tool execution.
+- *(prefix / validation)* Add shared structured-response citation checks, a bounded repair pass, Home Assistant YAML/static-schema validation and regression tests. Unsupported or unavailable checks remain explicit; static validation does not establish device/runtime success.
+- *(prefix / tomedo)* Add a technical-reference compiler, usage instructions, regression tests and provenance receipts for tomedo/API, macOS, PostgreSQL and billing/coding references, with clinical guidance excluded and local/forum evidence qualified.
+- *(prefix / evidence)* Record Home Assistant prefix evaluation, proof-of-concept and reactivation verification receipts.
 - *(authorization / capabilities)* Instance-wide tool-policy authorizer and a policy recheck after technical obligations are prepared; operation-approval resume is rejected by the instance authorizer. Production settings/dispatch cutover remains pending.
 - *(turns / database)* V089 links parent/child thread execution snapshots into a CAS-protected aggregate while retaining separate transcripts; external-auth interaction projection reads the selected persisted run state.
 - *(testing / PostgreSQL)* Native embedded-PostgreSQL composition fixtures and runtime regression coverage for admission and execution-state prerequisites.
 
 ### Changed
 
+- *(planning / components)* Add Phase 0a implementation and acceptance requirements for exact association approvals, complete immutable component/Tool artifacts, typed recursive bindings, actual ToolSkill preparation and durable retry/effect state. Integrate these contracts into runtime, policy, migration, WebUI and production cutover gates; this is plan work, not completed enforcement.
+- *(documentation / architecture)* Align root agent guides and Tool definitions with the Recipe, Skill, Tool and ToolSkill ground truth, including stable policy identity across retained versions/aliases and honest implementation boundaries.
+- *(prefix / Home Assistant)* Route compiler run mode through the shared structured-response validation path and document configuration-check prerequisites.
 - *(Monty / defaults)* Set compiled task-duration defaults to 600 seconds. Excluding idle/external waits and live task-budget accounting remain pending implementation.
 - *(runtime / inputs)* Carry worker attempt identity into Monty dispatch/cancellation; defer execution while accepted-message linkage is pending and expose exact submitted-input/history lookup contracts. Bound cancellation acknowledgement and allow callers to request the complete eligible prior history explicitly.
 - *(planning / architecture)* Expand `simplified_v3.md` with the Recipe error/revision contract, global tool settings, intent management, migration and measured acceptance. Specify a 600-second task-compute default, adaptive shared memory and disabled artificial token budgets. These settings are target requirements, not a completed runtime rollout.

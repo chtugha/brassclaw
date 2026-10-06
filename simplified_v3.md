@@ -2,9 +2,14 @@
 
 ## Binding Recipe architecture (v3)
 
-Read [recipe.md](recipe.md) before authoring or changing components. This contract
-supersedes older examples below where they conflict; it specifies the target,
-not completed runtime or database functionality.
+Read all four ground-truth guides before authoring or changing components:
+[recipe.md](recipe.md) for workflows and persisted IBS syntax,
+[skills.md](skills.md) for complete usages, recursive schemas and association
+approval, [tools.md](tools.md) for primitives, retained implementations, live
+policy and recovery, and [toolskills.md](toolskills.md) for IBS binding descriptors.
+Their component contracts govern the implementation steps below; historical
+examples do not override them. This plan specifies targets, not completed
+runtime or database functionality.
 
 - Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
   many Skills explain one Tool usage and have associated executable PythonCode;
@@ -17,7 +22,10 @@ not completed runtime or database functionality.
   execution steps; the existing direct dependent-chain exception still applies.
 - IBS/composition reads the newest activated, approved versions at task start
   from one consistent catalogue snapshot and pins exact UUID/version/checksum
-  references in BuildInstruction, including nested dependencies. Recipes carry
+  references in BuildInstruction, including Recipe/variant/step_link/input layout,
+  nested dependencies, actual Tool implementations and exact association approval.
+  Incompatible or unapproved newest active combinations fail before effects;
+  never silently downgrade or enter Tier 2. Recipes carry
   no version numbers. Execution, child steps, waits and resumption retain that
   selection; do not look up latest again during the task.
 - Approved versions are immutable. Changes create new versions; authored
@@ -31,6 +39,17 @@ not completed runtime or database functionality.
 - Rust-channel ToolSkill binding executes nothing and grants no permission.
   Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
   No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+- The Skill tells the Orchestrator how to use the Tool; its associated PythonCode
+  implements that usage. The ToolSkill tells IBS how to prepare the binding.
+  Neither descriptive metadata nor a code example is an executable association.
+- Exact-combination approval is separate from task selection and Tool permission.
+  Authored combinations require trusted Q1, human Q2 and behavioral evidence;
+  only verified system_seed bootstrap provenance permits null q2_ref with the
+  required integrity/Q1 and behavioral evidence. Source/status labels do not qualify.
+- Every retained Tool version/dispatch alias receives the same Tool's current
+  global policy. Persist invocation counts and effect status before dispatch
+  through the supported recovery contract; waits/reclaims/crashes do not reset
+  counts or permit replay of completed effects.
 
 Current code still has plain text substitution, fresh state in nested step
 execution and incomplete immutable version manifests/binding preparation. The
@@ -53,10 +72,22 @@ Klasse 22) getrennt gespeichert. Diese Trennung ist zulässig; sie macht einen
 Skill fachlich nicht zu reiner Prosa. Die vorhandenen Klassenbezeichnungen sind
 Consumer-Klassifikationen, keine Hierarchie von kleinen und großen Skills.
 
-**Umsetzung und Abnahme:** explizite Skill–PythonCode-UUID-/Revisionszuordnung
-über Store, IBS/Composer und WebUI sicherstellen; beide Teile gemeinsam sichtbar
-und einzeln bearbeitbar machen. Q1 prüft fehlende/falsche Verweise, Toolbindung
-und ausführbaren Code; Q2 und laufende Komponentenrevisionen bleiben erhalten.
+**Umsetzung und Abnahme:** die vollständigen Zielverträge
+`skill-association/1` und `skill-association-approval/1` aus skills.md über Store,
+Validatoren, IBS/Composer und WebUI umsetzen. Die Zuordnung verbindet stabile
+Skill-/PythonCode-/ToolSkill-/Tool-UUIDs und Nutzungsverträge; der getrennte
+vertrauenswürdige Approval-Datensatz belegt die exakt geprüften Revisionen,
+Checksums und transitiven Abhängigkeiten. Beide Skill-Teile gemeinsam sichtbar
+und durch neue unveränderliche Versionen einzeln bearbeitbar machen; betroffene
+Kombinationen erst mit passender neuer Approval-Evidenz gemeinsam aktivieren.
+Unveränderte Skill-Prosa darf ihre Revision behalten. Einzelne validierte Zeilen
+oder ein Taskmanifest sind kein Kombinationsnachweis und keine Toolfreigabe.
+Autorreview, unterstützte Q1-Audits, Verhaltensnachweise und menschliches Q2
+stellen bei authored-Versionen die fachliche Übereinstimmung vor Aktivierung
+her; trusted system_seed folgt seinem gesonderten Evidenzvertrag. IBS prüft
+beim Taskstart strukturierte Verweise/Verträge und bestätigte Evidenz, nicht
+Prosa-Bedeutung oder Python-Geschäftslogik mittels LLM. Laufende ausgewählte
+Revisionen und ihre ursprünglichen Approval-Datensätze bleiben erhalten.
 Vorhandene Prosa-Zeilen nicht blind als vollständig migrierte Skills markieren;
 Zuordnungen prüfen und fehlende als Migrationsbedarf anzeigen. Fachliche
 Mehrtool-Übersichten in Extension-Kontext überführen und bestehende UUID-Verweise
@@ -70,6 +101,12 @@ Diese Anforderungen sind Planinhalt, keine Behauptung fertiger Implementierung.
 **Status:** Implementierung begonnen; Voraussetzungen teilweise umgesetzt, kein Produkt-/Daten-Cutover. Fortschritt und verbleibende Nachweise: `docs/plans/simplified-v3-implementation.md`.
 **Stand:** 2026-10-06 (Plan nach Einzelprüfung überarbeitet: Recipe-Vertrag, globale Toolregeln, Live-Limits, Intents, Migration und Leistungsabnahme)
 **Geltungsbereich:** gesamte BrassClaw-Codebase; Schwerpunkt Reborn, globaler Orchestrator, Authentifizierung, Autorisierung, Runtime-Auswahl, WebUI und Persistenz.
+
+**Ground-truth-Abgleich 2026-10-06:** Phase 0a ergänzt verbindliche Arbeitspakete
+für Assoziation/Approval, vollständige Versionierung, typisierte Bindings,
+ToolSkill-Vorbereitung und den exakten Retryvertrag. Phasen 3/3a/5/6/7/8 und die
+globale Abnahme müssen diese Verträge nachweisen. Die Ergänzung ist Planarbeit;
+sie meldet keinen neuen Implementierungs- oder Testfortschritt.
 
 ## 1. Zielbild
 
@@ -162,7 +199,7 @@ Diese Fragen werden in Phase 0 als kurze, verbindliche Architekturentscheidung f
 
 Jedes Umsetzungspaket besteht aus Vertrag, Änderung und zugehörigem Nachweis. Zuerst die betroffenen Verbraucher und Datenmigration entwerfen, dann implementieren, danach alte Verträge entfernen. Die produktive Migration erfolgt in Phase 8. Das vollständige Gesamtinventar darf unabhängige, abgegrenzte Verbesserungen nicht blockieren; für den jeweiligen Eingriff müssen alle betroffenen Verbraucher geklärt sein.
 
-Priorität: Recipe-Vertrag und globale Toolentscheidung festlegen → Monty-1.0.0-Migration und Ressourcenvertrag klären → Monty-Fortsetzungen, faire Ausführung und Live-Budgets technisch nachweisen → Produktionsboot/Dispatch verdrahten → Intents, Komponentenrevisionen und WebUI vervollständigen → Datenmigration und produktiven Wechsel abnehmen. Phasen 1–3 brauchen vor Phase 3a klare Zielverträge; ihre gesamte Datenbereinigung muss dafür noch nicht abgeschlossen sein.
+Priorität: Komponentenverträge aus Phase 0a und globale Toolentscheidung festlegen → Monty-1.0.0-Migration und Ressourcenvertrag klären → Monty-Fortsetzungen, faire Ausführung und Live-Budgets technisch nachweisen → Komponenten-/Binding-/Retrypfade implementieren und Produktionsboot/Dispatch verdrahten → Intents und WebUI vervollständigen → Datenmigration und produktiven Wechsel abnehmen. Phasen 0a und 1–3 brauchen vor Phase 3a klare Zielverträge; ihre gesamte Datenbereinigung muss dafür noch nicht abgeschlossen sein. Unabhängige Infrastrukturproben dürfen vorangehen, aber gewöhnliche produktive Recipe-Ausführung und Cutover benötigen die tatsächlich durchgesetzten Komponentenverträge und ihre Caller-Level-Abnahme.
 
 ### Phase 0 — Inventar, Bedrohungsmodell und Baseline
 
@@ -176,6 +213,151 @@ Priorität: Recipe-Vertrag und globale Toolentscheidung festlegen → Monty-1.0.
 8. Monty-Lebenszyklus vollständig erfassen: alle VM-Erzeuger und Resume-Pfade, Worker-/Trigger-Startreihenfolge, AcceptedMessageRef-Auflösung, Signale, Gate-Fortsetzungen, Subagent-/MCP-Aufrufe, Reply-Persistenz, `LimitedTracker`, stdout/Token-Zähler, Shutdown und Wiederanlauf. Den getaggten Monty-Quellcode aus Cargo.lock prüfen: Welche Grenzen gelten kumulativ, welche beim Resume und welche während Idle? Keine erfundenen Reset-/Snapshot-APIs in den Implementierungsplan übernehmen.
 
 **Abnahmekriterium:** Eine Review-fähige Entscheidungsmatrix benennt für jede entfernte Dimension Ersatz/Disposition und Datenmigration; kein sicherheitsrelevanter Scope-Verbrauch bleibt ungeklärt.
+
+### Phase 0a — Ground-truth-Komponentenverträge implementieren
+
+Diese Arbeitspakete sind verpflichtende Voraussetzungen der produktiven Recipe-
+und Cutover-Abnahme, nicht nur Dokumentationsaufgaben. Verträge vor Änderungen
+an Stores, Host-Adaptern und Runnern festlegen; Implementierung und relevante
+Tests mit den betroffenen Verbrauchern koordinieren. Die Runtime-Arbeiten bleiben
+Infrastruktur, keine spezialisierten Rust-Tools für fachliche Workflows.
+
+1. **Komponentenrollen und aktuelle Lücken inventarisieren.** Tool (0) als
+   registriertes Rust-Primitiv, ToolSkill (13) als nicht ausführende IBS-Metadaten,
+   Skill (1–3) als Prosa plus ausdrücklich zugeordneter PythonCode (22), Recipe
+   (21) als geordnete Komponenten-/Datenflussanleitung behandeln. Der Skill
+   erklärt dem Orchestrator die Toolbenutzung; Code implementiert sie; ToolSkill
+   bereitet das Binding vor. Tatsächliche Store-Konstruktoren, Validatoren,
+   Recipe-Editoren, Seeder, Retrieval, Composer und Hostpfade den Anforderungen
+   zuordnen. Fehlende strukturierte Felder/Verbraucher als Umsetzungslücke
+   ausweisen; keine neuen Felder in bestehende APIs hineinbehaupten. Neues
+   ToolSkill-Metadatum braucht keine Rust-Kompilation; eine neue Primitive
+   benötigt ihren getrennten Build-/Validierungs-/Registrierungspfad.
+2. **Assoziation und Approval getrennt speichern und prüfen.** Die exakten
+   `skill-association/1`- und `skill-association-approval/1`-Verträge aus skills.md
+   über versionierte Migrationen, neutrale Ports und die unterstützten
+   Store-/Reviewpfade implementieren. Stabile UUID-Verweise bleiben versionslos;
+   die unveränderliche Assoziation gehört zur ausgewählten Skillrevision.
+   Der vertrauenswürdig erzeugte Approval-Datensatz enthält Association-Checksum,
+   vollständige eindeutige Komponentenreferenzen mit Klasse/Revision/Checksum,
+   validation_mode, Q1-/Q2- und reale Verhaltensnachweise. Checksum-Abdeckung
+   umfasst ausführungsrelevante Metadaten, Abhängigkeiten und Toolimplementierungen.
+   Doppelte/unbekannte Felder, falsche Klassen, fehlende Referenzen und nicht
+   passende Evidenz ablehnen. Reviewdatensätze sind weder selbst ausgestellte
+   Freigaben noch Invocation-Leases. Neue Kombinationen benötigen neue Evidenz,
+   auch bei kompatiblen Änderungen; unveränderte Komponenten dürfen wiederverwendet
+   werden. Autorreview/Q1/Q2/Verhalten prüfen Bedeutung vor Aktivierung; IBS
+   verifiziert beim Start nur strukturierte genehmigte Kombinationen, ohne LLM.
+3. **Approval-Provenienz eindeutig machen.** authored-Kombinationen benötigen
+   erfolgreiche vertrauenswürdige Q1-, menschliche Q2- und Verhaltensnachweise.
+   Nur der kontrollierte first-party system_seed-Bootstrap darf q2_ref=null
+   führen; auch dort sind die erforderlichen Q1-/Integritäts- und beobachteten
+   Verhaltensnachweise nötig. source=system oder validation_status=validated
+   reichen nicht. Importierte Altzeilen ohne Evidenz nicht als vollständig
+   migriert markieren; fehlende Zuordnungen/Verträge/Nachweise sichtbar machen
+   und vor gewöhnlicher Aktivierung auflösen. Existierende Insert-Defaults und
+   Content-Checksums nicht als fertige Ziel-Approval-Infrastruktur ausgeben.
+4. **Vollständige unveränderliche Auswahl erhalten.** Matching und IBS verwenden
+   eine konsistente Kataloggeneration und wählen die neuesten aktivierten,
+   genehmigten Versionen. Recipe-UUID/Revision/Checksum, Variante, exakter
+   step_link, ausgewählte Schritte/Reihenfolge/Inputlayout, alle Tool-/ToolSkill-/
+   Skill-/PythonCode- und transitiven Kontext-/Codeabhängigkeiten sowie Approval-
+   IDs gemeinsam im ephemeral BuildInstruction auflösen und über den Task-
+   Snapshot-/Fortsetzungsvertrag festhalten. Eingebettete Varianten/Layoutdaten
+   innerhalb der ausgewählten Reciperevision identifizieren; keine unabhängige
+   Variantenversions-API erfinden. Inkompatible neueste aktive Verträge oder
+   fehlende Kombinationsapproval führen vor Effekten zum expliziten Fehler;
+   kein stiller Rückgriff auf ältere Versionen, kein Tier-2-Fallback. Laufende
+   Tasks behalten ihre ursprüngliche Auswahl, ohne erneutes Matching/latest-
+   Lookup oder neue Q2-Prüfung nur wegen einer Ersatzversion.
+5. **Tatsächliche Toolimplementierungen pinnen.** Für jeden ausgewählten Tool-
+   Stand unveränderliche Definition und kompatibles Implementierungshandle/
+   Artefakt inklusive tatsächlichem Adapter-/ABI-Vertrag auflösen und erhalten.
+   Metadatenchecksum plus veränderliche Datei oder latest-Handler unter demselben
+   Namen reicht nicht. Laden/Registrieren muss exakt die ausgewählte Implementierung
+   bereitstellen; fehlende Artefakte, falsche Checksums oder inkompatible ABI vor
+   Effekten ablehnen. Alte Definitionen, Implementierungen und Approval-Evidenz
+   bleiben verfügbar, solange Tasks/Child-Ausführung/Checkpoints sie benötigen.
+   Bei inkompatiblen Host-/Binary-Upgrades offene Arbeit drainen/reconciliieren,
+   statt eine nicht nachgewiesene Weiterverwendung alter Ausführung zu behaupten.
+6. **Exakte typisierte Bindings bis zum Runner umsetzen.** Die in recipe.md definierte
+   whole-value-Referenzgrammatik `{{vars.name}}` mit Namen `[a-z][a-z0-9_]*`
+   nur in deklarierter Referenzmetadatenposition parsen; keine Ausdrücke,
+   eingebetteten Textfragmente oder Auswertung von Benutzerdaten. Captures
+   explizit validieren/typisieren; fehlgeschlagene Regexverfeinerung darf nicht
+   ungeprüft zum Rohslot werden. Schrittlokale Namen auf Taskinputs, typisierte
+   Konstanten oder benannte frühere Ergebnisse abbilden und separat vom Python-
+   Quelltext als `inputs["local_name"]` bis in den tatsächlichen Monty-Pfad
+   transportieren. Plain-Text-Quellsubstitution aus dem Zielpfad entfernen.
+   Die in skills.md definierten rekursiven ValueSchema-, Presence-/Null-/Default- und Kompatibilitäts-
+   regeln implementieren: Listelemente, Objektfelder, typisierte Zusatzfelder,
+   unabhängig materialisierte Defaults nur für fehlende Consumerinputs und keine
+   erfundenen Outputs. Numerische Transport-/Toolgrenzen und tatsächlich berechnete
+   Argumente vor Dispatch prüfen; keine Bool-als-Integer-Coercion, Rundung oder
+   Clamping. Startup prüft deklarierte Datenkanten, nicht Ergebnisse noch nicht
+   ausgeführter Schritte. Konkrete Inputs/Outputs prüfen, sobald sie verfügbar
+   sind; optionale/nullfähige Felder und Listenindizes benötigen sichere Guards.
+7. **Komponentenschritte und interne Assembly validieren.** Persistierte IBS-
+   Syntax aus recipe.md verwenden: knowledge/stepnumber und vorhandene Typen;
+   keine erfundenen channel/step_id/llm-Insertfelder. Jeder component-Schritt
+   muss genau eine UUID enthalten; leere und mehrfache Includes ablehnen.
+   Interne PythonCode-Komposition erlaubt geordnete kleine Bausteine mit
+   vollständigen Verträgen; zyklische/fehlende Referenzen, Symbol-/Inputkonflikte
+   und unvereinbare Verträge ablehnen und alle Versionen pinnen. Pure Logic
+   macht null Toolcalls; eine Benutzung normalerweise einen. Unabhängige
+   Dispatches brauchen separate Schritte. Nur die direkte abhängige Kette aus
+   recipe.md erlaubt mehrere Calls als eine Einheit, mit nachgewiesener Binding-
+   Abdeckung; kein mehrtooliger Leaf Skill und kein Umgehen der Paarregel.
+8. **ToolSkill-Metadaten tatsächlich vorbereiten.** Die ausgewählte class-13-
+   Referenz und genehmigte Assoziation deterministisch zum class-0-Tool, dessen
+   tatsächlichem Dispatch-ID-/Callable-/Adaptervertrag und ausgewählter
+   Implementierung auflösen. Die normale Rust-Bindingstufe direkt mit der
+   passenden class-22-Ausführungsstufe paaren und Verfügbarkeit prüfen, bevor
+   Code darauf zugreift. ToolSkill-Parametervertrag, registriertes Toolschema,
+   fixe Selektoren und Skill-Argument-/Computed-Argument-Verträge müssen
+   kompatibel sein. Legacy-param_template oder beschreibender content führt
+   nichts aus und überschreibt keine Codeargumente. Aktuelle rust_directives
+   bzw. leere tool_bindings aus Seedhelpers sind kein Beleg dynamischen Ladens;
+   jeden konkreten Vorbereitungs-/Hostpfad durch den Caller nachweisen.
+9. **Exakten Fehler-/Retryvertrag aus skills.md verdrahten.** failure mit
+   action, max_attempts, idempotency, idempotency_evidence_ref und
+   retryable_outcomes strukturiert prüfen und im Orchestrator-/Runnerpfad
+   durchsetzen. max_attempts ist eine positive ganze Zahl ohne Boolwerte,
+   einschließlich des ersten Dispatchs; stop verlangt 1, retry mindestens 2.
+   Zähler an der logischen Schrittinvocation dauerhaft über Waits, Reclaim,
+   Attemptwechsel und Recovery erhalten; Ausführungsattempt und Invocation
+   unterscheiden. retry erlaubt nur ausdrücklich gelistete
+   confirmed_no_effect_transient/unknown_completion mit vertrauenswürdiger
+   read_only- oder getesteter dauerhafter deduplicated-Evidenz für diese Nutzung.
+   not_assumed erlaubt keine Retries. Bei Deduplication denselben dauerhaften
+   Key und dieselben Argumente über den gesamten Fortsetzungszeitraum erhalten.
+   Timeout ist kein No-Effect-Nachweis; unbekannte Fertigstellung braucht vom
+   Vertrag abgedeckte Evidenz oder explizite sichere Reconciliation. Legacy-
+   ignore/retry/fallback-Labels allein erfüllen diesen Vertrag nicht. Aktuelle
+   Policy, Authbedarf, Cancellation, Claims/Attempts und Ressourcen vor jeder
+   zulässigen Wiederholung prüfen; Fehlerantworten nie zu Erfolg umdeuten.
+10. **Durablen Dispatch-/Effektvertrag und Aktivierung abnehmen.** Vor Dispatch
+    Invocation/Versuchszähler, Dispatchabsicht, ausgewählte Workflowreferenzen,
+    nötigen Key/Argumente und Fortschritts-/Effektstatus über unterstützte
+    Persistenz festhalten. Scheitert die notwendige persistente Aufnahme, kein
+    unprotokollierter Dispatch. Unterbrochene Aufrufe ohne Ergebnis sind ungeklärt,
+    nicht automatisch effektlos. Ergebnisse/Completion dauerhaft der Invocation
+    zuordnen; bestätigte Effekte bei Output-, Reply- oder Folgeschrittfehlern
+    niemals wiederholen. Geheimnisse bleiben im geschützten Hostbereich, nicht
+    in model-sichtbaren Fortsetzungen. Tatsächliche Transaktionen/Unique-Keys/
+    Claim-Fencing verwenden, keine atomare DB-plus-Fremdservice-Transaktion
+    behaupten. Rust stellt Persistenz/Fencing bereit; Recipe/Python sequenziert
+    fachliche Wiederholung/Reconciliation. Zusammenhängende aktive Generationen
+    erst nach gültigen Verträgen, Approval, Artefaktverfügbarkeit und passenden
+    Binding-/Runnernachweisen veröffentlichen. Altaufgaben behalten ihr Manifest.
+
+**Abnahmekriterium:** Für jeden Vertrag sind Store/Migration, Validator,
+IBS/Composer, Host/Runner, Aktivierung und relevante WebUI-Verbraucher benannt
+und umgesetzt, soweit sie den Vertrag verwenden. Reale PostgreSQL-/Caller-Level-
+Tests aus Phase 7 belegen die Zielpfade; kein bloßer Schemaentwurf, metadata-
+Insert oder Helfertest gilt als vollständige Durchsetzung. Fehlende Nachweise
+sperren gewöhnlichen produktiven Recipe-Cutover, nicht unabhängige sichere
+Entwicklungsarbeit oder explizite eingeschränkte Draft-Validierung.
 
 ### Phase 1 — Einzige Instanz- und Betreiberidentität
 
@@ -206,8 +388,25 @@ Priorität: Recipe-Vertrag und globale Toolentscheidung festlegen → Monty-1.0.
 4. Einen festen Standard für nicht vertrauenswürdige Ausführung festlegen: sandboxed Prozesslauf, kontrolliertes Filesystem, brokered egress, minimale Umgebung, Secret-Broker, Ressourcenlimits und Audit. Wo Betriebssysteme unterschiedliche Backend-Implementierungen benötigen, hinter einer internen Plattformabstraktion, nicht als wählbare Edition/Profile.
 5. Eine zentrale Toolentscheidung am `CapabilityHost` durchgängig verdrahten: Tier 0/1/2, First-party, MCP, Subagenten und administrative Hosttools verwenden dieselbe aktuelle Instanzkonfiguration. Globale Einstellungen speichern und als versionierten wirksamen Satz bereitstellen. Engine-Leasefilter und statische `Ask`-Defaults dürfen keine zusätzliche Freigabeschicht erhalten. ToolSkill-Bindung ist Verfügbarkeit, keine Berechtigungsvergabe.
 6. Globale Toolregeln live übernehmen: Settings-Schreibvorgänge sind revisionsgeprüft, parallele Änderungen erzeugen keinen stillen Verlust. Vor jedem Dispatch die aktuelle Revision prüfen; eine Sperrung verhindert nachfolgende Aufrufe auch in laufenden Recipes. Bereits gestartete Aufrufe anhand ihres Status behandeln, ohne erneuten Dispatch. Technische Obligations-/Ressourcen-/Auth-Regeln bleiben erhalten; keine Einzelfreigaben wieder einführen.
+
+   **Stabile Policyidentität gemäß tools.md:** jedes registrierte Capability-ID-/
+   Callable-Alias eines Tools einschließlich aller von Tasks behaltenen alten
+   Versionen vertrauenswürdig auf dieselbe stabile Tool-UUID abbilden. Eine
+   Sperrung dieser Identität sperrt jeden folgenden Dispatch über diese Versionen/
+   Aliase. Umbenennung darf weder eine neue Allow-Regel erzeugen noch eine alte
+   Entscheidung konservieren. Fehlende, widersprüchliche oder mehrdeutige
+   Zuordnung sowie fehlende/ungültige aktuelle Policy führen zu fail closed.
+   Der heutige Capability-ID-basierte Authorizer ist Ausgangspunkt, kein Beleg
+   einer vorhandenen UUID-basierten Policy/API; Mapping und Konsistenz tatsächlich
+   implementieren. Diese Live-Entscheidung bleibt vom gepinnten Code getrennt.
+
 7. `RuntimeKind`/MCP/FirstParty/System-/Prozess-Lanes nur dann zusammenlegen, wenn Sandbox, Secret-Übergabe, Netzwerk und Ergebnis-/Prozesskontrolle gleichwertig sind. Backend-Auswahl darf nicht mehr an Produktedition, User oder Runtime-Profil gekoppelt sein.
 8. Tests beweisen: fehlender/ungültiger Betreiber-Token sperrt Verwaltung; global gesperrte Tools erzeugen keine neuen Effekte; globale Zulassung erfordert keine zusätzliche Aufruffreigabe; Loop/Extension kann die globale Einstellung nicht umgehen. Aufruf aus allen Produkt-/Toolpfaden, Live-Sperrung, parallele Settingsänderung, Sandbox sowie Netzwerk-/Secret-Broker prüfen. Eine angenommene Aufgabe benötigt keine Browser-Session für jeden Toolcall.
+
+   Zusätzlich Version 1 suspendieren, Version 2 mit geänderter Dispatch-ID/Alias
+   aktivieren und das Tool global sperren: beide Versionen verweigern folgende
+   Calls. Fehlende/konfligierende Mappings und fehlende Policy verweigern Dispatch;
+   kein gespeichertes Bind-Time-Allow ersetzt die aktuelle Entscheidung.
 
 ### Phase 3a — Globalen Monty beim Boot starten und dauerhaft betreiben
 
@@ -274,6 +473,15 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 
    Recipe, Variante, `step_link`, ToolSkills, PythonCode und LLM-Kontextkomponenten mit ihren tatsächlich verwendeten Revisionen/Checksums am Vorgang festhalten. Aktive und suspendierte Vorgänge verwenden diese Revisionen weiter; neue validierte Revisionen gelten für folgende Vorgänge. Alte benötigte Revisionen nicht vorzeitig löschen. IBS bleibt ein Compiler mit ephemeral `BuildInstruction`; keine neue persistente Instruction-Tabelle einführen. Retainierte Programmausführung und Revisionsreferenzen nach dem bestehenden Fortsetzungsvertrag halten. Monty-Root-Code bleibt für die Dienstgeneration fix und wechselt nur kontrolliert nach Reconciliation; Ressourcen- und Toolsettings wechseln live ohne Code-Neustart.
 
+   Phase 0a vollständig anwenden: auch Tooldefinitionen und tatsächliche
+   Implementierungshandles/Artefakte samt kompatiblem Adapter/ABI, Skill-
+   Assoziationen, exakte Approval-IDs, Inputlayout und alle transitiven
+   Abhängigkeiten aus derselben Generation pinnen und erhalten. Bei fehlender
+   Kombinationsapproval oder inkompatiblen neuesten aktiven Verträgen vor
+   Effekten scheitern; keine ältere Version oder latest-Handler einsetzen.
+   Tatsächliche ToolSkill-Vorbereitung und typisierte inputs-/Ergebnishandoffs
+   durch verschachteltes host.run_program und Wait/Resume verifizieren.
+
 7. **Runner-Leases und Ownership der Ausführung erhalten.** `brassclaw_reborn/src/turn_runner.rs` bleibt für Claim/Heartbeat, Fristen und Exit-Anwendung zuständig und übergibt Vorgänge über den neutralen Port. Keine Veränderung der Recipe-Schrittreihenfolge in Rust. Aktuell `invoke_driver` unter `tokio::select!`/Timeout zu droppen darf künftig nicht die vom Dienst besessene globale VM zerstören oder unbeaufsichtigte Side Effects weiterlaufen lassen. Abbruch muss als adressiertes Ereignis bestätigt werden; vor jedem Dispatch/Reply prüfen, dass Run/Attempt/Lease noch aktuell sind. Warteschlangenzeit, Claim-Laufzeit, ausführende Zeit und Gate-Wartezeit explizit unterscheiden. Verlorener Claim verhindert neue Effekte/Replies durch den alten Attempt. Bestehende Trusted-Trigger-Minting- und Kernel-Grenzen erhalten; ein globaler Kanal ist keine Trusted-Ingress-Abkürzung.
 
    Der aktuelle Worker wartet innerhalb `execute_claimed_run` auf das ganze Driver-Ergebnis. Bei einem Task-Yield daher über bestehende Suspend-/Gate-/Checkpoint-Transitions den Wartezustand samt Fortsetzungsreferenz persistieren und den Worker für andere Claims freigeben; Resume erst nach neuem gültigem Claim. Eine blockierende `oneshot` pro vollständig wartendem Parent löst das Problem nicht. Queue-Admission darf einen schon bestehenden durable Run nicht verlieren; Fehler zwischen Submit, Mark-Submitted, Enqueue und Acknowledge müssen über die vorhandenen Idempotenz-/Replay-Regeln wiederaufnehmbar bleiben. Für Replies/Events die tatsächlich verfügbaren Store-Transaktionen und Unique-Keys prüfen, nicht eine nicht vorhandene atomare Cross-Store-Operation voraussetzen.
@@ -291,6 +499,16 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 11. **Shutdown, Crash-Recovery und Codewechsel koordinieren.** `RebornRuntime::shutdown` erweitern: Admission/Produzenten schließen → bestehende Vorgänge bounded drainen oder adressiert abbrechen/suspendieren → Ergebnisse/Status persistieren → globalen Dienst stoppen und seine Task joinen → verbleibende Store-/Provider-Handles freigeben → Embedded-PG zuletzt stoppen. Fehlerpfade derselben Reihenfolge folgen. Für Neustarts einen persistierten Run-/Attempt-/Effect-Reconciliation-Vertrag verwenden; die in RAM gehaltene VM ist kein Snapshot. Keine automatischen Neuversuche eines gesamten Runs nach VM-Crash, Reply-DB-Fehler oder Timeout, wenn externe Effekte bereits erfolgt sein können. Bestätigte Effekte nicht wiederholen; unbekannter Effektstatus wird als ungeklärt sichtbar und benötigt sichere, operationsspezifische Klärung. Kein „exactly once“ für externe Systeme behaupten, die weder Idempotency-Key noch Statusabfrage unterstützen. Neue VM nur durch den Supervisor und erst nach Statusklärung aktivieren; fataler Fehler darf keine parallele Ersatzinstanz erzeugen. Keine stille Tier-2- oder Per-Chat-Fallback-Ausführung.
 
    Reconciliation als konkrete Betreiberfunktion vorsehen: betroffener Vorgang, bestätigte/ungeklärte Effekte, vorhandene Idempotency-Keys/Statusabfragen und zulässige Fortsetzung anzeigen. Das ist Fehlerbehandlung, keine zusätzliche Toolfreigabe. Authentifizierte Diagnose/Repair muss bei fehlgeschlagenem Orchestratorboot möglich bleiben, ohne Turn-Ingress freizugeben; bestehende CLI-Verwaltung wiederverwenden. Fehler eines begonnenen Recipe gemäß §1.1 behandeln.
+
+   Den durablen Dispatch-/Retryvertrag aus Phase 0a vor dem realen Hostcall
+   anwenden: Invocation, Dispatchabsicht und Versuchszähler persistieren,
+   Completion/Effektstatus und Ergebnis getrennt nachvollziehbar festhalten.
+   Crash zwischen Aufnahme, Dispatch und Completion führt ohne sichere Evidenz
+   zu ungeklärtem Status. Restore übernimmt Zähler, Argumente/Key, ursprüngliche
+   Versionen und bestätigte Effekte; ein neuer Worker-/Dienstattempt setzt nichts
+   zurück. Zulässige Wiederholung folgt exakt skills.md, einschließlich aktueller
+   Policy/Freshness und outcome-spezifischer Sicherheitsnachweise. Fehler beim
+   notwendigen persistierten Dispatchrecord verhindern neue Effekte.
 
 12. **Zusammenhängend migrieren und abnehmen.** `PersistentMontyDriver` zum Übergabeadapter machen oder durch einen klar benannten Adapter ersetzen; Registry ausschließlich als fachliche Daten-/Continuation-Ablage behalten, falls erforderlich, niemals für globale Chat-VMs. `session_registry.rs`, Engine-/Crate-CLAUDE, `docs/agents-v3/{01-architecture-overview,12-agent-loop,13-orchestrator-default-py}.md`, Architektur-Prefix, Boot-Seeds und C.6-Planverweise auf das Ziel ausrichten. Geänderte Systemkomponenten samt Checksums mit Seeder/Repair migrieren; Python-Codeänderung im Dateisystem allein erreicht produktive DB-Komponenten nicht. Vorher alte Inflight-Runs drainen/reconciliieren; neue Ereignis-/Codegenerationen dürfen keine alten RAM-Fortsetzungen übernehmen. „VM gestartet“ im Readiness-Vertrag durch einen echten Handshake-Test belegen, nicht durch `Option::is_some()` oder Seed-Zählung.
 
@@ -316,6 +534,8 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 | Lange Python-Schleife und volle Workqueue | Begrenzte Zeitscheiben; andere Aufgaben, Cancel und Settings erreichen die definierten Reaktionszeiten; kein Rust-Recipe-Loop. |
 | Recipe-Schritt scheitert nach erfolgreichem Toolcall | Kein stiller Tier-2-Neustart oder Tool-Replay; bestätigte und ungeklärte Effekte sowie Fehlerantwort korrekt persistiert. |
 | Komponentenrevision während Task-Wait ändern | Fortsetzung verwendet ihre ursprünglichen Revisionen; folgende Vorgänge verwenden die neue validierte Revision; globale Toolregeln bleiben aktuell. |
+| Retainierte Toolimplementierung während Wait ändern | Alter Task nutzt ursprüngliches Artefakt/Adapter und Approval; neuer Task nutzt den neuen genehmigten Stand; fehlendes altes Artefakt erzeugt expliziten Fehler statt latest-Substitution. |
+| Reclaim/Crash zwischen Dispatchabsicht, Effekt und Completion | Invocation-Zähler und Key/Argumente bleiben; fehlende Completion ist ungeklärt, nicht effektlos; nur genehmigte sichere Wiederholung/Reconciliation, keine neue VM als Replay-Abkürzung. |
 | Tokenbudgets ausgeschaltet, Inhalte über bisheriger Budgetkonstante | Retrieval, Vorwissen, History und Taskverbrauch werden nicht durch künstliche Tokenbudgets begrenzt; Recipe-Hint und erneutes Retrieval beachten denselben Schalter. Tokenzählung funktioniert weiter; technische Modellgrenzen bleiben wirksam. |
 | Settingspersistenz / Runtime-Acknowledge scheitert | Kein falscher Übernahmeerfolg; Ziel-/Effektivrevision und Fehler sichtbar; kontrollierter Wiederanlauf. |
 
@@ -348,6 +568,19 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 12. WebUI-Settings API zentralisieren und generierte/vertraglich getestete Request-/Response-Schemas nutzen, damit UI und Server dieselbe Instanzkonfiguration darstellen.
 13. UI-Tests decken vollständige Betreiberverwaltung, fehlende Rollenwahl, globale Tools, Intents/Varianteneditor und Matching-Test, Live-Monty-Limits, Ziel-/Effektivrevision, redigierte Secrets und Zugangsschutz ab. Settings-Erfolg durch tatsächliches Runtime-Verhalten belegen.
 14. Chat-Senden, externe Auth-Fortsetzung und Cancel als Eingabe-/Control-Übergabe betreiben. Operationsbezogene Tool-Gate-Resolve-Pfade entfallen; Q2 behält seine eigene menschliche Validierungsroute. Chatoperationen und SSE-/WS-Reconnect erzeugen/stoppen keine globale VM. Startup/Recovery/Shutdown zeigen tatsächlichen Status und bestätigen nur dauerhaft aufgenommene Arbeit.
+15. **Komponenten und Approval zusammenhängend verwalten.** Skill-Prosa und
+    zugeordneten PythonCode gemeinsam sichtbar, aber als neue unveränderliche
+    Revisionen bearbeitbar machen. ToolSkill-Bindingmetadaten und Toolimplementierung
+    getrennt anzeigen; Beschreibung ist kein ausführbarer Code. Vollständige
+    Assoziation, ausgewählte/geprüfte Revisionen, Approval-Provenienz und fehlende
+    Verträge/Evidenz darstellen. Entwurf, individuelle Validierung, exakte
+    Kombinationsapproval, Aktivierung und tatsächliche Callable-Verfügbarkeit
+    unterscheiden. Unterstützte Store-/Review-APIs mit Phase 0a implementieren,
+    nicht aus heutigen Konstruktoren herleiten. Fehlende Approval/Artefakte oder
+    inkompatible Verträge verhindern Aktivierung; unveränderte Skillrevisionen
+    dürfen mit separat genehmigten neuen Kombinationen wiederverwendet werden.
+    UI-/API-Tests prüfen authored versus trusted system_seed ohne Label-Bypass,
+    konkurrierende Revisionen und unveränderte historische Taskauswahl.
 
 ### Phase 6 — Datenbank-, Dateisystem- und Secret-Migration
 
@@ -358,6 +591,20 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 5. Schema-, Index-, Constraint- und nötige Namespaceänderungen durch neue versionierte Migrationen einführen. Bereits angewandte Migrationen und deren Prüfsummen unverändert lassen. Komponentenchecksums sind ein gesonderter Integritätsvertrag. Datenmigrationen wiederaufnehmbar und idempotent gestalten; kein stilles Löschen produktiver Daten.
 6. Integrationstests mit alten und neuen Datenständen, Kollisionen, Teilfehlern, Wiederanlauf und Rollback/Restore-Fall durchführen.
 7. Task-/Attempt-/Continuation-/Reply-Beziehungen sowie Recipe-UUIDs, Varianten, `step_link`, Komponenten-Includes, `dependency_registry` und Intent-Zuordnungen vollständig erhalten bzw. konsistent remappen. Migrationsprüfung weist jede Referenz auf eine vorhandene passende Revision nach; keine dangling UUIDs oder durch Konflikte überschriebene Varianten. Kohai-Prefix und Caches aus dem migrierten validierten Bestand erneuern. Nur notwendige Felder ergänzen; keine zweite dauerhafte Turnqueue oder persistente `BuildInstruction`-Tabelle. RAM-Sitzungen sind keine DB-migrierbaren Snapshots.
+8. **Phase-0a-Verträge mitmigrieren.** Versionierte Komponenten/Assoziationen,
+   getrennte vertrauenswürdige Approval-Evidenz, Actual-Tool-Artefakte/Adapter,
+   Taskmanifeste, durablen Invocation-/Retry-/Effektstatus und stabile Policy-
+   Mappings samt Aufbewahrung implementieren und erhalten. Fehlende Altverträge
+   oder Evidenz explizit als offen behandeln; weder Labels noch rekonstruierte
+   UUID-Paare ersetzen Verhaltens-/Q2-Nachweise. Ursprüngliche geprüfte Records
+   und historische Taskreferenzen unverändert erhalten. Nötiges Remapping
+   ausführungsrelevanter Identitäten/Verträge nicht als nachträgliches Umschreiben
+   einer alten Approval ausgeben: neue aktive Kombination mit nachvollziehbarer
+   Migration und erforderlichem validiertem Evidenzvertrag bereitstellen.
+   Backups enthalten benötigte Implementierungsartefakte und Wiederherstellungs-
+   referenzen; Restore prüft Verfügbarkeit/Kompatibilität sowie Zähler/Status.
+   Keine bereinigende Löschung noch benötigter Versionen, Approval-Datensätze,
+   Checkpoints oder Deduplication-Records.
 
 ### Phase 7 — Tests, Architekturverträge und Dokumentation bereinigen
 
@@ -368,6 +615,11 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 5. Root-/Crate-Verträge, Operator-Doku, Implementierungsbericht und komponierte/seedingrelevante Beschreibungen auf dasselbe Ziel bringen. Historische Testergebnisse nicht umschreiben. Alte operationsbezogene Approval-Vorgaben als abgelöst markieren; Tierregeln wie Shell-/Subagent-Tier-1 bleiben unabhängig von Toolzulassung bestehen.
 6. Zugehörige Tests während jedes Umsetzungspakets abschließen. Vor Cutover Format, Clippy, Workspace-, native PostgreSQL-, Architektur-, UI-, vollständige E2E-/Auth-/Migrations-/Restoreprüfungen ausführen. Funktionsliste vollständig abnehmen; übersprungene Pflichtprüfungen sind offen.
 7. Phase-3a-Matrix und Recipe-Matrix unten in CI durch den Produktionspfad prüfen. Gemeinsamen Boot, Seeds/Checksums, Grenzen und unabhängigen Run-Abbruch nachweisen. Benchmarks aus §5 mit derselben Umgebung wiederholen. Vor Rust-Build/Test/Check/Clippy freien NVMe-Platz gemäß CLAUDE.md prüfen; Cargo-Zielverzeichnis bleibt `/Users/ollama/brassclaw-target`.
+8. Phase 0a und alle vier Ground-truth-Guides verbindlich in die Architektur-,
+   Store-/Migrations-, Validator-, IBS-/Composer-, Host-/Runner- und UI-Abnahme
+   einbeziehen. Matrixfälle unten mit realen unterstützten Pfaden und beobachteten
+   Argumenten/Effekten prüfen. Ergebnisse dem getesteten Stand/Caller zuordnen;
+   referenzierte Leitfäden oder Schema-Unit-Tests allein schließen kein Paket ab.
 
 **Pflichttests für den vollständigen Recipe-Pfad:**
 
@@ -382,6 +634,26 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 | Sempai / Q1 / Q2 | Erfolgreicher Tier-2-Verlauf erzeugt Vorschlag; automatisches Q1 und menschliches Q2; erst validierte geeignete Komponenten werden aktiv und ein erneuter Match verwendet sie. |
 | Live-Änderung / Fortsetzung | UUID-/Variantenverweise und verwendete Revisionen bleiben korrekt; neue Tasks sehen neue aktive Revision und Prefix, globale Toolsettings gelten sofort vor folgenden Dispatches. |
 | Sämtliche Produkteinstiege | CLI/WebUI/Trigger/Kanäle und unterstützte MCP-/Subagentpfade verwenden denselben Recipe-/Kernel-Vertrag. |
+| Vollständige Assoziation / exakte Kombinationsapproval | Skill/code/ToolSkill/Tool und transitive Revisionen/Checksums stimmen mit vertrauenswürdiger approval_id überein; einzeln validierte, aber ungeprüfte Kombination verweigert Aktivierung/Assembly. |
+| Approval-Provenienz / semantischer Review | Authored verlangt Q1, menschliches Q2 und Verhaltensnachweise; nur trusted system_seed erlaubt q2_ref=null mit erforderlicher Evidenz. Source/status allein qualifizieren nicht. Prosa/Code-Bedeutung wird vor Aktivierung geprüft; Tier-0-Startup verwendet keine LLM-Semantikprüfung. |
+| Neueste aktive Kombination inkompatibel oder ohne Approval | Expliziter Assemblyfehler vor Effekten; kein stiller älterer Stand und kein Tier-2-Fallback. Bereits gepinnter alter Task behält seine ursprüngliche genehmigte Kombination. |
+| Matching-/Aktivierungsrace | Recipe/Variante/step_link/Inputlayout, Komponenten, Artefakte und Approval stammen aus einer Generation; kein gemischtes Manifest. |
+| Retainierte Toolartefakte / Host-Upgrade | Alter Task ruft seine tatsächliche alte Implementierung/Adapter auf, neuer die neue; falsches/fehlendes Artefakt oder inkompatible ABI scheitert explizit. Restore/Upgrade übernimmt keine ungeprüfte alte RAM-Ausführung. |
+| Genau eine UUID / Bindingpaar | Leere/mehrfache component-Includes, falsche Klassen und unpaarige Bindings werden abgelehnt. Binding allein führt nichts aus und erzeugt keinen Grant; passende Codeusage kann nach Vorbereitung genau ihre deklarierte Operation ausführen. |
+| Interne PythonCode-Komposition | Erlaubte kleine Helpers werden geordnet mit passenden Verträgen und Versionen assembliert; Zyklen, fehlende Referenzen, Symbol-/Inputkonflikte und versteckte unabhängige Toolcalls werden abgelehnt. |
+| Pure Logic / abhängige Kette | Pure Logic mit deklariertem result braucht null Bindings/Toolcalls/LLM-Aufrufe. Erlaubte direkte Kette deckt jeden Toolcall ab und erhält State/Continuation ohne Replay; unabhängige Calls bleiben getrennte Schritte. |
+| Reale ToolSkill-Vorbereitung | Deskriptor/Assoziation löst korrektes Tool, Callable/Adapter und Implementierung auf; fehlendes Binding/Registrierung oder widersprüchliche Parameter/Selektoren scheitern. Legacy-Metadatum oder rust_directive allein gilt nicht als Ladeerfolg. |
+| Typisierte inputs / fehlerhafte Captures | Exakte Referenzgrammatik, deklarierte lokale Zuordnung und validierte Capturetypen erreichen Monty; Regexfehler, fehlende/duplizierte/unzugeordnete Inputs, forward references oder Ausdrücke werden vor Nutzung abgelehnt. |
+| Feindlicher String / Quelltextintegrität | Quotes, Backslashes, Newlines und Python-looking Text bleiben Daten in inputs; Body/Checksum unverändert, keine Quellsubstitution oder Auswertung als Referenz aus Benutzerdaten. |
+| Rekursive Schemas / Missing-Null-Default | Listenitems, Objektfelder/typisierte Extras, Presence und Nullability geprüft; Defaults nur für fehlende Consumerinputs und unabhängig pro Binding. Ungültige Defaults/Werte oder Outputs nie repariert/fabriziert. |
+| Numerische und berechnete Argumente | Bool, falscher Typ, Oversize/Transportverlust, ungültige berechnete Grenzen vor Dispatch abgelehnt; Intervallprofil aus skills.md prüft 2147483647 als Grenze und 2147483648 als Ablehnung, nicht als universelles VM-Maximum. |
+| Ergebnis-/Consumer-Kompatibilität | Deklarierte Kanten und tatsächliche Outputs rekursiv geprüft; fehlende/optionale/nullfähige Felder und Listenzugriff sicher behandelt. Startup liest keine noch nicht existierenden Ergebnisse; fehlerhafter Output löst kein Effekt-Replay aus. |
+| Globale Sperre über Versionen/Aliase | Alt-/Neuversion und alle Dispatch-IDs derselben Toolidentität verweigern Folgeaufrufe nach Sperre. Fehlende oder widersprüchliche Mappings oder Policy fail closed; keine neue Allow-Regel durch Umbenennung. |
+| Exakter Retryvertrag / persistente Zähler | max_attempts=3 erlaubt höchstens Initialdispatch plus zwei zulässige Wiederholungen, auch über Wait/Reclaim/Crash. Bool/Bruchzahlen, retry mit not_assumed oder ungültige Outcome-/Evidenzrecords werden abgelehnt. |
+| Retryevidenz / unbekannte Completion | Nur deklarierte confirmed_no_effect_transient/unknown_completion mit passender trusted read_only/deduplicated-Evidenz. Dedup benutzt ursprünglichen Key/Argumente und dauerhaft gehaltene Records; Timeout allein ist kein No-Effect-Beweis. |
+| Durabler Dispatchrecord / Fehler nach abgeschlossenem Effekt | Fehler bei notwendiger Intent-/Zählerpersistenz verhindert Dispatch; Crash ohne Completion bleibt ungeklärt. Bestätigter Effekt wird nach Output-/Reply-/Folgeschrittfehler nicht wiederholt, Counts und Manifest bleiben erhalten. |
+| Schema-/Datenmigration und Restore | Altverträge/Evidenzlücken sichtbar, gültige Records/Artefakte/Manifeste/Counts erhalten; keine gefälschte Approval oder Löschung benötigter Versionen. Restore nutzt kompatiblen realen Caller, nicht nur erfolgreich geladenes JSON. |
+| Shell / spawn_subagent | Jeder konsumierende Recipe-Pfad bleibt Tier 1 trotz fixer Parameter, Seeds, Approval oder globaler Toolzulassung. |
 
 ### Phase 8 — Cutover und Entfernung des Legacy-Modells
 
@@ -390,6 +662,16 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 3. Bei Mehrdeutigkeiten abbrechen und Anweisung zur Betreiberentscheidung ausgeben; keine automatische Auswahl von `Full`, `Yolo` oder einem anderen permissiven Profil.
 4. Legacy-Profilparser, Rollen-/Scopefallbacks, Einzelfreigabepfade, Doppelkompositionen und obsolete Fixtures erst nach Funktions-, Migrations- und Leistungsnachweis entfernen. Interne Plattformbackends, Worker-Claims und gewünschte Produktoberflächen erhalten.
 5. Release-Notes und Rollbackpfad nennen; Rollback bedeutet Wiederherstellung des vorherigen Backups, falls das alte Schema nach der Migration nicht rückwärtskompatibel ist.
+6. **Komponenten-Cutover-Gate:** Phase 0a sowie die Phase-3a-/Phase-7-Matrizen
+   müssen mit tatsächlichen Store-/Host-/Runner-Verbrauchern bestanden sein.
+   Zusätzlich vor Worker-/Turn-Ingress-Freigabe aktive Kombinationen, Evidence-
+   Provenienz, genaue Version-/Artefaktreferenzen, tatsächliche Bindings und
+   stabile Live-Policy-Mappings prüfen. Fehlende erforderliche Approval, typisierte
+   Runtime, Artefakte oder sichere Retry-/Recoverypersistenz verhindert normalen
+   Recipe-Cutover; keine Label-Umdeutung oder ältere Komponenten als Ersatz.
+   Authentifizierte Diagnose/Verwaltung und explizite Draft-Validierung bleiben
+   gemäß ihren technischen Verträgen möglich. Ein Statusupdate im Plan oder
+   ein erfolgreiches Seeding ersetzt weder die Abnahme noch das Gate.
 
 ## 5. Globale Abnahmekriterien
 
@@ -409,6 +691,17 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 - Migration erhält Daten und Secrets oder verlangt eine klare, sichere Betreiberaktion; es gibt kein stilles permissives Fallback.
 - Architektur-, Integration-, UI-, E2E- und Upgrade-Tests belegen diese Eigenschaften.
 - Die Recipe-Matrix aus Phase 7 besteht: Tier 0 ohne LLM, Tier 1 mit vorgesehenen LLM-Schritten, echter No-Match als Tier 2, Sempai/Q1/menschliches Q2, Step-Isolation, Komponentenrevisionen und kein Replay nach Schrittfehlern.
+- Phase 0a ist umgesetzt und abgenommen: exakte Assoziations-/Approvalverträge,
+  vertrauenswürdige authored/system_seed-Provenienz, vollständige immutable
+  Workflow-/Toolartefaktselektion, typisierte rekursive Bindings, geprüfte
+  ToolSkill-Vorbereitung und präzise persistente Retry-/Effektverträge. Kein
+  stiller Downgrade oder Tier-2-Fallback bei Assemblyfehlern. Schemaentwurf,
+  Labels und einzelne Komponentenapprovals ersetzen keine Kombinationsevidenz.
+- Globale Toolpolicy wirkt auf alle behaltenen Versionen/Dispatchaliase derselben
+  stabilen Toolidentität; fehlende/konfligierende Zuordnung oder aktuelle Policy
+  verweigert Dispatch. Crash/Wait/Reclaim erhält Invocation-Zähler, ausgewählte
+  Implementierungen und bestätigte/ungeklärte Effekte. Produktionsnachweise aus
+  Phase 7 und das Komponenten-Cutover-Gate aus Phase 8 sind Voraussetzung.
 - Intents sind zentral und an ihren Komponenten/Varianten verwaltbar; Matching-Vorschau ist nebenwirkungsfrei, aktiver Bestand und historische Auswahl bleiben konsistent.
 
 ### 5.1 Leistungsabnahme
@@ -479,7 +772,7 @@ Vor der vollständigen UI-Anbindung diese Backend-Lücken schließen:
 1. **Eigener Tab „Intents“ im Component Catalog:** durchsuchbare, paginierte Liste mit Ausdruck, Ziel-Komponente bzw. Recipe, Recipe-Variante, Herkunft, Score und Review-/Aktivierungsstatus. Ziel und Variante sind zur jeweiligen Detailansicht verlinkt. Die Oberfläche folgt dem instanzweiten Betreibermodell ohne neue User-/Projekt-Berechtigungsauswahl.
 2. **Intent-Editor direkt an Komponenten und Recipe-Varianten:** hinterlegte Beispiele und Matching-Einträge anzeigen; einzeln hinzufügen, ändern und löschen. `%`-Vorschau wiederverwenden. Zielvariante und Konflikte explizit darstellen; andere Komponententypen benötigen keine fingierte Variante. Stabile Intent-ID/Revision für Änderung und Löschung verwenden.
 3. **Matching-Testfeld:** dieselbe Auswahl-/Variablenlogik wie im Produktpfad nutzen, mit ausdrücklich schreibfreier Ausführung. Recipe/Variante, Variablen, Mehrdeutigkeit, No-Match und technische Fehler anzeigen. Keine Tool-/Recipe-/LLM-Ausführung und keine Änderung von Scores, Lern-/Disambiguierungsdaten. Vorschau eines Entwurfs klar von aktiver Auswahl unterscheiden.
-4. **Konsistente Revisionen und Validierung:** Entwurf, Q1/Q2-Status und aktive Komponentenrevision trennen. Nicht-builtin Änderungen werden nach automatischem Q1 und menschlichem Q2 aktiviert; Bearbeitung überschreibt keine noch von Vorgängen verwendete Revision. Aktivierung von Komponenten-/Variantenbeispielen und Matching-Einträgen transaktional, revisionsgeprüft und ohne Teilzustände durchführen. Gelernte Einträge mit Herkunft erhalten. Bestehende IBS-/Komponenten-/Matching-Caches nach Revision aktualisieren; Kohai-Prefix aus validierten Komponenten erneuern. Aktive Prefix-/Cachegeneration und ausstehende Erneuerung sichtbar machen; folgende Tasks erhalten einen konsistenten aktiven Stand.
+4. **Konsistente Revisionen und Validierung:** Entwurf, Q1/Q2-Status und aktive Komponentenrevision trennen. Alle authored-Änderungen, einschließlich Änderungen bisheriger Builtins, benötigen automatisches Q1, menschliches Q2, Verhaltensnachweise und die passende exakte Kombinationsapproval vor Aktivierung; trusted system_seed bleibt der gesonderte kontrollierte Bootstrapvertrag aus Phase 0a; Bearbeitung überschreibt keine noch von Vorgängen verwendete Revision. Aktivierung von Komponenten-/Variantenbeispielen und Matching-Einträgen transaktional, revisionsgeprüft und ohne Teilzustände durchführen. Gelernte Einträge mit Herkunft erhalten. Bestehende IBS-/Komponenten-/Matching-Caches nach Revision aktualisieren; Kohai-Prefix aus validierten Komponenten erneuern. Aktive Prefix-/Cachegeneration und ausstehende Erneuerung sichtbar machen; folgende Tasks erhalten einen konsistenten aktiven Stand.
 
    Die neue Generation erst veröffentlichen, wenn die zugehörigen Komponentenreferenzen, Matching-Daten und erforderlichen Prefix-/Cacheartefakte verfügbar sind. Bis dahin bleibt die bisherige Generation aktiv; ein Fehler lässt sie nutzbar. Ein Vorgang erhält eine konsistente Generation, statt neues Matching mit altem Komponenten-/Prefixinhalt zu mischen. Globale Toolsettings werden unabhängig davon vor jedem Dispatch aktuell geprüft.
 
@@ -507,7 +800,7 @@ Vor der vollständigen UI-Anbindung diese Backend-Lücken schließen:
 
 **Vorgangskontexte:** Conversation-, Message-, Run-, Aufruf- und Attempt-Kennungen bleiben für richtige Eingabezuordnung, History, Antworten, Fortsetzungen, Abbruch, Idempotenz und Audit erhalten. Sie begründen keine eigenen Tool-Berechtigungen. Veraltete oder abgebrochene Versuche dürfen weiterhin keine neuen Effekte auslösen; diese Ausführungskorrektheit ist von der globalen Tool-Zulassung getrennt.
 
-**Einheitlicher Vertrag:** Die Hauptschritte sind auf diese Festlegung ausgerichtet. Ältere Crate-Dokumente, Komponentenbeschreibungen und Implementierungsnotizen mit operationsbezogenen Toolfreigaben sind bei der Umsetzung gemäß Phase 7 abzulösen; historische Testergebnisse bleiben erhalten. Keine alten Einzelfreigaben als versteckte Schicht fortführen. Worker-Claims, externe Dienstauthentifizierung, Q1/Q2 mit menschlichem Q2 und technische Sandbox-/Netzwerk-/Secret-/Ressourcenregeln bleiben eigene Verträge. Externe Kanal-Absender erhalten keine Betreiber-Verwaltungsidentität.
+**Einheitlicher Vertrag:** Die Hauptschritte sind auf diese Festlegung ausgerichtet. Ältere Crate-Dokumente, Komponentenbeschreibungen und Implementierungsnotizen mit operationsbezogenen Toolfreigaben sind bei der Umsetzung gemäß Phase 7 abzulösen; historische Testergebnisse bleiben erhalten. Keine alten Einzelfreigaben als versteckte Schicht fortführen. Worker-Claims, externe Dienstauthentifizierung, authored-Q1/Q2 mit menschlichem Q2, der getrennte trusted-system_seed-Evidenzvertrag und technische Sandbox-/Netzwerk-/Secret-/Ressourcenregeln bleiben eigene Verträge. Externe Kanal-Absender erhalten keine Betreiber-Verwaltungsidentität.
 
 **Abnahme:** Ein gültiger Betreiber-Token erschließt die gesamte Verwaltungsoberfläche ohne Rollen-/Scope-Auswahl. Globale Tooländerungen wirken ohne Neustart auf folgende Dispatches, auch innerhalb bereits laufender Recipes. Ein gesperrtes Tool erzeugt keine neuen Effekte; ein zugelassenes Tool benötigt keine zusätzliche operationsbezogene Freigabe. Bereits laufende Toolaufrufe werden nach ihrem tatsächlichen Status behandelt und nicht durch erneuten Dispatch wiederholt. Tests belegen globale Zulassung/Sperrung, aktuelle Einstellungen beim Dispatch, fehlende zusätzliche Approval-Schichten sowie weiterhin korrekte Vorgangs-/Attempt-Zuordnung.
 

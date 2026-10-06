@@ -1,0 +1,242 @@
+{
+  "date": "2026-10-06",
+  "scope": "tomedo, REST APIs, macOS, PostgreSQL, GOÄ, EBM, ICD coding and documentation; no clinical curriculum",
+  "files_sha256": {
+    "tomedo-compiler.py": "7c4c1b1cd04331ac30de75f02be3665018e8174ede65fe03114d97c6bc52cc0f",
+    "test_tomedo_compiler.py": "fb5c380eac0c1cdd7c280e0b9bb50a50b6865d0c543e9436fe477379d816d58c",
+    "TOMEDO-USAGE.txt": "31c1c9c5d92609d3d70cf27c75c5dd56e3e9e443bcbb30e673f45c1bd253268a"
+  },
+  "focused_tests": {
+    "command": "ORNITH_TEST_TOKENIZER=/private/tmp/ornith-prefix-tokenizer /private/tmp/ha-compiler-check/bin/python scripts/prefix/test_tomedo_compiler.py",
+    "passed": 10
+  },
+  "syntax_compile": "passed",
+  "live_source_validation": [
+    {
+      "repo": "goae-law",
+      "path": "go__1982/__1.html.md",
+      "characters": 784,
+      "units": 2,
+      "version": "GOÄ current consolidated legal text; snapshot is not perpetual validity",
+      "source_sha256": "599015b67b82d78bb76a5313d70ed22d4773535060708deec46d29379b071f3a"
+    },
+    {
+      "repo": "goae-law",
+      "path": "go__1982/__2.html.md",
+      "characters": 1626,
+      "units": 2,
+      "version": "GOÄ current consolidated legal text; snapshot is not perpetual validity",
+      "source_sha256": "f726295a4ca7f1cc5cc21b8722e886fe61fbc2c48474799aca6b2a667949439b"
+    },
+    {
+      "repo": "goae-law",
+      "path": "go__1982/__4.html.md",
+      "characters": 3500,
+      "units": 2,
+      "version": "GOÄ current consolidated legal text; snapshot is not perpetual validity",
+      "source_sha256": "3767cc7cf41c79ca17819c01dc6910008c37a85f43220b2f91e4aff6241d0f70"
+    },
+    {
+      "repo": "goae-law",
+      "path": "go__1982/__5.html.md",
+      "characters": 2664,
+      "units": 2,
+      "version": "GOÄ current consolidated legal text; snapshot is not perpetual validity",
+      "source_sha256": "6b80eb5dff91efd3d50306931032342ac104ac5ced355deccf7ed037a96f95c7"
+    },
+    {
+      "repo": "goae-law",
+      "path": "go__1982/__6.html.md",
+      "characters": 897,
+      "units": 2,
+      "version": "GOÄ current consolidated legal text; snapshot is not perpetual validity",
+      "source_sha256": "52ccb831d2bc34ce7e95253e172f293883e4d478cd4360852e1e526c5291b2e7"
+    },
+    {
+      "repo": "goae-law",
+      "path": "go__1982/__10.html.md",
+      "characters": 2723,
+      "units": 2,
+      "version": "GOÄ current consolidated legal text; snapshot is not perpetual validity",
+      "source_sha256": "2c24d8e80d3bb74fa7197901366d24fdb23219376d143b0478c7d2cb0fd8ca11"
+    },
+    {
+      "repo": "goae-law",
+      "path": "go__1982/__12.html.md",
+      "characters": 2719,
+      "units": 2,
+      "version": "GOÄ current consolidated legal text; snapshot is not perpetual validity",
+      "source_sha256": "e8f8e75226179cfb759befc3fe5072edf6540a2f8f269dd45ff70ee22e068c14"
+    },
+    {
+      "repo": "patient-records-law",
+      "path": "bgb/__630f.html.md",
+      "characters": 1342,
+      "units": 2,
+      "version": "BGB documentation and record access; current consolidated law",
+      "source_sha256": "92ed65c2dfeb436cf349db2cb686527d882622a5f4bda77d696916c287f094fc"
+    },
+    {
+      "repo": "patient-records-law",
+      "path": "bgb/__630g.html.md",
+      "characters": 1762,
+      "units": 2,
+      "version": "BGB documentation and record access; current consolidated law",
+      "source_sha256": "3e6885eb2a11b763beb8683c8c4e87737526c03100d3db1b5314bc14d82c58a6"
+    },
+    {
+      "repo": "goae-catalogue",
+      "path": "go__1982/GO%C3%84.pdf.md",
+      "characters": 431188,
+      "units": 165,
+      "version": "GOÄ current consolidated legal text and catalogue; verify treatment date",
+      "source_sha256": "a64b6d7019f34d72c0b3e9e2c0b783c5602d2d3c27b9cbf606675b9e499a7661"
+    }
+  ],
+  "defensive_compiler_sha256": "fdbdda197a4459e9d8400e9b7391a60931db293739eea3129172816b195f1d2e",
+  "limitations": [
+    "Full multi-source prefix has not been compiled or deployed.",
+    "Topic presence and exact quotations do not establish task accuracy or billing applicability.",
+    "Live subset verified GOÄ paragraphs/catalogue and BGB documentation/access; other seeds were HTTP-probed, not a complete corpus build.",
+    "Forum statements and local probes are snapshot-versioned observations, not official API/server release contracts.",
+    "Original archive and existing model deployment were not modified."
+  ],
+  "inference_deployment_changed": false,
+  "api_reference_validation": {
+    "documents": 8,
+    "accepted_cards": 11,
+    "topic_cards": {
+      "forum-api-boundary": "de72800b041f54f09a3b2e05f239328ef7fe9ca52c55223271b157a979a11dd4",
+      "forum-llm-interface": "7d6e4687edaea56694a381cc4af6b1314651c9fe6e27b26a2f99ef6a91912092",
+      "local-api-endpoints": "3d9fde9b0ee2690111d4261c18a3285a668f0b910ceb7760bf3b1559989c751c",
+      "local-api-write-preconditions": "5a99dfc76f05433ed1070a65b22d613c73474e049ce17135ba9091b64d26fd9d"
+    },
+    "rendered_card_tokens": 8066,
+    "sources": [
+      {
+        "url": "https://forum.tomedo.de/d/122972-122972/2",
+        "version": "forum post 2026-07-16T10:55:14+00:00; API release unknown",
+        "evidence_basis": "vendor statement about API access; not endpoint schema",
+        "original_sha256": null,
+        "original_line_start": null,
+        "original_line_end": null,
+        "published_at": "2026-07-16T10:55:14+00:00",
+        "author": "Toni Ringling",
+        "api_release": null
+      },
+      {
+        "url": "https://forum.tomedo.de/d/122972-122972/2",
+        "version": "forum post 2026-07-16T10:55:14+00:00; API release unknown",
+        "evidence_basis": "vendor statement about API access; not endpoint schema",
+        "original_sha256": null,
+        "original_line_start": null,
+        "original_line_end": null,
+        "published_at": "2026-07-16T10:55:14+00:00",
+        "author": "Toni Ringling",
+        "api_release": null
+      },
+      {
+        "url": "https://forum.tomedo.de/d/106811-106811/26",
+        "version": "forum post 2025-10-17T16:00:25+00:00; API release unknown",
+        "evidence_basis": "forum contributor relaying development instructions; vendor role not independently authenticated",
+        "original_sha256": null,
+        "original_line_start": null,
+        "original_line_end": null,
+        "published_at": "2025-10-17T16:00:25+00:00",
+        "author": "Jan-Ole Finkeisen",
+        "api_release": null
+      },
+      {
+        "url": "https://forum.tomedo.de/d/106811-106811/26",
+        "version": "forum post 2025-10-17T16:00:25+00:00; API release unknown",
+        "evidence_basis": "forum contributor relaying development instructions; vendor role not independently authenticated",
+        "original_sha256": null,
+        "original_line_start": null,
+        "original_line_end": null,
+        "published_at": "2025-10-17T16:00:25+00:00",
+        "author": "Jan-Ole Finkeisen",
+        "api_release": null
+      },
+      {
+        "url": "https://forum.tomedo.de/d/122972-122972/4",
+        "version": "forum post 2026-07-16T13:50:27+00:00; API release unknown",
+        "evidence_basis": "vendor statement about partner gateway; not internal mTLS route permission",
+        "original_sha256": null,
+        "original_line_start": null,
+        "original_line_end": null,
+        "published_at": "2026-07-16T13:50:27+00:00",
+        "author": "Toni Ringling",
+        "api_release": null
+      },
+      {
+        "url": "https://forum.tomedo.de/d/122972-122972/4",
+        "version": "forum post 2026-07-16T13:50:27+00:00; API release unknown",
+        "evidence_basis": "vendor statement about partner gateway; not internal mTLS route permission",
+        "original_sha256": null,
+        "original_line_start": null,
+        "original_line_end": null,
+        "published_at": "2026-07-16T13:50:27+00:00",
+        "author": "Toni Ringling",
+        "api_release": null
+      },
+      {
+        "url": "file:///Volumes/SSDE/brassclaw/docs/archive/tomedo_v3.md",
+        "version": "local findings 2026-08-22; release unknown",
+        "evidence_basis": "operator findings: live probes and decompilation reported in repository, not independently reproduced",
+        "original_sha256": "47ccbbddf2ab642b36cb5ed98a6e0c7206180e7fa6f17579fcbfc614efbe940e",
+        "original_line_start": 15,
+        "original_line_end": 25,
+        "published_at": null,
+        "author": null,
+        "api_release": null
+      },
+      {
+        "url": "file:///Volumes/SSDE/brassclaw/docs/archive/tomedo_v3.md",
+        "version": "local findings 2026-08-22; release unknown",
+        "evidence_basis": "operator findings: live probes and decompilation reported in repository, not independently reproduced",
+        "original_sha256": "47ccbbddf2ab642b36cb5ed98a6e0c7206180e7fa6f17579fcbfc614efbe940e",
+        "original_line_start": 111,
+        "original_line_end": 158,
+        "published_at": null,
+        "author": null,
+        "api_release": null
+      },
+      {
+        "url": "file:///Volumes/SSDE/brassclaw/docs/archive/tomedo_v3.md",
+        "version": "local findings 2026-08-22; release unknown",
+        "evidence_basis": "operator findings: live probes and decompilation reported in repository, not independently reproduced",
+        "original_sha256": "47ccbbddf2ab642b36cb5ed98a6e0c7206180e7fa6f17579fcbfc614efbe940e",
+        "original_line_start": 165,
+        "original_line_end": 178,
+        "published_at": null,
+        "author": null,
+        "api_release": null
+      },
+      {
+        "url": "file:///Volumes/SSDE/brassclaw/docs/archive/tomedo_v3.md",
+        "version": "local findings 2026-08-22; release unknown",
+        "evidence_basis": "operator findings: live probes and decompilation reported in repository, not independently reproduced",
+        "original_sha256": "47ccbbddf2ab642b36cb5ed98a6e0c7206180e7fa6f17579fcbfc614efbe940e",
+        "original_line_start": 283,
+        "original_line_end": 289,
+        "published_at": null,
+        "author": null,
+        "api_release": null
+      },
+      {
+        "url": "file:///Volumes/SSDE/brassclaw/docs/archive/tomedo_v3.md",
+        "version": "local findings 2026-08-22; release unknown",
+        "evidence_basis": "operator findings: live probes and decompilation reported in repository, not independently reproduced",
+        "original_sha256": "47ccbbddf2ab642b36cb5ed98a6e0c7206180e7fa6f17579fcbfc614efbe940e",
+        "original_line_start": 306,
+        "original_line_end": 350,
+        "published_at": null,
+        "author": null,
+        "api_release": null
+      }
+    ],
+    "model_synthesis_calls": 0,
+    "production_api_calls": 0
+  },
+  "archive_sha256": "47ccbbddf2ab642b36cb5ed98a6e0c7206180e7fa6f17579fcbfc614efbe940e"
+}

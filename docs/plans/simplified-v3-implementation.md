@@ -1070,3 +1070,112 @@ The original seven composition failures were not rerun: their UUID-only Thread
 lookup remains unchanged, and their latest full-suite evidence remains
 705 passed, 7 failed, 0 ignored. No Rust agent-loop/raw-model fallback, ID coercion
 or synthetic Thread was introduced.
+
+### 2026-10-06 — Task-owned child-VM hosting and typed continuation boundary
+
+Added `crates/brassclaw_monty_host` as an isolated Monty 1.0 control-extension
+candidate, consumed only by `tests/monty_control`. Per `recipe.md`, Recipes are
+ordered instructions plus component inventories; IBS/composition assembles the
+components and bindings, and Monty owns sequencing and result publication.
+`RecipeVm` holds a child execution context only. It advances exactly one
+caller-selected feed/continuation, never selects a Recipe/next step, dispatches
+Tools, calls a provider, queries latest components or retries. The production
+workspace, legacy driver and application dependencies remain unchanged.
+
+Each feed receives a typed `inputs` mapping and a fresh result sentinel. Needed
+locals survive subsequent steps and waits, but an absent assignment cannot
+reuse the preceding result. Source checksum and syntax validation precede the
+feed; the same immutable source handle and binding aliases survive suspension.
+These checks do not establish catalogue selection, complete version manifests,
+Skill-association approval, recursive component schemas or Q1/Q2. The trusted
+caller must provide those and the global Python caller must publish results
+under stable step/occurrence identities. No runtime data is interpolated into
+Python source.
+
+The adapter accepts JSON-shaped data with exact i64/u64 integers and finite
+numbers. Unsupported Python values fail explicitly. It traverses the pinned
+Monty graph without formatting BigInts or cloning whole intermediate containers.
+Aggregate depth, node and UTF-8 payload bounds cover the entire host call, not
+one independent allowance per argument. Only the selected aliases on the exact
+host receiver produce host requests; aliases are not Tool grants. The trusted
+supervisor still owns live kernel policy and attempt fencing before dispatch.
+
+Continuation keys identify the exact context and boundary. Foreign/stale replies
+cannot consume the live continuation; rejected replies remain private diagnostic
+evidence. A completed child value is also retained when resumption fails due to
+Python errors, output validation or a newly reduced live budget. That failure
+never permits replay of an already completed effect. Catchable domain exceptions
+and terminal technical failures remain separate port classifications. Stdout
+capacity overflow is an explicit error, with produced output retained. Diagnostic
+formatting exposes neither raw exceptions nor arguments/results. Large VM state
+and error evidence are boxed instead of suppressing strict size lints.
+
+Parked cancellation releases the VM and returns the pending host-call key; it
+is VM-local acknowledgement, not external-operation quiescence. Busy Python
+can yield with exact frames and cannot catch a supervisor cancellation. Parent
+and child interpreters share the same live task account with separate cumulative
+VM-clock cursors; a parked parent is not charged again while the child runs.
+Compilation/export, unpolled native work, logical heap/adaptive memory and
+allocator containment still need their documented Phase 3a contracts/evidence.
+
+Sequential background screen validation passed ten actual-interpreter child-host
+cases and strict library/caller all-target Clippy. The initial all-target run also
+passed the unchanged 28 control/compatibility/lifecycle/failure/state/accounting
+cases. After storage-layout and completed-result-evidence fixes, the affected
+child cases and both strict lint checks passed again. Logs:
+`/private/tmp/brassclaw-monty-child-host.log`,
+`/private/tmp/brassclaw-monty-child-host-lints.log`, and
+`/private/tmp/brassclaw-monty-child-caller-lints.log`.
+
+**The original seven composition failures remain unresolved.** The legacy
+`PersistentMontyDriver::drive_turn` still calls UUID-only `load_thread` after
+loading the exact admitted input. A correct replacement requires the gated
+instance-owned global service, boot readiness, child port dispatch, approved
+component snapshots and real production-caller acceptance. No UUID conversion,
+synthetic Thread, Rust agent-loop/direct-model fallback or changed original
+assertion was introduced. Repeating the composition suite for this isolated
+change would still hit that unchanged blocker; latest full-suite evidence remains
+705 passed, 7 failed, 0 ignored. This slice supplies a required child boundary;
+it does not activate global hosting or complete Phase 3a.
+
+### 2026-10-06 — Actual root-VM boot/wait and future-correlation hosting
+
+The isolated `brassclaw_monty_host::global::GlobalVm` now owns one actual root
+interpreter. It receives integrity-checked source/checksum and aliases from its
+caller, without an embedded script or per-chat fallback. Starting and VM-level
+Ready are distinct: every configured worker must be parked at a unique work wait
+before readiness. Early final, task-bound ports before readiness, incomplete or
+duplicate waits and unsupported calls fail closed. Busy boot yields cooperatively.
+This is not production facade readiness or proof of an exclusive instance lock.
+
+Root requests use the same bounded typed adapter as child calls. Generation-bound
+keys correlate exact Monty future IDs; wrong/foreign/stale replies retain evidence
+without consuming other continuations. Fatal abandonment retains pending keys for
+reconciliation. Admission accepts the exact seven-field current root envelope,
+keeps opaque IDs/empty messages as data, rejects extra Rust-only claim fields and
+leaves the live work wait intact after malformed/oversized input. The production
+adapter still owes exact durable identity/history validation; this envelope is
+not the full future transport protocol or an authorization record.
+
+A generic callback cannot terminate a work wait. Explicit shutdown changes Ready
+to Stopping and only that path supplies None to workers. Task errors/cancellation
+use catchable root exceptions; a root Abort is instance-fatal supervision. No Rust
+Recipe selection/sequencing, model fallback, automatic replay or fabricated finish
+was added. The root execution-slice control does not incorrectly apply a single
+task-duration account to the global VM lifetime/shared coroutine clock.
+
+Five real root-host tests and the ten child-host regressions pass, including A
+waiting while B reaches its host call and an actual child exception producing a
+failed-task finish request. The durable finish remains unresolved in that test;
+no successful provider/Recipe/DB operation is simulated. Strict host-library and
+isolated caller all-target Clippy pass. All ran in the sequential screen queue;
+logs remain `/private/tmp/brassclaw-monty-child-host{,-lints}.log` and
+`/private/tmp/brassclaw-monty-child-caller-lints.log`.
+
+The application/production driver is unchanged. **All original seven composition
+failures remain unresolved at UUID-only Thread loading; they were not rerun for
+this isolated change.** Production adoption still requires the Phase 3a upgrade
+resource/allocator/heap/root-CPU gates, exclusive boot ownership, durable ports and
+wait/resume supervision, selected component manifests and production-caller
+acceptance. Do not activate this candidate or mark the seven resolved solely from
+its VM-level handshake and interpreter tests.

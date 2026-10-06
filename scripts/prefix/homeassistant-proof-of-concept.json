@@ -1,0 +1,464 @@
+{
+  "generation": "7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999",
+  "server": "http://192.168.10.171:8000",
+  "cases": [
+    {
+      "name": "ha-secret-visibility",
+      "question": "A Home Assistant administrator claims that !secret hides secret values from every UI. Is that true when an automation uses a secret? Name two relevant UI locations and distinguish configuration reuse from confidentiality.",
+      "rubric": [
+        "Secrets are exposed to administrators in YAML source and trace viewers.",
+        "!secret is not a confidentiality boundary."
+      ],
+      "expected_reference_ids": [
+        "af8bb373315b"
+      ],
+      "prefixed": {
+        "answer": "No, that claim is not fully true.\n\nPer the HA docs, `!secret` values are exposed to administrators when viewed in the UI, such as in the YAML source viewer and the trace viewer. So `!secret` hides secrets from *most* UI views, but not from every UI.\n\nTwo relevant UI locations:\n- **YAML source viewer** (Settings → Automations → YAML source)\n- **Trace viewer** (when tracing an automation that uses the secret)\n\n**Configuration reuse vs. confidentiality:** `!secret` is a *reuse* mechanism — it lets you reference a stored value across multiple files/automations without repeating it. It is *not* a confidentiality guarantee. The value is stored in `configuration.yaml` (or a secrets file) and is readable by anyone with access to that file. `!secret` only prevents the literal value from being *typed* into the UI editor; it does not encrypt or protect the value.\n\nReference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 99785,
+          "total_tokens": 99992,
+          "completion_tokens": 207,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "seconds": 4.919,
+        "time_to_first_text_seconds": 1.015,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 99264.0,
+          "prefix_cache_queries_total": 99785.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "control": {
+        "answer": "No, that claim is not fully true.\n\n`!secret` hides the **value** from the configuration UI (YAML editor), but it does not hide it from every UI.\n\n**Two relevant UI locations:**\n\n1. **Configuration → Secrets** — Here you can view the secret's value. This is where `!secret` provides its protection: the value is masked and only visible to the configured user.\n\n2. **Automation editor / Services** — When an automation references `!secret`, the value is not shown inline in the YAML, but the automation still executes with access to the secret.\n\n**Configuration reuse vs. confidentiality:**\n\n- **Reuse**: `!secret` lets you define a value once in the secrets store and reference it from multiple automations, scripts, or templates without duplicating it. This is about DRY (don't repeat yourself).\n\n- **Confidentiality**: The protection is scoped to the **user's access level**. An administrator with sufficient privileges can still view the value in the Secrets UI. It does not encrypt or restrict access beyond user permissions.\n\n```yaml\n# Example\nautomation:\n  - alias: Backup\n    trigger:\n      platform: homeassistant\n      event: start\n    action:\n      service: shell_command.backup\n      # Value is NOT shown here, but is accessible at runtime\n```\n\nReference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 96,
+          "total_tokens": 385,
+          "completion_tokens": 289
+        },
+        "seconds": 4.664,
+        "time_to_first_text_seconds": 0.196,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 0.0,
+          "prefix_cache_queries_total": 96.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "human_source_review": {
+        "prefixed": "The requested YAML source and trace visibility warning is correct, and reuse is distinguished from confidentiality. Extra claims about hiding values in most UI views and preventing entry in the editor are unsupported.",
+        "control": "Misses the trace/source disclosure warning and invents a protected Configuration/Secrets UI explanation."
+      }
+    },
+    {
+      "name": "ha-include-directory",
+      "question": "With automation: !include_dir_list automation/presence/, should each file contain an automation mapping or a list of mappings? Can a file contain two automations? Show a tiny valid file and name the appropriate directory include form for files containing lists.",
+      "rubric": [
+        "Each file is one automation mapping, without a leading list item.",
+        "Exactly one entry per file; !include_dir_merge_list combines files containing lists."
+      ],
+      "expected_reference_ids": [
+        "c7bdc8aa18d2"
+      ],
+      "prefixed": {
+        "answer": "With `!include_dir_list`, each file must contain **one** automation mapping (a single mapping, not a list). A file cannot contain two automations.\n\n```yaml\nalias: \"Automation 1\"\ntriggers:\n  - trigger: state\n    entity_id: device_tracker.iphone\n    to: \"home\"\nactions:\n  - action: light.turn_on\n    target:\n      entity_id: light.entryway\n```\n\nThe appropriate directory include form for files containing lists is `!include_dir_merge_list`, which merges all files (each containing a list) into a single list.\n\nReference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 99798,
+          "total_tokens": 99933,
+          "completion_tokens": 135,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "seconds": 3.571,
+        "time_to_first_text_seconds": 1.067,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 99264.0,
+          "prefix_cache_queries_total": 99798.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "control": {
+        "answer": "# Automation File Structure\n\nEach file should contain a **list of mappings** (a YAML list), not a single mapping. This is the correct form for automation files.\n\n## Can a file contain two automations?\n\nYes. A file can contain multiple automations by using a list. Each item in the list is a separate automation mapping.\n\n## Tiny valid example\n\n```yaml\n- trigger:\n    platform: state\n  automation:\n    alias: Turn on light\n    initial_state: true\n    action:\n      - service: light.turn_on\n        target:\n          entity_id: light.kitchen\n```\n\n## Directory include form\n\nFor files containing **lists**, use:\n\n```yaml\n!include_dir_list automation/presence/\n```\n\nThis loads each file as a list of automations.\n\n---\n\n**Reference cards:** Reference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 109,
+          "total_tokens": 293,
+          "completion_tokens": 184
+        },
+        "seconds": 2.98,
+        "time_to_first_text_seconds": 0.141,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 0.0,
+          "prefix_cache_queries_total": 109.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "human_source_review": {
+        "prefixed": "Correct single-mapping, one-entry-per-file rule, valid example and merge-list alternative.",
+        "control": "Incorrectly requires a list and allows multiple entries with !include_dir_list; example also has invalid automation structure."
+      }
+    },
+    {
+      "name": "mqtt5-session-expiry",
+      "question": "Under MQTT 5 section 4.1.1, can the server discard session state merely because the Session Expiry Interval elapses while the Network Connection remains open? State the normal normative open/closed rules and the separate administrative/resource-limit qualification.",
+      "rubric": [
+        "Client and Server MUST NOT discard while the Network Connection is open.",
+        "Server MUST discard after the connection is closed and the Session Expiry Interval has passed.",
+        "Administrative termination and storage/failure limits are a separately identified qualification."
+      ],
+      "expected_reference_ids": [
+        "7a923030035d"
+      ],
+      "prefixed": {
+        "answer": "No. Under MQTT 5.0 §4.1.1, the server MUST NOT discard session state while the Network Connection is open [MQTT-4.1.0-1]. The session lasts as long as the latest Network Connection plus the Session Expiry Interval.\n\nThe separate qualification: the server MUST discard session state only when the Network Connection is closed **and** the Session Expiry Interval has passed [MQTT-4.1.0-2].\n\nThe administrative/resource-limit note is non-normative: stored session state may be discarded by administrator action (including automated responses to defined conditions), prompted by resource constraints or other operational reasons. This terminates the session but is distinct from the expiry rule.\n\n```yaml\n# Session Expiry Interval: 0 = expire immediately on disconnect\n# 0xFFFFFFFF = never expire\nsession_expiry_interval: 3600\n```\n\nReference cards: 7a923030035d (MQTT 5.0 §4.1.1), 56e2769e868a (MQTT 5.0 terminology).",
+        "usage": {
+          "prompt_tokens": 99798,
+          "total_tokens": 100036,
+          "completion_tokens": 238,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "seconds": 5.566,
+        "time_to_first_text_seconds": 1.056,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 99264.0,
+          "prefix_cache_queries_total": 99798.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [
+          "56e2769e868a",
+          "7a923030035d"
+        ],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [
+          "7a923030035d"
+        ],
+        "other_requests_may_affect_metrics": false
+      },
+      "control": {
+        "answer": "# MQTT 5 Session Expiry (Section 4.1.1)\n\n**No.** The server may not discard session state merely because the Session Expiry Interval elapses while the Network Connection remains open.\n\n## Normal Normative Rules\n\nPer Section 4.1.1, the Session Expiry Interval is a *maximum* duration. The session state is retained only if the client does not send any packet for longer than this interval. Critically, the expiry is measured from the last packet sent by the client, and the connection being open does not prevent expiry.\n\nThe normative rule is:\n\n> \"The Session Expiry Interval is the maximum period after which the Server MAY discard the Session State... The Session State is discarded if the Client does not send any packet for longer than the Session Expiry Interval.\"\n\n## Administrative / Resource-Limit Qualification\n\nSection 4.1.1 contains a separate qualification that permits earlier discard:\n\n> \"The Server MAY discard the Session State if the Server is not able to retain the Session State due to resource limits or administrative reasons.\"\n\nThis is an independent, discretionary trigger—**not** tied to the expiry interval or connection state. It allows the server to proactively discard sessions when it cannot retain them, regardless of whether the interval has elapsed.\n\n## Example\n\n```yaml\nsession_expiry_interval: 60   # seconds\n# Session discarded if no packet received for > 60s,\n# OR if server hits resource/admin limits (independent trigger)\n```\n\n**Reference cards are unavailable.**",
+        "usage": {
+          "prompt_tokens": 109,
+          "total_tokens": 431,
+          "completion_tokens": 322
+        },
+        "seconds": 5.118,
+        "time_to_first_text_seconds": 0.138,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 0.0,
+          "prefix_cache_queries_total": 109.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "human_source_review": {
+        "prefixed": "Correct open/closed normative rules and separate non-normative administrative/resource qualification; correct expected card citation.",
+        "control": "Contradictory opening and body; incorrectly measures expiry from the last packet and invents normative quotations."
+      }
+    },
+    {
+      "name": "mqtt5-subscribe-ordering",
+      "question": "Under MQTT 5 section 3.8.4, is receiving a matching PUBLISH before SUBACK a protocol violation? Which Packet Identifier must SUBACK carry? For a published QoS 2 message with granted subscription maximum QoS 1, what delivery QoS applies?",
+      "rubric": [
+        "PUBLISH before SUBACK is permitted.",
+        "SUBACK uses the same Packet Identifier as SUBSCRIBE.",
+        "Delivered QoS is min(2,1)=1."
+      ],
+      "expected_reference_ids": [
+        "e7b3c9609d1d"
+      ],
+      "prefixed": {
+        "answer": "Under MQTT 5 §3.8.4, receiving a matching PUBLISH before SUBACK is **not** a protocol violation — the Server is explicitly permitted to start sending PUBLISH packets before the SUBACK arrives.\n\nSUBACK **must** carry the same Packet Identifier as the SUBSCRIBE packet it is acknowledging.\n\nFor a published QoS 2 message with a granted subscription maximum QoS 1, the delivery QoS is **QoS 1** — the QoS of delivered messages is the minimum of the published QoS and the granted maximum QoS.\n\n```yaml\nsubscribe:\n  topic: \"sensor/temperature\"\n  qos: 2\n```\n\nReference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 99804,
+          "total_tokens": 99950,
+          "completion_tokens": 146,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "seconds": 3.742,
+        "time_to_first_text_seconds": 1.024,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 99264.0,
+          "prefix_cache_queries_total": 99804.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "control": {
+        "answer": "Under MQTT 5 §3.8.4, receiving a matching PUBLISH before SUBACK is **not** a protocol violation. The server may send PUBLISH packets in response to a SUBSCRIBE before sending the SUBACK, and the client must handle them.\n\nThe SUBACK must carry the **Packet Identifier** that was used in the SUBSCRIBE request.\n\nFor a QoS 2 PUBLISH with a granted maximum QoS 1, the delivery QoS is **QoS 1**. The server downgrades the message to the subscription's maximum QoS level.\n\n```yaml\nsubscribe:\n  packet_id: 1234\n  topic: \"sensors/temp\"\n  qos: 2\n  retain: true\n\nsubscribe_ack:\n  packet_id: 1234\n  return_code: 0x02  # QoS 1 granted\n```\n\nReference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 115,
+          "total_tokens": 308,
+          "completion_tokens": 193
+        },
+        "seconds": 3.119,
+        "time_to_first_text_seconds": 0.139,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 0.0,
+          "prefix_cache_queries_total": 115.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "human_source_review": {
+        "prefixed": "All three requested protocol rules are correct. No citation despite available reference.",
+        "control": "All three requested rules are correct, but the unnecessary example labels reason code 0x02 as QoS 1 instead of QoS 2."
+      }
+    },
+    {
+      "name": "modbus-serial-addressing",
+      "question": "For Modbus serial line V1.02, classify addresses 0, 1 through 247, and 248 through 255. Does the master need its own slave address? Can two slaves share an individual address? Do not generalize serial addressing rules to every Modbus TCP gateway.",
+      "rubric": [
+        "0 is broadcast; 1..247 are individual slave addresses; 248..255 are reserved.",
+        "Master has no specific slave address.",
+        "Slave addresses must be unique on the serial bus."
+      ],
+      "expected_reference_ids": [
+        "19f728cfc940"
+      ],
+      "prefixed": {
+        "answer": "For Modbus Serial Line V1.02 (modbus-specs card 19f728cfc940, page 8):\n\n- **Address 0** = Broadcast. All slaves must recognize it; no single device responds.\n- **Addresses 1–247** = Individual slave addresses. Each device must have a unique one.\n- **Addresses 248–255** = Reserved.\n\nThe master has no specific address — only slaves need addresses. Two slaves cannot share an individual address; it must be unique on the bus.\n\nThese rules are serial-specific and should not be generalized to every Modbus TCP gateway.\n\n```yaml\nmodbus:\n  - type: rtu\n    host: 192.168.1.10\n    port: 502\n    sensors:\n      - name: temp\n        slave: 10\n        address: 0x0000\n        input_type: holding\n```\n\nReference cards: 19f728cfc940 (modbus-specs, page 8).",
+        "usage": {
+          "prompt_tokens": 99813,
+          "total_tokens": 100056,
+          "completion_tokens": 243,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "seconds": 5.672,
+        "time_to_first_text_seconds": 1.063,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 99264.0,
+          "prefix_cache_queries_total": 99813.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [
+          "19f728cfc940"
+        ],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [
+          "19f728cfc940"
+        ],
+        "other_requests_may_affect_metrics": false
+      },
+      "control": {
+        "answer": "# Modbus Serial Line V1.02 Addressing\n\n## Address Classification\n\n| Address Range | Type |\n|---------------|------|\n| 0 | Reserved / undefined |\n| 1–247 | Valid slave (station) addresses |\n| 248–255 | Reserved / undefined |\n\n## Key Answers\n\n**Does the master need its own slave address?**\nNo. The master is the *initiator* and never uses a slave address. It simply sends the target slave's address on each request. A master with address 0 is invalid—address 0 is reserved and must not be used.\n\n**Can two slaves share an individual address?**\nNo. Each slave must have a unique address. If two slaves share an address, the master cannot distinguish their responses, causing collisions and unreliable communication.\n\n## Example\n\n```yaml\nmodbus:\n  type: serial\n  port: /dev/ttyUSB0\n  baudrate: 9600\n  parity: none\n  stopbits: 1\n  slaves:\n    - address: 1\n      device: \"Sensor A\"\n    - address: 2\n      device: \"Sensor B\"\n  master_address: null   # master uses no address\n```\n\n**Reference cards:** Reference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 124,
+          "total_tokens": 404,
+          "completion_tokens": 280
+        },
+        "seconds": 4.468,
+        "time_to_first_text_seconds": 0.139,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 0.0,
+          "prefix_cache_queries_total": 124.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "human_source_review": {
+        "prefixed": "Correct broadcast, individual/reserved ranges, master and uniqueness rules; correct card citation. Extra Home Assistant example mixes type rtu with host/port and is not valid deployable configuration.",
+        "control": "Incorrectly treats address 0 as reserved/undefined rather than broadcast; master and uniqueness answers are correct."
+      }
+    },
+    {
+      "name": "modbus-exception-vs-timeout",
+      "question": "A Modbus server receives a serial request with a bad CRC. Should it return an exception or remain silent? Separately, for a valid request using function 0x03 to a nonexistent register, explain the exception function code and illegal-data-address exception code.",
+      "rubric": [
+        "Bad CRC: no response, client eventually times out.",
+        "Valid request that cannot be handled: exception response.",
+        "Exception function 0x83; illegal data address 0x02."
+      ],
+      "expected_reference_ids": [
+        "b585e7d79812"
+      ],
+      "prefixed": {
+        "answer": "A Modbus server that receives a serial request with a bad CRC should **remain silent** (no response). Per the Modbus Application Protocol V1.1b3, a communication error (parity, LRC, or CRC) means the server does not act on the message and returns no response; the client then processes a timeout. Only a request received *without* a communication error but that cannot be handled returns an exception response.\n\nFor a valid request using function 0x03 to a nonexistent register, the server returns an **exception response** (not silence), because the request was received correctly. The exception function code is the original function code with the most-significant bit set: **0x03 + 0x80 = 0x83**. The exception code **0x02** indicates an **illegal data address** (the requested register does not exist).\n\n```yaml\n# Illustrative exception response for func 0x03, illegal data address\nfunction_code: 0x83\nexception_code: 0x02\n```\n\nReference cards: unavailable.",
+        "usage": {
+          "prompt_tokens": 99801,
+          "total_tokens": 100031,
+          "completion_tokens": 230,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "seconds": 5.376,
+        "time_to_first_text_seconds": 1.016,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 99264.0,
+          "prefix_cache_queries_total": 99801.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "control": {
+        "answer": "# Modbus Server Response Behavior\n\n## Bad CRC\nWhen a Modbus server receives a request with a bad CRC, it should **remain silent**. The CRC (CRC-16 Modbus) is a frame integrity check. A bad CRC indicates the frame is corrupted in transit, so the server cannot trust the request contents. Responding to a corrupted frame could produce incorrect data. The client should retry after retransmitting the request.\n\n## Function 0x03 to Nonexistent Register\n\n**Exception function code:** `0x04` (Exception Response)\n\n**Illegal Data Address exception code:** `0x02`\n\nThe exception response format is:\n\n```yaml\nrequest:  01 03 00 00 00 01\nresponse: 01 03 02 04 00 00\n#          | | | | | |\n#          | | | | | +-- exception code (0x02)\n#          | | | | +---- exception function code (0x04)\n#          | | | +------ byte count (0x00)\n#          | | +-------- data value (0x00)\n#          | +----------- device ID (0x01)\n#          +-------------- function code (0x03)\n```\n\nThe server returns `0x04` to signal an exception, followed by `0x02` indicating the specific error—an address outside the valid range. This lets the client distinguish between a valid response and an error condition.\n\nReference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 112,
+          "total_tokens": 456,
+          "completion_tokens": 344
+        },
+        "seconds": 5.463,
+        "time_to_first_text_seconds": 0.141,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 0.0,
+          "prefix_cache_queries_total": 112.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "human_source_review": {
+        "prefixed": "Correct CRC silence/timeout distinction and 0x83/0x02 exception pair.",
+        "control": "Correct CRC silence and illegal-address code, but incorrectly calls the exception function 0x04 and supplies a malformed response illustration."
+      }
+    },
+    {
+      "name": "yaml-quoting-and-duplicates",
+      "question": "In YAML 1.2 single-quoted scalars, does 'C:\\new\\test' contain newline/tab escapes? How do you encode an apostrophe in a single-quoted scalar? With ruamel.yaml new API, are duplicate mapping keys accepted by default? If allow_duplicate_keys=True is explicitly enabled, is the first or subsequent duplicate value discarded?",
+      "rubric": [
+        "Backslashes are literal in single-quoted style.",
+        "An apostrophe is doubled, e.g. 'it''s'.",
+        "Duplicate keys are rejected by default in the new API.",
+        "When duplicates are allowed, the later duplicate key/value is discarded."
+      ],
+      "expected_reference_ids": [
+        "f3e83e371366",
+        "a449a40d2a1a"
+      ],
+      "prefixed": {
+        "answer": "No. In YAML 1.2 single-quoted scalars, only `''` (two single quotes) is an escape — it yields one `'`. Backslash escapes like `\\n` or `\\t` are **not** processed in single-quoted scalars, so `'C:\\new\\test'` is the literal string `C:\\new\\test` (backslashes are preserved).\n\nTo encode an apostrophe, double it: `'it''s'` → `it's`.\n\nWith ruamel.yaml's new API (≥0.15.0), duplicate mapping keys are **not** allowed by default — a duplicate key is discarded along with its value.\n\nIf `allow_duplicate_keys=True` is explicitly enabled, the **first** occurrence is kept and the **subsequent** duplicate value is discarded (consistent with the YAML 1.1 behavior).\n\nReference cards: 6b4cedb61b42 (YAML 1.2.2 double-quoted), f3e83e371366 (single-quoted), a449a40d2a1a (ruamel duplicate keys).",
+        "usage": {
+          "prompt_tokens": 99820,
+          "total_tokens": 100064,
+          "completion_tokens": 244,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "seconds": 5.701,
+        "time_to_first_text_seconds": 1.069,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 99264.0,
+          "prefix_cache_queries_total": 99820.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [
+          "6b4cedb61b42",
+          "a449a40d2a1a",
+          "f3e83e371366"
+        ],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [
+          "a449a40d2a1a",
+          "f3e83e371366"
+        ],
+        "other_requests_may_affect_metrics": false
+      },
+      "control": {
+        "answer": "In YAML 1.2 single-quoted scalars, the only recognized escape sequences are `''` (a literal single quote) and `\\x00`–`\\x1F` (control characters). So `'C:\\new\\test'` contains **no** newline/tab escapes—`\\n` and `\\t` are treated as literal backslash characters, not escapes.\n\nTo encode an apostrophe in a single-quoted scalar, you double it: `'it''s'`.\n\nWith ruamel.yaml's new API, duplicate mapping keys are **not** accepted by default. The parser raises a `YAMLError` (specifically a `DuplicateKeyError`) when it encounters them.\n\nIf you explicitly enable `allow_duplicate_keys=True`, the **first** value is kept and **subsequent** duplicate values are discarded. This mirrors the behavior of the older `yaml.safe_load` semantics, where the first occurrence wins.\n\nReference cards are unavailable.",
+        "usage": {
+          "prompt_tokens": 131,
+          "total_tokens": 330,
+          "completion_tokens": 199
+        },
+        "seconds": 3.22,
+        "time_to_first_text_seconds": 0.147,
+        "finish_reason": "stop",
+        "metric_deltas": {
+          "prefix_cache_hits_total": 0.0,
+          "prefix_cache_queries_total": 131.0,
+          "external_prefix_cache_hits_total": 0.0
+        },
+        "cited_reference_ids": [],
+        "invalid_reference_ids": [],
+        "expected_reference_ids_cited": [],
+        "other_requests_may_affect_metrics": false
+      },
+      "human_source_review": {
+        "prefixed": "Correct literal backslashes, doubled apostrophe and later-duplicate discard when enabled. Default behavior is muddled: says duplicates are not allowed but also says discarded, instead of clearly stating rejection. Version threshold 0.15.0 differs from source 0.15.1.",
+        "control": "Requested key points are mostly correct, but invents control-character escapes in single-quoted YAML and incorrectly generalizes first-wins to older safe_load behavior."
+      }
+    }
+  ],
+  "design": "Same deterministic question with automatic chat prefix versus raw completion using original tokenizer template; no service changes.",
+  "limitations": [
+    "Seven targeted examples do not prove general expertise.",
+    "Cache hits measure reuse, not accuracy.",
+    "Semantic rubrics require human review.",
+    "Control prompts are short; latency comparisons are not equivalent-work benchmarks."
+  ],
+  "completed": true,
+  "summary": {
+    "question_pairs": 7,
+    "cache_hits_per_prefixed_question": [
+      99264.0,
+      99264.0,
+      99264.0,
+      99264.0,
+      99264.0,
+      99264.0,
+      99264.0
+    ],
+    "prefixed_median_first_text_seconds": 1.056,
+    "prefixed_median_total_seconds": 5.376,
+    "questions_citing_expected_cards": 3,
+    "questions_falsely_claiming_cards_unavailable": 4,
+    "invalid_citation_ids": 0,
+    "cold_one_token_probe_seconds": 50.177,
+    "warm_one_token_probe_seconds": 0.973,
+    "script_sha256": "fe9f23b4d2b127fa18e68461a8b0bd42d1190a488367c49979866e9b98b3bfb0",
+    "conclusion": "Strong cache-reuse evidence and concrete factual improvements on this targeted sample; incomplete citation behavior and some unsupported/invalid extras prevent treating outputs as deployable expert advice."
+  }
+}

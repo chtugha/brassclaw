@@ -1,0 +1,115 @@
+SHARED CITATION VALIDATION AND CONFIGURATION CHECKS
+
+Workflow: verify immutable bundle and deployed token prefix -> generate structured
+claims/citations -> verify exact supporting quotations -> check requested YAML and
+installed application schemas -> allow one repair -> return accepted answer or
+failure receipt. No configuration is applied. No service is modified.
+
+The shared citation layer works with Defensive, Homeassistant and tomedo compiler
+generations. The configuration adapter currently supports Home Assistant only.
+Additional adapters can use the same passed/failed/not_checked result contract.
+The existing server prefix and its cached leading tokens remain unchanged.
+
+This is enforced by the client below, and by Homeassistant-compiler.py --mode run.
+Ordinary direct requests to vLLM do NOT automatically receive these checks.
+The Defensive and tomedo compiler run modes are not wired to this layer yet;
+use the shared client with their own bundle and matching deployed prefix.
+
+PORTABLE COPY/PASTE EXAMPLES (LINUX AND MACOS)
+
+Run from the BrassClaw repository root. Use the immutable bundle actually deployed
+on the server; the client verifies its leading token hash through /tokenize.
+Set these two paths for your installation:
+
+export PREFIX_BUNDLE=/absolute/path/to/immutable/generation
+export PREFIX_SERVER=http://192.168.10.171:8000
+python3 scripts/prefix/prefix_response_validation.py \
+  --bundle "$PREFIX_BUNDLE" --server "$PREFIX_SERVER" \
+  --task 'Explain MQTT 5 session expiry while the connection remains open. Do not generate configuration.' \
+  --receipt mqtt-answer-validation.json
+
+No configuration is allowed by default, even if the model decides to add an
+example. Sources, URLs, versions and line ranges are resolved from evidence cards
+by the validator. Unknown/ambiguous IDs, invented quotes, uncited factual claims
+and unsolicited YAML fail validation. Failed candidates remain in the receipt
+for diagnosis and are not returned as accepted answers. Exit code 1 means failure.
+Quotation matching verifies provenance, NOT that a claim follows from a quote.
+Source reliability, semantic entailment and relevance still require review.
+
+HOME ASSISTANT CONFIGURATION
+
+Use an isolated checker interpreter with the EXACT target HA release and its
+integration requirements installed. Do not install HA in the vLLM environment.
+The test environment currently uses HA 2026.2.3; that is a tested release, not an
+assertion about your actual Home Assistant installation or a recommendation to
+change its version. Modbus in that release requires pymodbus==3.11.2.
+
+export HA_CHECK_PYTHON=/absolute/path/to/isolated-ha-checker/bin/python
+export HA_TARGET_VERSION=2026.2.3
+"$HA_CHECK_PYTHON" -m pip install ruamel.yaml
+python3 scripts/prefix/prefix_response_validation.py \
+  --bundle "$PREFIX_BUNDLE" --server "$PREFIX_SERVER" \
+  --configuration-kind ha-script \
+  --ha-python "$HA_CHECK_PYTHON" --ha-version "$HA_TARGET_VERSION" \
+  --task 'Create one Home Assistant script mapping with alias Wait and a one-second delay sequence. Cite supporting script syntax. Do not add a script: wrapper.' \
+  --receipt script-answer-validation.json
+
+Supported kinds:
+  none               No generated configuration (default).
+  ha-script          One script entity mapping; no script: wrapper.
+  ha-automation      One automation mapping; no automation: wrapper.
+  ha-modbus          Configuration containing exactly the top-level modbus key.
+  ha-configuration   Top-level configuration containing only script, automation,
+                     and/or modbus; other integration schemas are not supported.
+
+Checks are separate: YAML syntax, installed HA static schema, runtime. The adapter
+uses HA's own YAML loader after safe duplicate-key/tag screening and its shipped
+static schemas. YAML 1.1 scalar resolution matches HA's loader; quote on/off states.
+An unavailable interpreter/dependency, wrong HA version or unsupported integration
+is not_checked and blocks acceptance. Syntax/schema errors can trigger one model
+repair. !include, !secret and blueprint !input need real application context and
+are not resolved here. Aliases are conservatively rejected by the isolated checker.
+Templates, entity/device existence, trigger/service-specific validation and actual
+device behavior remain not_checked. A static schema pass is NOT a full installation
+config-check or runtime success. Use the target installation's configuration check
+before applying changes:
+https://www.home-assistant.io/docs/configuration/troubleshooting/
+
+Validate an existing structured response without contacting vLLM:
+
+python3 scripts/prefix/prefix_response_validation.py \
+  --bundle "$PREFIX_BUNDLE" --response candidate-answer.json \
+  --configuration-kind ha-script \
+  --ha-python "$HA_CHECK_PYTHON" --ha-version "$HA_TARGET_VERSION" \
+  --receipt existing-answer-validation.json
+
+The candidate JSON has exactly these fields (quotes must be literal source text):
+{"claims":[{"text":"A factual claim","citations":[{"card_id":"FULL_64_HEX_ID","quote":"Exact supporting source quotation"}]}],"configuration":"","missing_information":[]}
+
+HOMEASSISTANT COMPILER RUN MODE
+
+Set VLLM_SERVER_PREFIX_FILE to the active generation's context_100k.md locally,
+with its manifest/evidence/template alongside it. Existing compiler server and
+tokenizer settings still apply. Copy prefix_response_validation.py and
+check_homeassistant_configuration.py alongside the compiler when copying it.
+Optional configuration settings for --mode run:
+  PREFIX_CONFIGURATION_KIND=ha-script  (otherwise none)
+  PREFIX_HA_PYTHON=/absolute/path/to/isolated-ha-checker/bin/python
+  PREFIX_HA_VERSION=<exact installed target release>
+The compiler returns the accepted structured answer plus checks; failed validation
+raises an error. The shared CLI above additionally preserves every candidate in a
+JSON receipt and needs neither model weights nor transformers.
+
+ON BRASSCLAW2 (CURRENT VERIFIED PATHS)
+
+export PREFIX_BUNDLE=/root/prefix-compiler/homeassistant-evidence/generations/7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999
+export PREFIX_SERVER=http://192.168.10.171:8000
+export HA_CHECK_PYTHON=/root/prefix-validation-ha-venv/bin/python
+export HA_TARGET_VERSION=2026.2.3
+Run the examples from /root/prefix-compiler using prefix_response_validation.py
+in place of scripts/prefix/prefix_response_validation.py. The adapter sits beside it.
+
+REGRESSION CHECKS (NO MODEL OR DEVICE CALLS)
+
+PREFIX_TEST_HA_PYTHON="$HA_CHECK_PYTHON" PREFIX_TEST_HA_VERSION="$HA_TARGET_VERSION" \
+  python3 -m unittest discover -s scripts/prefix -p test_prefix_response_validation.py -v

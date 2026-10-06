@@ -94,6 +94,22 @@ The **capability ID** identifies the dispatch surface; the **Python callable**
 identifies the exposed host function. Map these explicitly; do not guess a
 callable by stripping a prefix from a capability ID.
 
+**Global policy follows the stable Tool identity across versions.** The trusted
+registration/policy mapping must associate every retained version's capability
+ID and host callable, including aliases, with that same Tool UUID. Before every
+dispatch, resolve the selected implementation through this mapping and apply
+the current global rule for that Tool plus the applicable technical constraints.
+Blocking the Tool blocks dispatch through all its retained versions and aliases;
+renaming a callable or changing a capability ID must not create a fresh allow
+decision or preserve an old one. An absent, ambiguous or conflicting mapping
+fails closed. Do not reuse an identity for an unrelated primitive.
+
+This is a target identity contract, not a new persisted schema or a claim that
+the current authorizer is UUID-keyed. Current policy infrastructure uses
+capability IDs; its supported mapping must enforce the same global decision for
+all dispatch identities of one Tool. Updating a version must preserve that
+mapping while old tasks/checkpoints retain the version.
+
 For example, the archive identifies `builtin.read_file` as the capability and
 shows `host.read_file(...)` as the Python call. Those are related names, not
 interchangeable namespaces. The supported adapter/registration must establish
@@ -315,11 +331,43 @@ proof of successful task completion. Monty owns sequencing and state handoff;
 child VM/process boundaries must preserve required typed inputs/results without
 sharing unrelated tasks or secrets.
 
-Exactly one global Monty Orchestrator starts at instance boot and remains alive.
+Exactly one global Monty Orchestrator starts at instance boot and remains alive
+throughout ordinary task execution. Only instance shutdown or supervised
+fatal-runtime recovery may end that VM's lifetime.
 A Tool call or `host.run_program` delegation is bounded work, not another global
 orchestrator lifecycle. Finishing/cancelling a Tool invocation or task must not
 terminate the instance VM. Rust's infrastructure may supervise admission,
 shutdown and technical cleanup; it does not add a second Recipe executor.
+
+**Crash recovery requires durable effect reconciliation.** Follow
+[simplified_v3.md](simplified_v3.md)'s Phase 3a shutdown/recovery contract. VM
+memory is not a durable checkpoint. Use supported persistence to retain the
+run/attempt identity, pinned workflow references, continuation position,
+dispatch attempt counts, operation identity, any idempotency key and arguments,
+and confirmed or unresolved effect status needed for safe recovery. Record
+dispatch intent/count through the durable recovery contract before dispatch;
+an interrupted dispatch remains unresolved unless evidence establishes its
+outcome. Do not infer that no effect occurred because its completion record is
+missing. Keep secrets out of model-visible continuation data.
+
+A VM crash, timeout or reply-database failure must not automatically replay the
+entire Recipe or reset its Tool attempt counts. Preserve confirmed effects.
+Expose unknown effect status as unresolved and use supported operation-specific
+status lookup, durable deduplication or explicit reconciliation before deciding
+whether the approved retry contract permits another dispatch. Without such
+evidence, do not replay the operation or claim exactly-once external execution.
+Reconciliation is recovery work, not a new Tool permission grant; any Tool call
+still requires current policy, technical constraints and a fresh valid attempt.
+
+On fatal VM failure, close admission/dispatch and fence the old service/attempt
+generation. Only the supervisor may activate a replacement global VM, after
+required status reconciliation; never run parallel replacement orchestrators or
+silently fall back to Tier 2 or a per-chat VM. Restore only an explicitly
+validated continuation with its retained versions and recorded effects. During
+normal shutdown, stop admission/producers, boundedly drain or address cancellation/
+suspension, persist results/status, stop and join the orchestrator, then release
+remaining services and stop embedded PostgreSQL last. These are target runtime
+requirements; this guide does not implement durable recovery.
 
 ## 9. Source-checked examples inspired by the archive
 
@@ -522,10 +570,13 @@ matrix specifies required outcomes; it is not a record of passing tests.
 | Allowed valid invocation | Correct selected handler executes once; actual payload matches its contract |
 | Invalid nested/type/numeric input | Rejected before the declared effect; no implicit conversion or source substitution |
 | Tool blocked after binding or wait | Next dispatch refused despite retained approved code; no new effect |
+| Tool dispatch ID/alias changes between retained versions | Current block applies to every version/alias of the same Tool; missing/conflicting identity mapping refuses dispatch |
 | Policy unavailable/invalid | Fail closed; previous allow setting is not silently reused |
 | New implementation activated during pause | Old task resumes old artifact/contracts; new task selects coherent new versions |
 | Metadata/artifact or association approval mismatch | Assembly fails before effects; no newest-handler substitution or approval inference |
 | Timeout after possible external effect | Classified unknown completion; no unsafe replay |
+| VM crash after possible external effect | Durable counts and confirmed/unresolved effects retained; no whole-Recipe replay; continuation/retry only after safe reconciliation |
+| Fatal VM recovery or shutdown | Old generation fenced; supervised replacement only after required reconciliation; no parallel VM or silent fallback; orderly persistence and shutdown |
 | Completed effect followed by bad output/reply | Dependent execution fails; completed Tool call is not repeated |
 | Supported safe retry | Same approved usage/key/arguments and persistent attempt count; live policy/freshness rechecked |
 | Stale/cancelled attempt | No new dispatch/reply; task state/results remain correctly fenced |
@@ -537,6 +588,7 @@ matrix specifies required outcomes; it is not a record of passing tests.
 - [ ] One primitive purpose and its operations/effects are explicit.
 - [ ] Existing Tools and usage components were searched before writing Rust.
 - [ ] Stable Tool UUID, capability ID, host callable and implementation identity are mapped.
+- [ ] Every retained dispatch ID/alias resolves to the same Tool's current global policy; invalid mappings fail closed.
 - [ ] Registered schemas, actual Rust parameters and host adapters agree.
 - [ ] Recursive usage contracts and transport/computed numeric bounds are explicit.
 - [ ] Result payload, wrapper, error classification and completion certainty are distinguished.
@@ -548,6 +600,7 @@ matrix specifies required outcomes; it is not a record of passing tests.
 - [ ] Current global policy and technical constraints apply before every dispatch/retry.
 - [ ] No legacy role checks or invocation approval leases are added as final v3 requirements.
 - [ ] Retry counts, durable idempotency evidence and unknown-completion handling are explicit.
+- [ ] Durable crash reconciliation preserves counts, selected versions and effect status; supervised recovery never blindly replays a Recipe.
 - [ ] Behavioral evidence covers success, denial, failure, cancellation and update races as relevant.
 - [ ] Registration/loading and actual runner support are verified, not inferred from compilation.
 - [ ] Archive differences and missing implementation support are reported honestly.

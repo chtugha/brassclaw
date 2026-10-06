@@ -1,5 +1,9 @@
 HOW TO CREATE A HOME ASSISTANT PREFIX — EXACT PROMPT
 
+Validated answers and generated configurations: see RESPONSE-VALIDATION-USAGE.txt.
+Copy prefix_response_validation.py and check_homeassistant_configuration.py beside
+this compiler for --mode run. These checks leave compiled prefix tokens unchanged.
+
 BEGIN PROMPT
 Create a large Home Assistant, MQTT, Modbus and YAML reference prefix using
 scripts/prefix/Homeassistant-compiler.py from the BrassClaw repository.
