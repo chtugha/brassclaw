@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We repeatedly need to reject invalid TCP-port lists before any network action. The component must not raise on invalid input; it must always return {valid: boolean, ports: original list if valid else []}. For missing, null, scalar, empty, bool, and out-of-range values, return valid=false with ports=[] (empty). Booleans are invalid. Only a nonempty list of exact integers each in 1..65535 inclusive is valid. No imports, I/O, host calls, or UUIDs. Always assign result = {valid: boolean, ports: original list if valid else []}."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "The request is a single, well-scoped pure-logic component: pc-check-tcp-port-list (class 22). It performs deterministic validation of a typed `ports` input — a nonempty list of exact integers each in 1..65535 — and returns {valid, ports}. The behavioral feedback corrects two defects in the previous draft: (1) it emitted the same candidate payload twice, and (2) it used inputs[\"ports\"] which raises KeyError when the key is absent, so the missing-input case {} would raise instead of returning valid=false. The corrected content obtains the raw candidate with inputs.get(\"ports\") so missing/null are treated as invalid rather than exceptional, and every code path assigns result = {valid: bool, ports: original list only if valid else []}. Booleans are explicitly rejected via isinstance(p, bool) before the int check, since bool is a subclass of int in Python. The design is internally consistent: inputs are typed data, validation is explicit and fail-closed, result is a simple object, and no imports, I/O, host calls or UUIDs are used. No prompt change is justified: the packet is a clean, self-contained authoring request with no malformed provider envelope, no context overflow, no injection, and no observed failure to address. The proposal is a single draft component definition submitted through the supported class-22 payload sink; it is not an activated component and makes no approval claims. The host's class-22 payload schema (name/description/content) is used exactly as specified. The target inputs[\"ports\"] mapping and Monty typed-input validation remain documented prerequisites, not invented runtime facts.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-tcp-port-list",
+        "description": "Pure-logic validation of a TCP-port list. Accepts a nonempty list of exact integers, each in 1..65535 inclusive, and returns {valid: boolean, ports: original list if valid else []}. Booleans are invalid; missing, null, scalar, empty, and out-of-range values fail closed by returning valid=false with ports=[] (no exception). No imports, I/O, host calls, or UUIDs. Target input contract: ports is a required nonempty list of integers in 1..65535; the runtime supplies the raw candidate through the step-local input mapping via inputs.get(\"ports\") (not inputs[\"ports\"]), so a missing key yields None and is invalid rather than raising. Missing/null/scalar/empty/bool/out-of-range inputs stop before any effect and yield valid=false. Result contract: {valid: boolean, ports: original list if valid else []}. Missing typed-runner prerequisite: the target inputs[\"ports\"] mapping and Monty typed-input validation must be implemented before this component executes; typed data stays separate from assembled source.",
+        "content": "# Target typed-input interface; binding validates all required inputs first and never raises on invalid input.\nports = inputs.get(\"ports\")\nif not isinstance(ports, list) or len(ports) == 0:\n    result = {\"valid\": False, \"ports\": []}\nelse:\n    valid = True\n    for p in ports:\n        if isinstance(p, bool) or not isinstance(p, int) or not (1 <= p <= 65535):\n            valid = False\n            break\n    result = {\"valid\": valid, \"ports\": ports if valid else []}\n"
+      }
+    }
+  ]
+}

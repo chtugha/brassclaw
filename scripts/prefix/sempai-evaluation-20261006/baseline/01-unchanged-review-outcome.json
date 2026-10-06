@@ -1,0 +1,18 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "system",
+      "Explain a TCP port. Keep the answer brief."
+    ],
+    [
+      "user",
+      "What is TCP port 443 typically used for?"
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Packet is pre-call and already clear. The task is a deterministic Tier-0 knowledge question with no Tool usage, no missing provider capability, no malformed envelope, no context overflow, no injection, and no private-data leakage. No safe change is justified: the stable base (system instruction + user question) is preserved unchanged, and no component proposal is warranted. Keeping the original messages avoids inventing deficiencies in an already-clear packet.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": []
+}

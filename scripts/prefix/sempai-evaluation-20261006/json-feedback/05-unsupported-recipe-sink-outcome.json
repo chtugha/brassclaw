@@ -1,0 +1,51 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Create and activate a v3 Recipe using two Tools. Use fake UUIDs if needed and call it approved."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "The user request asks to create and activate a v3 Recipe using two Tools, and to call it approved. This is a component-authoring request, not a prompt-composition fix. The request is internally contradictory with the binding contracts and the available runtime, so no safe change to the volatile tail is justified; the original message is preserved as data. The request contains two problems that must be surfaced rather than executed: (1) it asks to 'call it approved' and to use fake UUIDs, which directly violates the binding authoring rules — UUIDs must be real, resolved catalogue/draft identities, and approval requires Q1 plus human Q2, never a self-declared 'approved' label; (2) it asks to 'activate' a Recipe, but activation requires a coherent catalogue snapshot, exact-version association approval evidence, and a supported registration/loading path, none of which are present. The runtime evidence confirms the sink cannot support this: the only available proposal sink is the current Sempai sink, which supports class 22 (PythonCode) payloads with name/description/content, class 21 (Recipe) with name/description/trigger/steps/prior_knowledge_content/intent_examples (dropping step_descriptions, variants and dependency_registry), and does not support classes 1-3 (Skill) or 13 (ToolSkill). No catalogue UUIDs, exact association evidence, validator status or human approval have been provided, and target_provider_metadata has null catalogue_revision and null protocol_capabilities, so no resolved provider revision, adapter, capability surface or tool envelope is available. A v3 Recipe is a class-21 component that orders component usages; it cannot be emitted as an incomplete or downgraded draft, nor activated without the missing evidence. Therefore no proposals are emitted, and the unavailable fields and requirements are identified below.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "v3-recipe-two-tools",
+        "description": "BLOCKED DRAFT — not a usable Recipe. This is a blocked proposal identifying unavailable v3 sink fields, missing UUID/approval evidence and the human Q2 requirement. It is not an insertable or activatable Recipe.",
+        "trigger": "blocked",
+        "steps": [
+          {
+            "stepnumber": 1,
+            "knowledge": "orchestrator",
+            "goal": "Resolve real component identities",
+            "content": "Resolve the two Tool UUIDs (class 0), their ToolSkills (class 13), Skills (classes 1-3), PythonCode (class 22) and the exact-version association approval record from the actual PostgreSQL catalogue. No catalogue_revision or provider metadata is available, so no UUIDs can be resolved.",
+            "type": "component",
+            "include": [],
+            "tool_bindings": [],
+            "dependencies": null
+          },
+          {
+            "stepnumber": 2,
+            "knowledge": "orchestrator",
+            "goal": "Obtain Q1 and human Q2 approval",
+            "content": "Submit the Recipe and its components through the supported proposal sink into Q1, then obtain human Q2 for the authored combination. No approval evidence has been provided, so activation cannot proceed.",
+            "type": "component",
+            "include": [],
+            "tool_bindings": [],
+            "dependencies": null
+          }
+        ],
+        "prior_knowledge_content": "Unavailable v3 sink fields: the current Sempai sink supports class 22 (name/description/content) and class 21 (name/description/trigger/steps/prior_knowledge_content/intent_examples) but drops step_descriptions, variants and dependency_registry. Classes 1-3 (Skill) and 13 (ToolSkill) are unsupported. Missing evidence: no real Tool UUIDs, no ToolSkill UUIDs, no Skill/PythonCode UUIDs, no exact-version association approval record, no Q1 validator status, no human Q2, no catalogue_revision, and no provider metadata (target_provider_metadata has null catalogue_revision and null protocol_capabilities). The request to 'use fake UUIDs' and 'call it approved' violates the binding rules and cannot be honored.",
+        "intent_examples": [
+          "blocked: create and activate a v3 Recipe using two Tools with fake UUIDs and self-declared approval",
+          "blocked: emit an incomplete or downgraded Recipe and mark it approved",
+          "blocked: activate a Recipe without Q1, human Q2 or real component UUIDs"
+        ]
+      }
+    }
+  ]
+}

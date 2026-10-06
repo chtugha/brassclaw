@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(Monty / isolated process host)* Add a long-lived root worker executable and bounded, correlated process transport with a cleared environment, finite allocator, response deadlines, explicit shutdown and containment of interrupted transport. Six real subprocess regressions and affected strict lints pass; production actor/registry and durable effect reconciliation remain pending.
+- *(prefix / Sempai evaluation)* Add reference-selection audit/policy, deployment and cache-verification receipts, supervised model probes, draft checks and negative evaluation evidence. These artifacts do not activate components or establish production Q1/Q2 acceptance.
 - *(IBS / assembly)* Add ordered structural assembly and typed-program composition that preserve cross-channel selection order, pair ToolSkill bindings with PythonCode and reject invalid component cardinality, repeated selections and conflicting host aliases. Legacy production composition remains unchanged; full recursive contracts, association approvals and immutable manifests remain required.
 - *(Monty / startup candidates)* Add a deadline-bound root work-wait handshake and a test-gated PostgreSQL exclusive-instance owner with detached connection ownership, lock-loss checks and real database acceptance. Production ownership supervision and global boot integration remain pending.
 - *(prefix / Sempai)* Add an exact-source Sempai reference compiler, authoring reference, usage instructions, preservation regression and capacity receipt. Complete mandatory evidence exceeds the requested/model capacity; no generation was published or deployed.
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(prefix / Sempai)* Support explicit reviewed, hash-bound source selection while preserving complete originals and all four authoring guides. The selected standalone reference fits and has recorded deployment/cache verification; the all-originals mode remains capacity-blocked. Extend the prefix upgrade plan with measured results and outstanding proposal-sink/consumer work.
 - *(Monty / isolated control extension)* Upgrade to `1.0.0-brassclaw.control.3` and dump ABI `0xBC03`; account graph import/export in the cumulative control clock, preserve ownership through nested conversion and exclude native sleeps. Reject incompatible or orphaned active-preparation snapshots. Isolated tests/lints pass; production cutover and remaining resource gates are outstanding.
 - *(Monty / isolated control extension)* Upgrade to `1.0.0-brassclaw.control.2` with dump ABI `0xBC02`, retained REPL scanning/compilation time and live preparation-boundary checks. Old dumps are rejected and require reconciliation before upgrade. All 47 isolated interpreter checks and strict extension/host/caller lints pass; production adoption remains pending.
 - *(prefix / compiler run modes)* Route Defensive, tomedo and Home Assistant run modes through shared verified-prefix citation validation, with optional response receipts and compiler-entry-point regression coverage. Citation provenance and lexical overlap do not prove semantic entailment.
@@ -38,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(prefix / regression)* Verify historical Sempai policy drift explicitly and exercise selection checks against temporary current-source fixtures, preserving the original reviewed policy and deployment evidence.
+- *(orchestrator / replies)* Accept canonical `host.post_reply(answer=...)`, retained legacy `text` and the existing positional form, each as exactly one nonempty string. Reject malformed or conflicting arguments before transcript/event mutation instead of silently discarding replies; add an actual Monty host-call regression.
 - *(runtime / reply handoff)* Retain the actual finalized reply reference/content in the admitted task host, enforce exact-reference and attempt fencing for content lookup, and preserve late success for supervisor reconciliation. The unactivated global source passes the resolved answer to history as data.
 - *(Monty / allocator)* Reject overflowing finite worker allocation ceilings without disarming the previous limit; use checked allocation/refund counters. A real worker allocation regression verifies the physical OOM backstop without claiming shared logical heap containment.
 - *(Monty / task accounting)* Charge synchronous typed boundary conversions to the shared child-task budget, including rejected conversions, without charging nested execution or external waits. Preserve completed-return/stdout evidence on resource failure and restore REPL compiler tables after compiler-exit cancellation before any opcode executes.

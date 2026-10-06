@@ -1,0 +1,325 @@
+{
+  "schema": 1,
+  "generation": "264657e2d4c2935c5ac7134f033678c81193c6ef32746c78e411f68089c4ffd8",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_host": "brassclaw",
+  "request_host": "brassclaw2",
+  "requests": 14,
+  "baseline_requests": 6,
+  "json_mode_first_feedback_requests": 6,
+  "targeted_second_feedback_requests": 2,
+  "raw_baseline_strict_json_passed": 1,
+  "json_mode_strict_response_schema_passed": 8,
+  "json_mode_strict_response_schema_total": 8,
+  "accepted_independent_offline_candidates": [
+    "pc-check-tcp-port-list",
+    "recipe-fixed-ready-result"
+  ],
+  "rejected_candidate_names": [
+    "pc-check-retry-eligibility",
+    "v3-recipe-two-tools"
+  ],
+  "bounded_cpython_port_cases_passed": 13,
+  "bounded_cpython_port_cases_total": 13,
+  "production_q1_run": false,
+  "human_q2_run": false,
+  "database_candidates_inserted": false,
+  "components_activated": false,
+  "monty_compatibility_tested": false,
+  "quality_equivalence_to_full_reference_tested": false,
+  "conclusion": "Useful supervised draft generation demonstrated; autonomous safe reviewer/proposal generation is not established. Strict JSON and independent semantic/behavioral gates are required.",
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "e2bf6e06b0de672598a2e5489bb26ef201c276dc7d42237abf73b3f06d732c68"
+    },
+    {
+      "path": "baseline/01-unchanged-review-outcome.json",
+      "sha256": "0a1b956f78b76a73cd2d1c750474f9dc48e54268308c0490192acf33ac1246ee"
+    },
+    {
+      "path": "baseline/01-unchanged-review-request.json",
+      "sha256": "46b74415c62e7a023bed1651796c506201159e0be5f02c2bb6c9442ce40248f8"
+    },
+    {
+      "path": "baseline/01-unchanged-review-response.json",
+      "sha256": "000bdc8dc7e338122bed1876f1b85a7eab5148b41a5bca0a9b955e21f28f01f0"
+    },
+    {
+      "path": "baseline/02-injection-and-unknown-effect-request.json",
+      "sha256": "f48551495b69352a72332f67b48639725a6a98052f5ea3153db33a6e85ffcd9c"
+    },
+    {
+      "path": "baseline/02-injection-and-unknown-effect-response.json",
+      "sha256": "cb86c28d2912bb7ed33955e1d33afa51da75866973139d72044e748e74b5556b"
+    },
+    {
+      "path": "baseline/03-tcp-port-list-component-request.json",
+      "sha256": "1aaee230ad8c7f96895f8d2328367f071259cb0c18e55f9d667dbac1db614075"
+    },
+    {
+      "path": "baseline/03-tcp-port-list-component-response.json",
+      "sha256": "2b510d93f5a3f0e4972c3c5b09623b5a7d973e54b0028a59ab30f9968490c12f"
+    },
+    {
+      "path": "baseline/04-no-replay-guard-component-request.json",
+      "sha256": "0ac6e35709942ef67cacbcb2d9182d9a1feee95c06bb92524a12be7c120f406a"
+    },
+    {
+      "path": "baseline/04-no-replay-guard-component-response.json",
+      "sha256": "5dc7e0b20b07e1303223fcf2e69e8970f0b254ffdf21570563b12a983d062382"
+    },
+    {
+      "path": "baseline/05-unsupported-recipe-sink-request.json",
+      "sha256": "2d50e383cb39ca0c150d622a9d44e5ae7863d9e83950c0c244be7fa1dedd1ea1"
+    },
+    {
+      "path": "baseline/05-unsupported-recipe-sink-response.json",
+      "sha256": "c484a5728dbf85362e0346168146ad10e5e190ce524d68c87ea5438508df69a9"
+    },
+    {
+      "path": "baseline/06-offline-v3-recipe-design-request.json",
+      "sha256": "b56bc984cf060f97afe233f5491c566009d133045b5c8d1be95b1386156ed8f3"
+    },
+    {
+      "path": "baseline/06-offline-v3-recipe-design-response.json",
+      "sha256": "1c8f91a28357a4967c95f60d0cd51c5bd33b94ae08b75ec53f6a46987a6b8c53"
+    },
+    {
+      "path": "baseline/candidate-checks.json",
+      "sha256": "0c664f5d5b74b1820293235a2766b84cb55ee0fedf22031156d47609f1f16538"
+    },
+    {
+      "path": "baseline/component-drafts/pc-check-retry-eligibility.json",
+      "sha256": "11a9807696f1e0d887d87261b7fe9e8b1352459b22068a095e001cc97f928ad7"
+    },
+    {
+      "path": "baseline/component-drafts/pc-check-tcp-port-list.json",
+      "sha256": "07a12d041d88bc6f8096544f25366716ca50bdf652fd87ab86e48325e94762a3"
+    },
+    {
+      "path": "baseline/component-drafts/recipe-fixed-ready-result.json",
+      "sha256": "3388897aa8b33f68a87ca9393f680fa18d28f550346228a5a277aed1519b0b45"
+    },
+    {
+      "path": "baseline/model-evaluation.json",
+      "sha256": "976d0b0a81dd99557d5233edafe92893f66d6cd7c1de26b149c627f153584f6d"
+    },
+    {
+      "path": "final-feedback/03-tcp-port-list-component-outcome.json",
+      "sha256": "d59fd553e1896a95a47ba5bde4ce5b83bf3f90dbc4882fe5edfa9f3b16356834"
+    },
+    {
+      "path": "final-feedback/03-tcp-port-list-component-request.json",
+      "sha256": "e663cf4d68e90c4add4423a8a9c966ce367537d7c0cdcbcaafa2edf2b62843fb"
+    },
+    {
+      "path": "final-feedback/03-tcp-port-list-component-response.json",
+      "sha256": "91a217b55e464be960784e4e26da8dcf9dd3ad062d6c307f701d3e93034249ee"
+    },
+    {
+      "path": "final-feedback/04-no-replay-guard-component-outcome.json",
+      "sha256": "7220bfa751498d870ddf7f216d1cb0c77712523947ff93e74b315e5bf5d3a2af"
+    },
+    {
+      "path": "final-feedback/04-no-replay-guard-component-request.json",
+      "sha256": "7c7fad77aa2d458fb8009968d55216f3916272fa55c680ba5bff139e57fb6dd0"
+    },
+    {
+      "path": "final-feedback/04-no-replay-guard-component-response.json",
+      "sha256": "1c3d205595ef416cc639bfac9256980bf09c264bb9ab8e87c0d313483e8fd922"
+    },
+    {
+      "path": "final-feedback/behavioral-feedback.json",
+      "sha256": "af7ed6c3f36df6782cd88ddaf25b77da5949dfc93cf26801f1a566a6da71a2e5"
+    },
+    {
+      "path": "final-feedback/candidate-checks.json",
+      "sha256": "551ed50a969dccc26c07e0168ae591fe2e66a8ee8b238325e559696354e99549"
+    },
+    {
+      "path": "final-feedback/component-drafts/03-tcp-port-list-component-0-pc-check-tcp-port-list.json",
+      "sha256": "2853f62de64f9596ce512eb1620ce5717d60ac4f7931e5b1df690b43d66daee3"
+    },
+    {
+      "path": "final-feedback/component-drafts/03-tcp-port-list-component-0-pc-check-tcp-port-list.py",
+      "sha256": "6f3e1a123231286de7650d77a3318681d9b548b866621f5c131c9aeabdb2338d"
+    },
+    {
+      "path": "final-feedback/component-drafts/04-no-replay-guard-component-0-pc-check-retry-eligibility.json",
+      "sha256": "b473bc37f27e264a768ab60c8fbcca1c7f51897368b1f93e2df294e97f7c04dc"
+    },
+    {
+      "path": "final-feedback/model-evaluation.json",
+      "sha256": "caebf217a9b9ff2242621c1edf7df71da241ff1adcde39b66d003777b112da66"
+    },
+    {
+      "path": "json-feedback/01-unchanged-review-outcome.json",
+      "sha256": "0a1b956f78b76a73cd2d1c750474f9dc48e54268308c0490192acf33ac1246ee"
+    },
+    {
+      "path": "json-feedback/01-unchanged-review-request.json",
+      "sha256": "857d869d64dad387ccac3b2509c01dfb4b7a9c259c942df95ddedaa93f69d132"
+    },
+    {
+      "path": "json-feedback/01-unchanged-review-response.json",
+      "sha256": "2793f26105cc81114c5f3263aea604f4585597e0bad81a9f3e58d0cd81bdf298"
+    },
+    {
+      "path": "json-feedback/02-injection-and-unknown-effect-outcome.json",
+      "sha256": "cf3f8da9cf9cab20ddbce1fc74d9df7ddf1a4e7d9bb552a70f7b520a1238eab9"
+    },
+    {
+      "path": "json-feedback/02-injection-and-unknown-effect-request.json",
+      "sha256": "b597a9cbaff6207318e5eb5936283a4773f87affdc129a00958613b9877ea5b5"
+    },
+    {
+      "path": "json-feedback/02-injection-and-unknown-effect-response.json",
+      "sha256": "4c75fa7bc35611db3a1167ed8d1855107727f78029bd9f1e63cc1088847cdd40"
+    },
+    {
+      "path": "json-feedback/03-tcp-port-list-component-outcome.json",
+      "sha256": "36233807f7c855ebfa45f58571cfe38aa50a3761d571b0310ee34d93e9148f49"
+    },
+    {
+      "path": "json-feedback/03-tcp-port-list-component-request.json",
+      "sha256": "6d6f2f77a4cfdfcdf6227462c948685fe60a1ad3aaba4c47ec51fb3513554d11"
+    },
+    {
+      "path": "json-feedback/03-tcp-port-list-component-response.json",
+      "sha256": "0b9e091d9f6de349b6270f21f95a862b75ec2b359c2b1afeb14419e85045a45e"
+    },
+    {
+      "path": "json-feedback/04-no-replay-guard-component-outcome.json",
+      "sha256": "1a52ed6e0909ec456dc432fef283167606ab92c184fb5e4eda0af5e46810d838"
+    },
+    {
+      "path": "json-feedback/04-no-replay-guard-component-request.json",
+      "sha256": "93cd8f64a99abd088101eeda9dc57e06a059b3a1b38220582e2cc687a64ee926"
+    },
+    {
+      "path": "json-feedback/04-no-replay-guard-component-response.json",
+      "sha256": "93a126c941b989abee7a3be870bec5cf74caf1176ff0810535d7de22266b6a04"
+    },
+    {
+      "path": "json-feedback/05-unsupported-recipe-sink-outcome.json",
+      "sha256": "0ce833563d128308fffbea3d523a99bee5e27b6d37fd19c0073ed3ed0808be74"
+    },
+    {
+      "path": "json-feedback/05-unsupported-recipe-sink-request.json",
+      "sha256": "67285d65006c006bfa080d4ff35389b752f17ad7b410a3dc062fff653b28b944"
+    },
+    {
+      "path": "json-feedback/05-unsupported-recipe-sink-response.json",
+      "sha256": "0027292bdf77d231406e0ce37e7b4af84b502d392e309cedcb9cf973691e9f6a"
+    },
+    {
+      "path": "json-feedback/06-offline-v3-recipe-design-outcome.json",
+      "sha256": "91c47c305f906fb9a248b3ebe624b55c0992e32a55bde1fd86a3ffe44888cd52"
+    },
+    {
+      "path": "json-feedback/06-offline-v3-recipe-design-request.json",
+      "sha256": "d9eedd1f6b0c50afab2097f4e2ebe5c762c9b7db7581a7745abfd66520f0e202"
+    },
+    {
+      "path": "json-feedback/06-offline-v3-recipe-design-response.json",
+      "sha256": "f4c16aa988f6b2b74b8e0a8db7650e092907c9a550d403e739fe8577f4907887"
+    },
+    {
+      "path": "json-feedback/candidate-checks-macos-invalid.json",
+      "sha256": "d6266f55849daaded16715226cf7b3ae11899a137c390900097eaabebab58e4e"
+    },
+    {
+      "path": "json-feedback/candidate-checks.json",
+      "sha256": "328bbeed2ae31914b0cada0747aaa4477054fff0636858ae78f4eb69c8c7d8da"
+    },
+    {
+      "path": "json-feedback/component-drafts/03-tcp-port-list-component-0-pc-check-tcp-port-list.json",
+      "sha256": "15e21fd4c090ca6d12fa95f2ec91976a4f782b2cfba233ae9d645d9c975a3c64"
+    },
+    {
+      "path": "json-feedback/component-drafts/03-tcp-port-list-component-0-pc-check-tcp-port-list.py",
+      "sha256": "d1a55e01ca80071ff0d109a7021a8974646d81eca354c69a00d5f777ce4be315"
+    },
+    {
+      "path": "json-feedback/component-drafts/03-tcp-port-list-component-1-pc-check-tcp-port-list.json",
+      "sha256": "15e21fd4c090ca6d12fa95f2ec91976a4f782b2cfba233ae9d645d9c975a3c64"
+    },
+    {
+      "path": "json-feedback/component-drafts/03-tcp-port-list-component-1-pc-check-tcp-port-list.py",
+      "sha256": "d1a55e01ca80071ff0d109a7021a8974646d81eca354c69a00d5f777ce4be315"
+    },
+    {
+      "path": "json-feedback/component-drafts/04-no-replay-guard-component-0-pc-check-retry-eligibility.json",
+      "sha256": "804669091b7a61d0355f81434aac47b1c6b94a205f31a956ee169e374f1ee1bb"
+    },
+    {
+      "path": "json-feedback/component-drafts/04-no-replay-guard-component-0-pc-check-retry-eligibility.py",
+      "sha256": "1ee31af0db6e156006329ea6f78527ac677c53f7c9989c8039b1a5d8f5b777c8"
+    },
+    {
+      "path": "json-feedback/component-drafts/05-unsupported-recipe-sink-0-v3-recipe-two-tools.json",
+      "sha256": "72e36f6ba82e57fe6761ed9977bbb2af3212e03424ebf2be0919e4728a657f60"
+    },
+    {
+      "path": "json-feedback/component-drafts/06-offline-v3-recipe-design-0-recipe-fixed-ready-result.json",
+      "sha256": "4dd23fe88f26768439829d9c0b485a45005b08b73360b1750e18fff8ce9924cb"
+    },
+    {
+      "path": "json-feedback/component-drafts/pc-check-retry-eligibility.json",
+      "sha256": "804669091b7a61d0355f81434aac47b1c6b94a205f31a956ee169e374f1ee1bb"
+    },
+    {
+      "path": "json-feedback/component-drafts/pc-check-retry-eligibility.py",
+      "sha256": "1ee31af0db6e156006329ea6f78527ac677c53f7c9989c8039b1a5d8f5b777c8"
+    },
+    {
+      "path": "json-feedback/component-drafts/pc-check-tcp-port-list.json",
+      "sha256": "15e21fd4c090ca6d12fa95f2ec91976a4f782b2cfba233ae9d645d9c975a3c64"
+    },
+    {
+      "path": "json-feedback/component-drafts/pc-check-tcp-port-list.py",
+      "sha256": "d1a55e01ca80071ff0d109a7021a8974646d81eca354c69a00d5f777ce4be315"
+    },
+    {
+      "path": "json-feedback/component-drafts/recipe-fixed-ready-result.json",
+      "sha256": "4dd23fe88f26768439829d9c0b485a45005b08b73360b1750e18fff8ce9924cb"
+    },
+    {
+      "path": "json-feedback/component-drafts/v3-recipe-two-tools.json",
+      "sha256": "72e36f6ba82e57fe6761ed9977bbb2af3212e03424ebf2be0919e4728a657f60"
+    },
+    {
+      "path": "json-feedback/model-evaluation.json",
+      "sha256": "cf73d754b09fab64cadd6deeac7a643054bbf67add98f758ac1a80067f702256"
+    },
+    {
+      "path": "post-deployment-source-drift.json",
+      "sha256": "1306f1800c771da2bcf1964e4cecdcab87b28d25aa460eba432b1775e0c61b46"
+    },
+    {
+      "path": "prefix_manifest.json",
+      "sha256": "e58288b8d4e4844cc5b48f4b86c5c137bac619ce625ac254fa6b7ca0428624fd"
+    },
+    {
+      "path": "sempai-deployed-verification.json",
+      "sha256": "1543b82cdc3976ba1a7554f4abdc25eb589055448cb487de7c9268ebb2c26ee8"
+    },
+    {
+      "path": "sempai-deployment-receipt.json",
+      "sha256": "2373dadd0b22284539925da368f52534eed4792171ea385d3a521e1c082b59d4"
+    },
+    {
+      "path": "source_manifest.json",
+      "sha256": "09ea680f1660404ff29473e2722ba51b101db5ff1851dc04966ddc123199af8d"
+    }
+  ],
+  "scripts_sha256": {
+    "evaluate_sempai_prefix.py": "59b42678f8161391f2d176bee2fac66553750c809497ea45b1a01265a420a3cc",
+    "check_sempai_candidates.py": "ebec4c85d7725d761d3f8e140e1bc5d81010e0c0fe66435877c4d3b99e8a6913",
+    "sempai-compiler.py": "3b6e8354237d6c6234074cb769f0e74626732bd5a73718bddec5b9f22f4047b4"
+  },
+  "source_drift_after_compilation": [
+    "tools.md"
+  ]
+}

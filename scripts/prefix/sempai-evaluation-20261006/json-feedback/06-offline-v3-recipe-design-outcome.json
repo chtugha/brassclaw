@@ -1,0 +1,79 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "Design a reusable subworkflow that returns a fixed readiness result (status data, not a posted user reply)."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "Offline-design export only. The instruction requests a single class-21 Recipe constructor draft that returns a fixed readiness result as status data, not a posted user reply. The requested draft PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\"status\": \"Ready\"}) is an unapproved draft identity; it is carried as a dependency reference only, not as an activated component. The current Sempai sink cannot preserve a full v3 Recipe constructor draft (class 21 drops step_descriptions, variants and dependency_registry), so this draft is not submitted or activated. The previous draft's intent examples promised a posted user reply, which this subworkflow cannot do; they are replaced with distinct natural intents about returning fixed readiness status data. This is a deterministic Tier-0 readiness result with zero LLM calls; no prompt change or capability claim is justified. All compatibility/intent/settings arrays remain empty.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 21,
+      "payload": {
+        "name": "recipe-fixed-ready-result",
+        "description": "Deterministic Tier-0 subworkflow that returns a fixed readiness result as status data. Returns the result only; it does not post a user reply. Unapproved draft dependency; requires Q1 and human Q2 before activation. The current Sempai sink cannot preserve this v3 Recipe constructor draft.",
+        "trigger": null,
+        "steps": [],
+        "prior_knowledge_content": "Unapproved draft dependency: PythonCode UUID 84313e5b-c871-4f9e-9623-3986db9c5b2a (content: result = {\"status\": \"Ready\"}), zero inputs, zero Tool calls, no dependencies. This is an offline-design export only, not a submission or activation. Q1 and human Q2 are required before activation. The subworkflow returns the readiness result only; it does not post a user reply. The current Sempai sink cannot preserve this v3 Recipe constructor draft (class 21 drops step_descriptions, variants and dependency_registry).",
+        "intent_examples": [
+          "return the readiness status",
+          "give me the ready status",
+          "what is the readiness result",
+          "show the ready status",
+          "output the readiness result",
+          "return the ready status value",
+          "provide the readiness status",
+          "emit the ready status",
+          "return the fixed readiness result",
+          "show the readiness status value"
+        ],
+        "step_descriptions": [
+          {
+            "desc_idx": 0,
+            "label": "Run the fixed readiness result",
+            "yaml_source": "Human-readable documentation of the single deterministic step",
+            "steps": [
+              {
+                "stepnumber": 1,
+                "knowledge": "orchestrator",
+                "goal": "Run the fixed-readiness PythonCode",
+                "content": "Run the fixed-readiness PythonCode",
+                "type": "component",
+                "include": [
+                  "84313e5b-c871-4f9e-9623-3986db9c5b2a"
+                ],
+                "tool_bindings": [],
+                "dependencies": null
+              }
+            ]
+          }
+        ],
+        "variants": [
+          {
+            "variant_key": "fixed-readiness-result",
+            "description": "Return exactly the fixed readiness status result with no input slots",
+            "step_link": "0:1-0:E",
+            "intent_examples": [
+              "return the readiness status",
+              "give me the ready status",
+              "what is the readiness result",
+              "show the ready status",
+              "output the readiness result",
+              "return the ready status value",
+              "provide the readiness status",
+              "emit the ready status",
+              "return the fixed readiness result",
+              "show the readiness status value"
+            ],
+            "variable_patterns": []
+          }
+        ],
+        "dependency_registry": null
+      }
+    }
+  ]
+}

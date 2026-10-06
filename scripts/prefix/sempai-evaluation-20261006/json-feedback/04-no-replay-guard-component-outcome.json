@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need a reusable deterministic guard before considering a retry."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "The request is a single, well-formed authoring instruction for one class-22 pure-logic component. It is internally consistent and matches the v3 authoring contract: a deterministic, zero-LLM, pure-logic component with a precise input schema, a closed-form decision rule, and an explicit result contract. The behavioral feedback corrects the previous draft: content must be ONLY executable Python reading typed inputs, not Markdown with undefined variables. The decision rule is a conjunction of four conditions — outcome == 'retryable', operation_state != 'completed', 0 < attempt < max_attempts (both positive ints), and (read_only or dedup_verified) — returning {retry: false} on any invalid/missing/null data, never raising. Completed state is always false. This guard is evidence-conditioned logic, not dispatch permission; it retains the documented runtime gaps (typed inputs mapping, Monty runner support, and that live policy/cancellation/resource checks remain independent). No volatile-tail change is justified. The host sink supports class 22 with name/description/content, so the draft is submitted through the supported proposal path with illustrative UUIDs that must be resolved to real catalogue/draft identities before activation.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-retry-eligibility",
+        "description": "Deterministic pure-logic guard that decides whether a Tool invocation is eligible for a bounded retry, before any retry is considered. It performs evidence-conditioned logic only: it does not grant dispatch permission, does not reset attempt counts, and does not replay completed effects. Returns retry: true only when outcome is exactly 'retryable', operation_state is not 'completed', attempt < max_attempts (both positive integers), and read_only or dedup_verified is true. Any missing, null, or invalid input fails closed with retry: false; it never raises. Completed effects never replay even when read_only or dedup_verified is true. This guard is a reusable building block for Recipe/usage failure contracts; it never bypasses current instance-wide Tool policy, cancellation, stale-attempt fencing, or resource limits, and it assumes the typed inputs mapping and Monty runner support are implemented on the selected path.",
+        "content": "operation_state = inputs[\"operation_state\"]\noutcome = inputs[\"outcome\"]\nattempt = inputs[\"attempt\"]\nmax_attempts = inputs[\"max_attempts\"]\nread_only = inputs[\"read_only\"]\ndedup_verified = inputs[\"dedup_verified\"]\n\nretry = (\n    outcome == \"retryable\"\n    and operation_state != \"completed\"\n    and isinstance(attempt, int) and not isinstance(attempt, bool)\n    and isinstance(max_attempts, int) and not isinstance(max_attempts, bool)\n    and 0 < attempt < max_attempts\n    and (read_only is True or dedup_verified is True)\n)\n\nresult = {\"retry\": bool(retry)}"
+      }
+    }
+  ]
+}

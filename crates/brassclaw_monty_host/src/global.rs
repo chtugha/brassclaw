@@ -21,7 +21,7 @@ use crate::{
     identifier, json_input,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Lifecycle {
     Starting,
     Ready,
@@ -31,7 +31,8 @@ pub enum Lifecycle {
 }
 
 /// This is a technical pending-call bound, not a token or task-duration budget.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalBounds {
     pub values: VmBounds,
     pub workers: u32,

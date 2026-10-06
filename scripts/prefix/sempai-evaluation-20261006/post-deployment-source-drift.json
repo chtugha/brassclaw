@@ -1,0 +1,12 @@
+{
+  "deployed_snapshot": "5e9d6170af199e3aa136ab40a9f3d4822be8e505c8b879b73cee2f9e04d5e331",
+  "changed_sources": [
+    {
+      "path": "tools.md",
+      "deployed_sha256": "0ee9bfa7f1a324dcc63d229acd29697603d9ef622fd5006346efb603eabf937e",
+      "current_checkout_sha256": "d911b72b2591c15aacae47d18733fe0249447024f04c8e3dab37df2ff322de3c"
+    }
+  ],
+  "deployed_generation_changed": false,
+  "policy_rebuild_requires_review": true
+}

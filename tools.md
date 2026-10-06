@@ -485,10 +485,15 @@ program merely because a Recipe is composed.
   establish the complete target immutable manifest/binding preparation. These
   are implementation gaps; ordinary inputs/results must use typed data in v3.
 
-Do not infer a universal keyword schema from seed prose. For example, the
-inspected `handle_post_reply` reads `text`, while authoring/seed examples show
-`answer`. Resolve the actual adapter contract before using a reply body. This
-mismatch is not permission to silently post an empty reply or invent an alias.
+Do not infer a universal keyword schema from seed prose. The reply adapter now
+accepts the canonical `host.post_reply(answer=<string>)` contract. It retains
+`text=<string>` and one positional string for already-selected legacy code.
+Exactly one argument is permitted: missing, duplicate/conflicting, unknown,
+non-string or empty replies fail before transcript/event mutation. Values are
+not coerced into reply text. The legacy engine adapter still returns null after
+an in-memory append; that is not the global task host's durable `msg:` reply
+reference contract. Global production wiring must use the admitted task's
+transcript port and resolve its actual finalized reference.
 
 ## 10. When and how to create a new Tool
 

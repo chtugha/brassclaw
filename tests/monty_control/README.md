@@ -117,3 +117,32 @@ and the retained finite cap still ends a real native allocation with Monty's OOM
 exit code/diagnostic. Strict allocator/caller lints pass. Existing registry pins
 are preserved. This verifies the worker's physical backstop, not the production
 supervisor or shared adaptive logical heap account.
+
+
+`process_host.rs` adds six actual subprocess cases against the same worker entry
+point as the hosting candidate. They prove real boot/idle lifetime, preserved
+opaque admission, duplicate-Boot rejection, failed/oversized admission and
+command evidence, real domain-failure reporting, explicit graceful shutdown,
+independent busy-startup timeout/reaping, fatal native allocator containment,
+dropped-exchange fencing and malformed protocol rejection without private
+payload diagnostics. The worker itself supplies no Recipe/model/effect success.
+The six existing root cases and six worker cases pass with `--locked` and retained
+registry pins. After clearing the worker environment, all six affected worker
+cases and strict host/caller lints pass again. Evidence:
+`/private/tmp/brassclaw-process-host-final.log`,
+`/private/tmp/brassclaw-process-host-contained.log`,
+`/private/tmp/brassclaw-process-host-contained-lints.log` and
+`/private/tmp/brassclaw-process-host-contained-caller-lints.log`.
+
+This establishes contained root VM mechanics, not production actor ownership,
+per-task cancellation, child containment, live WebUI revision uptake, shared
+adaptive heap accounting or the original seven composition tests' acceptance.
+
+
+Final parent-side data preflight acceptance passes the same six actual worker
+cases with added retained-depth and encoder-frame overflow checks. It prevents
+recursive parent encoding of excessive data, without consuming the worker's
+pending boundary. Strict host/caller lints pass:
+`/private/tmp/brassclaw-process-host-bounded-data.log`,
+`/private/tmp/brassclaw-process-host-bounded-data-lints.log` and
+`/private/tmp/brassclaw-process-host-bounded-data-caller-lints.log`.

@@ -1,0 +1,59 @@
+{
+  "engine": "bounded isolated CPython, not Monty/Q1",
+  "proposals": [
+    {
+      "response": "03-tcp-port-list-component-response.json",
+      "name": "pc-check-tcp-port-list",
+      "class_code": 22,
+      "strict_json": false,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "0a1aa3f4a214f6637c8b9b8709c515b3e03e4f6725bdcd17f2c7e445f980a284",
+      "error": "Excluded AST operation: Raise",
+      "offline_acceptance_passed": false
+    },
+    {
+      "response": "04-no-replay-guard-component-response.json",
+      "name": "pc-check-retry-eligibility",
+      "class_code": 22,
+      "strict_json": false,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "exact_sink_fields": true,
+      "nonempty_metadata": true,
+      "content_sha256": "8d76126d7298e5bf99bab45f444efbc378bf93dedeafc14410dc814af1c79bb9",
+      "error": "invalid syntax (<unknown>, line 3)",
+      "offline_acceptance_passed": false
+    },
+    {
+      "response": "06-offline-v3-recipe-design-response.json",
+      "name": "recipe-fixed-ready-result",
+      "class_code": 21,
+      "strict_json": false,
+      "q1_completed": false,
+      "q2_completed": false,
+      "database_submitted": false,
+      "activated": false,
+      "design_checks": {
+        "exact_constructor_fields": true,
+        "single_description_single_step": true,
+        "single_exact_unapproved_draft_reference": true,
+        "persisted_ibs_layout": true,
+        "variant_selection": true,
+        "ten_distinct_intents": true,
+        "intent_does_not_promise_post_reply": false,
+        "retains_q1_human_q2_and_sink_gap": true,
+        "no_version_number_in_component_ref": true
+      },
+      "offline_acceptance_passed": false,
+      "current_sink_preserves_v3": false
+    }
+  ],
+  "component_activation_performed": false
+}

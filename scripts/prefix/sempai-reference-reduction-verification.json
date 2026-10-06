@@ -1,0 +1,146 @@
+{
+  "sources": [
+    {
+      "path": "recipe.md",
+      "source_tokens": 8383,
+      "units": 18
+    },
+    {
+      "path": "skills.md",
+      "source_tokens": 14409,
+      "units": 32
+    },
+    {
+      "path": "tools.md",
+      "source_tokens": 8246,
+      "units": 22
+    },
+    {
+      "path": "toolskills.md",
+      "source_tokens": 8741,
+      "units": 23
+    },
+    {
+      "path": "AGENTS.md",
+      "source_tokens": 15572,
+      "units": 30
+    },
+    {
+      "path": "CLAUDE.md",
+      "source_tokens": 19957,
+      "units": 57
+    },
+    {
+      "path": "simplified_v3.md",
+      "source_tokens": 32881,
+      "units": 33
+    },
+    {
+      "path": "docs/agents-v3/14-validation-queue.md",
+      "source_tokens": 7304,
+      "units": 19
+    },
+    {
+      "path": "crates/brassclaw_interceptor/src/packet.rs",
+      "source_tokens": 4083,
+      "units": 1
+    },
+    {
+      "path": "crates/brassclaw_engine/prompts/sempai_audit.md",
+      "source_tokens": 613,
+      "units": 4
+    },
+    {
+      "path": "scripts/prefix/sempai-authoring-reference.md",
+      "source_tokens": 2609,
+      "units": 8
+    }
+  ],
+  "candidate_text_tokens": 63157,
+  "candidate_units": 119,
+  "candidate_sha256": "8de33ff78423eb25e68571a74848f591d51a07e6895e0b8447860fe53b4851e8",
+  "source_hashes": {
+    "recipe.md": "3e5db2437b34e3b457470abdb21d7d543ff29925c1c64a5fe783d92970e42039",
+    "skills.md": "9e1d280ee3e45fb0f0f179d046268dcfc7cf826935414cf90345dfda499b9c8a",
+    "tools.md": "0ee9bfa7f1a324dcc63d229acd29697603d9ef622fd5006346efb603eabf937e",
+    "toolskills.md": "432402883edd72d72103801e5ca182c13ed9d5457bb3f4e0cf00863d729ceb00",
+    "AGENTS.md": "0e400ba97307e87e9ea6a69f36b1fa7e50312291607a38639ee5b33d3d2db04f",
+    "CLAUDE.md": "61225500e360e76888e98fe55d1f930874408bbdb4ec3014809f35bae54aebaf",
+    "simplified_v3.md": "4ffdce4b8c124458bc0c8673334230f52a65d21b5cdbe5ba085a46abf804aabc",
+    "docs/agents-v3/14-validation-queue.md": "d0bc18d614c6ed15414de10f3c44c3191845cc333b9da3bf69943a8f9df7dddf",
+    "crates/brassclaw_interceptor/src/packet.rs": "d1d3c2bc5f37b5848a061e5f40e0ff3dbb8d164ff90830855f8c1aef5b41a923",
+    "crates/brassclaw_engine/prompts/sempai_audit.md": "420f7d632873baca12120ce36024148c0eb218dda32760d9239e553710abea40",
+    "scripts/prefix/sempai-authoring-reference.md": "961b67c8b8e1495541a3328df85e875b6580a63835b2f49429055706095c8a15"
+  },
+  "date": "2026-10-06",
+  "scope": "audit candidate; existing compiler mandatory selection unchanged",
+  "compiler_sha256": "748fdd37d2e1888c4c89430e8d5089fa3ee7eb3ce6bbc8a3a4f8e4931f767589",
+  "tokenizer_config_sha256": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+  "original_mandatory_estimate_tokens_before_envelope": 184990,
+  "all_original_sources_compact_text_tokens": 134430,
+  "complete_source_documents": [
+    "recipe.md",
+    "skills.md",
+    "tools.md",
+    "toolskills.md",
+    "scripts/prefix/sempai-authoring-reference.md",
+    "crates/brassclaw_interceptor/src/packet.rs"
+  ],
+  "candidate_cards_validated": 119,
+  "candidate_rendered_probe_count": 18,
+  "candidate_max_rendered_probe_tokens": 63425,
+  "candidate_shared_prefix_tokens": 63163,
+  "candidate_complete_1056_token_blocks": 59,
+  "candidate_block_aligned_shared_tokens": 62304,
+  "candidate_shared_prefix_token_sha256": "4bd8351f36e5cfe80eb0db439c718868beb75887efd5c88cde0dc5f5547c6ab8",
+  "candidate_template_sha256": "4585bb5e8f9115a1d06ff7cefccdcece518ffc9dc248ca40550b9f7df5758dcc",
+  "model_context_tokens": 131072,
+  "prefix_budget_tokens": 100000,
+  "workspace_reserve_tokens": 31072,
+  "prefix_budget_headroom_tokens": 36575,
+  "model_context_headroom_after_largest_probe": 67647,
+  "topic_gate_count": 13,
+  "topic_card_ids": {
+    "association-approval": "5492db3e2b233fa343b34099ffaf221b323fdb369c17a09c7e264420c6e0ae2d",
+    "no-self-activation": "e3ae3398ba753b22f4169f7e386986a6cd25620ca0266f2294629de809be7e07",
+    "prompt-diagnosis": "cb3dc9e14806e9046c9fcfd8334f9cee926bb13c9db1d13d466cd4b41d316593",
+    "proposal-transport": "e803510a52d4562889de17e09129dfe39456bb6c59d722c3e1f5b64a007615d9",
+    "provider-authority": "2ca0f4c2fd3c28d11bb082cefe1c03667966d8c436c1ad6fc3e2e2267cc5f001",
+    "q1-human-q2": "681d21ec92a49cb7f3f555ec8c2df548ff5606a3b9103663cf67f6a7f8a6d8b7",
+    "recipe-schema": "a28e48f080a0dbeebf4dbcb031d3e7137329a618cf50877174b4f3f464f05bc4",
+    "retry-and-effects": "544597826b85d1284a9823ddafdd9596bb76ec59c34a209ac1ccde561c34eeac",
+    "skill-association": "8053ce408208b117542dd046975fa8b41096189ff3386bc1f4435d20563964f3",
+    "tool-primitives": "268f728dc54e67d377f8b40bb6c7c820a6b03cd106d8a3fe5ed63dd5920f25f5",
+    "toolskill-bindings": "0125787034eefcf55eec77c9f016b4ba6119709907ef5d64d0d3b5f05ea60fb2",
+    "typed-inputs": "63197b6dd25413ac6108d3bcbf8657f193810a2b89d8899cb03961e52ed16f76",
+    "validation-queue": "0250dc6f9291a8fde40b95a143cc697ffa6567f841088887803e2d3526f35be4"
+  },
+  "generation_published": false,
+  "deployed": false,
+  "model_quality_evaluated": false,
+  "external_cache_reuse_verified": false,
+  "checks": [
+    "every selected card validated against exact original complete source unit",
+    "six complete documents reconstructed byte-for-byte",
+    "compact card IDs unique",
+    "existing source topic gates pass",
+    "actual compiler wrapper renders supported request shapes",
+    "full reference is shared leading token prefix across all probes"
+  ],
+  "limitations": [
+    "Static source coverage is not empirical model quality equivalence.",
+    "Current compiler requires every original unit and therefore cannot publish this candidate until explicit reviewed policy/renderer support is implemented.",
+    "Base-plus-Sempai composite capacity must be measured separately.",
+    "Tokenizer warning about qwen3_5 configuration emitted; actual pinned tokenizer/template rendered successfully."
+  ],
+  "selection_manifest_sha256": "6afdd2c5c6931145e772b85db474b793818006685e7248988966383d68e75c32",
+  "tokenizer_snapshot_file_hashes": {
+    "chat_template.jinja": "9dd2fbd270feaa1fbef2d4f634d7887c9c506e3bde140f8e7351c8944e8fd235",
+    "config.json": "0ddecafbba448916843991ef910c71f9a8b93220ce06e52da360dfcda27afcc9",
+    "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d",
+    "tokenizer.json": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7",
+    "tokenizer_config.json": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+    "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+  },
+  "measurement_note": "Baseline mandatory estimate reproduced using the preserved original source package metadata. Audit source-token counts are exact per document; candidate/template counts tokenize complete texts, never sum separate prefix/suffix IDs."
+}

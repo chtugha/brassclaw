@@ -1,0 +1,23 @@
+{
+  "adjusted_volatile_messages": [
+    [
+      "user",
+      "We need a reusable deterministic guard before considering a retry."
+    ]
+  ],
+  "bridge_messages": [],
+  "composition_summary": "The request is a single, well-formed authoring instruction for one class-22 pure-logic component named pc-check-retry-eligibility. It is internally consistent and matches the v3 authoring contract: a deterministic, zero-LLM, pure-logic guard with a precise recursive value-schema input contract, a closed-form conjunction decision rule, and an explicit result contract. The behavioral feedback corrects the previous draft on three points: (1) read all raw fields with inputs.get so missing keys yield false rather than raising; (2) validate the state and outcome enumerations explicitly rather than relying on equality against a single string; (3) require both read_only and dedup_verified to be exact bools (rejecting bool-as-integer coercion and malformed booleans), not a loose truthiness check. The decision rule is a conjunction of: outcome == 'retryable', operation_state in {unknown, not_started} (i.e. NOT completed), 0 < attempt < max_attempts with both exact positive ints excluding bool, and (read_only is True or dedup_verified is True). Any missing/null/invalid input fails closed with retry: false and never raises. Completed state always yields false even when read_only/dedup_verified are true. This guard is evidence-conditioned pure logic, not dispatch permission; it retains the documented runtime gaps (typed inputs mapping, Monty runner support, and that live instance-wide Tool policy/cancellation/resource checks remain independent). The host sink supports class 22 with name/description/content, so the draft is submitted through the supported proposal path with illustrative UUIDs that must be resolved to real catalogue/draft identities before activation. No volatile-tail change is justified.",
+  "proposed_recipe_updates": [],
+  "proposed_intent_examples": [],
+  "settings_adjustments": [],
+  "proposed_components": [
+    {
+      "class_code": 22,
+      "payload": {
+        "name": "pc-check-retry-eligibility",
+        "description": "Deterministic pure-logic guard that decides whether a Tool invocation is eligible for a bounded retry, before any retry is considered. It performs evidence-conditioned logic only: it does not grant dispatch permission, does not reset attempt counts, and never replays completed effects. Returns retry: true only when outcome is exactly 'retryable', operation_state is not 'completed' (i.e. 'unknown' or 'not_started'), attempt < max_attempts with both exact positive integers (excluding bool), and read_only or dedup_verified is true. Any missing, null, or invalid input fails closed with retry: false and never raises. Completed effects never replay even when read_only or dedup_verified are true. This guard is a reusable building block for Recipe/usage failure contracts; it never bypasses current instance-wide Tool policy, cancellation, stale-attempt fencing, or resource limits, and it assumes the typed inputs mapping and Monty runner support are implemented on the selected path.",
+        "content": "def check_retry_eligibility(inputs):\n    # Read all raw fields; missing keys yield None and fail closed.\n    operation_state = inputs.get(\"operation_state\")\n    outcome = inputs.get(\"outcome\")\n    attempt = inputs.get(\"attempt\")\n    max_attempts = inputs.get(\"max_attempts\")\n    read_only = inputs.get(\"read_only\")\n    dedup_verified = inputs.get(\"dedup_verified\")\n\n    # Validate state enumeration: only unknown/not_started are eligible.\n    if operation_state not in (\"unknown\", \"not_started\"):\n        return {\"retry\": False}\n\n    # Validate outcome enumeration.\n    if outcome != \"retryable\":\n        return {\"retry\": False}\n\n    # Both attempts must be exact positive integers, excluding bool.\n    if not (isinstance(attempt, int) and not isinstance(attempt, bool)):\n        return {\"retry\": False}\n    if not (isinstance(max_attempts, int) and not isinstance(max_attempts, bool)):\n        return {\"retry\": False}\n    if not (0 < attempt < max_attempts):\n        return {\"retry\": False}\n\n    # Both read_only and dedup_verified must be exact bools.\n    if not (isinstance(read_only, bool) and isinstance(dedup_verified, bool)):\n        return {\"retry\": False}\n\n    # Completed effects never replay, even if read_only/dedup_verified are true.\n    # (operation_state already excludes 'completed' above.)\n\n    retry = (read_only is True) or (dedup_verified is True)\n    return {\"retry\": bool(retry)}"
+      }
+    }
+  ]
+}

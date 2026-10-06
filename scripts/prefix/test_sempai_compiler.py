@@ -43,6 +43,51 @@ class SempaiCompilerTests(unittest.TestCase):
                 # Missing even one source unit must fail complete-coverage validation.
                 with self.assertRaisesRegex(ValueError, 'omits or adds'):
                     compiler.required_reference_cards(cards[1:])
+                historical_policy = json.loads(path.with_name('sempai-reference-policy.json').read_text())
+                selection_path = temporary / 'selection.json'
+                selection_path.write_text(json.dumps(historical_policy))
+                # Published policy is historical evidence, never rewritten to
+                # make current source drift look approved.
+                historical_units = {
+                    (row['path'], row['line_start'], row['line_end']):
+                        (row['document_sha256'], row['excerpt_sha256'])
+                    for row in historical_policy['units']
+                }
+                current_units = {
+                    (card['path'], card['line_start'], card['line_end']):
+                        (card['document_sha256'], card['excerpt_sha256'])
+                    for card in cards
+                }
+                if historical_units != current_units:
+                    with patch.dict('os.environ', {'SEMPAI_REFERENCE_POLICY': str(selection_path)}):
+                        with self.assertRaisesRegex(ValueError, 'drifted|every original source unit'):
+                            compiler.required_reference_cards(cards)
+                # Test-only policy for the actual current sources; this creates
+                # no publication, review approval or production policy update.
+                policy = {'schema': 1, 'status': 'reviewed-source-selection', 'units': [
+                    {key: card[key] for key in ('path', 'line_start', 'line_end',
+                                               'document_sha256', 'excerpt_sha256')}
+                    | {'selected': True}
+                    for card in cards
+                ]}
+                selection_path.write_text(json.dumps(policy))
+                with patch.dict('os.environ', {'SEMPAI_REFERENCE_POLICY': str(selection_path)}):
+                    selected = compiler.required_reference_cards(cards)
+                    self.assertEqual(len(selected), len(cards))
+                    for relative in ('recipe.md', 'skills.md', 'tools.md', 'toolskills.md'):
+                        self.assertEqual(''.join(c['excerpt'] for c in selected if c['path'] == relative),
+                                         (checkout / relative).read_bytes().decode('utf-8'))
+                    # Even an intentional policy edit cannot remove a binding unit.
+                    binding_unit = next(row for row in policy['units'] if row['path'] == 'recipe.md')
+                    binding_unit['selected'] = False
+                    selection_path.write_text(json.dumps(policy))
+                    with self.assertRaisesRegex(ValueError, 'cannot omit'):
+                        compiler.required_reference_cards(cards)
+                    binding_unit['selected'] = True
+                    binding_unit['document_sha256'] = '0' * 64
+                    selection_path.write_text(json.dumps(policy))
+                    with self.assertRaisesRegex(ValueError, 'fingerprints drifted'):
+                        compiler.required_reference_cards(cards)
                 inventory = (compiler.RAW / 'source_manifest.json').read_bytes()
                 (compiler.SOURCE_ROOT / 'recipe.md').unlink()
                 with self.assertRaisesRegex(ValueError, 'Required local source missing'):

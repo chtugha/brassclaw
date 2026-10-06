@@ -61,7 +61,7 @@ appropriate. Resource failure releases imported VM references and prevents
 publishing an exported dispatch/result. One-shot artifact/root construction,
 snapshot and remaining cleanup still need accounting. Native
 operations without interpreter polling, full logical heap attribution/adaptive
-memory, allocator/process containment, durable continuation manifests, production
+memory, production allocator/process containment, durable continuation manifests, production
 boot/inbox/ports and WebUI effective-revision acknowledgement remain Phase 3a
 requirements. Do not use this candidate to bypass that gate.
 
@@ -123,3 +123,60 @@ through the admitted task host before handing its content to the history Recipe.
 The production service must bind `resolve_reply` to the same exact attempt's
 `MontyTaskHost::published_reply_content`; accepting a `msg:` prefix alone is
 insufficient. No reply is posted again by the root.
+
+
+`process::GlobalProcess` and the `monty_worker` binary now supply an isolated
+root-worker transport candidate. The binary installs `LimitedAllocator` and
+arms a finite physical ceiling before reading or compiling source. It never
+resets the ceiling per task/command. The supervisor launches an absolute binary
+path directly with a cleared environment and private stdin/stdout pipes; allocator
+diagnostics remain on stderr. No model, component selection or Rust workflow
+loop is installed in the worker. Source is supplied by the verified boot caller.
+
+Protocol 1 uses bounded length-prefixed JSON, strict unknown-field rejection,
+monotonic request/reply sequencing and exact VM continuation generations. The
+bounded encoder fails rather than truncating or allocating an unlimited buffer;
+frame headers are checked before allocating receive buffers. Boot succeeds only
+at the actual configured-worker work-wait handshake, and a second Boot cannot
+replace that root. Admission, generic port replies and explicit shutdown remain
+separate mechanical commands. Unknown claim fields never enter ordinary Python
+state. This private ephemeral wire format is not a durable continuation manifest.
+
+An independent parent response deadline kills and reaps a blocked worker without
+relying on interpreter polling. Framing/transport errors and dropped exchanges
+also fence the process. The rejected/interrupted command remains private evidence;
+OS kill failures and lack of a reaped exit are distinguishable from acknowledged
+termination. Normal shutdown reaps after the actual Stopped handshake without
+racing a forced kill against graceful exit. Neither mode proves external host
+operations settled and neither permits replaying a completed effect.
+
+The exchange future must belong to the instance actor, never to the user-turn
+future. Cancelling a user task must fence only its task/child and leave the root
+and unrelated tasks alive. Dropping an instance transport exchange is fatal
+supervision requiring the coordinated instance recovery contract. Product
+startup, retained PostgreSQL ownership, durable attempt/effect reconciliation,
+child hosting in the contained worker, root task CPU attribution, live resource
+revision coordination and shared adaptive logical heap enforcement remain
+required before production wiring. This process candidate does not close those
+gates or the original seven composition failures.
+
+Actual subprocess acceptance is in
+[`process_host.rs`](../../tests/monty_control/tests/process_host.rs): boot/idle
+lifetime, opaque admission, second-Boot refusal, exact retained work waits on
+invalid/oversized input, real domain-failure reporting, explicit graceful
+shutdown, independent busy-startup timeout, fatal native allocation containment,
+dropped-exchange fencing, and malformed frame/unknown-field rejection without
+private diagnostics. Successful Recipe/model/finish effects are not fabricated.
+
+
+Before parent-side JSON encoding, an iterative borrowed traversal checks data
+node/depth/byte bounds, including pending traversal entries. It uses the caller's
+VM value limits with a transport nesting ceiling below the receiver's JSON
+recursion limit. Deep or oversized task/host-return data is rejected before
+serialization, retains the whole command and leaves the current worker boundary
+untouched. This prevents a nested provider result from exhausting the parent
+serializer's call stack before worker containment can apply. These are technical
+transport errors, not token accounting or permission to truncate eligible history;
+production must provide bounded transfer/reference handling for larger eligible
+data. The actual caller case covers retained nested data plus a separate frame
+encoding overflow followed by successful opaque admission.

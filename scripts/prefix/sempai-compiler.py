@@ -1271,6 +1271,37 @@ def required_reference_cards(cards):
         if actual != expected or len(cards) != len(expected):
             raise ValueError("Sempai evidence omits or adds source units; complete originals are required")
         topic_reference_cards(cards)
+        policy_path = os.getenv("SEMPAI_REFERENCE_POLICY", "").strip()
+        if policy_path:
+            policy = json.loads(Path(policy_path).read_text())
+            if policy.get("schema") != 1 or policy.get("status") != "reviewed-source-selection":
+                raise ValueError("Sempai requires an explicit reviewed source-selection policy")
+            rows = policy.get("units")
+            if not isinstance(rows, list) or len(rows) != len(expected):
+                raise ValueError("Sempai selection must account for every original source unit")
+            by_unit = {}
+            for row in rows:
+                key = (row["path"], row["line_start"], row["line_end"])
+                if key in by_unit or type(row.get("selected")) is not bool:
+                    raise ValueError("Invalid or duplicate Sempai selection unit")
+                by_unit[key] = row
+            if set(by_unit) != set(expected):
+                raise ValueError("Sempai source-selection units drifted; review the new snapshot")
+            selected = []
+            complete = {"recipe.md", "skills.md", "tools.md", "toolskills.md",
+                        "scripts/prefix/sempai-authoring-reference.md",
+                        "crates/brassclaw_interceptor/src/packet.rs"}
+            for card in cards:
+                row = by_unit[(card["path"], card["line_start"], card["line_end"])]
+                if (row.get("document_sha256") != card["document_sha256"]
+                        or row.get("excerpt_sha256") != card["excerpt_sha256"]):
+                    raise ValueError("Sempai source-selection fingerprints drifted; review the new snapshot")
+                if card["path"] in complete and not row["selected"]:
+                    raise ValueError("Sempai selection cannot omit complete binding guides/procedure/transport")
+                if row["selected"]:
+                    selected.append(card)
+            topic_reference_cards(selected)
+            cards = selected
         return sorted(cards, key=lambda c: (c["path"], c["line_start"], c["id"]))
     finally:
         conn.close()
@@ -1310,16 +1341,27 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     if reserve<8192: raise ValueError('Reserve at least 8192 tokens for task, evidence, reasoning and output')
     budget=min(int(target),profile['max_model_len']-reserve)
     if budget<=0: raise ValueError('No room for a reference prefix')
+    policy_path=os.getenv('SEMPAI_REFERENCE_POLICY','').strip()
+    policy_text=Path(policy_path).read_text() if policy_path else None
+    policy_sha256=digest(policy_text) if policy_text is not None else None
     header=PREFIX_HEADER+'\n# EXACT-SOURCE REFERENCE\n\n'
+    if policy_text is not None:
+        header=header.replace('Full original documents are mandatory.',
+            'Full raw originals are mandatory; model-visible coverage follows the reviewed source-selection policy.')
+        header+='Selected architecture excerpts are not complete copies of those documents. Scoped storage columns/view filters are not additional v3 authority checks. Transport structs do not establish supported component insertion constructors.\n\n'
     mandatory=required_reference_cards(cards); mandatory_ids={c["id"] for c in mandatory}
     anchors=[]
     for repo in ():  # No repeated diagnostic anchors: all required source units are already present.
         match=next((c for c in mandatory if c["repo"]==repo),None)
         if match is not None: anchors.append(match)
-    selected=list(mandatory); omitted=[]
+    selected=list(mandatory); omitted=[c['id'] for c in cards if c['id'] not in mandatory_ids] if policy_text is not None else []
     rendered={}
     def rendered_card(card):
-        if card['id'] not in rendered: rendered[card['id']]=render_card(card)
+        if card['id'] not in rendered:
+            rendered[card['id']]=(f"<!-- EVIDENCE-CARD {card['id'][:12]} -->\n"
+                f"## {transport_text(card['path'])} : L{card['line_start']}-{card['line_end']}\n"
+                +literal_block(card['excerpt'])+'\n<!-- END-EVIDENCE-CARD -->'
+                if policy_text is not None else render_card(card))
         return rendered[card['id']]
     long_contexts={digest(value.strip()) for c in mandatory for value in [c["parent_headings"],c["excerpt"]] if len(value)>2000}
     used=count(header)+sum(count(rendered_card(c)) for c in mandatory+anchors)
@@ -1327,7 +1369,7 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
         raise ValueError(f'Capacity blocked: complete Sempai evidence needs approximately {used} tokens before the final envelope; budget={budget}. Preserve originals and use a compatible larger context or a reviewed source policy; no guides were truncated.')
     # Greedy selection is deterministic and atomic at card boundaries. Exact
     # rendered-template accounting below is authoritative, not the token estimate.
-    ordered_cards=[c for c in balanced_cards(cards) if c["id"] not in mandatory_ids]
+    ordered_cards=[] if policy_text is not None else [c for c in balanced_cards(cards) if c["id"] not in mandatory_ids]
     for position,card in enumerate(ordered_cards):
         check_stop()
         if used >= budget-1024:
@@ -1353,7 +1395,10 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
         coverage=Counter(c['repo'] for c in chosen)
         index='\n'.join(f"- {repo}: {PLATFORM_TAGS.get(repo, 'source-specific')} | {coverage[repo]} complete cards" for repo in sorted(coverage))
         locators='\n'.join(f"- {c['id'][:12]} | {c['repo']} | {card_title(c)}" for c in chosen)
-        full=header+'# PLATFORM COVERAGE\n'+transport_text(index)+'\n\n# CARD INDEX — SOURCE TITLES\n'+transport_text(locators)+'\n\n'+'\n\n'.join(rendered_card(c) for c in chosen)
+        documents={c['path']:c for c in chosen}
+        provenance='\n'.join(f"- {path} | SHA256 {c['document_sha256']} | {c['source']['url']} | {c['source'].get('applicability','source-specific')}"
+            for path,c in sorted(documents.items())) if policy_text is not None else ''
+        full=header+'# PLATFORM COVERAGE\n'+transport_text(index)+'\n\n# SOURCE SNAPSHOTS\n'+transport_text(provenance)+'\n\n# CARD INDEX — SOURCE TITLES\n'+transport_text(locators)+'\n\n'+'\n\n'.join(rendered_card(c) for c in chosen)
         full+='\n\n# DIAGNOSTIC ANCHORS — EXACT SOURCE REPEATED NEAR TASK\n\n'+'\n\n'.join(rendered_card(c) for c in anchors)
         full+='\n\n# FACTUAL CHECK BEFORE ANSWERING\n'
         full+='Review target provider metadata and the actual Kohai packet. Preserve volatile-tail roles, tool relationships and task evidence. Propose reusable Recipes with supported fields and real catalogue/draft identities. The host output schema is separate. Q1, observed behavior, human Q2 and exact association approval precede activation; never self-approve or replay completed effects. Missing runtime support remains an explicit prerequisite.\n'
@@ -1417,10 +1462,14 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     # evidence payload as well, otherwise an immutable directory could collide.
     evidence_sha256=digest(evidence_records)
     compiler_sha256=file_sha256(Path(__file__))
-    generation=digest(json.dumps([PIPELINE_VERSION,compiler_sha256,profile,full,template,evidence_sha256],sort_keys=True))
+    if policy_path and Path(policy_path).read_text()!=policy_text:
+        raise ValueError('Sempai source-selection policy changed during compilation')
+    generation=digest(json.dumps([PIPELINE_VERSION,compiler_sha256,profile,full,template,evidence_sha256,policy_sha256],sort_keys=True))
     directory=BASE/'generations'/generation; directory.mkdir(parents=True,exist_ok=True)
     manifest={'schema':2,'generation':generation,'profile_id':'sempai',
               'compiler_sha256':compiler_sha256,'model_profile':profile,
+              'source_selection_policy_sha256':policy_sha256,
+              'source_selection_mode':'reviewed-complete-units' if policy_text is not None else 'complete-originals',
               'sha256':digest(full),'text_tokens':count(full),'rendered_probe_tokens':total,
               'prefix_token_budget':budget,'workspace_reserve_tokens':reserve,
               'shared_prefix_tokens':common,'complete_cache_blocks':common//block,
@@ -1444,6 +1493,8 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
     payloads={CONTEXT.name:full,SERVER_TEMPLATE.name:template,
               'evidence_cards.jsonl':evidence_records,
               PREFIX_MANIFEST.name:json.dumps(manifest,indent=2,sort_keys=True)+'\n'}
+    if policy_text is not None:
+        payloads['source_selection_policy.json']=policy_text
     for name,content in payloads.items():
         artifact=directory/name
         if artifact.exists() and artifact.read_text()!=content:

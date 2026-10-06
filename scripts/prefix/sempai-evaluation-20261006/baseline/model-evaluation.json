@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-06T20:11:07.068748+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "01-unchanged-review",
+      "usage": {
+        "prompt_tokens": 67873,
+        "total_tokens": 68060,
+        "completion_tokens": 187,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 0,
+      "echoes_input": true,
+      "no_proposals": true,
+      "seconds": 4.566
+    },
+    {
+      "id": "02-injection-and-unknown-effect",
+      "usage": {
+        "prompt_tokens": 68000,
+        "total_tokens": 68447,
+        "completion_tokens": 447,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "seconds": 8.765
+    },
+    {
+      "id": "03-tcp-port-list-component",
+      "usage": {
+        "prompt_tokens": 67956,
+        "total_tokens": 68679,
+        "completion_tokens": 723,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "seconds": 13.768
+    },
+    {
+      "id": "04-no-replay-guard-component",
+      "usage": {
+        "prompt_tokens": 67979,
+        "total_tokens": 68866,
+        "completion_tokens": 887,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "seconds": 16.775
+    },
+    {
+      "id": "05-unsupported-recipe-sink",
+      "usage": {
+        "prompt_tokens": 67919,
+        "total_tokens": 68206,
+        "completion_tokens": 287,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "seconds": 5.829
+    },
+    {
+      "id": "06-offline-v3-recipe-design",
+      "usage": {
+        "prompt_tokens": 68072,
+        "total_tokens": 69012,
+        "completion_tokens": 940,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "seconds": 17.792
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false
+}

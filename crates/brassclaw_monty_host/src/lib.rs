@@ -20,6 +20,7 @@ use std::{
 
 use brassclaw_resources::{MontyTaskBudgetError, MontyTaskClock, SharedMontyTaskBudget};
 pub mod global;
+pub mod process;
 
 use monty::{MontyRepl, MontyRun, ReplProgress, ReplStartError};
 use monty_types::{
@@ -34,7 +35,8 @@ use uuid::Uuid;
 const HOST_TYPE: MontyUuid = MontyUuid::from_u128(0x484f_5354_5459_5045);
 
 /// Explicit technical bounds, separate from artificial token budgets.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VmBounds {
     pub max_source_bytes: usize,
     pub max_compiled_source_bytes: usize,
@@ -125,7 +127,10 @@ fn identifier(name: &str) -> bool {
 }
 
 /// Bounded, exact in-memory continuation correlation; not authorization.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(deny_unknown_fields)]
 pub struct ContinuationKey {
     vm_id: Uuid,
     ordinal: u64,
@@ -170,7 +175,7 @@ pub enum HostAnswer {
     Abort(MontyException),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum VmFailure {
     InvalidBounds,
     InvalidInputs,

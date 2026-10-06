@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b45a2c7b10981fe1",
+  "object": "chat.completion",
+  "created": 1791317495,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```json\n{\n  \"adjusted_volatile_messages\": [\n    [\"user\", \"We need a reusable deterministic guard before considering a retry.\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"The user request is a single, well-formed authoring instruction for one class-22 pure-logic component. It is not a prompt to optimize, a provider-envelope defect, or a behavioral failure to repair. The request is internally consistent and matches the v3 authoring contract: a deterministic, zero-LLM, pure-logic component with a precise input schema, a closed-form decision rule, and an explicit result contract. No volatile-tail change is justified. The only substantive work is to author the component draft through the supported proposal sink with real, non-invented identities and to preserve the documented runtime gaps (typed-input transport, runner `inputs` mapping, and the fact that this guard is evidence-conditioned logic, not dispatch permission).\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"settings_adjustments\": [],\n  \"proposed_components\": [\n    {\n      \"class_code\": 22,\n      \"payload\": {\n        \"name\": \"pc-check-retry-eligibility\",\n        \"description\": \"Deterministic pure-logic guard that decides whether a Tool invocation is eligible for a bounded retry, before any retry is considered. It performs evidence-conditioned logic only: it does not grant dispatch permission, does not reset attempt counts, and does not replay completed effects. The decision is true only when the outcome is retryable, the attempt count is below the maximum, the operation state is not completed, and at least one durable idempotency condition holds (read_only or dedup_verified). Completed effects never replay even when read_only or dedup_verified is true. This guard is a reusable building block for Recipe/usage failure contracts; it never bypasses current instance-wide Tool policy, cancellation, stale-attempt fencing, or resource limits, and it assumes the typed `inputs` mapping and Monty runner support are implemented on the selected path.\",\n        \"content\": \"# pc-check-retry-eligibility\\n\\nDeterministic pure-logic guard. Returns `retry: true` only when all of the following hold:\\n\\n1. `outcome` is exactly `retryable`.\\n2. `attempt` and `max_attempts` are positive integers and `attempt < max_attempts`.\\n3. `operation_state` is exactly `not_started` or `unknown` (i.e. NOT `completed`).\\n4. `read_only` is true OR `dedup_verified` is true.\\n\\nIf any condition fails, return `retry: false`. A `completed` state returns `false` even when `read_only` or `dedup_verified` is true; completed effects are never replayed. A `terminal` outcome returns `false`. A timeout or unknown completion is not treated as confirmed-no-effect here; that classification is a separate usage/step.\\n\\nInputs are typed data. Missing, null, or invalid values fail closed (return `retry: false`). `attempt` and `max_attempts` must be positive integers; booleans are not integers. `read_only` and `dedup_verified` must be exact booleans.\\n\\nThis guard does not grant dispatch permission. Current instance-wide Tool policy, cancellation, stale-attempt fencing, and resource limits are checked independently before every actual dispatch and retry. It does not reset attempt counts or replay earlier steps.\\n\\nNo I/O, imports, or host calls. No `import os`, `import subprocess`, `exec(`, `eval(`, or `open(`. No dynamic evaluation or source substitution.\\n\\n```python\\nresult = {\\n    \\\"retry\\\": (\\n        outcome == \\\"retryable\\\"\\n        and operation_state != \\\"completed\\\"\\n        and 0 < attempt < max_attempts\\n        and (read_only or dedup_verified)\\n    )\\n}\\n```\\n\\nNote: the `inputs` mapping and Monty runner support for typed inputs are a target interface and require actual runner support before this component is activated.\"\n      }\n    }\n  ]\n}\n```",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 67979,
+    "total_tokens": 68866,
+    "completion_tokens": 887,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

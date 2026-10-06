@@ -1389,3 +1389,84 @@ backstop evidence. It does not close shared logical heap attribution, adaptive
 measurement/reclamation, native/compilation response bounds or production worker
 supervision/reconciliation. The seven composition failures remain unaccepted
 until the coordinated global production cutover exercises their actual callers.
+
+
+Final relevant-diff verification: the legacy compiler avoids allocating a cross-
+channel order it does not consume; its 48 existing instruction regressions and
+strict affected lints pass (`/private/tmp/brassclaw-ordered-compiler-final.log`,
+`/private/tmp/brassclaw-ordered-compiler-final-lints.log`). The preserved isolated
+allocator lockfile is accepted by `cargo --locked`; its actual worker test and
+strict caller lints pass (`/private/tmp/brassclaw-allocator-pinned-caller.log`,
+`/private/tmp/brassclaw-allocator-pinned-lints.log`). No competing Cargo executions
+were started. Concurrent prefix-authoring files are left untouched.
+
+
+### 2026-10-06 Isolated root worker transport and reply contract repair
+
+The Monty 1.0 hosting candidate now has a real `monty_worker` executable and
+`process::GlobalProcess` supervisor transport. This follows Phase 3a's permitted
+isolated hosting option; a process boundary is an implementation choice, not
+an additional Recipe execution engine. One worker owns one long-lived root VM.
+Rust commands advance only explicit Monty boundaries; Python retains sequencing.
+No process per task and no Rust-loop/model fallback is introduced.
+
+The worker installs the actual finite allocator before source ingress/compilation.
+The parent uses an absolute executable path, a cleared environment and private
+length-prefixed JSON pipes. Bounded serialization and pre-allocation header checks
+fail rather than truncate. Protocol/sequence and generation-specific continuation
+checks retain exact correlation; a second Boot cannot replace a live root.
+Independent response deadlines contain busy compilation/native execution through
+worker termination. Dropped instance transport futures fence the process and
+retain their interrupted command. Unknown/oversized input preserves the admission
+wait. OS kill errors, missing exit acknowledgement and a real reaped exit remain
+distinct. Graceful shutdown waits for the actual Stopped boundary and normal exit.
+
+The transport future belongs to the instance actor. Cancelling a user turn must
+not drop that future or kill the global VM: task/child fencing and unrelated-task
+progress require the still-unfinished production actor/registry. Fatal worker
+containment cannot acknowledge external effects or justify replay. Keep the DB
+owner until that actor reconciles pending calls and the worker is quiescent.
+Child hosting inside this contained worker, root CPU attribution, live desired/
+effective revision coordination, logical adaptive heap measurement/enforcement,
+full pinned immutable manifests, durable inbox/effects and production startup/
+shutdown remain binding gates. The candidate remains outside the application
+runtime graph; the original seven failures still lack production cutover evidence.
+
+Actual sequential screen acceptance: six process tests and six root tests pass
+with preserved registry pins and `--locked`; affected host/caller strict lints
+pass. The final cleared-environment process run and lints pass as well
+(`/private/tmp/brassclaw-process-host-final.log`,
+`/private/tmp/brassclaw-process-host-contained.log`,
+`/private/tmp/brassclaw-process-host-contained-lints.log`,
+`/private/tmp/brassclaw-process-host-contained-caller-lints.log`). Tests verify
+real subprocess exits, actual native OOM, independent busy-startup interruption,
+opaque task delivery, explicit shutdown, dropped-transport containment and actual
+malformed-frame rejection. They fabricate no successful Recipe/provider/effect.
+Only Tokio process support's `errno`/`signal-hook-registry` dependencies were added;
+unrelated platform version changes from offline resolution were restored.
+
+A separate downstream defect was repaired in the existing reply primitive:
+seeded PythonCode calls `host.post_reply(answer=...)`, but the legacy handler
+read only `text` and silently discarded it. It now accepts exactly one nonempty
+string using canonical `answer`, retained legacy `text` or the existing positional
+form. Missing/unknown/duplicate/conflicting/non-string/empty arguments fail before
+transcript/event mutation; values are never coerced. No seeded component is
+silently replaced. The actual Monty host-call regression and affected strict engine
+lints pass (`/private/tmp/brassclaw-reply-argument-contract.log`,
+`/private/tmp/brassclaw-reply-argument-lints.log`). This legacy in-memory append
+still does not provide the admitted task host's durable reply reference or remove
+the UUID-only production driver boundary blocking the seven original tests.
+
+
+Final transport review also bounds parent-side JSON traversal before encoding.
+An iterative borrowed preflight checks depth/nodes/bytes and pending stack entries;
+excessively nested completed host returns remain retained command evidence, and
+neither the VM continuation nor IPC sequence is consumed. The actual caller tests
+now cover this rejection and an independent encoder frame overflow before valid
+opaque admission. The final six worker regressions and strict host/caller lints
+pass (`/private/tmp/brassclaw-process-host-bounded-data.log`,
+`/private/tmp/brassclaw-process-host-bounded-data-lints.log`,
+`/private/tmp/brassclaw-process-host-bounded-data-caller-lints.log`). These explicit
+transport limits never justify silently truncating history or reintroducing token
+budgets: production must handle larger eligible data with bounded transfers or
+run-scoped references. No application dependency/driver cutover is claimed.

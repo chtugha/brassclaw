@@ -1121,7 +1121,8 @@ fn handle_emit_event(
     ExtFunctionResult::Return(MontyObject::None)
 }
 
-/// Handle `host.post_reply(text=...)` — end-of-turn answer post. Per the
+/// Handle `host.post_reply(answer=...)` — end-of-turn answer post. `text` is
+/// retained solely for already-selected legacy orchestrators. Per the
 /// locked architecture (A1) only Rust owns the chat socket, so the Orchestrator
 /// hands its final answer to this Tool: it appends an Assistant message to the
 /// thread transcript and emits a `MessageAdded` event (the chat-window surface).
@@ -1133,11 +1134,30 @@ fn handle_post_reply(
     thread: &mut Thread,
     event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
 ) -> ExtFunctionResult {
-    let text = extract_string_arg(args, kwargs, "text", 0).unwrap_or_default();
+    // The component contract names `answer`; the legacy global source names
+    // `text`. Accept exactly one supplied string in either existing contract,
+    // without priority rules, coercion or silently dropping malformed replies.
+    let text = match (args, kwargs) {
+        ([MontyObject::String(text)], []) => text,
+        ([], [(MontyObject::String(name), MontyObject::String(text))])
+            if name == "answer" || name == "text" =>
+        {
+            text
+        }
+        _ => {
+            return ExtFunctionResult::Error(monty::MontyException::new(
+                monty::ExcType::TypeError,
+                Some("post_reply requires exactly one string answer".to_owned()),
+            ));
+        }
+    };
     if text.is_empty() {
-        return ExtFunctionResult::Return(MontyObject::None);
+        return ExtFunctionResult::Error(monty::MontyException::new(
+            monty::ExcType::ValueError,
+            Some("post_reply answer must not be empty".to_owned()),
+        ));
     }
-    thread.messages.push(ThreadMessage::assistant(&text));
+    thread.messages.push(ThreadMessage::assistant(text));
     let preview: String = text.chars().take(200).collect();
     let event = ThreadEvent::new(
         thread.id,
@@ -3228,6 +3248,99 @@ mod tests {
     /// without going through the production port path. No runtime fallback uses this
     /// constant — the production path exclusively uses `OrchestratorCodePort`.
     const BASIC_MODE_PY: &str = include_str!("../../orchestrator/basic_mode.py");
+
+    #[test]
+    fn post_reply_preserves_answer_contract_and_rejects_ambiguous_or_invalid_data() {
+        let host = MontyObject::Dataclass {
+            name: "host".into(),
+            type_id: HOST_NAMESPACE_TYPE_ID,
+            field_names: Vec::new(),
+            attrs: DictPairs::from(Vec::new()),
+            frozen: true,
+        };
+        let answer = "quoted '\"\\\nÜ {{vars.slot0}}";
+        for source in [
+            "host.post_reply(answer=answer)",
+            "host.post_reply(text=answer)",
+            "host.post_reply(answer)",
+        ] {
+            let runner = MontyRun::new(
+                source.into(),
+                "reply.py",
+                vec!["host".into(), "answer".into()],
+            )
+            .unwrap();
+            let progress = runner
+                .start(
+                    vec![host.clone(), MontyObject::String(answer.into())],
+                    LimitedTracker::new(
+                        ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS),
+                    ),
+                    PrintWriter::Disabled,
+                )
+                .unwrap();
+            let RunProgress::FunctionCall(call) = progress else {
+                panic!("expected actual host reply call");
+            };
+            assert_eq!(call.function_name, "post_reply");
+            assert!(call.method_call);
+            let mut thread = make_validate_thread();
+            let result = handle_post_reply(&call.args[1..], &call.kwargs, &mut thread, None);
+            assert!(matches!(
+                result,
+                ExtFunctionResult::Return(MontyObject::None)
+            ));
+            assert_eq!(thread.messages.len(), 1);
+            assert_eq!(thread.messages[0].content, answer);
+            assert_eq!(thread.events.len(), 1);
+            assert!(matches!(
+                call.resume(result, PrintWriter::Disabled).unwrap(),
+                RunProgress::Complete(MontyObject::None)
+            ));
+        }
+        let mut thread = make_validate_thread();
+        let before = thread.updated_at;
+        let string = MontyObject::String("valid reply".into());
+        for (args, kwargs) in [
+            (vec![], vec![]),
+            (vec![MontyObject::None], vec![]),
+            (
+                vec![],
+                vec![(MontyObject::String("answer".into()), MontyObject::Int(42))],
+            ),
+            (
+                vec![],
+                vec![(
+                    MontyObject::String("answer".into()),
+                    MontyObject::String(String::new()),
+                )],
+            ),
+            (
+                vec![string.clone()],
+                vec![(MontyObject::String("answer".into()), string.clone())],
+            ),
+            (
+                vec![],
+                vec![
+                    (MontyObject::String("answer".into()), string.clone()),
+                    (MontyObject::String("text".into()), string.clone()),
+                ],
+            ),
+            (vec![string.clone(), string.clone()], vec![]),
+            (
+                vec![],
+                vec![(MontyObject::String("unknown".into()), string.clone())],
+            ),
+        ] {
+            assert!(matches!(
+                handle_post_reply(&args, &kwargs, &mut thread, None),
+                ExtFunctionResult::Error(_)
+            ));
+            assert!(thread.messages.is_empty());
+            assert!(thread.events.is_empty());
+            assert_eq!(thread.updated_at, before);
+        }
+    }
 
     /// Mock [`OrchestratorCodePort`] that always returns a fixed script body.
     /// Used by `prepare_monty_session` tests to avoid a live Postgres connection.

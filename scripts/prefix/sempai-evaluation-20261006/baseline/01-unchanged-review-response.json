@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-99dc8453d5bd5e46",
+  "object": "chat.completion",
+  "created": 1791317468,
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"adjusted_volatile_messages\": [\n    [\"system\", \"Explain a TCP port. Keep the answer brief.\"],\n    [\"user\", \"What is TCP port 443 typically used for?\"]\n  ],\n  \"bridge_messages\": [],\n  \"composition_summary\": \"Packet is pre-call and already clear. The task is a deterministic Tier-0 knowledge question with no Tool usage, no missing provider capability, no malformed envelope, no context overflow, no injection, and no private-data leakage. No safe change is justified: the stable base (system instruction + user question) is preserved unchanged, and no component proposal is warranted. Keeping the original messages avoids inventing deficiencies in an already-clear packet.\",\n  \"proposed_recipe_updates\": [],\n  \"proposed_intent_examples\": [],\n  \"settings_adjustments\": [],\n  \"proposed_components\": []\n}",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.31.0-33de8d2c",
+  "usage": {
+    "prompt_tokens": 67873,
+    "total_tokens": 68060,
+    "completion_tokens": 187,
+    "prompt_tokens_details": null,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+}

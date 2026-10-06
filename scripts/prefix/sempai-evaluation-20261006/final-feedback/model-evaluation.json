@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-06T20:16:13.446241+00:00",
+  "server": "http://192.168.10.171:8000",
+  "model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "model_context_tokens": 131072,
+  "cases": [
+    {
+      "id": "03-tcp-port-list-component",
+      "usage": {
+        "prompt_tokens": 69416,
+        "total_tokens": 70369,
+        "completion_tokens": 953,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": false,
+      "seconds": 18.864
+    },
+    {
+      "id": "04-no-replay-guard-component",
+      "usage": {
+        "prompt_tokens": 68894,
+        "total_tokens": 69942,
+        "completion_tokens": 1048,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "valid_json": true,
+      "exact_response_fields": true,
+      "schema_valid": true,
+      "proposal_count": 1,
+      "echoes_input": true,
+      "seconds": 20.297
+    }
+  ],
+  "prefix_sent_by_client": false,
+  "database_submission_attempted": false,
+  "json_response_mode_requested": true,
+  "repair_from": "/tmp/sempai-evaluation-json-feedback-20261006",
+  "q1_completed": false,
+  "q2_completed": false,
+  "components_activated": false
+}

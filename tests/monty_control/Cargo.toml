@@ -11,6 +11,7 @@ publish = false
 brassclaw_monty_host = { path = "../../crates/brassclaw_monty_host" }
 serde_json = "1"
 sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util"] }
 brassclaw_resources = { path = "../../crates/brassclaw_resources" }
 monty = { path = "../../vendor/monty-control/crates/monty" }
 monty-types = { path = "../../vendor/monty-control/crates/monty-types" }

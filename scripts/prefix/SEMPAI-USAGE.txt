@@ -7,6 +7,11 @@ Ornith tokenizer/config snapshot. Collect the eleven allowlisted source document
 including the full recipe.md, skills.md, tools.md, toolskills.md, AGENTS.md,
 CLAUDE.md, simplified_v3.md, validation queue, Sempai proposal transport/persona
 and scripts/prefix/sempai-authoring-reference.md. Do not fetch HA sources.
+Preserve all originals. For the reviewed 100000-token selection, set
+SEMPAI_REFERENCE_POLICY to scripts/prefix/sempai-reference-policy.json. It keeps
+the four full binding guides, full reviewer procedure and proposal transport,
+plus explicitly reviewed source units from the other documents. Reject source
+hash/unit drift or missing mandatory contracts; do not greedily shorten them.
 
 The reference must teach provider-specific Kohai prompt diagnosis and reusable
 component/Recipe proposals, exact typed IBS authoring, associations, failure/retry
@@ -45,6 +50,7 @@ export CODING_DISTILL_CACHE="$PWD/sempai-evidence"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export TRIAGE_MODE=local
+export SEMPAI_REFERENCE_POLICY="$PWD/scripts/prefix/sempai-reference-policy.json"
 
 "$PREFIX_PYTHON" scripts/prefix/sempai-compiler.py --mode plan
 "$PREFIX_PYTHON" scripts/prefix/sempai-compiler.py --mode collect
@@ -60,6 +66,10 @@ export SEMPAI_SOURCE_MANIFEST="$CODING_DISTILL_CACHE/pinned-source-manifest.json
 
 Successful output lives under "$CODING_DISTILL_CACHE/generations/<generation>/":
 context_100k.md, vllm_prefix_template.jinja, evidence_cards.jsonl, prefix_manifest.json.
+Reviewed builds also include source_selection_policy.json. The manifest pins its
+SHA256, accounts for omitted units and distinguishes selected reference coverage
+from the complete preserved originals. Unset SEMPAI_REFERENCE_POLICY to request
+the original full-document model-visible policy (currently exceeds Ornith capacity).
 The current pointer publishes a local compiler bundle; it does not activate a server.
 Full raw documents remain under raw/documents/<sha256>.txt even on capacity failure.
 The 100000 target is an explicit preview setting, not BrassClaw's disabled global
@@ -71,3 +81,29 @@ questions only. It requires a separately deployed verified prefix and the active
 server template; it does NOT implement SempaiReviewOutcome, submit component drafts,
 perform Q1/Q2 or activate anything. Production Sempai uses the existing interceptor,
 trusted typed review packet, DB provider catalogue and proposal/validation paths.
+
+LIVE REVIEWER TESTS — AFTER DEPLOYMENT AND HEALTH VERIFICATION
+
+Run from Linux or macOS with an existing Python 3. These requests send ordinary
+messages and the reviewer output persona, never a client copy of the reference.
+The server must already be injecting the verified Sempai generation. Choose a NEW
+output directory so prior test evidence cannot be overwritten.
+
+python3 scripts/prefix/evaluate_sempai_prefix.py \
+  --server http://192.168.10.171:8000 \
+  --output ./sempai-evaluation-new-run
+
+The evaluator exports raw provider responses and unapproved component designs.
+It does not submit to PostgreSQL, run production Q1, approve human Q2 or activate
+components. Check generated code behavior separately and retain runtime gaps.
+The current Sempai sink supports classes 21/22 only and discards v3 Recipe
+step_descriptions/variants/dependency_registry. Offline v3 designs must not be
+submitted through that lossy sink. Generated PythonCode using inputs needs the
+selected runner's typed-input contract before production execution.
+
+The measured 2026-10-06 deployment and candidate results are recorded in
+scripts/prefix/sempai-evaluation-20261006/README.md. Ordinary output was frequently
+Markdown-fenced JSON; --json-mode requests the tested provider JSON response mode.
+Valid JSON alone is insufficient: duplicate, malformed or semantically wrong
+components must still be rejected. Run check_sempai_candidates.py on Linux for
+the bounded independent behavior probes; these checks are not production Q1/Q2.

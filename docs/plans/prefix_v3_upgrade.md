@@ -232,12 +232,17 @@ Keep the existing compiler intact. The initial standalone copy and explicit
 `sempai-authoring-reference.md` procedure are local compiler artifacts; DB seeding,
 activation and production reviewer wiring remain implementation work.
 
-Include complete `skills.md`, `recipe.md` (the actual filename, not `recipes.md`),
-`tools.md`, `toolskills.md`, `AGENTS.md`, `CLAUDE.md` and `simplified_v3.md`, the
-validation-queue guide, observed Sempai proposal transport and a dedicated authoring
-procedure. Record source hashes/applicability and distinguish binding targets from
-observed runtime support and older persona examples. Preserve every mandatory
-source unit, including negative requirements. Do not include live conversations,
+Collect and preserve complete `skills.md`, `recipe.md` (the actual filename, not
+`recipes.md`), `tools.md`, `toolskills.md`, `AGENTS.md`, `CLAUDE.md`,
+`simplified_v3.md`, the validation-queue guide, observed Sempai proposal transport
+and dedicated authoring procedure/persona. Model-visible coverage may use an
+explicit reviewed source-selection policy: retain the complete four binding
+authoring guides, procedure and proposal transport, and approved complete source
+units from the other documents. Bind document/excerpt hashes, all selected/omitted
+unit dispositions and policy identity into the immutable generation. Source drift
+requires review; no greedy truncation or keyword-only coverage substitute. Record
+source applicability and distinguish targets from observed runtime/older examples.
+Preserve every mandatory contract and negative requirement. Do not include live conversations,
 credentials or patient data in the seeded reusable reference. Add current installed
 component catalogue context through the base-plus-Sempai composite; deduplicate
 identical original evidence while retaining provenance and complete required content.
@@ -292,6 +297,20 @@ deployed. See [the capacity receipt](../../scripts/prefix/sempai-capacity-verifi
 This is not a shared-token/cache measurement or production acceptance. A larger
 compatible target or an explicitly reviewed source/partition policy is required;
 complete mandatory guides cannot be silently omitted to fit this deployment.
+
+Reviewed standalone deployment (2026-10-06): the explicit selection policy now
+compiles 119/247 preserved units into a 67432-token reference (67700 maximum
+rendered probe tokens). It was deployed to the existing `brassclaw` vLLM template;
+exact server token IDs and 66528 native cache-hit tokens were verified. Fourteen
+direct-model reviewer probes from `brassclaw2` demonstrated a port-validator draft
+passing 13/13 independent Linux CPython cases after feedback and an offline v3
+Recipe design passing structure/intent checks. Initial JSON/proposal failures,
+duplicate/incomplete drafts and a malformed blocked Recipe remained important
+negative evidence. This is supervised draft generation, not production Q1/Q2,
+Monty compatibility, DB seeding, automatic proposal insertion or consumer wiring.
+The current sink supports classes 21/22 but discards v3 Recipe fields; preserve
+those fields through the supported constructor/sink path before accepting v3
+Recipe proposals. See [the live test report](../../scripts/prefix/sempai-evaluation-20261006/README.md).
 
 ## 6. Installation-time DB seeding: preferred combined approach
 
