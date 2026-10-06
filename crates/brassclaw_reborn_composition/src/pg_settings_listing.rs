@@ -801,11 +801,9 @@ pub(crate) mod inner {
             );
         }
 
-        // ── Postgres integration tests (skip when docker is unavailable) ──
+        // ── Native PostgreSQL integration tests (initialization failures are fatal) ──
         //
-        // Mirrors the `pg_python_code_store.rs` harness: an isolated
-        // Postgres-16 testcontainer with the full migration set, returning
-        // early (pass) when docker/testcontainers is unavailable.
+        // Isolated native PostgreSQL tests apply the complete schema.
         mod pg {
             use super::*;
             use brassclaw_product_workflow::SettingsListingService as _;
@@ -813,62 +811,19 @@ pub(crate) mod inner {
             const TENANT: &str = "tenant-settings-detail";
 
             struct PgRig {
-                // Held for the test's lifetime so the container stays up.
-                _container: testcontainers_modules::testcontainers::ContainerAsync<
-                    testcontainers_modules::postgres::Postgres,
-                >,
                 service: PgSettingsListingService,
                 pool: Arc<PgPool>,
+                _server: crate::runtime::test_pg::native_pg::NativePostgres,
             }
 
-            async fn pg_rig_or_skip() -> Option<PgRig> {
-                use deadpool_postgres::{Manager, Pool};
-                use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
-
-                let image = testcontainers_modules::postgres::Postgres::default()
-                    .with_db_name("brassclaw_test")
-                    .with_user("postgres")
-                    .with_password("postgres")
-                    .with_tag("16-alpine");
-                let container = match image.start().await {
-                    Ok(c) => c,
-                    Err(error) => {
-                        eprintln!(
-                            "skipping pg_settings_listing pg tests: docker/testcontainers unavailable ({error})"
-                        );
-                        return None;
-                    }
-                };
-                let host = match container.get_host().await {
-                    Ok(h) => h,
-                    Err(error) => {
-                        eprintln!("skipping pg_settings_listing pg tests: no host ({error})");
-                        return None;
-                    }
-                };
-                let port = match container.get_host_port_ipv4(5432).await {
-                    Ok(p) => p,
-                    Err(error) => {
-                        eprintln!("skipping pg_settings_listing pg tests: no port ({error})");
-                        return None;
-                    }
-                };
-                let url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
-                let cfg: tokio_postgres::Config = url.parse().expect("testcontainer url parses");
-                let manager = Manager::new(cfg, tokio_postgres::NoTls);
-                let pool = Pool::builder(manager)
-                    .max_size(4)
-                    .build()
-                    .expect("Postgres pool must build");
-                brassclaw_pg::migrations::run_migrations(&pool)
-                    .await
-                    .expect("migrations must apply");
-                let pool = Arc::new(pool);
-                Some(PgRig {
-                    _container: container,
+            async fn pg_rig() -> PgRig {
+                let server = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+                let pool = Arc::clone(&server.pool);
+                PgRig {
                     service: PgSettingsListingService::new(Arc::clone(&pool), TENANT),
                     pool,
-                })
+                    _server: server,
+                }
             }
 
             /// Insert a recipe whose canonical `steps` object carries
@@ -910,9 +865,7 @@ pub(crate) mod inner {
 
             #[tokio::test]
             async fn recipe_detail_returns_the_full_row() {
-                let Some(rig) = pg_rig_or_skip().await else {
-                    return;
-                };
+                let rig = pg_rig().await;
                 let id = insert_recipe(&rig, "detail-recipe", false).await;
 
                 let detail = rig
@@ -933,9 +886,7 @@ pub(crate) mod inner {
 
             #[tokio::test]
             async fn python_code_detail_returns_the_body() {
-                let Some(rig) = pg_rig_or_skip().await else {
-                    return;
-                };
+                let rig = pg_rig().await;
                 let body = "result = host.read_file(path=\"/tmp/x\")";
                 let id = insert_python_code(&rig, "detail-python", body).await;
 
@@ -956,9 +907,7 @@ pub(crate) mod inner {
             /// JSONB, never from the unrelated reward-tier column.
             #[tokio::test]
             async fn recipe_list_derives_exec_tier_from_llm_call_required() {
-                let Some(rig) = pg_rig_or_skip().await else {
-                    return;
-                };
+                let rig = pg_rig().await;
                 insert_recipe(&rig, "tier-zero-recipe", false).await;
                 insert_recipe(&rig, "tier-one-recipe", true).await;
 
@@ -976,9 +925,7 @@ pub(crate) mod inner {
 
             #[tokio::test]
             async fn detail_rejects_a_non_uuid_id_and_reports_a_missing_row() {
-                let Some(rig) = pg_rig_or_skip().await else {
-                    return;
-                };
+                let rig = pg_rig().await;
                 let missing = uuid::Uuid::new_v4().to_string();
 
                 let invalid = rig
@@ -1013,9 +960,7 @@ pub(crate) mod inner {
             /// A detail read must not cross tenants even with a valid id.
             #[tokio::test]
             async fn detail_is_scoped_to_the_tenant() {
-                let Some(rig) = pg_rig_or_skip().await else {
-                    return;
-                };
+                let rig = pg_rig().await;
                 let id = insert_recipe(&rig, "other-tenant-recipe", false).await;
                 let other =
                     PgSettingsListingService::new(Arc::clone(&rig.pool), "tenant-somebody-else");

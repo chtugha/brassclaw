@@ -409,6 +409,14 @@ pub struct ContextMessages {
     pub messages: Vec<ContextMessage>,
 }
 
+/// One admitted input and its policy-filtered, bounded prior transcript.
+/// The input is separate so callers append it exactly once to model context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubmittedTurnInput {
+    pub message: ThreadMessageRecord,
+    pub prior_context: ContextMessages,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateSummaryArtifactRequest {
     pub scope: ThreadScope,

@@ -42,11 +42,13 @@
 #![allow(dead_code)]
 #![forbid(unsafe_code)]
 
-use brassclaw_engine::executor::kohai_port::{
-    KohaiAnswer, KohaiCallCtx, KohaiPort, KohaiPortError, KohaiUsage as EngineKohaiUsage,
-};
+#[cfg(feature = "postgres")]
+use brassclaw_engine::executor::kohai_port::{KohaiAnswer, KohaiCallCtx, KohaiPort};
+use brassclaw_engine::executor::kohai_port::{KohaiPortError, KohaiUsage as EngineKohaiUsage};
+#[cfg(feature = "postgres")]
+use brassclaw_interceptor::ForensicPacket;
+use brassclaw_interceptor::KohaiUsage as InterceptorKohaiUsage;
 use brassclaw_interceptor::packet::{CapturedPrompt, PromptSegment, TokenAccountingSnapshot};
-use brassclaw_interceptor::{ForensicPacket, KohaiUsage as InterceptorKohaiUsage};
 use brassclaw_loop_support::{
     HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
     HostManagedModelResponse,

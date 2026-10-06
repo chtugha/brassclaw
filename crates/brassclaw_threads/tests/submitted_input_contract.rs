@@ -80,6 +80,72 @@ async fn later_submission_does_not_replace_claimed_input() {
     );
 }
 
+async fn second_input(
+    service: &InMemorySessionThreadService,
+    first: &SubmittedUserMessageRequest,
+) -> SubmittedUserMessageRequest {
+    let history = service
+        .list_thread_history(brassclaw_threads::ThreadHistoryRequest {
+            scope: first.scope.clone(),
+            thread_id: first.thread_id.clone(),
+        })
+        .await
+        .unwrap();
+    SubmittedUserMessageRequest {
+        message_id: history.messages[1].message_id,
+        turn_id: "turn-b".into(),
+        turn_run_id: "run-b".into(),
+        ..first.clone()
+    }
+}
+
+#[tokio::test]
+async fn submitted_context_excludes_current_and_future_inputs() {
+    let (service, first) = fixture().await;
+    let input = service
+        .submitted_turn_input(first.clone(), None)
+        .await
+        .unwrap();
+    assert!(input.prior_context.messages.is_empty());
+    assert_eq!(input.message.message_id, first.message_id);
+    let second = second_input(&service, &first).await;
+    let input = service.submitted_turn_input(second, None).await.unwrap();
+    assert_eq!(input.prior_context.messages.len(), 1);
+    assert_eq!(
+        input.prior_context.messages[0].message_id,
+        Some(first.message_id)
+    );
+    assert_eq!(input.prior_context.messages[0].content, "first input");
+    assert_eq!(input.message.content.as_deref(), Some("later input"));
+}
+
+#[tokio::test]
+async fn submitted_context_preserves_redaction_policy() {
+    let (service, first) = fixture().await;
+    let second = second_input(&service, &first).await;
+    service
+        .redact_message(brassclaw_threads::RedactMessageRequest {
+            scope: first.scope.clone(),
+            thread_id: first.thread_id.clone(),
+            message_id: first.message_id,
+            redaction_ref: "operator-redaction".into(),
+        })
+        .await
+        .unwrap();
+    let input = service.submitted_turn_input(second, None).await.unwrap();
+    assert!(input.prior_context.messages.is_empty());
+    assert_eq!(input.message.content.as_deref(), Some("later input"));
+}
+
+#[tokio::test]
+async fn zero_history_budget_keeps_the_admitted_input() {
+    let (service, first) = fixture().await;
+    let second = second_input(&service, &first).await;
+    let input = service.submitted_turn_input(second, Some(0)).await.unwrap();
+    assert!(input.prior_context.messages.is_empty());
+    assert_eq!(input.message.content.as_deref(), Some("later input"));
+}
+
 #[tokio::test]
 async fn another_runs_input_is_rejected() {
     let (service, mut request) = fixture().await;
@@ -166,6 +232,6 @@ async fn accepted_but_unsubmitted_message_is_rejected() {
     request.message_id = accepted.message_id;
     assert!(matches!(
         service.submitted_user_message(request).await,
-        Err(SessionThreadError::SubmittedInputMismatch { .. })
+        Err(SessionThreadError::SubmittedInputPending { .. })
     ));
 }

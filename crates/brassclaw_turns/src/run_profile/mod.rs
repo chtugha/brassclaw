@@ -18,6 +18,7 @@ mod milestones;
 mod model;
 mod model_observation;
 mod model_work;
+mod monty_attempt;
 mod orchestrator_lookup;
 mod policy;
 mod prompt;
@@ -33,6 +34,7 @@ mod snippet_ref;
 mod system_inference;
 
 pub use crate::CapabilityActivityId;
+pub use monty_attempt::MontyTaskAttempt;
 
 pub use compaction::{
     CompactionInitiator, LoopCompactionError, LoopCompactionMode, LoopCompactionOutcome,

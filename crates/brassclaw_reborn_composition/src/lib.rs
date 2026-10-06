@@ -89,6 +89,7 @@ pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 #[cfg(feature = "postgres")]
 pub mod builtin_bootstrap;
 /// Phase P Step 9: doc-sync file-watcher + PG listener.
+#[cfg(feature = "postgres")]
 pub(crate) mod doc_sync_watcher;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod embedding_providers;
@@ -170,6 +171,7 @@ pub mod seed_builtin_host;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod sempai_proposal_sink;
 pub(crate) mod session_registry;
+#[cfg(feature = "postgres")]
 pub(crate) mod system_seed;
 #[cfg(feature = "test-support")]
 pub mod test_support;

@@ -2293,6 +2293,7 @@ dependencies = [
  "brassclaw_capabilities",
  "brassclaw_common",
  "brassclaw_conversations",
+ "brassclaw_embedded_postgres",
  "brassclaw_embeddings",
  "brassclaw_engine",
  "brassclaw_event_projections",

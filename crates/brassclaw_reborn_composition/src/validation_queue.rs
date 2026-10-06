@@ -1219,77 +1219,15 @@ mod tests {
         );
     }
 
-    // ── Postgres integration tests (skip when docker is unavailable) ──────
-    //
-    // These mirror the `postgres_substrate.rs` harness: each test starts an
-    // isolated Postgres-16 testcontainer, runs the full migration set (so
-    // `reborn_validation_queue` and the component tables all exist), and
-    // returns early (pass) when docker/testcontainers is unavailable. They
-    // run under the default `postgres` feature and add no failures in a
-    // docker-less `cargo test -p brassclaw_reborn_composition` run.
+    // Native PostgreSQL tests apply the complete schema and fail on setup errors.
 
     mod pg {
         use super::*;
         use brassclaw_engine::memory::retrieval_source::ComponentScope;
         use brassclaw_pg::PgPool;
 
-        struct PgRig {
-            // Held for the test's lifetime so the container stays up.
-            _container: testcontainers_modules::testcontainers::ContainerAsync<
-                testcontainers_modules::postgres::Postgres,
-            >,
-            pool: Arc<PgPool>,
-        }
-
-        /// Start an isolated Postgres-16 testcontainer, build a pool, and run
-        /// every migration (V000–V051). Returns `None` (skip) when docker is
-        /// unavailable.
-        async fn pg_rig_or_skip() -> Option<PgRig> {
-            use deadpool_postgres::{Manager, Pool};
-            use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
-
-            let image = testcontainers_modules::postgres::Postgres::default()
-                .with_db_name("brassclaw_test")
-                .with_user("postgres")
-                .with_password("postgres")
-                .with_tag("16-alpine");
-            let container = match image.start().await {
-                Ok(c) => c,
-                Err(error) => {
-                    eprintln!(
-                        "skipping validation_queue pg tests: docker/testcontainers unavailable ({error})"
-                    );
-                    return None;
-                }
-            };
-            let host = match container.get_host().await {
-                Ok(h) => h,
-                Err(error) => {
-                    eprintln!("skipping validation_queue pg tests: no host ({error})");
-                    return None;
-                }
-            };
-            let port = match container.get_host_port_ipv4(5432).await {
-                Ok(p) => p,
-                Err(error) => {
-                    eprintln!("skipping validation_queue pg tests: no port ({error})");
-                    return None;
-                }
-            };
-            let url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
-            let cfg: tokio_postgres::Config = url.parse().expect("testcontainer url parses");
-            let manager = Manager::new(cfg, tokio_postgres::NoTls);
-            let pool = Pool::builder(manager)
-                .max_size(4)
-                .build()
-                .expect("Postgres pool must build");
-            brassclaw_pg::migrations::run_migrations(&pool)
-                .await
-                .expect("migrations must apply");
-            Some(PgRig {
-                _container: container,
-                pool: Arc::new(pool),
-            })
+        async fn pg_rig() -> crate::runtime::test_pg::native_pg::NativePostgres {
+            crate::runtime::test_pg::native_pg::NativePostgres::start().await
         }
 
         fn test_scope() -> ComponentScope {
@@ -1348,9 +1286,7 @@ mod tests {
 
         #[tokio::test]
         async fn submit_inserts_state_one_row() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
             let cid = Uuid::new_v4();
@@ -1367,9 +1303,7 @@ mod tests {
 
         #[tokio::test]
         async fn submit_rejects_duplicate_component() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
             let cid = Uuid::new_v4();
@@ -1388,9 +1322,7 @@ mod tests {
 
         #[tokio::test]
         async fn gate1_pass_and_gate1_fail_transition_correctly() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
 
@@ -1421,9 +1353,7 @@ mod tests {
 
         #[tokio::test]
         async fn reject_transitions_two_to_three_and_increments_counter() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone()); // threshold 3
             let cid = Uuid::new_v4();
@@ -1447,9 +1377,7 @@ mod tests {
 
         #[tokio::test]
         async fn reject_auto_promotes_to_deletion_candidate_at_threshold() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             // threshold 1 → first rejection promotes to state 4.
             let store = ValidationQueueStore::with_reject_threshold(rig.pool.clone(), 1);
@@ -1470,9 +1398,7 @@ mod tests {
 
         #[tokio::test]
         async fn approve_graduates_component_and_deletes_queue_row() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
             let cid = insert_pending_note(&rig.pool, &scope).await;
@@ -1495,9 +1421,7 @@ mod tests {
 
         #[tokio::test]
         async fn approve_unknown_class_errors_before_transaction() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
             let cid = Uuid::new_v4();
@@ -1525,9 +1449,7 @@ mod tests {
 
         #[tokio::test]
         async fn approve_missing_component_rolls_back_and_preserves_queue_row() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
             // No component row exists for this id.
@@ -1557,9 +1479,7 @@ mod tests {
         async fn approve_upgrade_copy_applies_payload_phase_n() {
             // Phase N: upgrade-copy graduation applies proposed_payload to the
             // live component row and removes the queue row (§0.23.5).
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
             let client = rig.pool.get().await.expect("pool");
@@ -1633,9 +1553,7 @@ mod tests {
         #[tokio::test]
         async fn run_q1_validation_defers_when_no_recipe_seeded() {
             use crate::q1_orchestrator::{Q1Outcome, run_q1_validation};
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
 
@@ -1671,9 +1589,7 @@ mod tests {
         /// availability.
         #[tokio::test]
         async fn integration_submit_gate1pass_approve_graduates() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = ValidationQueueStore::new(rig.pool.clone());
             let cid = insert_pending_note(&rig.pool, &scope).await;
@@ -1706,9 +1622,7 @@ mod tests {
 
         #[tokio::test]
         async fn purge_deletion_candidates_drops_queue_and_component_rows() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             // threshold 1 so a single reject promotes to state 4.
             let store = ValidationQueueStore::with_reject_threshold(rig.pool.clone(), 1);

@@ -644,8 +644,8 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // PgRetrievalLookup end-to-end tests — real Postgres-16 testcontainer.
-    // Skip cleanly when docker/testcontainers is unavailable; run in CI.
+    // PgRetrievalLookup end-to-end tests — native PostgreSQL.
+    // Use a private native PostgreSQL instance; initialization failures fail the test.
     // -------------------------------------------------------------------------
 
     /// A unique sentence-class query (≥5 whitespace tokens, no terminal
@@ -691,10 +691,8 @@ mod tests {
     }
 
     /// Build a `LoopRunContext` whose `build_component_scope` projection matches
-    /// the seeded `IntentScope`. `build_component_scope` sets `tenant_id` =
-    /// `user_id` = the actor's user id, `agent_id` = `scope.agent_id`,
-    /// `project_id` = `scope.project_id`; `scope.tenant_id` is unused (Phase-F
-    /// stub).
+    /// the seeded `IntentScope`. The tenant comes from the trusted runtime
+    /// scope; the actor determines user identity, independently of tenancy.
     #[cfg(feature = "skills-db")]
     async fn lookup_context(user: &str, agent: &str, project: &str) -> LoopRunContext {
         let resolved = InMemoryRunProfileResolver::default()
@@ -714,7 +712,7 @@ mod tests {
     #[cfg(feature = "skills-db")]
     fn fresh_intent_scope(user: &str, agent: &str, project: &str) -> IntentScope {
         IntentScope {
-            tenant_id: user.to_string(),
+            tenant_id: "tenant-lookup".to_string(),
             user_id: user.to_string(),
             agent_id: agent.to_string(),
             project_id: project.to_string(),
@@ -724,10 +722,7 @@ mod tests {
     #[cfg(feature = "skills-db")]
     #[tokio::test]
     async fn pg_retrieval_lookup_returns_components_for_validated_action() {
-        let rig = match crate::runtime::test_pg::pg_rig().await {
-            Some(r) => r,
-            None => return,
-        };
+        let rig = crate::runtime::test_pg::pg_rig().await;
         let _guard = rig.lock_db().await;
         let pool = Arc::clone(&rig.pool);
 
@@ -787,10 +782,7 @@ mod tests {
     #[cfg(feature = "skills-db")]
     #[tokio::test]
     async fn pg_retrieval_lookup_returns_disambiguation_for_two_near_equal_inputs() {
-        let rig = match crate::runtime::test_pg::pg_rig().await {
-            Some(r) => r,
-            None => return,
-        };
+        let rig = crate::runtime::test_pg::pg_rig().await;
         let _guard = rig.lock_db().await;
         let pool = Arc::clone(&rig.pool);
 
@@ -850,10 +842,7 @@ mod tests {
     #[cfg(feature = "skills-db")]
     #[tokio::test]
     async fn pg_retrieval_lookup_soft_misses_when_nothing_matches() {
-        let rig = match crate::runtime::test_pg::pg_rig().await {
-            Some(r) => r,
-            None => return,
-        };
+        let rig = crate::runtime::test_pg::pg_rig().await;
         let _guard = rig.lock_db().await;
         let pool = Arc::clone(&rig.pool);
 

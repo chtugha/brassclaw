@@ -315,9 +315,7 @@ fn webui_extension_setup_scope(extension_id: &str) -> AuthProductScope {
 
 #[tokio::test]
 async fn webui_v2_http_list_automations_uses_composed_runtime_facade() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let harness = build_harness(&rig).await;
 
@@ -360,9 +358,7 @@ async fn webui_v2_http_list_automations_uses_composed_runtime_facade() {
 ///     this test additionally proves the same path *works* end-to-end.
 #[tokio::test]
 async fn webui_v2_http_happy_path_with_builtin_tool_call() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let harness = build_harness(&rig).await;
 
@@ -471,9 +467,7 @@ async fn webui_v2_http_happy_path_with_builtin_tool_call() {
 
 #[tokio::test]
 async fn webui_v2_gmail_oauth_setup_complete_allows_activation() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let harness = build_harness(&rig).await;
     let product_auth = harness

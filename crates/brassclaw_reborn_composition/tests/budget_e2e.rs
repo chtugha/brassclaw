@@ -125,9 +125,7 @@ fn build_input(
 /// token usage × cost-table price, ledger records exactly that.
 #[tokio::test]
 async fn f1_happy_path_records_actual_usd_in_ledger() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 10, 5));
@@ -176,9 +174,7 @@ async fn f1_happy_path_records_actual_usd_in_ledger() {
 /// `Reserved` for this turn.
 #[tokio::test]
 async fn f2_crossing_warn_threshold_emits_warned_event() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 10, 10));
@@ -269,9 +265,7 @@ async fn f2_crossing_warn_threshold_emits_warned_event() {
 /// accountant returns `BudgetExceeded` before any provider call.
 #[tokio::test]
 async fn f6_hard_cap_denied_before_provider_call() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("should not reach", 10, 10));
@@ -336,9 +330,7 @@ async fn f6_hard_cap_denied_before_provider_call() {
 /// to the (conservative) reservation estimate.
 #[tokio::test]
 async fn c1_provider_tokens_reconcile_to_actual_usd() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 3, 7));
@@ -405,9 +397,7 @@ async fn c1_provider_tokens_reconcile_to_actual_usd() {
 /// reconcile to zero.
 #[tokio::test]
 async fn c2_unknown_model_in_cost_table_uses_default_cost_fallback() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 10, 10));
@@ -458,9 +448,7 @@ async fn c2_unknown_model_in_cost_table_uses_default_cost_fallback() {
 /// $0.00 even with high token counts.
 #[tokio::test]
 async fn c3_zero_cost_model_records_zero_spend() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 1000, 2000));
@@ -516,9 +504,7 @@ async fn c3_zero_cost_model_records_zero_spend() {
 /// High #2).
 #[tokio::test]
 async fn d3_seeding_policy_installs_default_cap_on_first_touch() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 5, 5));
@@ -576,9 +562,7 @@ async fn d3_seeding_policy_installs_default_cap_on_first_touch() {
 /// render the warn signal that preceded the denial.
 #[tokio::test]
 async fn d1_agent_deny_preserves_user_warn_event() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("should not reach", 10, 10));
@@ -682,9 +666,7 @@ async fn d1_agent_deny_preserves_user_warn_event() {
 /// without polling.
 #[tokio::test]
 async fn broadcast_sink_publishes_events_to_subscribers() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 10, 5));
@@ -758,9 +740,7 @@ async fn broadcast_sink_publishes_events_to_subscribers() {
 /// path of `BudgetTestGateway::push`.
 #[tokio::test]
 async fn budget_test_gateway_scripted_replies_drive_per_turn_costs() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::new());
@@ -848,9 +828,7 @@ async fn projection_delivers_budget_events_to_installed_observer() {
         }
     }
 
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 3, 7));

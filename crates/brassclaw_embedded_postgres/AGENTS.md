@@ -4,7 +4,8 @@ Embedded PostgreSQL lifecycle management for brassclaw.
 
 ## Responsibilities
 
-- Downloads and caches the PostgreSQL 16 binary (via `postgresql_embedded`)
+- Downloads and verifies the pinned PostgreSQL archive at build time, bundles
+  it in the product binary and extracts it into the runtime cache
 - Verifies SHA-256 checksums of downloaded archives against compiled-in values
 - Runs `initdb` on first start to create the data directory
 - Detects orphaned servers via `postmaster.pid` PID liveness check
@@ -15,8 +16,9 @@ Embedded PostgreSQL lifecycle management for brassclaw.
 
 ## Security notes
 
-- `POSTGRESQL_VERSION` and `GITHUB_TOKEN` env vars are suppressed to prevent
-  version substitution by environment injection.
+- Runtime startup uses the bundled archive; it does not invoke an environment
+  configured downloader or consume `POSTGRESQL_VERSION` / `GITHUB_TOKEN`.
+  Do not mutate process-wide environment from the async startup API.
 - Checksums in `checksums.rs` are compiled-in; every version bump requires a
   deliberate, reviewed commit updating those values.
 - `pg_hba.conf` is written to only allow loopback trust auth (`127.0.0.1/32`).

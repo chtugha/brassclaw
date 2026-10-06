@@ -106,6 +106,7 @@ mod auth_interaction_tests;
 #[path = "runtime/tests/default_system_prompt.rs"]
 mod default_system_prompt_tests;
 mod local_dev;
+mod run_state_read_source;
 // v3 Phase H.12.5: re-export the per-run Tier-0 EffectExecutor builder so the
 // `orchestrator_lookup_impl` bridge (crate-root module) can hold/call it
 // without widening the whole `local_dev` module's visibility.
@@ -1089,7 +1090,7 @@ impl RebornRuntime {
         let accepted = self
             .thread_service
             .accept_inbound_message(AcceptInboundMessageRequest {
-                scope: thread_scope,
+                scope: thread_scope.clone(),
                 thread_id: conversation.0.clone(),
                 actor_id: actor_id.as_str().to_string(),
                 source_binding_id: Some(source_binding.as_str().to_string()),
@@ -1146,7 +1147,30 @@ impl RebornRuntime {
             }
         };
 
-        let SubmitTurnResponse::Accepted { run_id, .. } = response;
+        let SubmitTurnResponse::Accepted {
+            run_id, turn_id, ..
+        } = response;
+        if let Err(error) = self
+            .thread_service
+            .mark_message_submitted(
+                &thread_scope,
+                &conversation.0,
+                accepted.message_id,
+                turn_id.to_string(),
+                run_id.to_string(),
+            )
+            .await
+        {
+            // A run without a committed input must not remain queued forever.
+            self.cancel_run(
+                &scope,
+                run_id,
+                SanitizedCancelReason::Policy,
+                "input-admission-failed",
+            )
+            .await?;
+            return Err(RebornRuntimeError::ThreadService(error.to_string()));
+        }
         if cancellation.is_cancelled() {
             if let Some(skill_activation_source) = &self.skill_activation_source {
                 skill_activation_source
@@ -2940,6 +2964,24 @@ pub async fn build_reborn_runtime(
         )) as Arc<dyn brassclaw_turns::run_profile::SystemInferencePort>
     });
     let planned_turn_coordinator: Arc<dyn TurnCoordinator> = composition.coordinator.clone();
+    let interaction_turn_state: Option<Arc<dyn run_state_read_source::RunStateReadSource>> = {
+        #[cfg(feature = "postgres")]
+        {
+            if let Some(stores) = pg_stores.as_ref() {
+                Some(stores.turn_state.clone() as Arc<dyn run_state_read_source::RunStateReadSource>)
+            } else {
+                local_dev_turn_state
+                    .clone()
+                    .map(|store| store as Arc<dyn run_state_read_source::RunStateReadSource>)
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            local_dev_turn_state
+                .clone()
+                .map(|store| store as Arc<dyn run_state_read_source::RunStateReadSource>)
+        }
+    };
     // The approval run locator needs the typed LocalDevTurnStateStore on the
     // local-dev path.  On the pure-PG path, the locator is built using
     // `LocalDevApprovalTurnRunLocator` is not suitable — we use an
@@ -2987,7 +3029,7 @@ pub async fn build_reborn_runtime(
     };
     let auth_interaction_service = build_webui_auth_interaction_service(
         services.product_auth.as_deref(),
-        local_dev_turn_state.clone(),
+        interaction_turn_state,
         Arc::clone(&planned_turn_coordinator),
     );
     let turn_event_source: Arc<dyn TurnEventProjectionSource> = turn_state_store.clone();
@@ -3151,7 +3193,7 @@ pub async fn build_reborn_runtime(
 
 fn build_webui_auth_interaction_service(
     product_auth: Option<&RebornProductAuthServices>,
-    turn_state_store: Option<Arc<LocalDevTurnStateStore>>,
+    turn_state_store: Option<Arc<dyn run_state_read_source::RunStateReadSource>>,
     turn_coordinator: Arc<dyn TurnCoordinator>,
 ) -> Arc<dyn AuthInteractionService> {
     // `AuthFlowRecordSource` is optional on the product-auth bundle because
@@ -3159,8 +3201,7 @@ fn build_webui_auth_interaction_service(
     // manager itself. Local-dev can render pending WebUI auth interactions only
     // when the bundle explicitly exposes this scoped projection; otherwise the
     // WebUI surface fails closed with a stable unavailable error.
-    // On the pure-PG path there is no in-process turn-state snapshot so
-    // auth challenge rendering is also unavailable.
+    // Both durable and local stores provide the same scoped run projection.
     let Some(product_auth) = product_auth else {
         return Arc::new(auth_interaction::UnavailableAuthInteractionService);
     };
@@ -3171,7 +3212,7 @@ fn build_webui_auth_interaction_service(
         return Arc::new(auth_interaction::UnavailableAuthInteractionService);
     };
     Arc::new(DefaultAuthInteractionService::new(
-        Arc::new(auth_interaction::LocalDevAuthInteractionReadModel::new(
+        Arc::new(auth_interaction::RunStateAuthInteractionReadModel::new(
             turn_state_store,
             flow_records,
         )),
@@ -3576,7 +3617,7 @@ mod tests {
     use async_trait::async_trait;
     use brassclaw_auth::{GOOGLE_CALENDAR_EVENTS_SCOPE, GOOGLE_CALENDAR_READONLY_SCOPE};
     use brassclaw_authorization::CapabilityLeaseStore;
-    use brassclaw_events::{EventStreamKey, ReadScope};
+    use brassclaw_events::{DurableAuditLog, EventStreamKey, ReadScope};
     use brassclaw_host_api::{
         Action, AgentId, ApprovalRequest, ApprovalRequestId, AuditStage, CapabilityId,
         CorrelationId, EffectKind, InvocationFingerprint, InvocationId, Principal,
@@ -4079,9 +4120,7 @@ mod tests {
         policy.network_mode = NetworkMode::Direct;
         policy.secret_mode = SecretMode::InheritedEnv;
 
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-yolo-audit-owner", root.path())
@@ -4101,12 +4140,11 @@ mod tests {
             runtime.actor_user_id.clone(),
             Some(runtime.thread_scope.agent_id.clone()),
         );
-        let replay = runtime
-            .services
-            .local_runtime
-            .as_ref()
-            .expect("local runtime")
-            .audit_log
+        let audit_log = brassclaw_reborn_event_store::PgDurableAuditLog::new(
+            Arc::clone(&rig.pool),
+            runtime.thread_scope.tenant_id.as_str(),
+        );
+        let replay = audit_log
             .read_after_cursor(&stream, &ReadScope::any(), None, 10)
             .await
             .expect("audit replay");
@@ -4141,9 +4179,7 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-trigger-readiness-owner", root.path())
@@ -4178,9 +4214,7 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-trigger-auth-required-owner", root.path())
@@ -4221,9 +4255,7 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-trigger-auth-supplied-owner", root.path())
@@ -4257,9 +4289,7 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-trigger-disabled-owner", root.path())
@@ -4300,9 +4330,7 @@ mod tests {
         }
         .with_tenant_scoped_authorizer_for_test();
 
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-trigger-invalid-config-owner", root.path())
@@ -4341,9 +4369,7 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-trigger-shutdown-owner", root.path())
@@ -4393,9 +4419,7 @@ mod tests {
             },
         );
 
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-yolo-budget-owner", root.path())
@@ -4448,9 +4472,7 @@ mod tests {
             reply: "recorded runtime reply".to_string(),
             requests: Arc::clone(&requests),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-success-owner", root.path())
@@ -4469,15 +4491,6 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
-        let local_runtime = runtime
-            .services
-            .local_runtime
-            .as_ref()
-            .expect("runtime should use local-dev RebornServices substrate");
-        assert!(
-            Arc::ptr_eq(&runtime.thread_service, &local_runtime.thread_service),
-            "REPL runtime should use the thread service owned by RebornServices"
-        );
         assert!(
             Arc::ptr_eq(
                 &runtime.turn_coordinator,
@@ -4514,9 +4527,7 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-cancel-child-owner", root.path())
@@ -4531,6 +4542,7 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
+        super::test_pg::stop_worker_for_state_fixture(&runtime).await;
         let conversation = runtime.new_conversation().await.expect("conversation");
         let parent_scope = runtime.turn_scope_for(&conversation.0);
         let actor = TurnActor::new(runtime.actor_user_id.clone());
@@ -4677,9 +4689,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(ToolCallingGateway::default());
         let gateway_for_runtime: Arc<dyn HostManagedModelGateway> = gateway.clone();
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-tools-owner", root.path())
@@ -4785,9 +4795,7 @@ mod tests {
         .expect("write sentinel");
         let gateway = Arc::new(WorkspaceListingGateway::default());
         let gateway_for_runtime: Arc<dyn HostManagedModelGateway> = gateway.clone();
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-workspace-owner", root.path())
@@ -4842,9 +4850,7 @@ mod tests {
             reply: "webui projection ok".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-webui-owner", root.path())
@@ -4968,9 +4974,7 @@ mod tests {
             reply: "webui lifecycle ok".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-webui-lifecycle-owner", root.path())
@@ -5096,9 +5100,7 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-webui-no-agent-owner", root.path())
@@ -5157,9 +5159,7 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-webui-no-host-owner", root.path())
@@ -5215,9 +5215,7 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-webui-approval-owner", root.path())
@@ -5291,9 +5289,7 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-webui-auth-owner", root.path())
@@ -5366,9 +5362,7 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
-        let Some(rig) = super::test_pg::pg_rig().await else {
-            return;
-        };
+        let rig = super::test_pg::pg_rig().await;
         let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
             rig.build_input("runtime-webui-audit-owner", root.path())
@@ -5387,6 +5381,7 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
+        super::test_pg::stop_worker_for_state_fixture(&runtime).await;
         let bundle = build_webui_services(Arc::clone(&runtime), None)
             .await
             .expect("webui bundle");
@@ -5437,8 +5432,11 @@ mod tests {
             .expect("local runtime services");
         let runner_id = TurnRunnerId::new();
         let lease_token = TurnLeaseToken::new();
-        let claimed = local_runtime
-            .turn_state
+        let turn_state = brassclaw_turns::PgTurnStateStore::new(
+            Arc::clone(&rig.pool),
+            runtime.thread_scope.tenant_id.as_str(),
+        );
+        let claimed = turn_state
             .claim_next_run(ClaimRunRequest {
                 runner_id,
                 lease_token,
@@ -5450,8 +5448,7 @@ mod tests {
         assert_eq!(claimed.state.run_id, run_id);
         let request_id = ApprovalRequestId::new();
         let gate_ref = approval_gate_ref(request_id).expect("approval gate");
-        local_runtime
-            .turn_state
+        turn_state
             .block_run(BlockRunRequest {
                 run_id,
                 runner_id,

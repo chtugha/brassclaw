@@ -56,8 +56,8 @@ impl PgCtl {
     }
 
     /// Stop the Postgres server using `pg_ctl stop -m fast`.
-    /// This is the normal shutdown path — fast mode waits for active
-    /// transactions to complete rather than killing them immediately.
+    /// Fast mode aborts active transactions and waits for server processes to
+    /// exit. Application work must be drained before calling this method.
     pub async fn stop(&self) -> Result<(), EmbeddedPostgresError> {
         let output = Command::new(&self.pg_ctl_bin)
             .args([

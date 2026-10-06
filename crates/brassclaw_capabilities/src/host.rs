@@ -435,6 +435,33 @@ where
             }
         }
 
+        if !self
+            .authorizer
+            .validate_prepared_dispatch(
+                &request.context,
+                descriptor,
+                &request.estimate,
+                &request.trust_decision,
+                obligations.as_slice(),
+            )
+            .await
+        {
+            self.abort_obligations(
+                CapabilityObligationPhase::Invoke,
+                &request.context,
+                &request.capability_id,
+                &request.estimate,
+                obligations.as_slice(),
+                &obligation_outcome,
+            )
+            .await;
+            fail_run_if_configured(self.run_state, &scope, invocation_id, "PolicyChanged").await;
+            return Err(CapabilityInvocationError::AuthorizationDenied {
+                capability: request.capability_id,
+                reason: DenyReason::PolicyDenied,
+            });
+        }
+
         debug!("capability dispatch starting");
         let dispatch = match self
             .dispatcher
@@ -559,6 +586,12 @@ where
             }
         })?;
 
+        if !self.authorizer.supports_operation_approval() {
+            return Err(CapabilityInvocationError::AuthorizationDenied {
+                capability: request.capability_id,
+                reason: DenyReason::PolicyDenied,
+            });
+        }
         let invocation_id = request.context.invocation_id;
         let capability_id = request.capability_id.clone();
         let scope = request.context.resource_scope.clone();
@@ -938,6 +971,12 @@ where
             }
         })?;
 
+        if !self.authorizer.supports_operation_approval() {
+            return Err(CapabilityInvocationError::AuthorizationDenied {
+                capability: request.capability_id,
+                reason: DenyReason::PolicyDenied,
+            });
+        }
         let invocation_id = request.context.invocation_id;
         let capability_id = request.capability_id.clone();
         let scope = request.context.resource_scope.clone();
@@ -1477,6 +1516,33 @@ where
             }
         }
 
+        if !self
+            .authorizer
+            .validate_prepared_dispatch(
+                &request.context,
+                &spawn_descriptor_for_policy(descriptor),
+                &request.estimate,
+                &request.trust_decision,
+                obligations.as_slice(),
+            )
+            .await
+        {
+            self.abort_obligations(
+                CapabilityObligationPhase::Spawn,
+                &request.context,
+                &request.capability_id,
+                &request.estimate,
+                obligations.as_slice(),
+                &obligation_outcome,
+            )
+            .await;
+            fail_run_if_configured(self.run_state, &scope, invocation_id, "PolicyChanged").await;
+            return Err(CapabilityInvocationError::AuthorizationDenied {
+                capability: request.capability_id,
+                reason: DenyReason::PolicyDenied,
+            });
+        }
+
         let effective_mounts = obligation_outcome
             .mounts
             .clone()
@@ -1690,4 +1756,19 @@ fn obligation_invocation_error_kind(error: &CapabilityInvocationError) -> &'stat
         .run_state_transition()
         .map(CapabilityRunStateTransition::error_kind)
         .unwrap_or("Dispatch")
+}
+
+fn spawn_descriptor_for_policy(
+    descriptor: &brassclaw_host_api::CapabilityDescriptor,
+) -> brassclaw_host_api::CapabilityDescriptor {
+    let mut descriptor = descriptor.clone();
+    if !descriptor
+        .effects
+        .contains(&brassclaw_host_api::EffectKind::SpawnProcess)
+    {
+        descriptor
+            .effects
+            .push(brassclaw_host_api::EffectKind::SpawnProcess);
+    }
+    descriptor
 }

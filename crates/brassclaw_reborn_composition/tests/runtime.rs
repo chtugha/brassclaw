@@ -1,4 +1,6 @@
 mod common;
+#[path = "runtime/turn_snapshot_tree.rs"]
+mod turn_snapshot_tree;
 
 use common::pg_rig;
 
@@ -59,9 +61,7 @@ async fn runtime_requires_resolved_runtime_policy_for_local_dev() {
 
 #[tokio::test]
 async fn stub_gateway_send_cancels_recovery_required_and_releases_conversation() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let input = RebornRuntimeInput::from_services(
@@ -113,9 +113,7 @@ async fn stub_gateway_send_cancels_recovery_required_and_releases_conversation()
 
 #[tokio::test]
 async fn send_user_message_with_cancellation_cancels_submitted_run() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let input = RebornRuntimeInput::from_services(
@@ -170,9 +168,7 @@ async fn send_user_message_with_cancellation_cancels_submitted_run() {
 /// uncovered.
 #[tokio::test]
 async fn build_reborn_runtime_wires_third_party_hooks_when_enabled() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let storage_root = root.path().join("db");

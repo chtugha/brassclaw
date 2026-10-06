@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(authorization / capabilities)* Instance-wide tool-policy authorizer and a policy recheck after technical obligations are prepared; operation-approval resume is rejected by the instance authorizer. Production settings/dispatch cutover remains pending.
+- *(turns / database)* V089 links parent/child thread execution snapshots into a CAS-protected aggregate while retaining separate transcripts; external-auth interaction projection reads the selected persisted run state.
+- *(testing / PostgreSQL)* Native embedded-PostgreSQL composition fixtures and runtime regression coverage for admission and execution-state prerequisites.
+
+### Changed
+
+- *(Monty / defaults)* Set compiled task-duration defaults to 600 seconds. Excluding idle/external waits and live task-budget accounting remain pending implementation.
+- *(runtime / inputs)* Carry worker attempt identity into Monty dispatch/cancellation; defer execution while accepted-message linkage is pending and expose exact submitted-input/history lookup contracts. Bound cancellation acknowledgement and allow callers to request the complete eligible prior history explicitly.
+- *(planning / architecture)* Expand `simplified_v3.md` with the Recipe error/revision contract, global tool settings, intent management, migration and measured acceptance. Specify a 600-second task-compute default, adaptive shared memory and disabled artificial token budgets. These settings are target requirements, not a completed runtime rollout.
+- *(documentation)* Distinguish implemented prerequisites from the remaining global VM, authorization, live settings and UI cutover in the root agent/development guides and implementation record.
+
+### Fixed
+
+- *(prefix / database)* V088 corrects system prefix-tool capability identities to `builtin.*` while preserving component names and UUIDs; prefix schemas use the runtime's expected keys.
+- *(boot / integrity)* Verify loaded system prompt bodies together with their checksums before initialization; required component boot failures abort startup.
+- *(PostgreSQL / build)* Track the migrations directory so newly added SQL migrations invalidate embedded migration builds; improve embedded-PostgreSQL shutdown ownership and report corrupt execution snapshots instead of silently omitting them.
+
 ## [1.6.0] - 2026-10-06
 
 ### Added

@@ -51,13 +51,12 @@ impl HostManagedModelGateway for UnusedModelGateway {
 #[tokio::test]
 async fn local_dev_runtime_auth_interactions_use_flow_record_source() {
     let root = tempfile::tempdir().expect("tempdir");
-    let Some(rig) = super::test_pg::pg_rig().await else {
-        return;
-    };
+    let rig = super::test_pg::pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let runtime = build_runtime(&rig, "auth-read-model-present", root.path(), None)
         .await
         .expect("runtime builds");
+    super::test_pg::stop_worker_for_state_fixture(&runtime).await;
     let conversation = runtime.new_conversation().await.expect("conversation");
     let subject_user_id = UserId::new("team-agent-user").expect("subject user id");
     let scope = TurnScope::new_with_owner(
@@ -97,9 +96,7 @@ async fn local_dev_runtime_auth_interactions_are_unavailable_without_flow_record
     let auth = Arc::new(InMemoryAuthProductServices::new());
     let ports = RebornProductAuthServicePorts::from_shared(auth);
     let root = tempfile::tempdir().expect("tempdir");
-    let Some(rig) = super::test_pg::pg_rig().await else {
-        return;
-    };
+    let rig = super::test_pg::pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let runtime = build_runtime(&rig, "auth-read-model-absent", root.path(), Some(ports))
         .await
@@ -177,15 +174,19 @@ async fn submit_and_block_auth_run(
     actor: TurnActor,
     gate_ref: &GateRef,
 ) -> TurnRunId {
-    let local_runtime = runtime
-        .services
-        .local_runtime
-        .as_ref()
-        .expect("local runtime");
+    let turn_state = brassclaw_turns::PgTurnStateStore::new(
+        Arc::clone(
+            runtime
+                .services
+                .pg_pool
+                .as_ref()
+                .expect("runtime PostgreSQL pool"),
+        ),
+        scope.tenant_id.as_str(),
+    );
     let admission = AllowAllTurnAdmissionPolicy;
     let profiles = InMemoryRunProfileResolver::default();
-    let submit = local_runtime
-        .turn_state
+    let submit = turn_state
         .submit_turn(
             SubmitTurnRequest {
                 scope: scope.clone(),
@@ -211,12 +212,11 @@ async fn submit_and_block_auth_run(
             &profiles,
         )
         .await
-        .expect("submit turn through local-dev turn state");
+        .expect("submit turn through the runtime durable turn state");
     let SubmitTurnResponse::Accepted { run_id, .. } = submit;
     let runner_id = TurnRunnerId::new();
     let lease_token = TurnLeaseToken::new();
-    local_runtime
-        .turn_state
+    turn_state
         .claim_next_run(ClaimRunRequest {
             runner_id,
             lease_token,
@@ -225,8 +225,7 @@ async fn submit_and_block_auth_run(
         .await
         .expect("claim run")
         .expect("queued run exists");
-    local_runtime
-        .turn_state
+    turn_state
         .block_run(BlockRunRequest {
             run_id,
             runner_id,

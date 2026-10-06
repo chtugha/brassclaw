@@ -159,11 +159,11 @@ pub struct SettingsComponentGraph {
 /// (gated: only `Validated` orchestrators are accepted).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmSettings {
-    /// Max duration for a single Monty VM turn in seconds.
+    /// Maximum active VM compute time per task in seconds (default: 600).
     pub max_duration_secs: u64,
-    /// Max memory allocation count before the VM is killed.
+    /// Maximum cumulative allocations attributable to one task.
     pub max_allocations: Option<u64>,
-    /// Max resident memory in bytes before the VM is killed.
+    /// Shared Monty heap ceiling in bytes; excludes host process memory.
     pub max_memory_bytes: Option<u64>,
     /// Number of consecutive failures before the VM is auto-rolled back.
     pub failure_rollback_threshold: u32,
@@ -321,7 +321,7 @@ fn default_false() -> bool {
 /// Compiled-in defaults, used when no DB row exists or in DB-less mode.
 pub fn default_monty_vm_settings() -> MontyVmSettings {
     MontyVmSettings {
-        max_duration_secs: 300,
+        max_duration_secs: 600,
         max_allocations: Some(5_000_000),
         max_memory_bytes: Some(128 * 1024 * 1024),
         failure_rollback_threshold: 3,

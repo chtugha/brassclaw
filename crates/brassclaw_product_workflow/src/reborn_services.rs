@@ -5717,6 +5717,12 @@ fn map_timeline_probe_error(error: SessionThreadError) -> RebornServicesError {
 
 fn map_thread_error(error: SessionThreadError) -> RebornServicesError {
     match error {
+        SessionThreadError::SubmittedInputPending { .. } => RebornServicesError::from_status_kind(
+            RebornServicesErrorCode::Conflict,
+            RebornServicesErrorKind::Busy,
+            409,
+            true,
+        ),
         SessionThreadError::UnknownThread { .. } | SessionThreadError::UnknownMessage { .. } => {
             RebornServicesError::from_status(RebornServicesErrorCode::NotFound, 404, false)
         }

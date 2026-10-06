@@ -14,8 +14,8 @@ use crate::FirstPartyCapabilityError;
 
 use super::{first_party_capability_manifest, resource_profile};
 
-pub const SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID: &str = "host.sweep_validated_components";
-pub const STORE_PREFIX_BUNDLE_CAPABILITY_ID: &str = "host.store_prefix_bundle";
+pub const SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID: &str = "builtin.sweep_validated_components";
+pub const STORE_PREFIX_BUNDLE_CAPABILITY_ID: &str = "builtin.store_prefix_bundle";
 
 #[derive(Debug, Clone)]
 pub struct SweepValidatedComponentsResult {

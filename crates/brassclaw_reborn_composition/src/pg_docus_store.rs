@@ -312,7 +312,6 @@ fn docu_row_to_item(row: DocusRow) -> brassclaw_product_workflow::DocusItem {
 mod tests {
     use std::sync::Arc;
 
-    use deadpool_postgres::Manager;
     use uuid::Uuid;
 
     use super::*;
@@ -320,58 +319,8 @@ mod tests {
 
     // ── minimal Postgres test-rig ────────────────────────────────────────────
 
-    struct PgRig {
-        _container: testcontainers_modules::testcontainers::ContainerAsync<
-            testcontainers_modules::postgres::Postgres,
-        >,
-        pool: Arc<brassclaw_pg::PgPool>,
-    }
-
-    /// Start a Postgres-16 testcontainer and run migrations.
-    /// Returns `None` (skip) when docker / testcontainers is unavailable.
-    async fn pg_rig_or_skip() -> Option<PgRig> {
-        use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
-
-        let image = testcontainers_modules::postgres::Postgres::default()
-            .with_db_name("brassclaw_test")
-            .with_user("postgres")
-            .with_password("postgres")
-            .with_tag("16-alpine");
-        let container = match image.start().await {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("skipping pg_docus_store tests: docker unavailable ({e})");
-                return None;
-            }
-        };
-        let host = match container.get_host().await {
-            Ok(h) => h,
-            Err(e) => {
-                eprintln!("skipping pg_docus_store tests: no host ({e})");
-                return None;
-            }
-        };
-        let port = match container.get_host_port_ipv4(5432).await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("skipping pg_docus_store tests: no port ({e})");
-                return None;
-            }
-        };
-        let url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
-        let cfg: tokio_postgres::Config = url.parse().expect("url parses");
-        let mgr = Manager::new(cfg, tokio_postgres::NoTls);
-        let pool = deadpool_postgres::Pool::builder(mgr)
-            .max_size(4)
-            .build()
-            .expect("pool builds");
-        brassclaw_pg::migrations::run_migrations(&pool)
-            .await
-            .expect("migrations must succeed");
-        Some(PgRig {
-            _container: container,
-            pool: Arc::new(pool),
-        })
+    async fn pg_rig() -> crate::runtime::test_pg::native_pg::NativePostgres {
+        crate::runtime::test_pg::native_pg::NativePostgres::start().await
     }
 
     /// Insert a minimal `reborn_docus` row and return its UUID.
@@ -415,9 +364,7 @@ mod tests {
     /// `'validated'` directly (all edits go through Q1+Q2).
     #[tokio::test]
     async fn update_content_always_sets_pending_never_validated() {
-        let Some(rig) = pg_rig_or_skip().await else {
-            return;
-        };
+        let rig = pg_rig().await;
         let tenant = format!("t-{}", Uuid::new_v4());
         let id = insert_docus_row(&rig.pool, &tenant).await;
 
@@ -447,9 +394,7 @@ mod tests {
     /// Q1+Q2 pipeline is entered.
     #[tokio::test]
     async fn update_content_submits_to_validation_queue() {
-        let Some(rig) = pg_rig_or_skip().await else {
-            return;
-        };
+        let rig = pg_rig().await;
         let tenant = format!("t-{}", Uuid::new_v4());
         let id = insert_docus_row(&rig.pool, &tenant).await;
 
@@ -493,9 +438,7 @@ mod tests {
     /// but the content is overwritten).
     #[tokio::test]
     async fn second_update_with_pending_queue_entry_is_idempotent() {
-        let Some(rig) = pg_rig_or_skip().await else {
-            return;
-        };
+        let rig = pg_rig().await;
         let tenant = format!("t-{}", Uuid::new_v4());
         let id = insert_docus_row(&rig.pool, &tenant).await;
 
@@ -534,9 +477,7 @@ mod tests {
     /// `doc-sync` will see a different stored hash after an edit.
     #[tokio::test]
     async fn update_content_recomputes_content_hash() {
-        let Some(rig) = pg_rig_or_skip().await else {
-            return;
-        };
+        let rig = pg_rig().await;
         let tenant = format!("t-{}", Uuid::new_v4());
         let id = insert_docus_row(&rig.pool, &tenant).await;
 
@@ -577,9 +518,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_docus_returns_none_for_unknown_id() {
-        let Some(rig) = pg_rig_or_skip().await else {
-            return;
-        };
+        let rig = pg_rig().await;
         let tenant = format!("t-{}", Uuid::new_v4());
         let queue = Arc::new(ValidationQueueStore::new(Arc::clone(&rig.pool)));
         let store = PgDocusStore::new(Arc::clone(&rig.pool), queue, &tenant);
@@ -598,9 +537,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_content_fails_with_not_found_for_unknown_id() {
-        let Some(rig) = pg_rig_or_skip().await else {
-            return;
-        };
+        let rig = pg_rig().await;
         let tenant = format!("t-{}", Uuid::new_v4());
         let queue = Arc::new(ValidationQueueStore::new(Arc::clone(&rig.pool)));
         let store = PgDocusStore::new(Arc::clone(&rig.pool), queue, &tenant);

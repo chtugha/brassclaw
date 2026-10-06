@@ -13,7 +13,7 @@ use brassclaw_product_workflow::{
 };
 use brassclaw_turns::{GateRef, TurnPersistenceSnapshot, TurnRunId, TurnScope, TurnStatus};
 
-use crate::factory::LocalDevTurnStateStore;
+use super::run_state_read_source::RunStateReadSource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BlockedAuthRun {
@@ -21,8 +21,8 @@ struct BlockedAuthRun {
     gate_ref: GateRef,
 }
 
-pub(super) struct LocalDevAuthInteractionReadModel {
-    turn_state: Arc<LocalDevTurnStateStore>,
+pub(super) struct RunStateAuthInteractionReadModel {
+    turn_state: Arc<dyn RunStateReadSource>,
     flow_records: Arc<dyn AuthFlowRecordSource>,
 }
 
@@ -45,9 +45,9 @@ impl AuthInteractionService for UnavailableAuthInteractionService {
     }
 }
 
-impl LocalDevAuthInteractionReadModel {
+impl RunStateAuthInteractionReadModel {
     pub(super) fn new(
-        turn_state: Arc<LocalDevTurnStateStore>,
+        turn_state: Arc<dyn RunStateReadSource>,
         flow_records: Arc<dyn AuthFlowRecordSource>,
     ) -> Self {
         Self {
@@ -56,8 +56,17 @@ impl LocalDevAuthInteractionReadModel {
         }
     }
 
-    async fn snapshot(&self) -> Result<TurnPersistenceSnapshot, ProductWorkflowError> {
-        Ok(self.turn_state.persistence_snapshot())
+    async fn snapshot(
+        &self,
+        scope: &TurnScope,
+    ) -> Result<TurnPersistenceSnapshot, ProductWorkflowError> {
+        self.turn_state
+            .snapshot_for_scope(scope)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "auth interaction run projection failed");
+                auth_read_model_unavailable()
+            })
     }
 
     async fn blocked_auth_runs(
@@ -65,7 +74,7 @@ impl LocalDevAuthInteractionReadModel {
         scope: &AuthInteractionScope,
     ) -> Result<Vec<BlockedAuthRun>, ProductWorkflowError> {
         let turn_scope = turn_scope_for_interaction(scope);
-        let snapshot = self.snapshot().await?;
+        let snapshot = self.snapshot(&turn_scope).await?;
         let mut runs = snapshot
             .runs
             .iter()
@@ -91,7 +100,7 @@ impl LocalDevAuthInteractionReadModel {
         gate_ref: &GateRef,
     ) -> Result<Option<TurnRunId>, ProductWorkflowError> {
         let turn_scope = turn_scope_for_interaction(scope);
-        let snapshot = self.snapshot().await?;
+        let snapshot = self.snapshot(&turn_scope).await?;
         let active = snapshot
             .runs
             .iter()
@@ -206,7 +215,7 @@ fn matching_flow_for_run(
         .cloned())
 }
 
-impl LocalDevAuthInteractionReadModel {
+impl RunStateAuthInteractionReadModel {
     async fn owner_flows(
         &self,
         scope: &AuthInteractionScope,
@@ -216,7 +225,7 @@ impl LocalDevAuthInteractionReadModel {
 }
 
 #[async_trait]
-impl AuthInteractionReadModel for LocalDevAuthInteractionReadModel {
+impl AuthInteractionReadModel for RunStateAuthInteractionReadModel {
     async fn auth_gates(
         &self,
         scope: &AuthInteractionScope,

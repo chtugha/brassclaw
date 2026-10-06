@@ -143,6 +143,53 @@ Class **11 is unallocated** (`class_code_to_table` returns `None`) — Actions a
 
 Legacy `brassclaw_memory_docs` rows are migrated into the appropriate class table at boot by `run_component_import` (`crates/brassclaw_reborn_composition/src/component_import.rs`).
 
+### Simplified v3 authorization target (binding)
+
+`simplified_v3.md` sections 1.1 and 9 supersede older operation-approval and
+scoped operator-access requirements. The instance-token operator administers
+all supported functions without user, tenant, project or feature-role checks.
+Tools use current instance-wide allow/block settings and technical parameters,
+checked by the kernel before every dispatch, including an already running
+recipe. ToolSkill binding grants no permission. There is no additional
+invocation/run/attempt tool approval or fingerprinted approval lease.
+
+Run claims and attempt identifiers still fence cancellation, stale execution,
+replies and idempotency; they are not tool grants. External-service authentication,
+Q1 and human Q2, sandboxing, network/secret enforcement and resource limits remain.
+Existing scoped stores and operation-approval code are legacy implementation
+until the coordinated dispatch/data cutover. Do not extend those paths as v3
+requirements or disable technical enforcement to bypass them.
+
+Only an actual No-Match enters Tier 2. Matching/DB errors, ambiguity and begun
+recipe failures must remain distinct; never replay a failed recipe as Tier 2.
+Running tasks retain their selected component revisions. Live tool policy is
+checked independently of those fixed component revisions. Monty task time and
+allocation budgets are separate from the shared live-heap limit. The target
+`max_duration_secs` default is 600 seconds of executing VM time per task,
+excluding idle/queue/external waits; it never limits global Monty lifetime.
+Shared memory defaults to an adaptive budget based on available RAM, memory
+pressure and reserve, with an optional operator cap. Unsafe manual reductions
+are rejected; automatic reductions below the live heap remain pending while
+safe reclamation and admission backpressure apply. All valid settings changes
+are live, with desired/effective state visible.
+
+Token budgets default to disabled (`token_budgets_enabled = false`). When
+disabled, retrieval, prior knowledge, history and task consumption have no
+artificial token caps, including hardcoded retrieval/assembly constants.
+Token accounting remains observability; model context/output limits remain
+technical constraints. Time, allocation and memory limits are independent.
+
+**Implementation status (2026-10-06):** this section specifies the binding target,
+not completed functionality. Shared verified component boot, exact accepted-input
+lookup, admission-pending recovery, attempt-addressed cancellation, parent/child
+snapshot links and native PostgreSQL fixtures provide prerequisites. The instance
+policy authorizer and prepared-dispatch recheck are initial infrastructure; they
+do not establish a complete production/global-settings cutover. Global Monty,
+live task/adaptive memory budgets, intent CRUD/preview and removal of legacy
+operator scopes/operation approvals still require implementation and acceptance.
+See `docs/plans/simplified-v3-implementation.md`; never mark the full plan complete
+or claim improved speed without the production-path tests and measurements.
+
 ### Orchestrator-First, LLM-Minimal (Core Design Principle)
 
 **Monty (the Python orchestrator) IS the execution engine and the sole

@@ -5,6 +5,12 @@
 //! runtime internals. The first slices implement grant- and lease-backed gates
 //! for capability dispatch.
 
+mod instance_policy;
+pub use instance_policy::{
+    InstanceToolAuthorizer, InstanceToolPolicyError, InstanceToolPolicySource, InstanceToolRule,
+    ToolExecutionRules,
+};
+
 pub mod pg_store;
 pub use pg_store::PgCapabilityLeaseStore;
 
@@ -54,6 +60,24 @@ pub trait TrustAwareCapabilityDispatchAuthorizer: Send + Sync {
         estimate: &ResourceEstimate,
         trust_decision: &TrustDecision,
     ) -> Decision;
+
+    /// Legacy approval-resume support. Instance policy has no operation lease.
+    fn supports_operation_approval(&self) -> bool {
+        true
+    }
+
+    /// Recheck a live instance policy after preparing technical obligations.
+    /// Legacy grant adapters retain their existing behavior until cutover.
+    async fn validate_prepared_dispatch(
+        &self,
+        _context: &ExecutionContext,
+        _descriptor: &CapabilityDescriptor,
+        _estimate: &ResourceEstimate,
+        _trust_decision: &TrustDecision,
+        _prepared: &[Obligation],
+    ) -> bool {
+        true
+    }
 
     /// Authorize a background-process spawn using both explicit grants/leases
     /// and the policy-derived authority ceiling.
@@ -1097,19 +1121,34 @@ fn obligations_for_grant(
     grant: &CapabilityGrant,
     effective_resource_ceiling: Option<ResourceCeiling>,
 ) -> Option<Obligations> {
+    let rules = ToolExecutionRules {
+        allowed_effects: grant.constraints.allowed_effects.clone(),
+        mounts: grant.constraints.mounts.clone(),
+        network: grant.constraints.network.clone(),
+        secrets: grant.constraints.secrets.clone(),
+        resource_ceiling: grant.constraints.resource_ceiling.clone(),
+    };
+    obligations_for_rules(descriptor, &rules, effective_resource_ceiling)
+}
+
+fn obligations_for_rules(
+    descriptor: &CapabilityDescriptor,
+    rules: &ToolExecutionRules,
+    effective_resource_ceiling: Option<ResourceCeiling>,
+) -> Option<Obligations> {
     let mut obligations = Vec::new();
 
     if descriptor_requires_mount_policy(descriptor) {
         obligations.push(Obligation::UseScopedMounts {
-            mounts: grant.constraints.mounts.clone(),
+            mounts: rules.mounts.clone(),
         });
     }
 
     if descriptor.effects.contains(&EffectKind::Network)
-        || network_policy_is_constrained(&grant.constraints.network)
+        || network_policy_is_constrained(&rules.network)
     {
         obligations.push(Obligation::ApplyNetworkPolicy {
-            policy: grant.constraints.network.clone(),
+            policy: rules.network.clone(),
         });
     }
 
@@ -1120,7 +1159,7 @@ fn obligations_for_grant(
         for credential in &descriptor.runtime_credentials {
             match &credential.source {
                 RuntimeCredentialRequirementSource::SecretHandle => {
-                    if grant.constraints.secrets.contains(&credential.handle) {
+                    if rules.secrets.contains(&credential.handle) {
                         obligations.push(Obligation::InjectSecretOnce {
                             handle: credential.handle.clone(),
                         });
@@ -1147,12 +1186,12 @@ fn obligations_for_grant(
         // Some first-party handlers choose account-scoped credentials at
         // dispatch time and stage the selected secret through their own
         // host-runtime port, so there is no static grant handle to inject here.
-        if descriptor.runtime == RuntimeKind::FirstParty && grant.constraints.secrets.is_empty() {
+        if descriptor.runtime == RuntimeKind::FirstParty && rules.secrets.is_empty() {
             obligations.push(Obligation::FirstPartyCredentialStagedViaHostPort {
                 capability_id: descriptor.id.clone(),
             });
         } else {
-            match grant.constraints.secrets.as_slice() {
+            match rules.secrets.as_slice() {
                 [handle] => obligations.push(Obligation::InjectSecretOnce {
                     handle: handle.clone(),
                 }),

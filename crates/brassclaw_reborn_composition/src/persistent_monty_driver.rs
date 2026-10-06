@@ -29,7 +29,7 @@
 //!
 //! ## Signals (user-locked A — signal broker)
 //!
-//! The driver owns a [`SignalBroker`] holding the per-conversation
+//! The driver owns a [`SignalBroker`] holding the per-claimed-attempt
 //! `SignalSender` for the turn currently in flight. `drive_turn` creates a
 //! fresh signal channel per turn, registers the sender in the broker (so the
 //! turn runner — slice 4d — can forward `Stop`/`Suspend`/`InjectMessage`), and
@@ -67,7 +67,7 @@ use async_trait::async_trait;
 #[cfg(feature = "skills-db")]
 use monty::MontyObject;
 #[cfg(feature = "skills-db")]
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 #[cfg(feature = "skills-db")]
 use tracing::debug;
 
@@ -102,7 +102,7 @@ use brassclaw_turns::{
     LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, TurnRunId, TurnScope,
     run_profile::{
         AgentLoopDriverError, AgentLoopDriverHost, AgentLoopDriverRunRequest, LoopRunContext,
-        MontyTurnDriverPort,
+        MontyTaskAttempt, MontyTurnDriverPort,
     },
 };
 
@@ -187,7 +187,7 @@ impl Drop for SessionGuard {
 /// when `drive_turn` returns.
 #[cfg(feature = "skills-db")]
 pub(crate) struct SignalBroker {
-    senders: Mutex<HashMap<TurnScope, SignalSender>>,
+    senders: Mutex<HashMap<MontyTaskAttempt, SignalSender>>,
 }
 
 #[cfg(feature = "skills-db")]
@@ -198,33 +198,62 @@ impl SignalBroker {
         }
     }
 
-    /// Register the signal sender for `scope`'s in-flight turn. Overwrites any
-    /// stale sender for the same scope (a prior turn that crashed without
-    /// clearing).
-    pub(crate) async fn set(&self, scope: TurnScope, tx: SignalSender) {
-        self.senders.lock().await.insert(scope, tx);
+    /// Register the signal sender for this exact durable run claim.
+    pub(crate) fn set(&self, attempt: MontyTaskAttempt, tx: SignalSender) {
+        self.senders
+            .lock()
+            .expect("signal broker lock")
+            .insert(attempt, tx);
     }
 
-    /// Drop the signal sender for `scope` (the turn ended).
-    pub(crate) async fn remove(&self, scope: &TurnScope) {
-        self.senders.lock().await.remove(scope);
+    /// Drop the signal sender for this claim (the attempt ended).
+    pub(crate) fn remove(&self, attempt: &MontyTaskAttempt) {
+        self.senders
+            .lock()
+            .expect("signal broker lock")
+            .remove(attempt);
     }
 
-    /// Forward `signal` to the in-flight turn for `scope`. No-op when no turn is
-    /// in flight for that conversation. The sender is cloned out of the lock
-    /// before awaiting the send so the lock is never held across the await.
+    /// Forward `signal` only to the addressed claim. Missing/closed attempts
+    /// are idempotent. A full bounded channel returns an explicit error.
+    /// Sending never blocks or holds the broker lock across an await.
     ///
     /// Called from slice 4d: the turn runner forwards `Stop`/`Suspend`/
     /// `InjectMessage` signals into the in-flight turn via this method.
-    #[allow(dead_code)]
-    pub(crate) async fn send(&self, scope: &TurnScope, signal: ThreadSignal) {
+    pub(crate) fn send(
+        &self,
+        attempt: &MontyTaskAttempt,
+        signal: ThreadSignal,
+    ) -> Result<(), AgentLoopDriverError> {
         let tx = {
-            let senders = self.senders.lock().await;
-            senders.get(scope).cloned()
+            let senders = self.senders.lock().expect("signal broker lock");
+            senders.get(attempt).cloned()
         };
         if let Some(tx) = tx {
-            let _ = tx.send(signal).await;
+            match tx.try_send(signal) {
+                Ok(()) | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    return Err(AgentLoopDriverError::Unavailable {
+                        reason: "Monty attempt control channel is full".to_owned(),
+                    });
+                }
+            }
         }
+        Ok(())
+    }
+}
+
+/// Synchronous cleanup also runs when the worker drops the driving future.
+#[cfg(feature = "skills-db")]
+struct SignalRegistration {
+    broker: Arc<SignalBroker>,
+    attempt: MontyTaskAttempt,
+}
+
+#[cfg(feature = "skills-db")]
+impl Drop for SignalRegistration {
+    fn drop(&mut self) {
+        self.broker.remove(&self.attempt);
     }
 }
 
@@ -576,11 +605,21 @@ fn thread_scope_from_turn_scope(scope: &TurnScope) -> ThreadScope {
 impl MontyTurnDriverPort for PersistentMontyDriver {
     async fn drive_turn(
         &self,
-        _request: AgentLoopDriverRunRequest,
+        request: AgentLoopDriverRunRequest,
+        attempt: MontyTaskAttempt,
         host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError> {
         let context = host.run_context();
-        let scope = context.scope.clone();
+        if request.run_id != context.run_id
+            || request.turn_id != context.turn_id
+            || request.resolved_run_profile != context.resolved_run_profile
+            || attempt.run_id != context.run_id
+        {
+            return Err(AgentLoopDriverError::InvalidRequest {
+                reason: "Monty request, claim and host context do not identify the same run"
+                    .to_owned(),
+            });
+        }
 
         let thread =
             self.load_thread(context)
@@ -617,8 +656,13 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
                 turn_run_id: context.run_id.to_string(),
             })
             .await
-            .map_err(|_| AgentLoopDriverError::Failed {
-                reason_kind: "monty turn driver: admitted input lookup failed".to_string(),
+            .map_err(|error| match error {
+                brassclaw_threads::SessionThreadError::SubmittedInputPending { .. } => {
+                    AgentLoopDriverError::InputAdmissionPending
+                }
+                _ => AgentLoopDriverError::Failed {
+                    reason_kind: "monty turn driver: admitted input lookup failed".to_string(),
+                },
             })?;
         let user_input = record.content.ok_or_else(|| AgentLoopDriverError::Failed {
             reason_kind: "monty turn driver: admitted input has no content".to_string(),
@@ -629,7 +673,11 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
         // runner (slice 4d) can forward Stop/Suspend/Inject; the receiver feeds
         // host.check_signals inside drive_to_yield.
         let (signal_tx, mut signal_rx) = signal_channel(32);
-        self.signal_broker.set(scope.clone(), signal_tx).await;
+        self.signal_broker.set(attempt, signal_tx);
+        let _registration = SignalRegistration {
+            broker: Arc::clone(&self.signal_broker),
+            attempt,
+        };
 
         let result = self
             .drive_turn_inner(
@@ -643,34 +691,33 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
 
         // Turn is over either way: drop the turn's signal sender so a stray
         // forward can't queue into a dead receiver.
-        self.signal_broker.remove(&scope).await;
-
         result
+    }
+
+    async fn stop_attempt(&self, attempt: MontyTaskAttempt) -> Result<(), AgentLoopDriverError> {
+        self.signal_broker.send(&attempt, ThreadSignal::Stop)
     }
 }
 
 #[cfg(all(test, feature = "skills-db"))]
 mod tests {
     use super::*;
-    use brassclaw_host_api::{ProjectId, TenantId, ThreadId};
-
-    fn test_scope(suffix: &str) -> TurnScope {
-        TurnScope::new(
-            TenantId::new("tenant").unwrap(),
-            None,
-            Some(ProjectId::new("project").unwrap()),
-            ThreadId::new(format!("00000000-0000-0000-0000-0000000000{suffix}")).unwrap(),
-        )
+    fn test_attempt() -> MontyTaskAttempt {
+        MontyTaskAttempt {
+            run_id: TurnRunId::new(),
+            runner_id: brassclaw_turns::TurnRunnerId::new(),
+            lease_token: brassclaw_turns::TurnLeaseToken::new(),
+        }
     }
 
     #[tokio::test]
     async fn signal_broker_set_then_send_delivers_to_receiver() {
         let broker = SignalBroker::new();
-        let scope = test_scope("01");
+        let attempt = test_attempt();
         let (tx, mut rx) = signal_channel(32);
-        broker.set(scope.clone(), tx).await;
+        broker.set(attempt, tx);
 
-        broker.send(&scope, ThreadSignal::Stop).await;
+        broker.send(&attempt, ThreadSignal::Stop).unwrap();
 
         let received = rx.recv().await.expect("signal delivered");
         assert!(matches!(received, ThreadSignal::Stop));
@@ -679,12 +726,12 @@ mod tests {
     #[tokio::test]
     async fn signal_broker_remove_drops_sender_so_recv_returns_none() {
         let broker = SignalBroker::new();
-        let scope = test_scope("02");
+        let attempt = test_attempt();
         let (tx, mut rx) = signal_channel(32);
-        broker.set(scope.clone(), tx).await;
-        broker.remove(&scope).await;
+        broker.set(attempt, tx);
+        broker.remove(&attempt);
 
-        broker.send(&scope, ThreadSignal::Stop).await;
+        broker.send(&attempt, ThreadSignal::Stop).unwrap();
         // The sender was removed from the broker; the only remaining sender is
         // the one we moved into `set` (now dropped on remove). With all senders
         // dropped, `recv` returns `None` (channel closed).
@@ -695,10 +742,61 @@ mod tests {
     #[tokio::test]
     async fn signal_broker_send_with_no_entry_is_a_noop() {
         let broker = SignalBroker::new();
-        let scope = test_scope("03");
+        let attempt = test_attempt();
         // No `set` — send must not panic and must not block.
-        broker.send(&scope, ThreadSignal::Stop).await;
-        assert!(broker.senders.lock().await.is_empty());
+        broker.send(&attempt, ThreadSignal::Stop).unwrap();
+        assert!(broker.senders.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stale_claim_cannot_stop_reclaimed_run() {
+        let broker = SignalBroker::new();
+        let stale = test_attempt();
+        let current = MontyTaskAttempt {
+            lease_token: brassclaw_turns::TurnLeaseToken::new(),
+            ..stale
+        };
+        let (tx, mut rx) = signal_channel(1);
+        broker.set(current, tx);
+        broker.send(&stale, ThreadSignal::Stop).unwrap();
+        assert!(matches!(
+            rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
+        broker.send(&current, ThreadSignal::Stop).unwrap();
+        assert!(matches!(rx.recv().await, Some(ThreadSignal::Stop)));
+    }
+
+    #[test]
+    fn full_control_channel_reports_failure() {
+        let broker = SignalBroker::new();
+        let attempt = test_attempt();
+        let (tx, _rx) = signal_channel(1);
+        broker.set(attempt, tx);
+        broker.send(&attempt, ThreadSignal::Stop).unwrap();
+        assert!(matches!(
+            broker.send(&attempt, ThreadSignal::Stop),
+            Err(AgentLoopDriverError::Unavailable { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn dropping_registration_closes_only_its_attempt() {
+        let broker = Arc::new(SignalBroker::new());
+        let attempt = test_attempt();
+        let other = test_attempt();
+        let (tx, mut rx) = signal_channel(1);
+        let (other_tx, mut other_rx) = signal_channel(1);
+        broker.set(attempt, tx);
+        broker.set(other, other_tx);
+        let registration = SignalRegistration {
+            broker: broker.clone(),
+            attempt,
+        };
+        drop(registration);
+        assert!(rx.recv().await.is_none());
+        broker.send(&other, ThreadSignal::Stop).unwrap();
+        assert!(matches!(other_rx.recv().await, Some(ThreadSignal::Stop)));
     }
 
     #[test]

@@ -68,6 +68,11 @@ pub struct AgentLoopDriverResumeRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum AgentLoopDriverError {
+    /// Trusted admission adapter only: the accepted input is not committed.
+    /// Return only before VM execution, provider calls or side effects. The
+    /// worker may relinquish this attempt until the bounded admission deadline.
+    #[error("agent loop input admission has not committed")]
+    InputAdmissionPending,
     #[error("agent loop driver rejected request: {reason}")]
     InvalidRequest { reason: String },
     #[error("agent loop driver is unavailable: {reason}")]
@@ -121,6 +126,18 @@ pub trait MontyTurnDriverPort: Send + Sync {
     async fn drive_turn(
         &self,
         request: AgentLoopDriverRunRequest,
+        attempt: super::MontyTaskAttempt,
         host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError>;
+
+    /// Stop one claimed attempt. A completed/missing attempt is an idempotent
+    /// no-op; another claim of the same run must never receive this signal.
+    async fn stop_attempt(
+        &self,
+        _attempt: super::MontyTaskAttempt,
+    ) -> Result<(), AgentLoopDriverError> {
+        Err(AgentLoopDriverError::Unavailable {
+            reason: "this Monty adapter does not support addressed cancellation".to_owned(),
+        })
+    }
 }

@@ -38,6 +38,10 @@ use crate::{
     failure_categories::MODEL_CREDITS_EXHAUSTED_CATEGORY, loop_exit_applier::LoopExitApplier,
 };
 
+// A service that cannot acknowledge addressed cancellation must not receive
+// another claim from this worker. This bounds recovery, not task compute time.
+const MONTY_STOP_ACK_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Create a `SanitizedFailure` from a known-valid static category.
 ///
 /// All categories used here are lowercase ASCII with underscores, satisfying
@@ -425,17 +429,64 @@ impl TurnRunnerWorker {
         // Keep heartbeat scoped above so a losing heartbeat future is dropped
         // before exit application re-enters the same turn-state store.
 
+        // The producer commits message linkage immediately after admission.
+        // Waking before that commit must not fail an otherwise valid run or
+        // start effects. Relinquish only this explicit pre-execution condition;
+        // other driver errors may have partial effects and are never retried.
+        // A crashed producer leaves a visible failure after a bounded grace.
+        let exit_result = if matches!(
+            &exit_result,
+            Err(DriverInvocationError::DriverError(
+                AgentLoopDriverError::InputAdmissionPending
+            ))
+        ) && chrono::Utc::now()
+            .signed_duration_since(claimed.state.received_at)
+            >= chrono::Duration::seconds(30)
+        {
+            Err(DriverInvocationError::DriverError(
+                AgentLoopDriverError::Unavailable {
+                    reason: "accepted input admission did not commit within 30 seconds".to_owned(),
+                },
+            ))
+        } else {
+            exit_result
+        };
+
         // Apply the exit or fail/cancel the claimed run through the compatibility transition.
         match exit_result {
             Ok(exit) => {
                 self.apply_exit(&claimed, exit).await;
             }
             Err(err) => {
+                if let Some(monty) = self.monty_driver.as_ref() {
+                    let stop_result = tokio::time::timeout(
+                        MONTY_STOP_ACK_TIMEOUT,
+                        monty.stop_attempt(brassclaw_turns::run_profile::MontyTaskAttempt {
+                            run_id,
+                            runner_id,
+                            lease_token,
+                        }),
+                    )
+                    .await;
+                    match stop_result {
+                        Ok(Ok(())) => {}
+                        Ok(Err(stop_error)) => {
+                            error!(?run_id, error = %stop_error,
+                                "Monty cancellation failed; stopping worker admission");
+                            cancel.cancel();
+                        }
+                        Err(_) => {
+                            error!(?run_id,
+                                "Monty cancellation acknowledgement timed out; stopping worker admission");
+                            cancel.cancel();
+                        }
+                    }
+                }
                 warn!(
                     runner_id = ?runner_id,
                     run_id = ?run_id,
                     error = %err,
-                    "driver invocation failed, recording terminal failure"
+                    "driver invocation stopped; applying claimed-run recovery"
                 );
                 self.record_terminal_failure(run_id, runner_id, lease_token, &err)
                     .await;
@@ -466,7 +517,15 @@ impl TurnRunnerWorker {
             resolved_run_profile: claimed.resolved_run_profile.clone(),
         };
         monty
-            .drive_turn(request, host.as_ref())
+            .drive_turn(
+                request,
+                brassclaw_turns::run_profile::MontyTaskAttempt {
+                    run_id: claimed.state.run_id,
+                    runner_id: claimed.runner_id,
+                    lease_token: claimed.lease_token,
+                },
+                host.as_ref(),
+            )
             .await
             .map_err(DriverInvocationError::DriverError)
     }
@@ -534,7 +593,9 @@ impl TurnRunnerWorker {
         // Errors that warrant relinquish (re-queue) rather than terminal failure.
         let relinquish = matches!(
             error,
-            DriverInvocationError::WorkerCancelled | DriverInvocationError::HeartbeatStopped
+            DriverInvocationError::WorkerCancelled
+                | DriverInvocationError::HeartbeatStopped
+                | DriverInvocationError::DriverError(AgentLoopDriverError::InputAdmissionPending)
         );
 
         if relinquish {
@@ -577,7 +638,10 @@ impl TurnRunnerWorker {
                     DriverInvocationError::TurnTimeout => "turn_timeout",
                     // WorkerCancelled and HeartbeatStopped handled by relinquish branch above.
                     DriverInvocationError::WorkerCancelled
-                    | DriverInvocationError::HeartbeatStopped => {
+                    | DriverInvocationError::HeartbeatStopped
+                    | DriverInvocationError::DriverError(
+                        AgentLoopDriverError::InputAdmissionPending,
+                    ) => {
                         unreachable!("relinquish branch handles these")
                     }
                 };

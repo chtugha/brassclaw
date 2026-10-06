@@ -173,7 +173,7 @@ fn normalize_pause_outcome(
 }
 
 /// Default orchestrator VM wall-clock budget, in seconds.
-const ORCHESTRATOR_DEFAULT_MAX_DURATION_SECS: u64 = 300;
+const ORCHESTRATOR_DEFAULT_MAX_DURATION_SECS: u64 = 600;
 /// Floor for the configurable orchestrator budget, to prevent nonsense values.
 const ORCHESTRATOR_MIN_MAX_DURATION_SECS: u64 = 30;
 /// Ceiling for the configurable orchestrator budget, bounding resource waste.
@@ -3835,7 +3835,7 @@ mod tests {
 
     #[test]
     fn max_duration_default_and_bounds() {
-        // Default (no env var set): 300s — but OnceLock may already be
+        // Default (no env var set): 600s — but OnceLock may already be
         // primed by another test in the suite, so we only check it's within
         // the documented bounds.
         let secs = orchestrator_max_duration().as_secs();

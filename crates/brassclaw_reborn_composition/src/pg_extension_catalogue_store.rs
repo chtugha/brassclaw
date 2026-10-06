@@ -572,79 +572,15 @@ mod tests {
         assert_eq!(VALIDATOR_CONSUMER_TAG, "05:validator");
     }
 
-    // ── Postgres integration tests (skip when docker is unavailable) ──────
-    //
-    // Mirrors the `validation_queue.rs` / `pg_python_code_store.rs` harness:
-    // each test starts an isolated Postgres-16 testcontainer, runs the full
-    // migration set (V000–V053, so `reborn_extension_catalogues` and
-    // `reborn_validation_queue` both exist), and returns early (pass) when
-    // docker/testcontainers is unavailable. They run under the default
-    // `postgres` feature and add no failures in a docker-less
-    // `cargo test -p brassclaw_reborn_composition` run.
+    // Native PostgreSQL tests apply the complete schema and fail on setup errors.
 
     mod pg {
         use super::*;
         use crate::validation_queue::{STATE_Q1_PENDING, ValidationQueueStore};
         use brassclaw_engine::memory::retrieval_source::ComponentScope;
-        use brassclaw_pg::PgPool;
 
-        struct PgRig {
-            // Held for the test's lifetime so the container stays up.
-            _container: testcontainers_modules::testcontainers::ContainerAsync<
-                testcontainers_modules::postgres::Postgres,
-            >,
-            pool: Arc<PgPool>,
-        }
-
-        /// Start an isolated Postgres-16 testcontainer, build a pool, and run
-        /// every migration (V000–V053). Returns `None` (skip) when docker is
-        /// unavailable.
-        async fn pg_rig_or_skip() -> Option<PgRig> {
-            use deadpool_postgres::{Manager, Pool};
-            use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
-
-            let image = testcontainers_modules::postgres::Postgres::default()
-                .with_db_name("brassclaw_test")
-                .with_user("postgres")
-                .with_password("postgres")
-                .with_tag("16-alpine");
-            let container = match image.start().await {
-                Ok(c) => c,
-                Err(error) => {
-                    eprintln!(
-                        "skipping pg_extension_catalogue_store pg tests: docker/testcontainers unavailable ({error})"
-                    );
-                    return None;
-                }
-            };
-            let host = match container.get_host().await {
-                Ok(h) => h,
-                Err(error) => {
-                    eprintln!("skipping pg_extension_catalogue_store pg tests: no host ({error})");
-                    return None;
-                }
-            };
-            let port = match container.get_host_port_ipv4(5432).await {
-                Ok(p) => p,
-                Err(error) => {
-                    eprintln!("skipping pg_extension_catalogue_store pg tests: no port ({error})");
-                    return None;
-                }
-            };
-            let url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
-            let cfg: tokio_postgres::Config = url.parse().expect("testcontainer url parses");
-            let manager = Manager::new(cfg, tokio_postgres::NoTls);
-            let pool = Pool::builder(manager)
-                .max_size(4)
-                .build()
-                .expect("Postgres pool must build");
-            brassclaw_pg::migrations::run_migrations(&pool)
-                .await
-                .expect("migrations must apply");
-            Some(PgRig {
-                _container: container,
-                pool: Arc::new(pool),
-            })
+        async fn pg_rig() -> crate::runtime::test_pg::native_pg::NativePostgres {
+            crate::runtime::test_pg::native_pg::NativePostgres::start().await
         }
 
         fn test_scope() -> ComponentScope {
@@ -695,9 +631,7 @@ mod tests {
 
         #[tokio::test]
         async fn extension_catalogue_store_round_trip() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = PgExtensionCatalogueStore::new(rig.pool.clone());
             let row = new_row(&scope);
@@ -751,9 +685,7 @@ mod tests {
 
         #[tokio::test]
         async fn extension_catalogue_create_and_submit_enqueues() {
-            let Some(rig) = pg_rig_or_skip().await else {
-                return;
-            };
+            let rig = pg_rig().await;
             let scope = test_scope();
             let store = PgExtensionCatalogueStore::new(rig.pool.clone());
             let queue = ValidationQueueStore::new(rig.pool.clone());

@@ -747,7 +747,7 @@ async fn seed_prefix_bundle_group(
         param_schema: None, param_template: None, effect_type: "mixed".into(),
         preconditions: None, error_handling: None,
         consumer_tags: vec!["00:rusty".into(), "05:validator".into()], source: "system".into(),
-        validation_status: "validated".into(), capability_id: sweep_name.into(),
+        validation_status: "validated".into(), capability_id: brassclaw_host_runtime::SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID.into(),
     }, sweep_name).await?;
     let tool_store_id = stores
         .upsert_tool(
@@ -766,7 +766,7 @@ async fn seed_prefix_bundle_group(
                 consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
                 source: "system".into(),
                 validation_status: "validated".into(),
-                capability_id: store_name.into(),
+                capability_id: brassclaw_host_runtime::STORE_PREFIX_BUNDLE_CAPABILITY_ID.into(),
             },
             store_name,
         )

@@ -40,8 +40,10 @@ use brassclaw_host_runtime::{
 use brassclaw_processes::ProcessServices;
 use brassclaw_product_workflow::ProductAuthTurnGateResumeDispatcher;
 use brassclaw_resources::InMemoryResourceGovernor;
+#[cfg(feature = "postgres")]
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
 use brassclaw_run_state::{InMemoryApprovalRequestStore, InMemoryRunStateStore};
+#[cfg(feature = "postgres")]
 use brassclaw_secrets::FilesystemCredentialBroker;
 use brassclaw_secrets::FilesystemSecretStore;
 use brassclaw_secrets::SecretStore;
@@ -536,6 +538,7 @@ pub async fn build_reborn_services(
     // filesystem provides workspace, skills, hooks and extension infrastructure;
     // `build_reborn_runtime` picks up the pool from `services.pg_pool` to use
     // PG-backed stores for all durable state.
+    #[cfg(feature = "postgres")]
     if let RebornStorageInput::Postgres {
         pool, reborn_home, ..
     } = &input.storage
@@ -600,6 +603,7 @@ pub async fn build_reborn_services(
 /// Used by the Phase-5 hybrid path in [`build_reborn_services`] to preserve
 /// the caller-supplied runtime policy, process binding, and OAuth configs
 /// when converting a Postgres storage input to a local-dev storage input.
+#[cfg(feature = "postgres")]
 fn transfer_build_input_extras(
     mut dst: RebornBuildInput,
     src: &RebornBuildInput,
@@ -899,23 +903,31 @@ async fn build_local_dev(
             // use PgAuthProductServices so OAuth credentials and flows survive
             // process restart. Falls back to FilesystemAuthProductServices for
             // pure local-dev (tests, no pool, or no tenant_id).
-            if let (Some(pool), Some(ref tid)) = (pg_pool.as_ref(), tenant_id.as_ref()) {
-                // Run product-auth DDL (CREATE TABLE IF NOT EXISTS, idempotent).
-                crate::pg_auth_product_services::run_auth_migrations(pool)
-                    .await
-                    .map_err(|_| RebornBuildError::InvalidConfig {
-                        reason: "product-auth DDL migrations failed".to_string(),
-                    })?;
-                let _ = tid; // tenant_id scopes are embedded in PgSecretStore/ResourceScope rows
-                let pg_auth = Arc::new(PgAuthProductServices::new(
-                    Arc::clone(pool),
-                    Arc::clone(&secret_store),
-                ));
-                compose_durable_product_auth_services(
-                    pg_auth,
-                    turn_coordinator.clone(),
-                    &provider_composition,
-                )
+            #[cfg(feature = "postgres")]
+            let pg_auth_services =
+                if let (Some(pool), Some(_)) = (pg_pool.as_ref(), tenant_id.as_ref()) {
+                    // Run product-auth DDL (CREATE TABLE IF NOT EXISTS, idempotent).
+                    crate::pg_auth_product_services::run_auth_migrations(pool)
+                        .await
+                        .map_err(|_| RebornBuildError::InvalidConfig {
+                            reason: "product-auth DDL migrations failed".to_string(),
+                        })?;
+                    let pg_auth = Arc::new(PgAuthProductServices::new(
+                        Arc::clone(pool),
+                        Arc::clone(&secret_store),
+                    ));
+                    Some(compose_durable_product_auth_services(
+                        pg_auth,
+                        turn_coordinator.clone(),
+                        &provider_composition,
+                    ))
+                } else {
+                    None
+                };
+            #[cfg(not(feature = "postgres"))]
+            let pg_auth_services = None;
+            if let Some(pg_auth) = pg_auth_services {
+                pg_auth
             } else {
                 let durable_services = Arc::new(FilesystemAuthProductServices::new(
                     local_dev_product_auth_filesystem,

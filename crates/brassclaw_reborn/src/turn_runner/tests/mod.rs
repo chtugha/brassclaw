@@ -348,7 +348,10 @@ impl TurnRunTransitionPort for MockTransitionPort {
 struct MockMontyDriver {
     drive_result: Mutex<Result<LoopExit, AgentLoopDriverError>>,
     drive_delay: Duration,
+    stop_delay: Duration,
     drive_requests: Mutex<Vec<AgentLoopDriverRunRequest>>,
+    drive_attempts: Mutex<Vec<brassclaw_turns::run_profile::MontyTaskAttempt>>,
+    stop_attempts: Mutex<Vec<brassclaw_turns::run_profile::MontyTaskAttempt>>,
 }
 
 impl MockMontyDriver {
@@ -356,7 +359,10 @@ impl MockMontyDriver {
         Self {
             drive_result: Mutex::new(Ok(test_completed_exit())),
             drive_delay: Duration::ZERO,
+            stop_delay: Duration::ZERO,
             drive_requests: Mutex::new(Vec::new()),
+            drive_attempts: Mutex::new(Vec::new()),
+            stop_attempts: Mutex::new(Vec::new()),
         }
     }
 
@@ -364,18 +370,16 @@ impl MockMontyDriver {
         Self {
             drive_result: Mutex::new(Err(error)),
             drive_delay: Duration::ZERO,
+            stop_delay: Duration::ZERO,
             drive_requests: Mutex::new(Vec::new()),
+            drive_attempts: Mutex::new(Vec::new()),
+            stop_attempts: Mutex::new(Vec::new()),
         }
     }
 
     fn with_delay(mut self, delay: Duration) -> Self {
         self.drive_delay = delay;
         self
-    }
-
-    #[allow(dead_code)]
-    fn drive_requests(&self) -> Vec<AgentLoopDriverRunRequest> {
-        self.drive_requests.lock().expect("lock").clone()
     }
 }
 
@@ -384,13 +388,25 @@ impl MontyTurnDriverPort for MockMontyDriver {
     async fn drive_turn(
         &self,
         request: AgentLoopDriverRunRequest,
+        attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
         _host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError> {
         self.drive_requests.lock().expect("lock").push(request);
+        self.drive_attempts.lock().expect("lock").push(attempt);
         if !self.drive_delay.is_zero() {
             tokio::time::sleep(self.drive_delay).await;
         }
         self.drive_result.lock().expect("lock").clone()
+    }
+    async fn stop_attempt(
+        &self,
+        attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
+    ) -> Result<(), AgentLoopDriverError> {
+        // This test adapter owns no independent service task: its drive future
+        // is already dropped by the worker before this notification.
+        self.stop_attempts.lock().expect("lock").push(attempt);
+        tokio::time::sleep(self.stop_delay).await;
+        Ok(())
     }
 }
 
@@ -401,6 +417,7 @@ impl MontyTurnDriverPort for PanickingMontyDriver {
     async fn drive_turn(
         &self,
         _request: AgentLoopDriverRunRequest,
+        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
         _host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError> {
         panic!("simulated Monty driver panic")
@@ -692,6 +709,49 @@ fn make_fail_closed_recovery_applier(port: Arc<MockTransitionPort>) -> Arc<LoopE
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[tokio::test]
+async fn pending_input_relinquishes_only_before_execution_and_expires() {
+    for expired in [false, true] {
+        let monty = Arc::new(MockMontyDriver::failing(
+            AgentLoopDriverError::InputAdmissionPending,
+        ));
+        let mut claimed = make_claimed_run(&test_descriptor(), test_scope(), TurnStatus::Queued);
+        if expired {
+            claimed.state.received_at -= chrono::Duration::seconds(31);
+        }
+        let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
+        let (_, receiver) = TurnRunnerWakeReceiver::new();
+        let worker = TurnRunnerWorker::new(
+            TurnRunnerWorkerConfig::default(),
+            port.clone(),
+            make_applier(port.clone()),
+            Arc::new(MockHostFactory),
+            receiver,
+        )
+        .with_monty_driver(monty.clone());
+        assert!(
+            worker
+                .try_claim_and_run(&CancellationToken::new())
+                .await
+                .unwrap()
+        );
+        assert_eq!(port.calls().contains(&TransitionCall::Relinquish), !expired);
+        assert_eq!(
+            port.calls().contains(&TransitionCall::RecordRunnerFailure),
+            expired
+        );
+        assert!(
+            !port
+                .calls()
+                .contains(&TransitionCall::ApplyValidatedLoopExit)
+        );
+        assert_eq!(
+            *monty.stop_attempts.lock().expect("lock"),
+            *monty.drive_attempts.lock().expect("lock"),
+        );
+    }
+}
+
+#[tokio::test]
 async fn worker_recovers_expired_leases_before_claiming() {
     let desc = test_descriptor();
     let monty = Arc::new(MockMontyDriver::completing());
@@ -760,7 +820,7 @@ async fn worker_reuses_claim_runner_and_lease_for_heartbeat_and_exit() {
         Arc::new(MockHostFactory),
         wake_receiver,
     )
-    .with_monty_driver(monty);
+    .with_monty_driver(monty.clone());
     let worker_runner_id = worker.runner_id();
 
     let cancel = CancellationToken::new();
@@ -777,6 +837,16 @@ async fn worker_reuses_claim_runner_and_lease_for_heartbeat_and_exit() {
         .first()
         .expect("worker should issue a claim request");
     assert_eq!(first_claim.runner_id, worker_runner_id);
+
+    let attempts = monty.drive_attempts.lock().expect("lock").clone();
+    assert_eq!(
+        attempts,
+        vec![brassclaw_turns::run_profile::MontyTaskAttempt {
+            run_id,
+            runner_id: first_claim.runner_id,
+            lease_token: first_claim.lease_token,
+        }]
+    );
 
     let heartbeat_requests = port.heartbeat_requests.lock().expect("lock").clone();
     assert!(
@@ -897,7 +967,7 @@ async fn worker_records_terminal_failure_when_heartbeat_fails() {
         Arc::new(MockHostFactory),
         wake_receiver,
     )
-    .with_monty_driver(monty);
+    .with_monty_driver(monty.clone());
 
     let cancel = CancellationToken::new();
     let result = tokio::time::timeout(
@@ -913,6 +983,11 @@ async fn worker_records_terminal_failure_when_heartbeat_fails() {
     assert!(port.calls().contains(&TransitionCall::Heartbeat));
     assert!(port.calls().contains(&TransitionCall::RecordRunnerFailure));
     assert_first_terminal_failure_matches_first_claim(&port, run_id);
+    assert_eq!(
+        *monty.stop_attempts.lock().expect("lock"),
+        *monty.drive_attempts.lock().expect("lock"),
+        "worker must stop exactly the attempt whose heartbeat failed"
+    );
 }
 
 #[tokio::test]
@@ -1329,4 +1404,32 @@ fn sanitized_driver_failure_returns_driver_failed_for_unknown_category() {
     let result = sanitized_driver_failure("some_unknown_driver_category");
     let failure = result.expect("should return Some fallback for unknown category");
     assert_eq!(failure.category(), "driver_failed");
+}
+
+#[tokio::test]
+async fn cancellation_ack_timeout_stops_new_worker_claims() {
+    let desc = test_descriptor();
+    let mut driver = MockMontyDriver::failing(AgentLoopDriverError::Failed {
+        reason_kind: "test_failure".into(),
+    });
+    driver.stop_delay = MONTY_STOP_ACK_TIMEOUT * 2;
+    let driver = Arc::new(driver);
+    let claimed = make_claimed_run(&desc, test_scope(), TurnStatus::Queued);
+    let run_id = claimed.state.run_id;
+    let port = Arc::new(MockTransitionPort::new().with_claim_result(Ok(Some(claimed))));
+    let (_, wake_receiver) = TurnRunnerWakeReceiver::new();
+    let worker = TurnRunnerWorker::new(
+        TurnRunnerWorkerConfig::default(),
+        port.clone(),
+        make_applier(port.clone()),
+        Arc::new(MockHostFactory),
+        wake_receiver,
+    ).with_monty_driver(driver.clone());
+    let cancel = CancellationToken::new();
+    tokio::time::timeout(MONTY_STOP_ACK_TIMEOUT + Duration::from_secs(2),
+        worker.run(cancel.clone())).await.expect("worker must stop after failed cancellation");
+    assert!(cancel.is_cancelled());
+    assert_eq!(driver.drive_requests.lock().expect("lock").len(), 1);
+    assert_eq!(driver.stop_attempts.lock().expect("lock").len(), 1);
+    assert_first_terminal_failure_matches_first_claim(&port, run_id);
 }

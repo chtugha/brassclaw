@@ -42,9 +42,7 @@ async fn local_dev_runtime_injects_default_system_prompt_into_model_request() {
     let root = tempfile::tempdir().expect("tempdir");
     let storage_root = super::test_pg::storage_root(root.path());
     let requests = Arc::new(StdMutex::new(Vec::new()));
-    let Some(rig) = super::test_pg::pg_rig().await else {
-        return;
-    };
+    let rig = super::test_pg::pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let input = runtime_input(&rig, root.path(), Arc::clone(&requests));
 
@@ -94,9 +92,7 @@ async fn local_dev_runtime_uses_existing_edited_default_system_prompt() {
     std::fs::create_dir_all(prompt_path.parent().expect("prompt parent")).expect("prompt parent");
     std::fs::write(&prompt_path, "custom edited runtime prompt").expect("edited prompt");
     let requests = Arc::new(StdMutex::new(Vec::new()));
-    let Some(rig) = super::test_pg::pg_rig().await else {
-        return;
-    };
+    let rig = super::test_pg::pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let input = runtime_input(&rig, root.path(), Arc::clone(&requests));
 
@@ -131,9 +127,7 @@ async fn local_dev_runtime_rejects_non_file_default_system_prompt() {
     let prompt_path = storage_root.join("system/prompts/default-system.md");
     std::fs::create_dir_all(&prompt_path).expect("non-file prompt path");
     let requests = Arc::new(StdMutex::new(Vec::new()));
-    let Some(rig) = super::test_pg::pg_rig().await else {
-        return;
-    };
+    let rig = super::test_pg::pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let input = runtime_input(&rig, root.path(), requests);
 

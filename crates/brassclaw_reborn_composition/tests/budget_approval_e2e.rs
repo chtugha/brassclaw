@@ -156,9 +156,7 @@ async fn pump_until_pending_gate(
 /// F3: pause → user approves with an increased limit → retry succeeds.
 #[tokio::test]
 async fn f3_approval_with_increased_limit_unblocks_retry() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
@@ -220,9 +218,7 @@ async fn f3_approval_with_increased_limit_unblocks_retry() {
 /// F4: pause → user cancels → retry still fails the same way.
 #[tokio::test]
 async fn f4_cancel_keeps_budget_blocked_on_retry() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
@@ -271,9 +267,7 @@ async fn f4_cancel_keeps_budget_blocked_on_retry() {
 /// state is `Expired`; retry remains blocked exactly like F4.
 #[tokio::test]
 async fn f5_expiry_marks_gate_terminal_and_keeps_budget_blocked() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
@@ -330,9 +324,7 @@ async fn f5_expiry_marks_gate_terminal_and_keeps_budget_blocked() {
 /// notified about.
 #[tokio::test]
 async fn gate_opened_event_carries_id_that_matches_persisted_gate() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
@@ -385,9 +377,7 @@ async fn gate_opened_event_carries_id_that_matches_persisted_gate() {
 /// approval decision.
 #[tokio::test]
 async fn pause_in_distinct_runs_produces_distinct_pending_gates() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =

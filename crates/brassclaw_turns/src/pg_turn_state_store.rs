@@ -71,9 +71,16 @@ fn map_pg_pool(e: deadpool_postgres::PoolError) -> TurnError {
 }
 
 fn map_pg(e: tokio_postgres::Error) -> TurnError {
-    TurnError::Unavailable {
-        reason: e.to_string(),
-    }
+    // SQLSTATE identifies the failure without exposing SQL, parameters or
+    // server DETAIL fields (which may contain operator data).
+    let reason = match e.as_db_error() {
+        Some(error) => format!(
+            "turn-state database error (SQLSTATE {})",
+            error.code().code()
+        ),
+        None => e.to_string(),
+    };
+    TurnError::Unavailable { reason }
 }
 
 fn map_json_ser(e: serde_json::Error) -> TurnError {
@@ -119,6 +126,36 @@ impl PgTurnStateStore {
         self
     }
 
+    /// Read runs in one exact scope for host-owned interaction projections.
+    /// Unauthorized/missing scopes yield no records. This reads only the
+    /// requested thread snapshot, never the entire tenant's run history.
+    pub async fn interaction_snapshot(
+        &self,
+        scope: &TurnScope,
+    ) -> Result<TurnPersistenceSnapshot, TurnError> {
+        if scope.tenant_id.as_str() != self.tenant_id {
+            return Ok(TurnPersistenceSnapshot::default());
+        }
+        let (mut snapshot, _) = self.read_snapshot(&scope.thread_id).await?;
+        snapshot.runs.retain(|run| run.scope == *scope);
+        snapshot.turns.retain(|turn| turn.scope == *scope);
+        let visible: std::collections::HashSet<_> =
+            snapshot.runs.iter().map(|run| run.run_id).collect();
+        snapshot.checkpoints.retain(|checkpoint| {
+            visible.contains(&checkpoint.run_id)
+                && checkpoint
+                    .scope
+                    .as_ref()
+                    .is_none_or(|stored| stored == scope)
+        });
+        Ok(TurnPersistenceSnapshot {
+            turns: snapshot.turns,
+            runs: snapshot.runs,
+            checkpoints: snapshot.checkpoints,
+            ..TurnPersistenceSnapshot::default()
+        })
+    }
+
     pub fn with_admission_limit_provider(
         mut self,
         provider: Arc<dyn TurnAdmissionLimitProvider>,
@@ -147,7 +184,9 @@ impl PgTurnStateStore {
         let row = client
             .query_opt(
                 "SELECT payload, version FROM brassclaw_turns \
-                 WHERE tenant_id = $1 AND turn_id = $2 AND status = 'snapshot'",
+                 WHERE tenant_id = $1 AND status = 'snapshot' AND turn_id = \
+                 COALESCE((SELECT snapshot_thread_id FROM brassclaw_turn_snapshot_threads \
+                           WHERE tenant_id = $1 AND thread_id = $2), $2)",
                 &[&self.tenant_id, &thread_id.as_str()],
             )
             .await
@@ -178,10 +217,16 @@ impl PgTurnStateStore {
         // Snapshot rows use the thread_id as both `id` (PK) and `turn_id`.
         // `run_id` is NULL for snapshot rows; `status` uses the 'snapshot' sentinel.
         // The unique index on (tenant_id, turn_id) drives the ON CONFLICT CAS.
-        let thread_id_str = thread_id.as_str();
-
-        let client = self.pool.get().await.map_err(map_pg_pool)?;
-        let rows = client
+        let mut client = self.pool.get().await.map_err(map_pg_pool)?;
+        let transaction = client.transaction().await.map_err(map_pg)?;
+        let owner = transaction.query_opt(
+            "SELECT snapshot_thread_id FROM brassclaw_turn_snapshot_threads WHERE tenant_id = $1 AND thread_id = $2",
+            &[&self.tenant_id, &thread_id.as_str()],
+        ).await.map_err(map_pg)?;
+        let snapshot_thread_id = owner
+            .map(|row| row.get::<_, String>(0))
+            .unwrap_or_else(|| thread_id.as_str().to_owned());
+        let rows = transaction
             .execute(
                 "INSERT INTO brassclaw_turns \
                  (id, tenant_id, turn_id, status, payload, version) \
@@ -190,7 +235,7 @@ impl PgTurnStateStore {
                  SET payload = excluded.payload, version = $4, updated_at = now() \
                  WHERE brassclaw_turns.version = $5",
                 &[
-                    &thread_id_str,
+                    &snapshot_thread_id,
                     &self.tenant_id,
                     &payload,
                     &next_version,
@@ -199,7 +244,48 @@ impl PgTurnStateStore {
             )
             .await
             .map_err(map_pg)?;
-        Ok(rows > 0)
+        if rows == 0 {
+            transaction.rollback().await.map_err(map_pg)?;
+            return Ok(false);
+        }
+        let threads: Vec<String> = snapshot
+            .runs
+            .iter()
+            .map(|run| run.scope.thread_id.as_str().to_owned())
+            .chain(std::iter::once(snapshot_thread_id.clone()))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        // Validate every member in one query; heartbeat cost must not grow in
+        // database round trips with the number of descendants.
+        let occupied: bool = transaction.query_one(
+            "SELECT EXISTS(SELECT 1 FROM brassclaw_turns WHERE tenant_id = $1 AND turn_id = ANY($2) AND turn_id <> $3 AND status = 'snapshot')",
+            &[&self.tenant_id, &threads, &snapshot_thread_id],
+        ).await.map_err(map_pg)?.get(0);
+        if occupied {
+            transaction.rollback().await.map_err(map_pg)?;
+            return Err(TurnError::Unavailable {
+                reason: "child thread already owns an independent turn snapshot".to_owned(),
+            });
+        }
+        transaction.execute(
+            "INSERT INTO brassclaw_turn_snapshot_threads (tenant_id, thread_id, snapshot_thread_id) \
+             SELECT $1, member, $3 FROM unnest($2::text[]) AS member ORDER BY member \
+             ON CONFLICT (tenant_id, thread_id) DO NOTHING",
+            &[&self.tenant_id, &threads, &snapshot_thread_id],
+        ).await.map_err(map_pg)?;
+        let conflict: bool = transaction.query_one(
+            "SELECT EXISTS(SELECT 1 FROM brassclaw_turn_snapshot_threads WHERE tenant_id = $1 AND thread_id = ANY($2) AND snapshot_thread_id <> $3)",
+            &[&self.tenant_id, &threads, &snapshot_thread_id],
+        ).await.map_err(map_pg)?.get(0);
+        if conflict {
+            transaction.rollback().await.map_err(map_pg)?;
+            return Err(TurnError::Unavailable {
+                reason: "thread belongs to a different turn snapshot".to_owned(),
+            });
+        }
+        transaction.commit().await.map_err(map_pg)?;
+        Ok(true)
     }
 
     fn build_in_memory_store(
@@ -326,11 +412,11 @@ impl PgTurnStateStore {
         let mut runs: Vec<TurnRunRecord> = Vec::new();
         for row in rows {
             let runs_value: Value = row.get(0);
-            // Deserialise the per-thread run array; skip rows that fail
-            // (e.g. legacy rows with an unexpected schema).
-            if let Ok(thread_runs) = serde_json::from_value::<Vec<TurnRunRecord>>(runs_value) {
-                runs.extend(thread_runs);
-            }
+            // Corruption must remain visible. Omitting a run here could make
+            // a trigger treat unfinished work as absent and submit it again.
+            let thread_runs =
+                serde_json::from_value::<Vec<TurnRunRecord>>(runs_value).map_err(map_json_de)?;
+            runs.extend(thread_runs);
         }
         Ok(TurnPersistenceSnapshot {
             runs,
@@ -432,7 +518,9 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
             })
             .await;
         let pre_resolved = PreResolvedRunProfileResolver::new(profile_resolution);
-        let thread_id = request.child_scope.thread_id.clone();
+        // The parent, descendant reservation and child commit in one aggregate.
+        // Child thread lookups resolve its link after the same transaction commits.
+        let thread_id = request.parent_scope.thread_id.clone();
         self.apply(&thread_id, |store| {
             let request = request.clone();
             let pre_resolved = pre_resolved.clone();

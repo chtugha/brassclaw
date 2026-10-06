@@ -316,6 +316,7 @@ impl MontyTurnDriverPort for ReplyMontyDriver {
     async fn drive_turn(
         &self,
         _request: AgentLoopDriverRunRequest,
+        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
         host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError> {
         let surface = host

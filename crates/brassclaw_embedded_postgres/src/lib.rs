@@ -17,8 +17,8 @@ pub use error::EmbeddedPostgresError;
 /// A managed embedded PostgreSQL instance.
 ///
 /// Lifecycle:
-/// 1. Call `ManagedPostgres::start(config)` — this downloads (if needed),
-///    verifies the checksum, runs `initdb` (if needed), detects orphaned
+/// 1. Call `ManagedPostgres::start(config)` — this extracts the binary verified
+///    and bundled at build time, runs `initdb` (if needed), detects orphaned
 ///    servers, and either reuses or starts the server.
 /// 2. Use `connection_url()` to build a connection pool.
 /// 3. Before process exit, call `shutdown().await` to stop the server cleanly
@@ -40,8 +40,7 @@ impl ManagedPostgres {
     ///
     /// # Steps
     ///
-    /// 1. Suppress `POSTGRESQL_VERSION` / `GITHUB_TOKEN` env vars.
-    /// 2. Download and verify the PG 16 binary if not already cached.
+    /// 1. Extract the verified, bundled PostgreSQL binary if not cached.
     /// 3. Check whether the port is already in use:
     ///    - If yes, check `postmaster.pid` — if the PID is alive, reuse the
     ///      running server (return with `owns_server = false`).
@@ -50,11 +49,9 @@ impl ManagedPostgres {
     /// 4. Run `initdb` (skipped if data dir is non-empty).
     /// 5. Start the server and wait for it to accept connections.
     pub async fn start(config: EmbeddedPostgresConfig) -> Result<Self, EmbeddedPostgresError> {
-        // Step 1: suppress env vars that could alter the downloaded version.
-        download::suppress_postgresql_embedded_env();
-
-        // Step 2: resolve the binary directory. We use `postgresql_embedded`
-        // to handle the download and caching, then locate the `bin/` directory.
+        // Resolve the bundled installation. No runtime downloader is invoked,
+        // so POSTGRESQL_VERSION/GITHUB_TOKEN cannot substitute its version.
+        // Never mutate process-wide environment inside this async API.
         let pg_install_dir = resolve_pg_install_dir(&config).await?;
         let pg_bin_dir = pg_install_dir.join("bin");
 
@@ -127,9 +124,9 @@ impl ManagedPostgres {
 
     /// Gracefully shut down the embedded Postgres server.
     ///
-    /// Must be called **after** closing the connection pool. Calling this while
-    /// open connections exist can cause a hang because `pg_ctl stop -m fast`
-    /// waits for active transactions to complete.
+    /// Call after draining runtime work and closing the connection pool. Fast
+    /// shutdown aborts remaining transactions, then waits for server processes
+    /// to exit; it does not drain application work for the caller.
     ///
     /// If this instance did not start the server (it was reused), this is a
     /// no-op.
@@ -143,19 +140,21 @@ impl ManagedPostgres {
             // Already shut down.
             return Ok(());
         }
-        *guard = true;
-
         let ctl = pgctl::PgCtl::new(&self.pg_bin_dir, &self.config.data_dir, self.config.port);
-        ctl.stop().await
+        ctl.stop().await?;
+        // Failed or cancelled shutdown must remain retryable and must retain
+        // the Drop fallback. Only a confirmed stop retires this owner.
+        *guard = true;
+        Ok(())
     }
 }
 
 impl Drop for ManagedPostgres {
     fn drop(&mut self) {
         // Best-effort fallback: attempt an immediate stop. This MUST NOT be
-        // the primary shutdown path — a blocking `pg_ctl stop` with open pool
-        // connections can deadlock. The composition root must call `shutdown()`
-        // explicitly after closing the pool.
+        // the primary shutdown path — immediate stop requires WAL recovery on
+        // restart. The composition root must drain work, close the pool and
+        // call `shutdown()` explicitly.
         if !self.owns_server {
             return;
         }
@@ -275,6 +274,43 @@ mod tests {
     // cannot race with each other when run with the default parallel harness.
     // SAFETY: this is the only lock guarding this env var in this test binary.
     static ENV_PORT_LOCK: Mutex<()> = Mutex::new(());
+
+    #[cfg(feature = "integration")]
+    #[tokio::test]
+    async fn failed_shutdown_retains_owner_and_can_be_retried() {
+        let directory = tempfile::tempdir().expect("isolated PostgreSQL directory");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test listener");
+        let port = listener.local_addr().expect("test port").port();
+        drop(listener);
+        let config = EmbeddedPostgresConfig {
+            port,
+            data_dir: directory.path().join("data"),
+            bin_cache_dir: directory.path().join("bin"),
+            database: "shutdown_retry".to_owned(),
+            superuser: "brassclaw".to_owned(),
+        };
+        let pid_path = config.data_dir.join("postmaster.pid");
+        let postgres = ManagedPostgres::start(config).await.expect("test server");
+        let control = postgres.pg_bin_dir.join("pg_ctl");
+        let unavailable = control.with_extension("temporarily-unavailable");
+        std::fs::rename(&control, &unavailable).expect("make test control binary unavailable");
+        let failed = postgres.shutdown().await;
+        // Restore the control binary before assertions so panic cleanup can
+        // still stop the server. Only this test's private binary is changed.
+        std::fs::rename(&unavailable, &control).expect("restore test control binary");
+        assert!(failed.is_err());
+        assert!(!*postgres.shutdown_lock.lock().await);
+        assert!(pid_path.exists(), "failed stop must not imply server exit");
+        postgres.shutdown().await.expect("retry shutdown");
+        assert!(*postgres.shutdown_lock.lock().await);
+        assert!(!pid_path.exists(), "retry must actually stop the server");
+        postgres
+            .shutdown()
+            .await
+            .expect("confirmed shutdown is idempotent");
+    }
 
     #[test]
     fn config_from_reborn_home() {

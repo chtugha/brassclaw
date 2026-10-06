@@ -202,6 +202,7 @@ impl MontyTurnDriverPort for HarnessPlannedMontyDriver {
     async fn drive_turn(
         &self,
         request: AgentLoopDriverRunRequest,
+        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
         host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError> {
         let driver = self.driver_for(&request)?;

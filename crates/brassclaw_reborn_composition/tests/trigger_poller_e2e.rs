@@ -237,9 +237,7 @@ fn trigger_management_trust_decision() -> TrustDecision {
 
 #[tokio::test]
 async fn trigger_poller_drives_trusted_ingress_for_due_scheduled_trigger() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
@@ -400,9 +398,7 @@ async fn trigger_poller_drives_trusted_ingress_for_due_scheduled_trigger() {
 
 #[tokio::test]
 async fn builtin_trigger_create_pairs_creator_and_poller_submits_turn() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
@@ -529,9 +525,7 @@ async fn builtin_trigger_create_pairs_creator_and_poller_submits_turn() {
 
 #[tokio::test]
 async fn trigger_conversation_pairing_returns_none_when_poller_disabled() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
@@ -565,9 +559,7 @@ async fn trigger_conversation_pairing_returns_none_when_poller_disabled() {
 
 #[tokio::test]
 async fn trigger_poller_does_not_fire_trigger_with_future_next_run_at() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
@@ -691,9 +683,7 @@ async fn trigger_poller_does_not_fire_trigger_with_future_next_run_at() {
 
 #[tokio::test]
 async fn trigger_poller_does_not_submit_turn_for_unpaired_actor() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
@@ -789,9 +779,7 @@ async fn trigger_poller_does_not_submit_turn_for_unpaired_actor() {
 
 #[tokio::test]
 async fn trigger_poller_fires_recurring_trigger_and_leaves_it_scheduled() {
-    let Some(rig) = pg_rig().await else {
-        return;
-    };
+    let rig = pg_rig().await;
     let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {

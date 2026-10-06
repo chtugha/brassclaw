@@ -61,20 +61,3 @@ pub fn verify_archive(archive_path: &Path) -> Result<(), EmbeddedPostgresError> 
     );
     Ok(())
 }
-
-/// Suppress the `POSTGRESQL_VERSION` and `GITHUB_TOKEN` environment variables
-/// that `postgresql_embedded` reads by default. This prevents an attacker who
-/// can inject env vars from changing the downloaded Postgres version or
-/// authenticating as the service's GitHub identity.
-///
-/// Must be called before `postgresql_embedded` is initialised.
-pub fn suppress_postgresql_embedded_env() {
-    // SAFETY: Called at startup before any other threads are spawned.
-    // We deliberately remove env vars that could allow a version-substitution
-    // attack via environment injection (`POSTGRESQL_VERSION`, `GITHUB_TOKEN`
-    // are read by `postgresql_embedded` to pick the download target).
-    unsafe {
-        std::env::remove_var("POSTGRESQL_VERSION");
-        std::env::remove_var("GITHUB_TOKEN");
-    }
-}

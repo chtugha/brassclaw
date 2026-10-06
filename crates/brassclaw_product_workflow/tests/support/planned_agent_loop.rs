@@ -941,6 +941,7 @@ impl MontyTurnDriverPort for WrappingMontyDriver {
     async fn drive_turn(
         &self,
         request: AgentLoopDriverRunRequest,
+        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
         host: &(dyn AgentLoopDriverHost + Send + Sync),
     ) -> Result<LoopExit, AgentLoopDriverError> {
         use std::sync::atomic::Ordering;

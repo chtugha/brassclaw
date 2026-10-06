@@ -143,3 +143,127 @@ async fn load_required_prompt(
             reason: format!("failed to load required system skill {name}: {e}"),
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use brassclaw_embedded_postgres::{EmbeddedPostgresConfig, ManagedPostgres};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn prefix_capability_migration_preserves_identity_and_overrides() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let client = rig.pool.get().await.expect("test database connection");
+        // Include both repair targets and rows that must remain untouched.
+        client.batch_execute(
+            "INSERT INTO reborn_tools
+             (tenant_id, user_id, agent_id, project_id, name, description, source, capability_id)
+             VALUES
+             ('migration', 'system', 'system', 'system', 'host.sweep_validated_components', 'legacy', 'system', 'host.sweep_validated_components'),
+             ('migration', 'system', 'system', 'system', 'host.store_prefix_bundle', 'legacy', 'system', 'host.store_prefix_bundle'),
+             ('migration', 'authored', 'system', 'system', 'host.sweep_validated_components', 'authored', 'authored', 'host.sweep_validated_components'),
+             ('migration', 'override', 'system', 'system', 'host.store_prefix_bundle', 'override', 'system', 'custom.store')"
+        ).await.expect("legacy fixture");
+        let before = client.query(
+            "SELECT id, name, user_id FROM reborn_tools WHERE tenant_id = 'migration' ORDER BY user_id, name", &[]
+        ).await.expect("original identities");
+        let migration = include_str!(
+            "../../brassclaw_pg/migrations/V088__prefix_bundle_capability_namespace.sql"
+        );
+        client
+            .batch_execute(migration)
+            .await
+            .expect("repair mappings");
+        client
+            .batch_execute(migration)
+            .await
+            .expect("idempotent repair");
+        let after = client.query(
+            "SELECT id, name, user_id, capability_id FROM reborn_tools WHERE tenant_id = 'migration' ORDER BY user_id, name", &[]
+        ).await.expect("repaired mappings");
+        assert_eq!(before.len(), after.len());
+        for (before, after) in before.iter().zip(&after) {
+            assert_eq!(
+                before.get::<_, uuid::Uuid>(0),
+                after.get::<_, uuid::Uuid>(0)
+            );
+            let name: String = after.get(1);
+            assert_eq!(before.get::<_, String>(1), name);
+            let user: String = after.get(2);
+            let capability: String = after.get(3);
+            match user.as_str() {
+                "system" => assert_eq!(capability, name.replacen("host.", "builtin.", 1)),
+                "authored" => assert_eq!(capability, name),
+                "override" => assert_eq!(capability, "custom.store"),
+                other => panic!("unexpected fixture identity: {other}"),
+            }
+        }
+    }
+
+    /// Exercise boot without a WebUI, worker, conversation or fabricated turn.
+    /// Database failures must fail this test rather than silently skip it.
+    #[tokio::test]
+    async fn native_database_boot_is_idempotent_and_rejects_changed_prompt() {
+        let directory = tempfile::tempdir().expect("isolated PostgreSQL directory");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("reserve test port");
+        let port = listener.local_addr().expect("test port").port();
+        drop(listener);
+        let config = EmbeddedPostgresConfig {
+            port,
+            data_dir: directory.path().join("data"),
+            bin_cache_dir: directory.path().join("bin"),
+            database: "component_boot".to_owned(),
+            superuser: "brassclaw".to_owned(),
+        };
+        let url = config.connection_url();
+        // ManagedPostgres drops before its temporary directory, including when
+        // an assertion panics; its owner stops only this isolated server.
+        let postgres = ManagedPostgres::start(config)
+            .await
+            .expect("start isolated PostgreSQL");
+        let pool = Arc::new(brassclaw_pg::pool::build_pool(&url).expect("test pool"));
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(pool.clone())
+            .await
+            .expect("schema migrations");
+        let tenant = "component-boot-test";
+        initialize_runtime_components(&booted, tenant)
+            .await
+            .expect("runtime components boot without ingress");
+        initialize_runtime_components(&booted, tenant)
+            .await
+            .expect("repeated boot preserves validated components");
+        let expected = load_required_prompt(&booted, tenant, "failure_explanation")
+            .await
+            .expect("verified prompt");
+        assert!(!expected.is_empty());
+        let client = pool.get().await.expect("test database connection");
+        let updated = client
+            .execute(
+                "UPDATE reborn_skills SET body = body || 'tampered' \
+                 WHERE tenant_id = $1 AND name = 'failure_explanation'",
+                &[&tenant],
+            )
+            .await
+            .expect("simulate edit after integrity scan");
+        assert_eq!(updated, 1);
+        assert!(
+            load_required_prompt(&booted, tenant, "failure_explanation")
+                .await
+                .is_err()
+        );
+        assert!(
+            initialize_runtime_components(&booted, tenant)
+                .await
+                .is_err()
+        );
+        drop(client);
+        drop(booted);
+        pool.close();
+        drop(pool);
+        postgres.shutdown().await.expect("stop test PostgreSQL");
+    }
+}

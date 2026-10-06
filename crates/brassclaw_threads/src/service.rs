@@ -11,9 +11,9 @@ use crate::{
     ListThreadsForScopeRequest, ListThreadsForScopeResponse, LoadContextMessagesRequest,
     LoadContextWindowRequest, MessageContent, MessageKind, MessageStatus, RedactMessageRequest,
     ReplayAcceptedInboundMessageRequest, SessionThreadError, SessionThreadRecord,
-    SubmittedUserMessageRequest, SummaryArtifact, ThreadGoal, ThreadHistory, ThreadHistoryRequest,
-    ThreadMessageId, ThreadMessageRange, ThreadMessageRangeRequest, ThreadMessageRecord,
-    ThreadScope, UpdateAssistantDraftRequest, UpdateThreadGoalRequest,
+    SubmittedTurnInput, SubmittedUserMessageRequest, SummaryArtifact, ThreadGoal, ThreadHistory,
+    ThreadHistoryRequest, ThreadMessageId, ThreadMessageRange, ThreadMessageRangeRequest,
+    ThreadMessageRecord, ThreadScope, UpdateAssistantDraftRequest, UpdateThreadGoalRequest,
     UpdateToolResultReferenceRequest,
 };
 
@@ -146,6 +146,21 @@ pub trait SessionThreadService: Send + Sync {
             .ok_or(SessionThreadError::UnknownMessage {
                 message_id: request.message_id,
             })?;
+        // Admission can wake a worker before the producer finishes linking
+        // this accepted message. Never return its text until linkage commits.
+        // Already-linked, redacted or differently assigned messages are not
+        // transient: they continue through the strict mismatch check below.
+        if message.thread_id == request.thread_id
+            && message.kind == MessageKind::User
+            && message.status == MessageStatus::Accepted
+            && message.turn_id.is_none()
+            && message.turn_run_id.is_none()
+            && message.content.is_some()
+        {
+            return Err(SessionThreadError::SubmittedInputPending {
+                message_id: request.message_id,
+            });
+        }
         if message.thread_id != request.thread_id
             || message.kind != MessageKind::User
             || message.status != MessageStatus::Submitted
@@ -158,6 +173,61 @@ pub trait SessionThreadService: Send + Sync {
             });
         }
         Ok(message)
+    }
+
+    /// Resolve an admitted input plus the preceding transcript, never a latest
+    /// context window. Read text through the policy-filtered context API so a
+    /// concurrent redaction cannot leak content from the transcript snapshot.
+    /// `max_history_messages: None` reads all eligible preceding messages. An
+    /// explicit limit selects a suffix for callers that request a context
+    /// window; it is never an implicit token budget. The returned content is
+    /// transient prompt input, not a resident VM cache. Summaries are not
+    /// synthesized by this read.
+    async fn submitted_turn_input(
+        &self,
+        request: SubmittedUserMessageRequest,
+        max_history_messages: Option<usize>,
+    ) -> Result<SubmittedTurnInput, SessionThreadError> {
+        let message = self.submitted_user_message(request.clone()).await?;
+        let prior = self
+            .list_thread_messages_range(ThreadMessageRangeRequest {
+                scope: request.scope.clone(),
+                thread_id: request.thread_id.clone(),
+                after_sequence: 0,
+                through_sequence: message.sequence.saturating_sub(1),
+            })
+            .await?;
+        let mut records = prior.messages;
+        records.sort_by_key(|record| record.sequence);
+        let mut message_ids: Vec<_> = records
+            .into_iter()
+            .filter(|record| {
+                record.sequence < message.sequence
+                    && record.kind != MessageKind::CapabilityDisplayPreview
+            })
+            .rev()
+            .map(|record| record.message_id)
+            .collect();
+        if let Some(limit) = max_history_messages {
+            message_ids.truncate(limit);
+        }
+        let mut prior_context = self
+            .load_context_messages(LoadContextMessagesRequest {
+                scope: request.scope,
+                thread_id: request.thread_id,
+                message_ids,
+            })
+            .await?;
+        prior_context.messages.sort_by_key(|record| record.sequence);
+        // The context API owns visibility. Sequence still owns the cutoff,
+        // even if a backing adapter later adds synthesized context records.
+        prior_context
+            .messages
+            .retain(|record| record.sequence < message.sequence);
+        Ok(SubmittedTurnInput {
+            message,
+            prior_context,
+        })
     }
 
     async fn latest_thread_message(
