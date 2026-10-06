@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(prefix / Sempai reviewer)* Add an exact-source decision checkpoint and explicit rules for preserving conversation history, complete executable drafts, raw-input validation and blocked proposals. Returning a draft is distinct from confirmed host submission or approval.
 - *(prefix / Sempai)* Support explicit reviewed, hash-bound source selection while preserving complete originals and all four authoring guides. The selected standalone reference fits and has recorded deployment/cache verification; the all-originals mode remains capacity-blocked. Extend the prefix upgrade plan with measured results and outstanding proposal-sink/consumer work.
 - *(Monty / isolated control extension)* Upgrade to `1.0.0-brassclaw.control.3` and dump ABI `0xBC03`; account graph import/export in the cumulative control clock, preserve ownership through nested conversion and exclude native sleeps. Reject incompatible or orphaned active-preparation snapshots. Isolated tests/lints pass; production cutover and remaining resource gates are outstanding.
 - *(Monty / isolated control extension)* Upgrade to `1.0.0-brassclaw.control.2` with dump ABI `0xBC02`, retained REPL scanning/compilation time and live preparation-boundary checks. Old dumps are rejected and require reconciliation before upgrade. All 47 isolated interpreter checks and strict extension/host/caller lints pass; production adoption remains pending.

@@ -1211,7 +1211,7 @@ provider capabilities. Preserve task intent, evidence, effects and tool-call/res
 relationships. Never rewrite the pinned base prefix or grant Tools. Missing provider
 metadata, constructor fields, UUIDs, tests and approval are unknown, not inventions.
 
-Draft reusable components, especially Recipes, through the supported proposal sink.
+Return reusable component drafts for the host's supported proposal sink.
 A Skill is one Tool usage with prose plus explicitly associated executable PythonCode;
 a Recipe orders usages and typed data flow. Root authoring guides override older
 validation/persona examples. Sempai proposes; Q1, behavioral validation and human Q2
@@ -1224,6 +1224,17 @@ reviewer/proposal API. It does not apply prompt changes or create/approve compon
 Full original documents are mandatory. A capacity error is preferable to silently
 omitting binding instructions; raw snapshots survive failed compilation.
 """
+
+# A short source-derived decision procedure is repeated at the reference boundary.
+# It is sourced from the complete required procedure, not an untracked summary.
+def reviewer_decision_checkpoint(cards):
+    matches=[c for c in cards if c['path']=='scripts/prefix/sempai-authoring-reference.md'
+             and c['excerpt'].startswith('## 8. Apply the reviewer decision procedure\n')]
+    if len(matches)!=1:
+        raise ValueError('Missing exact Sempai reviewer decision procedure')
+    card=matches[0]
+    return (f"# REVIEWER DECISION CHECKPOINT — EXACT SOURCE {card['id'][:12]}\n"
+            +literal_block(card['excerpt'])+'\n')
 
 REQUIRED_TOPICS = {
     "prompt-diagnosis": (("brassclaw",), r"sempai-authoring-reference\.md$", r"Diagnose the prompt"),
@@ -1350,6 +1361,8 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
             'Full raw originals are mandatory; model-visible coverage follows the reviewed source-selection policy.')
         header+='Selected architecture excerpts are not complete copies of those documents. Scoped storage columns/view filters are not additional v3 authority checks. Transport structs do not establish supported component insertion constructors.\n\n'
     mandatory=required_reference_cards(cards); mandatory_ids={c["id"] for c in mandatory}
+    checkpoint=reviewer_decision_checkpoint(mandatory)
+    header+=checkpoint+'\n'
     anchors=[]
     for repo in ():  # No repeated diagnostic anchors: all required source units are already present.
         match=next((c for c in mandatory if c["repo"]==repo),None)
@@ -1400,7 +1413,7 @@ def build_context(target:int=CONTEXT_TARGET_TOKENS, *, offline=False):
             for path,c in sorted(documents.items())) if policy_text is not None else ''
         full=header+'# PLATFORM COVERAGE\n'+transport_text(index)+'\n\n# SOURCE SNAPSHOTS\n'+transport_text(provenance)+'\n\n# CARD INDEX — SOURCE TITLES\n'+transport_text(locators)+'\n\n'+'\n\n'.join(rendered_card(c) for c in chosen)
         full+='\n\n# DIAGNOSTIC ANCHORS — EXACT SOURCE REPEATED NEAR TASK\n\n'+'\n\n'.join(rendered_card(c) for c in anchors)
-        full+='\n\n# FACTUAL CHECK BEFORE ANSWERING\n'
+        full+='\n\n'+checkpoint+'\n# FACTUAL CHECK BEFORE ANSWERING\n'
         full+='Review target provider metadata and the actual Kohai packet. Preserve volatile-tail roles, tool relationships and task evidence. Propose reusable Recipes with supported fields and real catalogue/draft identities. The host output schema is separate. Q1, observed behavior, human Q2 and exact association approval precede activation; never self-approve or replay completed effects. Missing runtime support remains an explicit prerequisite.\n'
         # The deployed renderer may convert scalar text into OpenAI text parts.
         # Merge into the existing system message in either representation.

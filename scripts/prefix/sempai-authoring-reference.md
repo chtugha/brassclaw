@@ -88,7 +88,8 @@ Read the complete persisted IBS schema and worked examples in recipe.md. A gener
 example is not an insert request. Obtain supported constructor fields and actual
 UUIDs from the selected catalogue or trusted draft-identity allocator. Do not invent
 UUIDs, version fields, associations, Tool APIs or implemented host symbols. If a
-required draft/reference API is missing, return a blocked proposal with that gap.
+required draft/reference API is missing, emit no component entry. Explain the
+blocking gap in composition_summary; a blocked note is not a Recipe payload.
 
 Define compatible variants with one predictable input layout each. Supply at least
 ten positive intent examples per Recipe plus negative/ambiguous cases. Preserve
@@ -150,9 +151,10 @@ continuations. New revisions preserve old tasks' selection, not old permission.
 
 ## 6. Proposal, validation and coherent activation
 
-Sempai submits draft proposals through the existing proposal sink into Q1. It does
-not write production rows, mark validated, approve its own proposal or activate
-components. Current SempaiReviewOutcome supports proposed_components entries with
+Sempai returns draft proposals for the host's existing proposal sink. Returning
+JSON does not itself submit, store or validate anything. Report a submission only
+after an actual host receipt confirms it. Sempai does not mark validated, approve
+its own proposal or activate components. SempaiReviewOutcome supports entries with
 class_code and payload; payload fields are class/store-specific. Legacy
 proposed_recipe_updates and the persona's older schema are compatibility artifacts,
 not universal constructors. Use the schema actually supplied by the host.
@@ -202,3 +204,102 @@ Recipe/association schemas, human Q2 routing and no self-activation. Evaluate us
 reusable workflows and provider response correctness, not proposal count or token
 savings. No extra Sempai call is required merely because a deterministic Tier-0 task
 completed. Any learning/review workflow must use the explicitly enabled runtime path.
+
+## 8. Apply the reviewer decision procedure
+
+Follow this short workflow before reading domain examples as implementation ideas:
+
+1. Copy the supplied volatile message array. Keep roles, order and content exactly
+   unless the host explicitly permits a justified prompt repair. A request to author
+   components is not a request to rewrite the conversation. Put the new design in
+   proposals and the reason in composition_summary. Never invent an assistant
+   acknowledgement, successful action, result or approval in conversation history.
+2. Decide whether the task is prompt review, component drafting or offline design.
+   Check the host's supported fields/classes and resolved identities. If a required
+   constructor, reference, schema or approval is unavailable, keep the relevant
+   proposal array empty and identify the blocker in the summary. Do not put a
+   “BLOCKED DRAFT”, empty include list, Markdown note or guessed UUID in that array.
+3. Draft only the requested number of distinct components. One requested component
+   means one entry, once. Reuse an approved component when its contract matches.
+   Each payload is an actual supported constructor draft, not an essay about one.
+4. Check the generated code and its contract together before emitting. For class 22,
+   content is only executable Python source. Comments are allowed; Markdown headings,
+   fences and prose paragraphs are not. All used names must be defined or supplied
+   by the stated runtime contract. At module scope, the program must assign result
+   on every defined outcome. Defining a helper alone does not execute it: when a
+   helper is appropriate, call it and assign its returned value to result.
+5. Check representative valid and invalid outcomes against the requested semantics.
+   Do not replace a requested invalid-result object with an exception, or return a
+   success object merely because a body parses. Never claim these mental checks are
+   observed tests. The host must still run real validation and human Q2.
+6. Match the host's exact output schema. When it requests JSON, emit one JSON object
+   beginning with { and ending with }, no Markdown fences, preamble or trailing
+   explanation. Source-document formatting is not response formatting. Do not copy
+   a worked example's field names, values, intents or UUIDs into an unrelated task.
+
+### Raw validation data versus already-validated execution inputs
+
+A validator may be asked to inspect missing, null, incorrectly typed or out-of-range
+candidate data and return an explicit invalid-result object. In that usage, those
+values are the data being examined. Do not assume an earlier binding stage already
+validated the property the validator is supposed to check. Its outer input contract
+must admit the raw candidate shape while the inner validation implements the rule.
+This does not relax required-input binding for ordinary Tool usages.
+
+Use dictionary presence/get checks for raw candidate fields when absence is a valid
+validation outcome. Missing and null remain distinct if the requested result does
+distinguish them; do not substitute defaults for invalid/null data. Validate all
+required fields before arithmetic, iteration or access. A boolean is not an integer;
+test exact integer semantics. A flag must be an actual boolean, not a truthy string,
+number or list. Check enum membership, numeric bounds and list element types.
+Do not coerce a malformed input into validity. Keep result field names and invalid
+values exactly as requested.
+
+For a retry guard, validate every required field even if a boolean shortcut would
+otherwise make the decision true. A malformed deduplication flag cannot be ignored
+because read_only is true. Completed effects never replay; an unknown outcome is
+not evidence of no effect. A logical eligibility result does not grant dispatch
+permission or replace live policy, cancellation and actual deduplication evidence.
+
+### Small examples of complete programs and blocked output
+
+These are documentation fragments, not components with allocated/approved IDs.
+They demonstrate presentation and data flow only; adapt the actual usage contract.
+
+```python
+# Raw candidate: missing/invalid counts return an invalid result, not an exception.
+counts = inputs.get("counts")
+valid = isinstance(counts, list) and len(counts) > 0
+if valid:
+    for count in counts:
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 8:
+            valid = False
+            break
+result = {"valid": valid, "counts": counts if valid else []}
+```
+
+```python
+# If a helper is used, the component must invoke it and assign its result.
+def format_status(value):
+    return {"status": value}
+result = format_status("Waiting")
+```
+
+When constructor/reference support is missing, the relevant fragment is:
+
+```json
+{
+  "composition_summary": "Cannot propose this workflow: the supported sink cannot preserve its required fields and no resolved dependency identities were supplied. No submission or activation occurred.",
+  "proposed_components": []
+}
+```
+
+This fragment is not the full live response schema. The host supplies all required
+root fields; do not omit them. Explain the reason in the summary rather than
+pretending the empty list contains a blocked component.
+
+Recipe intent examples describe the workflow's actual result. Returning status data
+is different from posting a reply, changing a firewall or writing a file. A pure
+logic subworkflow does not perform those effects. Preserve all required binding,
+UUID, step_link and association rules in the complete guides. Unapproved drafts
+remain unapproved even if their intended future execution is deterministic.
