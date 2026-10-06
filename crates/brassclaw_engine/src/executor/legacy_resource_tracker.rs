@@ -1,8 +1,10 @@
-//! Live resource-accounting seam for Monty, implemented by trusted composition.
+//! Historical resource-accounting proof for the pinned Monty v0.0.16.
 //!
 //! The pinned interpreter accepts a custom ResourceTracker. We do not mutate a
 //! LimitedTracker or reset its duration clock on resume. The host-owned account
 //! provides task compute/allocation usage and a shared service heap account.
+//! This test-only adapter must not be wired into production: Monty 1.0 removed
+//! this trait. Its passing tests do not certify the 1.0 resource contract.
 
 use std::{fmt::Debug, sync::Arc};
 
@@ -15,7 +17,7 @@ use monty::{ResourceError, ResourceTracker};
 /// Compute time is measured by host-managed active VM execution segments,
 /// excluding external waits. Every tracker owns its heap debit; freeing/dropping
 /// one context must not release another context's live memory.
-pub trait MontyResourceBudgetPort: Debug + Send + Sync {
+trait MontyResourceBudgetPort: Debug + Send + Sync {
     fn allocate(&self, bytes: usize) -> Result<(), ResourceError>;
     fn free(&self, bytes: usize);
     fn grow(&self, bytes: usize) -> Result<(), ResourceError>;
@@ -27,12 +29,12 @@ pub trait MontyResourceBudgetPort: Debug + Send + Sync {
 /// One execution-context tracker. The port's task account can be shared with
 /// nested contexts; its heap ownership must remain specific to this context.
 #[derive(Debug)]
-pub struct LiveMontyResourceTracker {
+struct LiveMontyResourceTracker {
     budget: Arc<dyn MontyResourceBudgetPort>,
 }
 
 impl LiveMontyResourceTracker {
-    pub fn new(budget: Arc<dyn MontyResourceBudgetPort>) -> Self {
+    fn new(budget: Arc<dyn MontyResourceBudgetPort>) -> Self {
         Self { budget }
     }
 }

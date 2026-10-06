@@ -3,8 +3,12 @@
 The [simplified v3 target](../../simplified_v3.md) supersedes scope-based resource
 authority below while preserving technical quotas and execution identity.
 `LiveMontyTaskSettings` publishes one coherent revision to Rust and Monty
-consumers. Task compute/allocation consumption remains outside settings and must
-survive updates and waits. Active compute excludes queue/idle/external waits;
+consumers. `SharedMontyTaskBudget` gives both readers the same compute account
+and terminal failure state. Task compute consumption remains outside settings
+and survives updates and waits. The neutral task contract does not require an
+allocation count: Monty 1.0 removed that limit. Existing legacy DB/operator
+values remain intact until the explicit upgrade migration; do not represent
+them as an enforced Monty 1.0 resource. Active compute excludes queue/idle/external waits;
 external-call deadlines and shared heap are separate. `AdaptiveMontyHeapBudget`
 calculates finite targets from measured additional capacity and reserve; it
 does not probe the OS, reclaim live continuations or claim production wiring.
@@ -15,3 +19,9 @@ Measurement failure/pending reductions require visible state and backpressure.
 - Do not import runtimes, dispatcher, capabilities, approvals, processes, events, or product workflow crates.
 - Preserve tenant/user/project scope in every reservation and receipt.
 - Keep accounting deterministic and safe under concurrent reservations.
+
+Before production wiring, implement the Monty 1.0 upgrade gate in Phase 3a.
+The calculator does not establish allocator-backed Monty heap isolation.
+The shared task account does not establish interpreter preemption, measurement
+or WebUI runtime acknowledgement. Record non-overlapping active segments once
+through the hosting owner; checking copied counters in two consumers is invalid.

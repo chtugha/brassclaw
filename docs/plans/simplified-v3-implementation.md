@@ -403,3 +403,82 @@ still describes resource-error termination. Updating blindly cannot be counted a
 proof of fair, resumable pure-Python execution. The tested custom tracker targets
 the repository's pinned version; a dependency upgrade must undergo the same
 continuation, failure-isolation and fairness acceptance before production wiring.
+
+
+### Reconciliation with the revised plan (2026-10-06)
+
+The plan now makes Monty 1.0.0 an upgrade gate before global production wiring
+and adds §10, PostgreSQL-only provider definitions. The earlier passing tests
+remain historical results for Monty 0.0.16; they do not certify either new gate.
+The tagged 1.0.0 source was inspected separately from `main`.
+
+| Already implemented area | Reconciliation and current disposition |
+|---|---|
+| Component boot prerequisites, integrity verification and `BootedDb` | Keep. These remain prerequisites before global VM and worker startup. Provider bootstrap is an additional prerequisite; current WebUI provider seeding does not satisfy it. |
+| Exact submitted input/history cutoff and optional full history | Keep. Task input addressing and persistent history are still required; these changes do not depend on the Monty tracker API. |
+| Attempt-addressed signals, bounded stop acknowledgement and honest terminal failure | Keep. Global hosting must additionally fence stale attempts and supervise all owners; stopping one worker is not instance-wide recovery. |
+| Global tool policy snapshot/CAS and admission after awaited obligation preparation | Keep. §9 still requires current global rules at dispatch. Production factory/settings wiring remains absent; these tests are not a completed policy cutover. |
+| V090 new-row defaults (600 seconds, token budgets off) | Keep. Applied migrations and explicit operator values remain untouched. V090 neither migrates scopes nor changes existing settings, and provides no live runtime acknowledgement. |
+| Adaptive heap calculation | Keep as a pure calculator. Its `live_heap_bytes` input requires proven interpreter ownership; process-global allocator usage cannot simply be supplied as Monty heap usage. No allocator acceptance is claimed. |
+| Custom tracker published in the engine | Corrected: moved to private `cfg(test)` `legacy_resource_tracker`. Monty 1.0 has a concrete tracker, so the old trait is no longer exposed as the proposed production seam. Both legacy compatibility tests still run. |
+| Neutral task limits and consumption | Corrected: removed the mandatory allocation-count field from the new, unwired neutral API. Added `SharedMontyTaskBudget`: cloned readers use one mutex-protected account and the same live settings handle. Checking usage holds a coherent settings revision; exhaustion/overflow remains terminal even after a limit increase. |
+
+Allocation-count retirement in the **legacy persisted/API contract is not yet
+implemented**. Existing DB values and the old interpreter limit are unchanged.
+The neutral API correction neither discards operator configuration nor pretends
+that Monty 1.0 enforces an allocation-count limit. The explicit legacy-value
+migration, UI/API change and acceptance must land together before that cutover.
+
+The new shared-account tests prove its accounting contract: readers observe the
+same revision and consumption, lowering a limit exhausts the same task, raising
+it does not revive that task, a new task starts with fresh consumption, overflow
+fails closed, and a simulated external wait adds no compute debit. They do not
+prove actual interpreter timing, bounded CPU preemption or WebUI uptake. Hosting
+must record each non-overlapping active segment once and include nested execution
+without double counting. Rust and Monty must clone the same task account rather
+than construct separate accounts from the same settings handle.
+
+#### Tagged 1.0.0 constraints for the next migration batch
+
+- `monty-types/src/resource.rs`: `elapsed()` is cumulative active execution time;
+  feed/turn clocks are narrower scopes. The setters reset their accumulators.
+  Use the cumulative clock to establish task deltas, retaining consumption outside
+  feed/turn setters and across nested contexts. A remaining-time setter between
+  host transitions alone does not implement live changes during a pure Python loop.
+- `monty/src/run_progress.rs`: `RunProgress` and `FunctionCall` are no longer
+  generic over the custom tracker; parked function calls expose `tracker()` and
+  `tracker_mut()`. All used suspension states and completion/error ownership need
+  compatibility checks, rather than mechanically replacing `LimitedTracker`.
+- `monty-alloc/src/lib.rs`: live bytes, baseline and hard limit are process-global
+  atomics; exceeding the hard limit aborts/exits the process, skipping destructors.
+  Installing this allocator on the BrassClaw application process would include
+  unrelated Rust allocations and expand the failure domain to the whole product.
+  Do not install it there as an alleged isolated Monty heap backstop. Resolve a
+  long-lived isolated host or a proven scoped allocator extension before wiring
+  memory enforcement; neither a per-task VM/process nor an extra Rust Recipe loop
+  is an acceptable shortcut.
+- Build consumers found: root minimum 1.94, engine/composition minima 1.92,
+  Docker builder 1.94, both Monty dependencies pinned to 0.0.16. These must change
+  coherently with adapter/allocator/continuation tests and the rollback contract,
+  rather than shipping a version-only bump.
+
+#### Provider impact of §10
+
+The existing provider path remains incompatible with the new target. Confirmed
+consumers include `registry.rs` embedded JSON/file overlays, `llm_catalog.rs`
+file boot resolution, WebUI `seed_builtin_providers`, `PgProviderRepo::upsert_builtin`,
+LLM configuration saves, CLI resolution, migration step 4, Docker COPY and the
+E2E workflow path filter. `upsert_builtin` currently clears `deleted_at`, while
+`delete` rejects builtin rows. Removing only the UI guard would allow restart
+reactivation. Provider cutover must therefore include DB-only bootstrap/readers,
+removal of recurring seeding, soft-delete/reactivation with stable IDs, selection
+transactions, preserved secret references and a providerless management boot.
+No files/importers or existing definitions have been deleted in this correction
+batch; the required backup/conflict migration is still outstanding.
+
+Verification of this correction batch: sequential screen queue completed with
+9 resource/accounting/calculator tests, 2 legacy interpreter compatibility tests,
+and strict all-target Clippy for engine/resources. All passed with no ignored
+cases or lint suppression. NVMe space was checked before each Cargo command.
+The seven prior composition failures and the global service, 1.0 migration,
+provider cutover and WebUI acknowledgement remain open, explicitly unverified.

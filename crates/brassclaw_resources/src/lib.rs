@@ -41,8 +41,8 @@ pub use monty_heap_budget::{
     MontyHeapBudgetDecision, MontyHeapBudgetError, MontyMemoryPressure, MontyMemorySample,
 };
 pub use monty_task_budget::{
-    LiveMontyTaskSettings, MontyTaskBudgetError, MontyTaskLimits, MontyTaskSettingsRevision,
-    MontyTaskUsage,
+    LiveMontyTaskSettings, MontyTaskBudgetError, MontyTaskBudgetSnapshot, MontyTaskLimits,
+    MontyTaskSettingsRevision, MontyTaskUsage, SharedMontyTaskBudget,
 };
 pub use period::{
     BudgetPeriod, BudgetThresholds, BudgetThresholdsError, PeriodUnit, period_bounds,

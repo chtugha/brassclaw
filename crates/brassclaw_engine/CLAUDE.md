@@ -16,6 +16,16 @@ See `docs/plans/2026-03-20-engine-v2-architecture.md` for the 8-phase roadmap.
 | **MemoryDoc** | Unit of durable knowledge (summaries, lessons, skills) | Workspace memory blobs |
 | **Project** | Unit of context (scopes memory, threads) | Flat workspace namespace |
 
+## Monty migration prerequisite
+
+`simplified_v3.md` Phase 3a requires Monty 1.0 before global production wiring.
+The old custom `ResourceTracker` trait is removed upstream. Its compatibility
+proof is private and test-only; do not build production adapters on it. Feed and
+Monty turn limits are not BrassClaw task limits, and their setters reset timing
+accumulators. Task consumption must remain shared with Rust across feeds, nested
+execution and settings revisions. The 1.0 allocator is process-wide; installing
+it does not prove isolated heap accounting in this shared Rust process.
+
 ## Build & Test
 
 ```bash
@@ -59,7 +69,7 @@ src/
 │   ├── kohai_port.rs             # KohaiPort — host.kohai_complete LLM gateway facade
 │   ├── orchestrator.rs           # Tier-1 Monty orchestrator: prepare_monty_session, assemble_prior_knowledge_with_hint, execute_tier_zero_channel
 │   ├── prompt.rs                 # System prompt construction (CodeAct preamble/postamble)
-│   ├── resource_tracker.rs       # Custom live resource-tracker port; pinned-VM resume tests, production bridge still required
+│   ├── legacy_resource_tracker.rs # Test-only v0.0.16 compatibility proof; not the Monty 1.0 resource API
 │   ├── scripting.rs              # Tier 1: embedded Python via Monty (CodeAct/RLM)
 │   ├── structured.rs             # Tier 0: structured tool call execution
 │   ├── thread_context.rs         # Build ThreadExecutionContext from current thread state (pub(crate))

@@ -598,6 +598,14 @@ State transitions enforced by `is_valid_transition` in `brassclaw_product_workfl
 
 ### Monty VM Settings (§3.10)
 
+**Upgrade prerequisite:** Follow `simplified_v3.md` Phase 3a’s Monty 1.0 gate
+before global production wiring. The v0.0.16 custom-tracker proof is test-only
+and cannot implement the new API. Monty 1.0 removes the allocation-count limit;
+preserve existing settings until their explicit migration rather than silently
+ignoring them. Rust and Monty must share the effective duration revision and
+one task compute account; a persisted WebUI edit alone is not runtime uptake.
+
+
 `PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (V034 migration). `max_duration_secs` bounds one task's execution, never the global orchestrator's uptime or idle wait. Memory, allocations, stdout and token accounting must distinguish task budgets from bounded global-service storage. The current `LimitedTracker` lifetime must be audited before reusing it in a global VM; do not assume its counters reset on resume. The legacy `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` env var is a DB-less fallback only.
 
 ### Orchestrator Code Load Path

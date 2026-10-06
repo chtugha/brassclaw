@@ -91,6 +91,14 @@ This principle governs all Recipe, Skill, PythonCode, and ToolSkill authoring.
 
 ### Global Monty lifecycle (binding target architecture)
 
+**Upgrade prerequisite:** Follow `simplified_v3.md` Phase 3a’s Monty 1.0 gate
+before global production wiring. The v0.0.16 custom-tracker proof is test-only
+and cannot implement the new API. Monty 1.0 removes the allocation-count limit;
+preserve existing settings until their explicit migration rather than silently
+ignoring them. Rust and Monty must share the effective duration revision and
+one task compute account; a persisted WebUI edit alone is not runtime uptake.
+
+
 **Exactly one global Monty orchestrator starts during system startup and stays
 alive in the background for the lifetime of the BrassClaw instance.** It starts
 after migrations, component seeding and integrity verification, before turn
