@@ -1,5 +1,10 @@
 # Agent Rules
 
+> **Local test/model connections:** Before remote tests or provider setup, read
+> [LOCAL_TEST_ENV.md](LOCAL_TEST_ENV.md) if present. It contains the operator's
+> SSH aliases, host roles, inference endpoint and verified prerequisites. The
+> file is Git-ignored; its absence on another checkout is not an empty config.
+
 > **Primary Rule — read this first:**
 > When a user asks you to add, change, or fix a capability in BrassClaw, your first answer
 > is a **Recipe** — not Rust code. The component library (Recipes + PythonCode + Skills +
@@ -8,6 +13,13 @@
 > ask: "Can this be done by wiring existing tools in a Recipe?" If yes, write the Recipe.
 
 ## Purpose and Precedence
+
+Read [Development reasoning and validation policy](docs/development-policy.md)
+before implementation. It is authoritative for development check selection,
+evidence reuse and stopping, superseding older blanket test/lint instructions.
+Use source inspection and LLM reasoning to diagnose and complete a coherent
+change before compiling. Product Tier-0 rules do not limit development reasoning.
+The disk-space and cleanup rules below remain mandatory and unchanged.
 
 `AGENTS.md` is the quick-start routing map for AI coding agents entering the codebase. It is not the full architecture spec. Read the relevant subsystem spec before changing a complex area. When a crate spec exists, treat it as authoritative.
 
@@ -484,32 +496,34 @@ The *names* of these env vars are stored in `brassclaw_config`; the *values* are
 > mid-build, starving/corrupting the run — the space check + clean is mandatory, not optional.
 
 ```bash
-# Build the Reborn binary with WebUI v2
+# Build the Reborn binary for release/performance work only
 cargo build --release --bin brassclaw 
 
 # Format
 cargo fmt
 
-# Lint a specific crate (zero warnings)
-cargo clippy -p <crate_name> --all-targets -- -D warnings
+# Lint affected packages with relevant features; fix newly introduced warnings
+cargo clippy -p <crate_name> --all-targets
 
-# Lint everything
+# Full lint for CI/release or changes requiring broad acceptance
 cargo clippy --all --benches --tests --examples --all-features -- -D warnings
 
 # Unit tests for a specific crate
 cargo test -p <crate_name>
 
-# All unit tests
+# Root-package tests when root behavior is affected
 cargo test
 
-# Integration tests (requires PostgreSQL)
+# Database semantics checks (requires PostgreSQL; narrow by package/test)
 cargo test --features integration
 ```
 
 ## Before Finishing
 
 - Confirm whether behavior changes require updates to specs, API docs, or `CHANGELOG.md`.
-- Run the most targeted tests and clippy checks that cover the change.
+- Reuse passing relevant evidence; run targeted checks only for new changes or
+  unresolved questions. Stop once the reviewed diff and required checks pass.
+- Fix introduced warnings and report unrelated baseline warnings separately.
 - Re-check security-sensitive paths when touching auth, secrets, network listeners, sandboxing, or approvals.
 - Keep the final diff scoped to the task. Avoid unrelated file churn.
 - **Capability check:** If behaviour was added or changed — is it expressed as a Recipe + PythonCode, or did it end up as Rust logic that belongs in a Recipe? Rust-only behaviour changes are incomplete unless a genuinely new system primitive was required.

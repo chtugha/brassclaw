@@ -102,3 +102,6 @@ last_cleanup_pre-v3.md
 Recipe_System_Finalisation.md
 checkup.md
 .cargo/config.local.toml
+
+# Operator-local SSH / inference environment notes
+/LOCAL_TEST_ENV.md

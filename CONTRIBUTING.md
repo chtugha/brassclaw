@@ -48,42 +48,57 @@ Refactor-only PRs are not accepted from contributors outside the core team. If a
 
 ## Development Workflow
 
-```bash
-cargo fmt                                                              # format
-cargo clippy --all --benches --tests --examples --all-features         # lint (zero warnings)
-cargo test                                                             # unit tests
-cargo test --features integration                                      # + PostgreSQL tests
+Read [Development reasoning and validation policy](docs/development-policy.md).
+Diagnose from source, trace callers/contracts and complete a coherent change before
+compiling. Select checks by the behavior being changed; command lists are not a
+checklist to repeat after every edit. Follow the root target-directory and
+disk-space rules for every Cargo build/check/test/lint.
 
-# Build the Reborn binary
-cargo build --release --bin brassclaw 
+```bash
+cargo test -p <crate_name> <relevant_test>                 # affected behavior
+cargo clippy -p <crate_name> --all-targets                 # relevant feature flags
 ```
 
-These commands are for day-to-day iteration while you are developing locally. The pre-submission checks below are intentionally stricter and use CI-style flags so you can catch formatting drift and clippy warnings before requesting review.
+Fix introduced warnings, including those in affected consumers. Report unrelated
+baseline warnings without expanding the task or suppressing diagnostics. Ordinary
+documentation needs diff/link checks, not Rust compilation. Use real implementations
+and results for verification; do not introduce mocks, stubs or fake commands to
+reduce compilation. Use real PostgreSQL when the changed path requires it.
 
 ## Before You Open a PR
 
-Run the local validation checks required before requesting a review:
+Review the final diff and reuse relevant passing checks from iteration:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --all --benches --tests --examples --all-features -- -D warnings
-cargo build
-cargo test
+git diff --check
 ```
 
-Also run this when your change touches database-backed or integration behavior:
+Run focused real integration checks when database semantics change, for example:
 
 ```bash
-cargo test --features integration
+cargo test -p <crate_name> --features integration <relevant_test>
 ```
 
 Before asking for review:
 
-- Build and exercise the changed path locally, not just the narrowest unit test
+- Exercise the changed path at the smallest layer that establishes the claim;
+  document package/features/revision, evidence and any unverified acceptance.
 - Keep the PR focused and avoid mixing unrelated concerns
 - Fill out the PR template with a clear summary, validation notes, and impact assessment
 - If your change affects tracked behavior, update `FEATURE_PARITY.md` in the same branch
 - If onboarding or setup behavior changes, update the relevant setup docs in the same branch
+
+Existing hooks and CI acceptance checks remain in place. Full all-feature lint,
+workspace tests and release builds are acceptance work, not a checklist to repeat
+after every intermediate edit:
+
+```bash
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+# Only when a release/performance binary is required:
+cargo build --release --bin brassclaw
+```
 
 ## Review Follow-Through
 
@@ -97,7 +112,7 @@ If a PR is stale for more than 48 hours after review feedback is posted, maintai
 
 ## Code Style
 
-- Zero clippy warnings policy
+- No newly introduced clippy warnings; report unrelated baseline warnings separately
 - No `.unwrap()` or `.expect()` in production code (tests are fine)
 - Use `thiserror` for error types, map errors with context
 - Prefer `crate::` for cross-module imports

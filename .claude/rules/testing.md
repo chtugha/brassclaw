@@ -5,22 +5,31 @@ paths:
 ---
 # Testing Rules
 
+Read [Development reasoning and validation policy](../../docs/development-policy.md).
+Choose the smallest check that establishes the claim, reuse passing evidence and
+stop when required checks pass. Source reasoning precedes compilation; runtime
+Tier-0 rules do not constrain development reasoning.
+
 ## Test Tiers
 
 | Tier | Command | External deps |
 |------|---------|---------------|
-| Unit | `cargo test` | None |
-| Integration | `cargo test --features integration` | Running PostgreSQL |
+| Focused behavior/caller | `cargo test -p <crate_name> <test_filter>` | Determined by the test |
+| Database semantics | `cargo test -p <crate_name> --features integration <test_filter>` | Real PostgreSQL |
 
-Run `cargo test -p <crate_name>` for a single crate, `cargo test` for all crates.
+Add relevant feature flags. `cargo test` selects Cargo's default packages, not
+necessarily the entire workspace. Full workspace acceptance is
+`cargo test --workspace ...`; it is not an iteration default.
 
 ## Key Patterns
 
 - Unit tests in `mod tests {}` at the bottom of each file
 - Async tests with `#[tokio::test]`
-- No mocks, prefer real implementations or stubs
+- Use real implementations and verify real results; do not introduce mocks,
+  stubs, fake commands or simulated success to avoid required checks
 - Use `tempfile` crate for test directories, never hardcode `/tmp/`
-- Regression test with every bug fix
+- Meaningful regression coverage for behavioral fixes; reuse an existing test
+  when it catches the bug and explain the evidence instead of duplicating it
 - Integration tests (`--features integration`) require PostgreSQL; skipped if DB is unreachable
 
 ## Test Through the Caller, Not Just the Helper
@@ -44,13 +53,22 @@ If all three are true, a unit test on the helper alone is **not sufficient regre
 
 ### Where the test belongs
 
-Most of these gaps are above unit-test scope and below e2e scope. Default to the **integration tier** (`cargo test --features integration`):
+Drive the production caller with real implementations at the smallest practical
+layer that establishes the claim:
 
-- `tests/<module>_integration.rs` for Rust integration tests against the public handler/factory surface
-- `tests/e2e/` for end-to-end scenarios when the lost axis is user-visible
+- A module test or `tests/<module>_integration.rs` may drive the actual
+  handler/factory, asserting every relevant input and real effect.
+- Use real PostgreSQL when SQL, transactions, constraints, locking, migrations
+  or persistence semantics are the claim.
+- Use `tests/e2e/` when only the full production path establishes the claim or a
+  subsystem acceptance contract requires it. User visibility alone does not
+  require duplicating an adequate caller regression in browser tests.
 
-Unit tests in `mod tests {}` are still fine for the helper itself, but they do not satisfy this rule.
+Helper-only tests do not satisfy this rule. A module test that drives the actual
+caller does; test placement and external dependencies do not determine coverage.
 
-### Mock hygiene corollary
+### Verify the actual call
 
-When you mock a runtime API in a test, the mock's signature must match the production call site's signature, and assertions should cover **every argument** the production code passes.
+Trace every argument through wrappers into the real operation. Assert the result
+and relevant side effect. If that verification is unavailable, report it as
+unverified rather than substituting a simulated success.

@@ -1,5 +1,10 @@
 # BrassClaw Development Guide
 
+> **Local test/model connections:** Before remote tests or provider setup, read
+> [LOCAL_TEST_ENV.md](LOCAL_TEST_ENV.md) if present. It contains the operator's
+> SSH aliases, host roles, inference endpoint and verified prerequisites. The
+> file is Git-ignored; its absence on another checkout is not an empty config.
+
 > **Primary Rule — read this first:**
 > Adding a new capability means authoring a **Recipe + PythonCode + ToolSkill + Skill** in the
 > component library (`builtin_bootstrap.rs` for first-party, or your extension seeder). It does
@@ -7,9 +12,11 @@
 > system-level Tool is needed that no existing Tool provides. The component library is where
 > almost all behaviour lives — more Recipes, fewer Rust branches.
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
-
-Tradeoff: These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+Read [Development reasoning and validation policy](docs/development-policy.md)
+before implementation. It governs iteration, check selection, evidence reuse
+and stopping; older blanket test/lint instructions defer to it. Use LLM reasoning
+to diagnose and complete a coherent change before compiling. Runtime Tier-0
+rules do not limit development reasoning.
 
 1. Think Before Coding
 
@@ -51,20 +58,23 @@ The test: Every changed line should trace directly to the user's request.
 
 4. Goal-Driven Execution
 
-Define success criteria. Loop until verified.
+Define success criteria and the smallest checks that establish them. Stop when
+the reviewed change and required checks satisfy those criteria. Repeat checks
+only when relevant edits, failures or unresolved uncertainty justify them.
 
 Transform tasks into verifiable goals:
 
-"Add validation" → "Write tests for invalid inputs, then make them pass"
-"Fix the bug" → "Write a test that reproduces it, then make it pass"
-"Refactor X" → "Ensure tests pass before and after"
+"Add validation" → "Trace the caller and invalid-input contract; add focused coverage"
+"Fix the bug" → "Diagnose the cause from source and logs; verify the regression at its caller"
+"Refactor X" → "Review affected contracts and reuse valid baseline evidence; verify the final change"
 "Add capability X" → "Author Recipe + ToolSkill + PythonCode + ≥10 intent examples; Q1 passes; intent resolves to the correct variant at Class 1/2 confidence; executes at Tier 0"
 For multi-step tasks, state a brief plan:
 
 1. [Step] → verify: [check]
 2. [Step] → verify: [check]
 3. [Step] → verify: [check]
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+Strong success criteria give a clear stopping point. Weak criteria ("make it work")
+encourage repeated checks without establishing additional evidence.
 
 
 **BrassClaw** is a secure, local-first AI assistant built on the IronClaw Reborn architecture. It targets 7B-14B LLMs within 8,192-token context windows and is implemented as a workspace of approximately 70 Rust crates.
@@ -709,10 +719,10 @@ Rules:
 > mid-build, starving/corrupting the run — the space check + clean is mandatory, not optional.
 
 ```bash
-cargo fmt                                                              # format
-cargo clippy --all --benches --tests --examples --all-features         # lint (zero warnings)
-cargo test                                                             # unit tests
-cargo test --features integration                                      # + PostgreSQL tests
+cargo fmt --all -- --check                              # submission formatting
+cargo test -p <crate_name> <relevant_test>               # focused behavior
+cargo clippy -p <crate_name> --all-targets               # review new warnings
+# Add relevant feature flags; PostgreSQL checks cover database semantics.
 
 # Authorization crate — capability lease contract tests (no DB required)
 cargo test -p brassclaw_authorization
@@ -721,7 +731,7 @@ cargo test -p brassclaw_authorization
 BRASSCLAW_PG_URL=postgresql://brassclaw@127.0.0.1:5434/brassclaw \
   cargo test -p brassclaw_authorization --features integration
 
-# Build the Reborn binary with WebUI v2
+# Build the Reborn binary for release/performance work only
 cargo build --release --bin brassclaw
 
 # Run with logging
@@ -742,7 +752,11 @@ grep -n "warning\|error" build.log | head -40
 cat build.log | less
 ```
 
-Before invoking `cargo build` a second time, check whether `build.log` (or any previously captured log) already contains the information needed.
+Before repeating any build, test, check or lint, inspect the captured output and
+state what relevant edit or unresolved question requires another run. Reuse
+passing evidence for unchanged paths; avoid redundant check/build/test sequences.
+See [the development policy](docs/development-policy.md) for the stopping rule,
+stable build configuration and caller-level validation requirements.
 
 E2E tests: see `tests/e2e/CLAUDE.md`.
 

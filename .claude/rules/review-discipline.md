@@ -5,15 +5,24 @@ paths:
 ---
 # Review & Fix Discipline
 
-Hard-won lessons from code review — follow these when fixing bugs or addressing review feedback.
+Follow [Development reasoning and validation policy](../../docs/development-policy.md)
+when fixing bugs or addressing review feedback. Diagnose and review from source
+before running executable checks; reuse passing evidence for unchanged paths.
 
 **Fix the pattern, not just the instance:** When a reviewer flags a bug, search the entire codebase for all instances of that same pattern. A fix in one store that doesn't also fix the same pattern in a sibling store is half a fix.
 
 **Propagate architectural fixes to related types:** If a core type changes its concurrency model or interface, every type that interacts with it must also be updated. Grep for the old type across the codebase.
 
-**Zero clippy warnings policy:** Fix ALL clippy warnings before committing, including pre-existing ones in files you didn't change. Never leave warnings behind.
+**No introduced warnings:** Fix warnings introduced by the change, including
+those in unchanged consumers. Report unrelated pre-existing warnings separately;
+do not suppress them or expand the task into workspace cleanup. Strict acceptance
+checks remain binding; report baseline blockers honestly.
 
-**Regression test with every fix:** Every bug fix must include a test that would have caught the bug. Add a `#[test]` or `#[tokio::test]` that reproduces the original failure. Use `[skip-regression-check]` in commit message only if genuinely not feasible.
+**Meaningful regression coverage:** Behavioral fixes need a test at the layer
+that catches the failure. Reuse existing coverage when it already establishes
+the regression and explain that evidence. Do not add duplicate or
+implementation-mirroring tests. Use `[skip-regression-check]` with an explanation
+when the commit hook cannot recognize existing coverage or a test is not feasible.
 
 **Transaction safety:** Multi-step database operations (INSERT+INSERT, UPDATE+DELETE, read-then-write) MUST be wrapped in a transaction. Never assume sequential calls are atomic.
 
@@ -26,7 +35,8 @@ Hard-won lessons from code review — follow these when fixing bugs or addressin
 **Decorator/wrapper trait delegation:** When adding a new method to a trait with decorator wrappers (e.g., `LlmProvider`), update ALL wrapper types to delegate. Grep for `impl <Trait> for` to find all implementations.
 
 **Mechanical verification before committing:**
-- `cargo clippy --all --benches --tests --examples --all-features -- -D warnings` — zero warnings
+- Reuse relevant passing lint/tests; otherwise lint affected packages with the
+  relevant features. Full all-feature lint belongs to CI/release or broad acceptance.
 - `grep -rnE '\.unwrap\(|\.expect\(' <files>` — no panics in production
 - `grep -rn 'super::' <files>` — prefer `crate::` for cross-module imports (`super::` OK in tests/intra-module)
 - If you fixed a pattern bug, `grep` for other instances across `crates/`

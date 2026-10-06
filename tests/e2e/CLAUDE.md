@@ -1,5 +1,13 @@
 # BrassClaw E2E Tests
 
+Follow [Development reasoning and validation policy](../../docs/development-policy.md).
+Run the specific scenario that establishes the changed production-path claim;
+reuse passing evidence for unchanged paths. Ordinary docs do not need additional
+local E2E runs solely for prose. Embedded runtime content and executable component
+seeds are behavior, not ordinary docs. Verify through real implementations and
+retain real database/lifecycle/security acceptance where required. Full E2E belongs to
+affected production acceptance and reusable/release runs.
+
 Python/Playwright test suite that runs against a live brassclaw instance. Added in PR #553 ("Trajectory benchmarks and e2e trace test rig").
 
 ## Setup

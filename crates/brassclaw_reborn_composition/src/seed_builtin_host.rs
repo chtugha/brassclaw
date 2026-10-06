@@ -1541,6 +1541,7 @@ prompt = {
   "user_query": user_query,
   "prefix_placeholder": placeholder
 }
+result = prompt
 "###
                 .to_string(),
                 prior_knowledge_content: None,

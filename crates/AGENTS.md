@@ -11,6 +11,11 @@ This file is a routing map, not a full architecture spec. Pick the crate(s) that
 
 Do **not** eagerly load every crate guide. Use this map to choose.
 
+Read [Development reasoning and validation policy](../docs/development-policy.md)
+before implementation. It governs development check scope, evidence reuse and
+stopping; crate command lists are reference commands, not per-edit checklists.
+Subsystem acceptance contracts and root disk-space/cleanup rules remain binding.
+
 ## Branch and Workspace
 
 This map was refreshed from `main` after inspecting the workspace crate manifests, source layout, tests, and crate-local docs. Most crates have a crate-local `AGENTS.md`; when one is missing, load `CLAUDE.md`, `Cargo.toml`, and `src/lib.rs` instead.
@@ -19,7 +24,7 @@ Run crate work from repo root unless crate-local docs say otherwise.
 
 ```bash
 cargo test -p <crate_name>
-cargo clippy -p <crate_name> --all-targets --all-features -- -D warnings
+cargo clippy -p <crate_name> --all-targets # add relevant feature flags
 cargo test -p brassclaw_architecture
 scripts/check-boundaries.sh
 scripts/reborn-e2e-rust.sh
@@ -168,7 +173,8 @@ cargo test -p brassclaw_outbound --all-features
 cargo test -p brassclaw_product_workflow
 ```
 
-Then expand by risk:
+Expand only for affected contracts, failures or acceptance requirements. These
+are reference commands, not a sequence to run after every change:
 
 ```bash
 cargo test -p brassclaw_architecture
@@ -179,6 +185,12 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
 Persistence behavior targets PostgreSQL. Integration tests that require a live DB may be skipped when Postgres is unavailable by following crate-local `skip` flags where docs/tests explicitly permit.
+
+Test caller wiring through real implementations; use real PostgreSQL when the
+path requires it. Do not introduce substitute commands or services to reduce
+compilation. Fix introduced warnings;
+report unrelated baseline warnings. Reuse valid checks and stop when the final
+reviewed change meets its required validation.
 
 ## Guardrails
 
