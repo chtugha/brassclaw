@@ -44,9 +44,7 @@ pub enum RebornBuildError {
     Mount(#[from] brassclaw_host_api::HostApiError),
     #[cfg(feature = "postgres")]
     #[error("content integrity check failed: {0}")]
-    ContentIntegrity(
-        #[from] crate::content_integrity::ContentIntegrityError,
-    ),
+    ContentIntegrity(#[from] crate::content_integrity::ContentIntegrityError),
 }
 
 impl From<brassclaw_host_runtime::ProductionWiringReport> for crate::RebornCompositionError {

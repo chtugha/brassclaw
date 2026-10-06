@@ -111,7 +111,8 @@ impl PgToolStore {
                      effect_type, preconditions, error_handling,
                      consumer_tags, source, validation_status,
                      capability_id)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+                         CASE WHEN $13 = 'system' THEN 'validated' ELSE $14 END,$15)
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",

@@ -206,9 +206,24 @@ impl HostManagedModelGateway for ToolCallingGateway {
 // ─── harness ──────────────────────────────────────────────────────────
 
 struct Harness {
-    runtime: RebornRuntime,
+    runtime: Arc<RebornRuntime>,
     router: axum::Router,
     _root: tempfile::TempDir,
+}
+
+async fn shutdown_harness(harness: Harness) {
+    let Harness {
+        runtime,
+        router,
+        _root,
+    } = harness;
+    drop(router);
+    let runtime = match Arc::try_unwrap(runtime) {
+        Ok(runtime) => runtime,
+        Err(_) => panic!("webui router retained the runtime after being dropped"),
+    };
+    runtime.shutdown().await.expect("runtime shutdown clean");
+    drop(_root);
 }
 
 async fn build_harness(rig: &PgRig) -> Harness {
@@ -230,8 +245,8 @@ async fn build_harness(rig: &PgRig) -> Harness {
     })
     .with_model_gateway_override(gateway);
 
-    let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-    let bundle = build_webui_services(&runtime, None)
+    let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
+    let bundle = build_webui_services(Arc::clone(&runtime), None)
         .await
         .expect("webui bundle");
     let config = WebuiServeConfig::new(
@@ -323,11 +338,7 @@ async fn webui_v2_http_list_automations_uses_composed_runtime_facade() {
         "list_automations response must include an automations array, got: {body:#?}"
     );
 
-    harness
-        .runtime
-        .shutdown()
-        .await
-        .expect("runtime shutdown clean");
+    shutdown_harness(harness).await;
 }
 
 /// Step 2 of Lane 7: drive `create_thread` → `submit_turn` → poll
@@ -455,11 +466,7 @@ async fn webui_v2_http_happy_path_with_builtin_tool_call() {
          within 10s — the agent loop did not complete the tool round-trip",
     );
 
-    harness
-        .runtime
-        .shutdown()
-        .await
-        .expect("runtime shutdown clean");
+    shutdown_harness(harness).await;
 }
 
 #[tokio::test]

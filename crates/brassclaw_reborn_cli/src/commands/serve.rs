@@ -337,6 +337,7 @@ impl ServeCommand {
             let runtime = build_reborn_runtime(runtime_input)
                 .await
                 .context("failed to assemble Reborn runtime for `serve`")?;
+            let runtime = Arc::new(runtime);
 
             // Spawn the background retention sweep when a Postgres pool is
             // available.  The handle is intentionally leaked (not awaited on
@@ -374,7 +375,7 @@ impl ServeCommand {
             } else {
                 None
             };
-            let bundle = build_webui_services(&runtime, None)
+            let bundle = build_webui_services(Arc::clone(&runtime), None)
                 .await
                 .context("failed to assemble WebUI services bundle")?;
 
@@ -497,7 +498,10 @@ impl ServeCommand {
             // dropping it here by consuming the runtime closes all pool
             // connections BEFORE managed_pg.shutdown() is called below
             // (§2.2, §5.5: pool must be dropped before pg_ctl stop).
-            let shutdown_result = runtime.shutdown().await;
+            let shutdown_result = Arc::try_unwrap(runtime)
+                .map_err(|_| anyhow!("WebUI still holds the Reborn runtime during shutdown"))?
+                .shutdown()
+                .await;
 
             // Shut down the embedded Postgres server only after the pool
             // held by the runtime has been dropped (runtime.shutdown()

@@ -30,11 +30,10 @@
 //!   written directly via [`DbSkillStore::update_reward`] with no re-validation.
 //!
 //! # Consumer-tag rules (§3.9)
-//! * Every newly inserted or content-updated row receives `05:validator` in
-//!   `consumer_tags` — the validator tag greys out other tags until Step-2
-//!   validation removes it.
-//! * [`DbSkillStore::fetch_for_consumer`] filters out rows that carry
-//!   `05:validator`, regardless of `validation_status`.
+//! * Consumer tags route components to consumers.
+//! * [`DbSkillStore::fetch_for_consumer`] requires both validated status and
+//!   the requested consumer tag; the validator tag does not independently
+//!   prevent delivery.
 //! * The class-default consumer tags are seeded at insert time; see
 //!   [`class_default_consumer_tags`].
 
@@ -402,8 +401,7 @@ mod inner {
         // "system" is accepted so that PgSkillStore (the v3 bootstrap seeder) and
         // DbSkillStore share the same validation logic for first-party builtins.
         // "authored", "extracted", "migrated", "imported" are the user-facing labels.
-        const VALID_SOURCES: &[&str] =
-            &["authored", "extracted", "migrated", "imported", "system"];
+        const VALID_SOURCES: &[&str] = &["authored", "extracted", "migrated", "imported", "system"];
         if !VALID_SOURCES.contains(&input.source.as_str()) {
             result.errors.push(format!(
                 "skill source '{}' is not valid; must be one of: authored, extracted, migrated, imported, system",
@@ -547,7 +545,7 @@ mod inner {
             Ok(row.get::<_, Uuid>(0))
         }
 
-        /// Fetch all validated, non-validator-tagged skills for a consumer.
+        /// Fetch all validated skills routed to a consumer.
         ///
         /// `consumer_tag` — e.g. `"03:llm"`, `"02:orchestrator"`.
         /// Returns rows ordered by `(class_code ASC, prompt_uid ASC)` for
@@ -560,8 +558,7 @@ mod inner {
             let client = self.pool.get().await.map_err(PgError::from)?;
             let rows = client
                 .query(
-                    &format!(
-                        "SELECT
+                    "SELECT
                         id, tenant_id, user_id, agent_id, project_id,
                         name, description, body, compatibility, license,
                         allowed_tools, version, class_code, prompt_uid,
@@ -582,10 +579,7 @@ mod inner {
                       AND project_id = $4
                       AND validation_status = 'validated'
                       AND $5 = ANY(consumer_tags)
-                      AND NOT ('{}' = ANY(consumer_tags))
                     ORDER BY class_code ASC, prompt_uid ASC",
-                        VALIDATOR_CONSUMER_TAG
-                    ),
                     &[
                         &scope.tenant_id,
                         &scope.user_id,
@@ -731,7 +725,7 @@ mod inner {
                         content_hash     = $22,
                         -- Reset validation cycle.
                         validation_status = 'pending',
-                        -- Re-add the validator tag (greys out other consumer tags).
+                        -- Re-add the validation-workflow metadata tag.
                         consumer_tags = array_append(
                             array_remove(consumer_tags, '{}'),
                             '{0}'
@@ -1222,10 +1216,9 @@ mod inner {
         }
 
         #[test]
-        fn row_carrying_validator_tag_not_returned() {
-            // This is enforced at the SQL layer (NOT '05:validator' = ANY(consumer_tags)).
-            // The test documents the contract; actual enforcement is verified by
-            // the integration test in brassclaw_pg.
+        fn validated_rows_use_consumer_tags_for_routing() {
+            // SQL requires validated status and the requested consumer tag.
+            // The validator tag is metadata and does not independently block delivery.
         }
 
         // -----------------------------------------------------------------------

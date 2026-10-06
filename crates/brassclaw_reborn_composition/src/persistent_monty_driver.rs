@@ -395,12 +395,15 @@ impl PersistentMontyDriver {
                 SessionGuard::new(session, Arc::clone(&self.registry), context.scope.clone())
             }
             None => {
-                let mut fresh =
-                    prepare_monty_session(thread, &self.orchestrator_code_port, max_duration_override)
-                        .await
-                        .map_err(|e| AgentLoopDriverError::Failed {
-                            reason_kind: format!("monty turn driver: prepare session failed: {e}"),
-                        })?;
+                let mut fresh = prepare_monty_session(
+                    thread,
+                    &self.orchestrator_code_port,
+                    max_duration_override,
+                )
+                .await
+                .map_err(|e| AgentLoopDriverError::Failed {
+                    reason_kind: format!("monty turn driver: prepare session failed: {e}"),
+                })?;
                 // Prime: drive the fresh VM to its first await_next_turn() park.
                 match self
                     .drive_one(&mut fresh, thread, signal_rx, &effects, None)

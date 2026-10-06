@@ -682,8 +682,8 @@ fn dcr_callback_state_from_oauth_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth_prompt::AuthChallengeProvider;
     use crate::RebornAuthContinuationDispatcher;
+    use crate::auth_prompt::AuthChallengeProvider;
     use crate::input::OAuthClientConfig;
     use crate::oauth_gate::{GoogleOAuthGateProvider, GoogleOAuthGateProviderRegistry};
     use async_trait::async_trait;

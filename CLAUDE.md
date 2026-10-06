@@ -155,7 +155,9 @@ confirmation is genuinely required.
 BrassClaw has one execution authority — **Monty** — and a registry of Rust **Tools** it calls.
 
 - **Orchestrator (Monty, Python)** is the sole execution authority. It runs
-  **one long-persisting main process per user input**, reads the
+  **as one global orchestrator started at system startup and kept alive in the
+  background for the instance lifetime**. Each input is a task delivered to
+  that existing orchestrator. It reads the
   `BuildInstruction` assembled by IBS, and executes steps in sequence: binding
   tools into its namespace, running PythonCode snippets, assembling LLM prompts,
   and posting replies. It never executes Rust directly — it calls registered
@@ -174,15 +176,17 @@ the Monty namespace. A PythonCode snippet calls a tool as
 which runs the Tool and returns. All host capabilities register the same way —
 there are no hidden intrinsics or special-cased Rust paths.
 
-#### Turn Execution Flow (ground truth — read this first)
+#### Turn Execution Flow (binding target — read this first)
 
-Every user input travels exactly one of two paths. This is the complete runtime picture:
+Every user input travels exactly one of two paths within the already-running
+global orchestrator. This is the target flow; the lifecycle implementation gap
+is described below.
 
 ```
 User Input
     │
     ▼
-Orchestrator (Monty) — starts one long-persisting main process
+Global Orchestrator (Monty) — already running since system startup
     │
     ▼
 Intent-Matching System (resolve_intent / fetch_for_turn, currently Rust)
@@ -205,7 +209,7 @@ Intent-Matching System (resolve_intent / fetch_for_turn, currently Rust)
     │    channel:"orchestrator"→ (optional) LLM step if Tier 1                  │
     │    channel:"orchestrator"→ host.post_reply(answer="...") → user sees reply │
     │                                                                            │
-    │  History saved. Main process exits.                                        │
+    │  History saved. Task completes; global Monty awaits further work.           │
     │                                                                            │
     └─── NO MATCH ───────────────────────────────────────────────────────────────┘
          │
@@ -241,28 +245,51 @@ Intent-Matching System (resolve_intent / fetch_for_turn, currently Rust)
 > the operations are genuinely inseparable at the system level (e.g. an atomic DB transaction
 > that cannot be split). Convenience and data flow alone do not justify a new monolithic tool.
 
-#### One single main process (ground truth)
+#### One global orchestrator, bounded tasks (binding target architecture)
 
-From the user input that triggers the InputStage, the **entire processing of
-that input is one sole process** — the **main process**, orchestrated and
-supervised by Monty from the very start. It is one long-persisting process that
-runs **until the user's prompt has been answered**, preferably in the best
-possible way (that is what the kohai/sempai system is mainly for). Then history
-is stored and the main process exits.
+**Exactly one global Monty orchestrator starts during system startup and runs
+in the background until the BrassClaw instance shuts down.** It is the Monty
+VM executing the Python orchestrator body, hosted by Rust; it need not be a
+separate OS process. Startup completes migrations, component seeding and
+integrity verification, then loads and starts Monty before enabling turn
+workers, trigger producers or ingress. Readiness means that the global VM is
+alive and waiting for work, not merely that its driver was constructed.
 
-Only the **basic mode's beginning** is built-in (Phase 1: receive the user's
-prompt, start the main process, hand off to Phase 2). Everything else is
+Every admitted input becomes a task of that existing orchestrator. Finishing a
+reply stores the task history and ends that task; **it does not end or recreate
+the global VM**. When idle, Monty awaits work without busy polling or LLM calls.
+Only instance shutdown or supervised fatal-runtime recovery replaces the VM.
+
+Global lifetime does not imply shared task context: each work item retains its
+conversation, run and exact input-message identity, history, continuations,
+reply target, signals and per-invocation authority. Tool bindings and task-local
+state are released at task completion. Approval/auth/child-run waits must not
+block the events needed to resume them or unrelated admitted work. Rust hosts
+the VM, transports work and enforces kernel boundaries; Python/Recipes sequence
+the work. A Rust queue consumer must not become a second recipe/agent loop.
+
+**Implementation gap:** current code creates chat-keyed sessions on first use
+(`PersistentMontyDriver` + `MontySessionRegistry<TurnScope, MontySession>`).
+That lifecycle must be replaced as specified in `simplified_v3.md` Phase 3a.
+This target contract supersedes older lifecycle descriptions in crate docs and
+plans; the current implementation is not evidence that per-chat VMs are desired.
+
+Only the **basic mode's beginning** is built-in (boot the global orchestrator,
+receive an admitted work item, establish its task context, hand off to Phase 2).
+Everything else is
 **Instructions** — a component, most often a **Recipe**, but also possibly an
 **Action** or other instruction component. From Phase 2 onward (intent
 matching, Matching-Mode, Non-Matching-Mode, validation, component-creation,
 kohai-sempai) it is all instruction/recipe-driven, so functionality changes
 need **no code changes — only the recipe is altered**.
 
-#### Phase 1 — start (built-in, the one exception)
+#### Phase 1 — boot once, receive work (built-in, the one exception)
 
-Monty starts (the information for Monty to run Phase 1 is built-in, not a
-recipe — this is the one built-in exception). The main process receives the
-user's input and **starts the intent-matching-system**.
+Monty starts once at system startup after the verified component library is
+available. On each admitted input the already-running orchestrator receives a
+work item, establishes its explicit task context and **starts the
+intent-matching-system**. Starting a task never starts another global
+orchestrator. The boot/receive mechanism is the built-in exception, not a Recipe.
 
 #### Phase 2 — intent match (recipe-driven in principle; Rust today)
 
@@ -273,11 +300,11 @@ the intent system uses the **already-existing Rust** implementation
 recipe/instruction-driven second-VM version is **future work** — only do what
 is necessary for a working intent system. The intent system tries to find a
 match and returns either a **matching id** (or whatever identifies the match
-exactly) or a **"no match"** message back to the orchestrating main process.
+exactly) or a **"no match"** message back to the global orchestrator's active task.
 
 #### Phase 3 — dispatch
 
-**Case 1 — Match → Matching-Mode.** The main process receives a component-id
+**Case 1 — Match → Matching-Mode.** The active task receives a component-id
 and switches into Matching-Mode:
 
 1. The id is sent to the **IBS** via the composition system.
@@ -289,7 +316,8 @@ and switches into Matching-Mode:
 4. The Orchestrator runs `orchestrator_steps` in sequence: each step is either
    a PythonCode snippet (which calls `host.<tool>(...)`), a Skill loaded as LLM
    context, or a Tier-1 LLM step. The final step posts the reply to the user.
-5. History is stored and the main process exits.
+5. History is stored, task-local bindings/context are released, and the task
+   completes. Global Monty remains alive to receive further work.
 
 Matching-Mode covers both deterministic and LLM-guided recipes — the recipe
 itself decides whether the LLM is needed:
@@ -310,10 +338,10 @@ assembled by the orchestrator:
    the LLM's answer is very fast while having access to information starting at
    roughly **250k tokens** and pushable up to **1 million** prefix tokens.
 
-The main process posts the LLM's answer into the user-chat, then saves a
+The global orchestrator posts the task's LLM answer into its originating chat, then saves a
 **thorough history** so the **kohai/sempai system can build new intents,
 skills, recipes, tools and other components**, so that **next time the LLM is
-not needed anymore**. (Future, planned: the main process is available for LLM
+not needed anymore**. (Future, planned: the global orchestrator is available for LLM
 calls **via MCP** to gather information or do whatever the LLM needs — still
 routed through the orchestrator, never a classical direct-MCP execution path.)
 
@@ -340,7 +368,7 @@ The **kohai is always the last one** working on an LLM prompt, because it
 A Recipe's `step_descriptions` declares which ToolSkills it needs. IBS adds
 them to `rust_steps`. The composition system then **binds** each into the Monty
 namespace for this turn — making `host.<tool>` callable. At the end of the
-main-process task those bindings are **unloaded**.
+task those bindings are **unloaded**; the global orchestrator remains alive.
 
 - **Built-in Tools** — precompiled into the Rust binary; always registered.
   Their ToolSkills are seeded in `builtin_bootstrap.rs`.
@@ -523,17 +551,17 @@ State transitions enforced by `is_valid_transition` in `brassclaw_product_workfl
 
 ### Monty VM Settings (§3.10)
 
-`PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (V034 migration). `max_duration_secs` bounds the Orchestrator's main-process turn. The legacy `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` env var is a DB-less fallback only.
+`PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (V034 migration). `max_duration_secs` bounds one task's execution, never the global orchestrator's uptime or idle wait. Memory, allocations, stdout and token accounting must distinguish task budgets from bounded global-service storage. The current `LimitedTracker` lifetime must be audited before reusing it in a global VM; do not assume its counters reset on resume. The legacy `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` env var is a DB-less fallback only.
 
 ### Orchestrator Code Load Path
 
-The orchestrator code body (`basic_mode.py`) is loaded at session start via `OrchestratorCodePort` (engine-side port, `orchestrator_code_port.rs`), implemented by `PgOrchestratorCodePort` (`brassclaw_reborn_composition`, gated `postgres+skills-db`). The body is stored as a class-10 `reborn_skills` row with `name='orchestrator:main'`, `source='system'`, seeded by `seed_orchestrator()` in `builtin_bootstrap.rs`. There is no compiled-in fallback — a missing DB row produces `OrchestratorCodeError::NotFound` (run `brassclaw repair` to restore). The failure-count/version-rollback mechanism (`MAX_FAILURES_BEFORE_ROLLBACK`, `load_orchestrator_from_docs`, `record_orchestrator_failure`) was removed; failure handling is Tier-2 degradation only.
+The orchestrator code body (`basic_mode.py`) must be loaded at global-service startup, after integrity verification, via `OrchestratorCodePort` (engine-side port, `orchestrator_code_port.rs`), implemented by `PgOrchestratorCodePort` (`brassclaw_reborn_composition`, gated `postgres+skills-db`). The body is stored as a class-10 `reborn_skills` row with `name='orchestrator:main'`, `source='system'`, seeded by `seed_orchestrator()` in `builtin_bootstrap.rs`. There is no compiled-in fallback — a missing DB row produces `OrchestratorCodeError::NotFound` (run `brassclaw repair` to restore) and must prevent readiness. A live service pins its verified code version; code replacement requires a controlled restart with task reconciliation. Fatal VM failure is a service failure, not a Tier-2 fallback or permission to replay external effects. Current per-conversation loading is an implementation gap addressed in `simplified_v3.md` Phase 3a.
 
 The preamble/postamble (`codeact_preamble`, `codeact_postamble`) are also class-10 rows seeded by `seed_orchestrator()`. They reach the LLM via the Kohai prefix bundle assembled by `do_assemble_bundle` in `interceptor_config_service.rs` — not per-turn by the executor. No `OnceLock` or `init_*` call is needed for them; the bundle assembler queries `reborn_skills` directly.
 
 ### Boot Sequence (seeding + integrity)
 
-The seeding boot chain lives in `crates/brassclaw_reborn_composition/src/webui.rs`, within the `#[cfg(feature = "postgres")]` block. Driver port wiring happens separately in `runtime.rs` at `PersistentMontyDriver::new()`. Sequence:
+Today the seeding boot chain lives in `crates/brassclaw_reborn_composition/src/webui.rs`, within the `#[cfg(feature = "postgres")]` block, and driver construction happens separately in `runtime.rs`. The target moves these prerequisites to one shared composition boot path, used by every long-running product entry point; WebUI construction only attaches its facade. Required target order (see `simplified_v3.md` Phase 3a):
 
 ```
 BootedDb::from_migrated_pool(pool)   ← type-level proof migrations completed
@@ -546,8 +574,11 @@ BootedDb::from_migrated_pool(pool)   ← type-level proof migrations completed
   → init_compaction_summarizer(body)          ← OnceLock: compaction_summarizer_fresh
   → init_sempai_persona(body)  [root-llm-provider]  ← OnceLock: sempai_audit
   → init_directions(general, researcher, explorer, coder)  ← OnceLock: direction prompts
-  [remaining webui.rs wiring ...]
-  → RebornWebuiBundle returned to caller
+  → wire host/component/Kohai ports without starting work producers
+  → load verified orchestrator:main via OrchestratorCodePort
+  → start exactly one global Monty; await its initial work-wait handshake
+  → enable turn workers and configured trigger/channel producers
+  → expose ready ingress / attach RebornWebuiBundle
 ```
 
 `BootedDb` (`crates/brassclaw_reborn_composition/src/booted_db.rs`) is a newtype that enforces migration-before-seeding at the type level. `run_content_integrity_check` (`content_integrity.rs`) is **distinct** from `run_boot_integrity_check` (`boot_integrity.rs`) — the former checks SHA-256 prose checksums, the latter re-queues non-validated components.

@@ -4,9 +4,8 @@ use super::*;
 /// the ModelFailureExplanationProvider.  Safe to call multiple times; subsequent
 /// calls are silently ignored by the OnceLock.
 fn init_test_failure_explanation() {
-    const SEED: &str = include_str!(
-        "../../../../brassclaw_loop_support/prompts/failure_explanation.md"
-    );
+    const SEED: &str =
+        include_str!("../../../../brassclaw_loop_support/prompts/failure_explanation.md");
     brassclaw_loop_support::init_failure_explanation_prompt(SEED.to_string());
 }
 

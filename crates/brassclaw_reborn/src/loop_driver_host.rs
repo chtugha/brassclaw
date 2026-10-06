@@ -79,13 +79,11 @@ static COMPACTION_SUMMARIZER: std::sync::OnceLock<String> = std::sync::OnceLock:
 /// function.  This will happen in test contexts unless the test initialises
 /// the prompt; the panic message identifies the fix.
 pub fn compaction_summarizer_prompt() -> &'static str {
-    COMPACTION_SUMMARIZER
-        .get()
-        .expect(
-            "compaction_summarizer not initialised; \
+    COMPACTION_SUMMARIZER.get().expect(
+        "compaction_summarizer not initialised; \
              call brassclaw_reborn::loop_driver_host::init_compaction_summarizer() \
              at boot (after run_content_integrity_check in webui.rs)",
-        )
+    )
 }
 
 /// Initialise the compaction summarizer prompt from the DB row loaded at boot.
@@ -2417,13 +2415,11 @@ static SEMPAI_PERSONA: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 /// the panic message identifies the fix.
 #[cfg(feature = "root-llm-provider")]
 pub fn sempai_persona() -> &'static str {
-    SEMPAI_PERSONA
-        .get()
-        .expect(
-            "sempai_persona not initialised; \
+    SEMPAI_PERSONA.get().expect(
+        "sempai_persona not initialised; \
              call brassclaw_reborn::loop_driver_host::init_sempai_persona() \
              at boot (after run_content_integrity_check in webui.rs)",
-        )
+    )
 }
 
 /// Initialise the Sempai persona prompt from the DB row loaded at boot.
@@ -2720,6 +2716,11 @@ where
             claimed.resolved_run_profile.clone(),
         )
         .with_accepted_message_ref(claimed.state.accepted_message_ref.clone());
+        if claimed.state.source_binding_ref.as_str()
+            == brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING
+        {
+            loop_run_context = loop_run_context.with_trusted_internal_turn();
+        }
         if let Some(actor) = claimed.state.actor.clone() {
             loop_run_context = loop_run_context.with_actor(actor);
         }

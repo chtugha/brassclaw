@@ -163,7 +163,7 @@ pub struct ValidationQueueItem {
     pub class_label: String,
     /// Derived queue bucket: "q1_auto" | "q2_manual" | "q3_revision" | "q4_rejection".
     pub queue_code: String,
-    /// True when the `05:validator` consumer tag is present — greys out delivery.
+    /// True when the `05:validator` workflow tag is present.
     pub validator_tag_present: bool,
     /// All consumer tags on this component row (e.g. `["01:monty", "05:validator"]`).
     pub consumer_tags: Vec<String>,

@@ -138,9 +138,13 @@ fn build_integrity_query() -> String {
 pub(crate) async fn run_boot_integrity_check(
     booted_db: &crate::booted_db::BootedDb,
 ) -> Result<u64, BootIntegrityError> {
-    let client = booted_db.pool().get().await.map_err(|e| BootIntegrityError::Pool {
-        reason: e.to_string(),
-    })?;
+    let client = booted_db
+        .pool()
+        .get()
+        .await
+        .map_err(|e| BootIntegrityError::Pool {
+            reason: e.to_string(),
+        })?;
 
     let sql = build_integrity_query();
     let rows = client

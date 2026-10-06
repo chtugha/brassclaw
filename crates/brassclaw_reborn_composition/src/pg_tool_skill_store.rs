@@ -122,7 +122,8 @@ impl PgToolSkillStore {
                      tool_name, param_schema, param_template,
                      consumer_tags, intent_examples, source, validation_status,
                      includes, content_checksum)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+                         CASE WHEN $15 = 'system' THEN 'validated' ELSE $16 END,$17,$18)
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",

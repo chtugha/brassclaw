@@ -35,7 +35,8 @@ use brassclaw_product_workflow::{
 
 use crate::db_config::{ConfigWriteContext, save_config_key};
 #[cfg(feature = "postgres")]
-use crate::pg_basic_prompt_store::{PgBasicPromptStore, compute_fingerprint};
+use crate::pg_basic_prompt_store::PgBasicPromptStore;
+use crate::runtime::{InternalTurnOptions, RebornRuntime};
 
 /// Minimum interval between `regenerate_prefix` calls per caller.
 const RATE_LIMIT_INTERVAL: Duration = Duration::from_secs(60);
@@ -58,7 +59,8 @@ const PREFIX_NAME_BASE_PROMPT: &str = "base-prompt";
 ///
 /// SECURITY: `table_name` and `content_expr` must always be `&'static str`
 /// literals — never user input.  They are interpolated into SQL via `format!()`.
-const COMPONENT_TABLES: &[(&str, u16, &str)] = &[
+#[cfg(test)]
+pub(crate) const COMPONENT_TABLES: &[(&str, u16, &str)] = &[
     // skills / scaffolds use the `body` column
     (
         "reborn_skills",
@@ -141,21 +143,10 @@ const COMPONENT_TABLES: &[(&str, u16, &str)] = &[
         23,
         "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)",
     ), // Phase C
-    // future-phase tables; skipped when absent
-    (
-        "reborn_orchestrators",
-        10,
-        "COALESCE(NULLIF(prior_knowledge_content,''), body)",
-    ),
-    (
-        "reborn_scaffolds",
-        50,
-        "COALESCE(NULLIF(prior_knowledge_content,''), body)",
-    ),
 ];
 
 /// Class code → human-readable type label for bundle headers.
-fn class_label(class_code: u16) -> &'static str {
+pub(crate) fn class_label(class_code: u16) -> &'static str {
     match class_code {
         0 => "Tool",
         1 => "Skill",
@@ -189,6 +180,29 @@ fn class_label(class_code: u16) -> &'static str {
 /// Per-caller rate-limit state.
 type RateLimitState = Arc<tokio::sync::Mutex<HashMap<String, Instant>>>;
 
+#[cfg(feature = "postgres")]
+struct PrefixScopeLeaseGuard {
+    store: crate::pg_prefix_scope_ticket::PgPrefixScopeTicketStore,
+    permit: crate::pg_prefix_scope_ticket::PrefixScopeTicket,
+    token: uuid::Uuid,
+}
+
+#[cfg(feature = "postgres")]
+impl Drop for PrefixScopeLeaseGuard {
+    fn drop(&mut self) {
+        let store = self.store.clone();
+        let permit = self.permit.clone();
+        let token = self.token;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                if let Err(error) = store.release_lease(&permit, token).await {
+                    tracing::debug!(%error, "prefix regeneration lease release failed; lease will expire");
+                }
+            });
+        }
+    }
+}
+
 /// Composition-side [`InterceptorConfigService`] implementation.
 pub struct RebornInterceptorConfigService {
     pool: Arc<PgPool>,
@@ -196,14 +210,20 @@ pub struct RebornInterceptorConfigService {
     interceptor_mode: Option<SharedInterceptorMode>,
     sempai_gateway: Option<Arc<dyn brassclaw_loop_support::HostManagedModelGateway>>,
     regenerate_rate_limit: RateLimitState,
+    runtime: Option<std::sync::Weak<RebornRuntime>>,
     /// Pre-assembled bundle store (reads/writes `reborn_basic_prompt_store`).
     #[cfg(feature = "postgres")]
     pg_basic_prompt_store: Option<Arc<PgBasicPromptStore>>,
+    #[cfg(feature = "postgres")]
+    scope_tickets: crate::pg_prefix_scope_ticket::PgPrefixScopeTicketStore,
 }
 
 impl RebornInterceptorConfigService {
     pub fn new(pool: Arc<PgPool>, tenant_id: impl Into<String>) -> Self {
         let tenant_id = tenant_id.into();
+        #[cfg(feature = "postgres")]
+        let scope_tickets =
+            crate::pg_prefix_scope_ticket::PgPrefixScopeTicketStore::new(Arc::clone(&pool));
         #[cfg(feature = "postgres")]
         let store = Some(Arc::new(PgBasicPromptStore::new(
             Arc::clone(&pool),
@@ -216,9 +236,25 @@ impl RebornInterceptorConfigService {
             interceptor_mode: None,
             sempai_gateway: None,
             regenerate_rate_limit: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            runtime: None,
             #[cfg(feature = "postgres")]
             pg_basic_prompt_store: store,
+            #[cfg(feature = "postgres")]
+            scope_tickets,
         }
+    }
+
+    pub fn with_runtime(mut self, runtime: Arc<RebornRuntime>) -> Self {
+        #[cfg(feature = "postgres")]
+        if self.pg_basic_prompt_store.is_some() {
+            self.pg_basic_prompt_store = Some(Arc::new(PgBasicPromptStore::new(
+                Arc::clone(&self.pool),
+                self.tenant_id.clone(),
+                runtime.webui_agent_id(),
+            )));
+        }
+        self.runtime = Some(Arc::downgrade(&runtime));
+        self
     }
 
     pub fn with_interceptor_mode(mut self, mode: SharedInterceptorMode) -> Self {
@@ -278,142 +314,11 @@ impl RebornInterceptorConfigService {
         Ok(())
     }
 
-    /// Assemble the bundle from component tables, store it in `PgBasicPromptStore`,
-    /// and return `(bundle_text, fingerprint, generation_ms)`.
-    ///
-    /// Checks `information_schema.tables` before querying each table so
-    /// future-phase tables (not yet deployed) are skipped gracefully.
-    ///
-    /// The bundle text is stored — this is called only on operator demand (not per-turn).
-    async fn do_assemble_bundle(
-        &self,
-        user_id: &str,
-        project_id: &str,
-        with_prewarm: bool,
-    ) -> Result<(String, String, i64), InterceptorConfigServiceError> {
-        let assembly_start = std::time::Instant::now();
-        tracing::debug!(user_id, project_id, "do_assemble_bundle: starting");
-        let client = self.pool.get().await.map_err(|e| {
-            tracing::warn!(error = %e, "do_assemble_bundle: db pool unavailable");
-            InterceptorConfigServiceError::Unavailable
-        })?;
-
-        // Discover which component tables actually exist.
-        let table_names: Vec<&str> = COMPONENT_TABLES.iter().map(|(t, _, _)| *t).collect();
-        let table_rows = client
-            .query(
-                "SELECT table_name FROM information_schema.tables \
-                 WHERE table_schema = 'public' \
-                   AND table_type = 'BASE TABLE' \
-                   AND table_name = ANY($1)",
-                &[&table_names],
-            )
-            .await
-            .map_err(|e| {
-                tracing::debug!(error = %e, "do_assemble_bundle: information_schema query failed");
-                InterceptorConfigServiceError::Unavailable
-            })?;
-
-        let existing_tables: std::collections::HashSet<String> = table_rows
-            .iter()
-            .filter_map(|r| r.try_get::<_, String>("table_name").ok())
-            .collect();
-
-        let mut parts: Vec<(u16, u32, String, String)> = Vec::new(); // (class_code, prompt_uid, name, content)
-
-        for &(table, class_code, content_expr) in COMPONENT_TABLES {
-            if !existing_tables.contains(table) {
-                continue;
-            }
-            let rows = client
-                .query(
-                    &format!(
-                        "SELECT prompt_uid, name, \
-                                ({content_expr}) AS content \
-                         FROM {table} \
-                         WHERE validation_status = 'validated' \
-                           AND NOT ('05:validator' = ANY(COALESCE(consumer_tags, ARRAY[]::text[]))) \
-                         ORDER BY prompt_uid ASC \
-                         LIMIT 1000"
-                    ),
-                    &[],
-                )
-                .await;
-            let rows = match rows {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::debug!(table, error = %e, "interceptor assemble: skip table");
-                    continue;
-                }
-            };
-            for row in rows {
-                let prompt_uid: i64 = match row.try_get("prompt_uid") {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::debug!(table, error = %e, "interceptor assemble: skip row (prompt_uid)");
-                        continue;
-                    }
-                };
-                let name: String = match row.try_get("name") {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::debug!(table, error = %e, "interceptor assemble: skip row (name)");
-                        continue;
-                    }
-                };
-                let content: String = match row.try_get("content") {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::debug!(table, error = %e, "interceptor assemble: skip row (content)");
-                        continue;
-                    }
-                };
-                parts.push((class_code, prompt_uid as u32, name, content));
-            }
-        }
-
-        // Sort by (class_code ASC, prompt_uid ASC) — deterministic token order.
-        parts.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-
-        let bundle = Self::do_format_bundle(&parts);
-        let fingerprint = compute_fingerprint(&bundle);
-        let generation_ms = assembly_start.elapsed().as_millis() as i64;
-
-        tracing::debug!(
-            user_id,
-            project_id,
-            parts = parts.len(),
-            generation_ms,
-            "do_assemble_bundle: assembled bundle, storing"
-        );
-
-        // Store the bundle text so per-turn calls can read it cheaply.
-        // This is fatal — a bundle that isn't persisted will appear to succeed
-        // to the caller but won't survive a page reload.
-        #[cfg(feature = "postgres")]
-        if let Some(store) = &self.pg_basic_prompt_store {
-            store
-                .store(user_id, project_id, &bundle, with_prewarm, Some(generation_ms))
-                .await
-                .map_err(|e| {
-                    tracing::warn!(error = %e, user_id, project_id, "do_assemble_bundle: store() FAILED — bundle not persisted");
-                    InterceptorConfigServiceError::Unavailable
-                })?;
-            tracing::debug!(
-                user_id,
-                project_id,
-                generation_ms,
-                "do_assemble_bundle: bundle stored successfully"
-            );
-        }
-
-        Ok((bundle, fingerprint, generation_ms))
-    }
-
     /// Convert the sorted row set into the final bundle string.
     ///
     /// Pure-Rust formatter for Phase K.1. Swappable for a class-22 PythonCode
     /// component once it passes Q1+Q2 (Phase L bootstrap, §0.23.4).
+    #[cfg(test)]
     fn do_format_bundle(parts: &[(u16, u32, String, String)]) -> String {
         let mut buf = String::new();
         for (class_code, prompt_uid, name, content) in parts {
@@ -512,10 +417,15 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
 
     async fn list_prefix_entries(
         &self,
-        _caller: WebUiAuthenticatedCaller,
+        caller: WebUiAuthenticatedCaller,
         user_id: &str,
         project_id: &str,
     ) -> Result<PrefixListResponse, InterceptorConfigServiceError> {
+        if caller.tenant_id.as_str() != self.tenant_id || caller.user_id.as_str() != user_id {
+            return Err(InterceptorConfigServiceError::InvalidRequest {
+                reason: "prefix scope must match the authenticated caller".into(),
+            });
+        }
         #[cfg(feature = "postgres")]
         {
             let entry = if let Some(store) = &self.pg_basic_prompt_store {
@@ -571,115 +481,141 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             });
         }
 
+        if caller.tenant_id.as_str() != self.tenant_id || caller.user_id.as_str() != user_id {
+            return Err(InterceptorConfigServiceError::InvalidRequest {
+                reason: "prefix scope must match the authenticated caller".into(),
+            });
+        }
         let caller_id = caller.user_id.to_string();
         self.check_rate_limit(&self.regenerate_rate_limit, &caller_id)
             .await?;
 
-        // Assemble and store the bundle (with_prewarm=false initially; updated below if gateway succeeds).
-        let (bundle, fingerprint, generation_ms) =
-            self.do_assemble_bundle(user_id, project_id, false).await?;
-
-        // Pre-warm the Sempai gateway so vLLM allocates KV blocks.
-        let mut with_prewarm = false;
-        if let Some(gateway) = &self.sempai_gateway {
-            use brassclaw_loop_support::{
-                HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
-            };
-            use brassclaw_turns::{LoopMessageRef, TurnId, TurnRunId, run_profile::ModelProfileId};
-
-            let profile_id = ModelProfileId::new("sempai_model").map_err(|e| {
-                InterceptorConfigServiceError::InvalidRequest {
-                    reason: format!("model profile id: {e}"),
-                }
-            })?;
-            let content_ref =
-                LoopMessageRef::new("msg:interceptor.regenerate-prefix").map_err(|e| {
-                    InterceptorConfigServiceError::InvalidRequest {
-                        reason: format!("message ref: {e}"),
-                    }
-                })?;
-            let request = HostManagedModelRequest {
-                model_profile_id: profile_id,
-                messages: vec![HostManagedModelMessage {
-                    role: HostManagedModelMessageRole::System,
-                    content: bundle,
-                    content_ref,
-                    tool_result_provider_call: None,
-                    tool_result_content: None,
-                }],
-                surface_version: None,
-                resolved_model_route: None,
-                run_id: TurnRunId::new(),
-                turn_id: TurnId::new(),
-            };
-
-            match gateway.stream_model(request).await {
-                Ok(_) => {
-                    with_prewarm = true;
-                }
-                Err(e) => {
-                    tracing::debug!(
-                        error = %e,
-                        "regenerate_prefix: gateway prewarm failed (non-fatal)"
-                    );
-                }
-            }
-
-            // Re-store with prewarm=true to update prewarm_last_at.
-            // generation_ms is not re-measured here — it was captured during assembly above.
-            #[cfg(feature = "postgres")]
-            if let Some(store) = &self.pg_basic_prompt_store
-                && let Ok(Some(entry)) = store.get_for_scope(user_id, project_id).await
-                && let Err(e) = store
-                    .store(
-                        user_id,
-                        project_id,
-                        &entry.bundle,
-                        true,
-                        entry.generation_ms,
-                    )
-                    .await
-            {
-                // Re-assemble is not needed; re-read the already-stored bundle and call store() with prewarm=true.
-                tracing::debug!(error = %e, "regenerate_prefix: re-store with prewarm failed");
-            }
-        }
-
-        // Read the final row timestamps for the response.
-        #[cfg(feature = "postgres")]
-        let (assembled_at, prewarm_last_at_str) = if let Some(store) = &self.pg_basic_prompt_store {
-            match store.get_for_scope(user_id, project_id).await {
-                Ok(Some(entry)) => (
-                    entry
-                        .assembled_at
-                        .map(|t| t.to_rfc3339())
-                        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-                    entry.prewarm_last_at.map(|t| t.to_rfc3339()),
-                ),
-                _ => (chrono::Utc::now().to_rfc3339(), None),
-            }
-        } else {
-            (chrono::Utc::now().to_rfc3339(), None)
-        };
         #[cfg(not(feature = "postgres"))]
-        let (assembled_at, prewarm_last_at_str): (String, Option<String>) = (
-            chrono::Utc::now().to_rfc3339(),
-            if with_prewarm {
-                Some(chrono::Utc::now().to_rfc3339())
-            } else {
-                None
-            },
-        );
+        return Err(InterceptorConfigServiceError::Unavailable);
 
-        let _ = with_prewarm; // suppress unused warning on non-postgres builds
+        #[cfg(feature = "postgres")]
+        {
+            let runtime = self
+                .runtime
+                .as_ref()
+                .and_then(std::sync::Weak::upgrade)
+                .ok_or(InterceptorConfigServiceError::Unavailable)?;
+            let agent_id = runtime.webui_agent_id();
+            let conversation = runtime
+                .new_internal_conversation(&self.tenant_id, user_id, project_id)
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+            let request_id = uuid::Uuid::new_v4();
+            let scope_ticket = uuid::Uuid::new_v4().to_string();
+            let permit = crate::pg_prefix_scope_ticket::PrefixScopeTicket {
+                tenant_id: self.tenant_id.clone(),
+                user_id: user_id.to_string(),
+                agent_id: agent_id.to_string(),
+                project_id: project_id.to_string(),
+                conversation_id: conversation.0.as_str().to_string(),
+                request_id,
+            };
+            let lease_token = self
+                .scope_tickets
+                .acquire_lease(&permit)
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+            let _lease_guard = PrefixScopeLeaseGuard {
+                store: self.scope_tickets.clone(),
+                permit: permit.clone(),
+                token: lease_token,
+            };
+            self.scope_tickets
+                .issue(&scope_ticket, &permit)
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+            let reply = runtime
+                .send_internal_user_message(
+                    &conversation,
+                    &format!("regenerate prefix bundle ticket={scope_ticket}"),
+                    InternalTurnOptions {
+                        hard_fail_on_recipe_miss: true,
+                        allow_tier_two: false,
+                    },
+                )
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+            if !reply.is_successful_final_reply() {
+                return Err(InterceptorConfigServiceError::Unavailable);
+            }
 
-        Ok(PrefixRegenerateResponse {
-            name: PREFIX_NAME_BASE_PROMPT.to_string(),
-            fingerprint,
-            assembled_at,
-            prewarm_last_at: prewarm_last_at_str,
-            generation_ms: Some(generation_ms),
-        })
+            let store = self
+                .pg_basic_prompt_store
+                .as_ref()
+                .ok_or(InterceptorConfigServiceError::Unavailable)?;
+            let entry = store
+                .get_for_scope(user_id, project_id)
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?
+                .filter(|entry| entry.generation_id == Some(request_id))
+                .ok_or(InterceptorConfigServiceError::Unavailable)?;
+
+            let mut with_prewarm = false;
+            if let Some(gateway) = &self.sempai_gateway {
+                use brassclaw_loop_support::{
+                    HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
+                };
+                use brassclaw_turns::{
+                    LoopMessageRef, TurnId, TurnRunId, run_profile::ModelProfileId,
+                };
+                let profile_id = ModelProfileId::new("sempai_model")
+                    .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+                let content_ref = LoopMessageRef::new("msg:interceptor.regenerate-prefix")
+                    .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+                let request = HostManagedModelRequest {
+                    model_profile_id: profile_id,
+                    messages: vec![HostManagedModelMessage {
+                        role: HostManagedModelMessageRole::System,
+                        content: entry.bundle.clone(),
+                        content_ref,
+                        tool_result_provider_call: None,
+                        tool_result_content: None,
+                    }],
+                    surface_version: None,
+                    resolved_model_route: None,
+                    run_id: TurnRunId::new(),
+                    turn_id: TurnId::new(),
+                };
+                if gateway.stream_model(request).await.is_ok() {
+                    with_prewarm = true;
+                    store
+                        .store(
+                            user_id,
+                            project_id,
+                            &entry.bundle,
+                            true,
+                            entry.generation_ms,
+                            request_id,
+                        )
+                        .await
+                        .map_err(|_| InterceptorConfigServiceError::Unavailable)?;
+                }
+            }
+            let final_entry = store
+                .get_for_scope(user_id, project_id)
+                .await
+                .map_err(|_| InterceptorConfigServiceError::Unavailable)?
+                .filter(|entry| entry.generation_id == Some(request_id))
+                .ok_or(InterceptorConfigServiceError::Unavailable)?;
+            let assembled_at = final_entry
+                .assembled_at
+                .map(|t| t.to_rfc3339())
+                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+            let prewarm_last_at = final_entry.prewarm_last_at.map(|t| t.to_rfc3339());
+            let _ = with_prewarm;
+            Ok(PrefixRegenerateResponse {
+                name: PREFIX_NAME_BASE_PROMPT.to_string(),
+                fingerprint: final_entry.fingerprint,
+                assembled_at,
+                prewarm_last_at,
+                generation_ms: final_entry.generation_ms,
+            })
+        }
     }
 }
 

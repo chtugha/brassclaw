@@ -84,9 +84,8 @@ fn test_scope() -> ComponentScope {
 }
 
 /// Insert a validated `reborn_python_code` row that is deliverable to
-/// `02:orchestrator` — `validation_status = 'validated'` and NO `05:validator`
-/// tag, so the SEC-01 delivery gate (`'05:validator' != ALL(consumer_tags)`)
-/// passes. UUID-derived name keeps parallel runs off the `UNIQUE(scope, name)`
+/// `02:orchestrator` — `validation_status = 'validated'` and the matching
+/// consumer tag. The validator tag is workflow metadata. UUID-derived name keeps parallel runs off the `UNIQUE(scope, name)`
 /// constraint. Returns the assigned UUID.
 async fn insert_validated_python_code(
     pool: &deadpool_postgres::Pool,

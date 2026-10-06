@@ -12,6 +12,7 @@ mod http_output;
 mod json;
 mod memory;
 mod model_visible_output;
+mod prefix_bundle;
 mod schemas;
 mod shell;
 mod spawn_subagent;
@@ -54,6 +55,11 @@ pub use json::JSON_CAPABILITY_ID;
 pub use memory::{
     MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID,
     MEMORY_WRITE_CAPABILITY_ID,
+};
+pub use prefix_bundle::{
+    PrefixBundleCapabilityError, PrefixBundleCapabilityState, STORE_PREFIX_BUNDLE_CAPABILITY_ID,
+    SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID, StorePrefixBundleBackend, StorePrefixBundleResult,
+    SweepValidatedComponentsBackend, SweepValidatedComponentsResult,
 };
 pub use shell::SHELL_CAPABILITY_ID;
 pub use spawn_subagent::SPAWN_SUBAGENT_CAPABILITY_ID;
@@ -169,6 +175,7 @@ pub fn builtin_first_party_package() -> Result<ExtensionPackage, ExtensionError>
                     spawn_subagent::manifest()?,
                 ];
                 capabilities.extend(memory::manifests()?);
+                capabilities.extend(prefix_bundle::manifests()?);
                 capabilities.extend(coding_manifests()?);
                 capabilities.extend(trigger_management::manifests()?);
                 capabilities
@@ -299,6 +306,14 @@ fn builtin_first_party_registry_from_tools(
         CapabilityId::new(COMPONENT_DB_CAPABILITY_ID)?,
         handler.clone(),
     );
+    registry.insert_handler(
+        CapabilityId::new(SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID)?,
+        handler.clone(),
+    );
+    registry.insert_handler(
+        CapabilityId::new(STORE_PREFIX_BUNDLE_CAPABILITY_ID)?,
+        handler.clone(),
+    );
     Ok(registry)
 }
 
@@ -335,6 +350,7 @@ pub struct BuiltinFirstPartyTools {
     coding_state: CodingCapabilityState,
     memory_state: memory::MemoryCapabilityState,
     component_db_state: component_db::ComponentDbState,
+    prefix_bundle_state: prefix_bundle::PrefixBundleCapabilityState,
 }
 
 impl BuiltinFirstPartyTools {
@@ -371,6 +387,17 @@ impl BuiltinFirstPartyTools {
     /// remain available without a wired backend (pure Rust, no DB).
     pub fn with_component_db(mut self, backend: Arc<dyn component_db::ComponentDbBackend>) -> Self {
         self.component_db_state = component_db::ComponentDbState::with_backend(backend);
+        self
+    }
+
+    /// Wire the validated-prefix assembly and storage operations.
+    pub fn with_prefix_bundle_backends(
+        mut self,
+        sweep: Arc<dyn prefix_bundle::SweepValidatedComponentsBackend>,
+        store: Arc<dyn prefix_bundle::StorePrefixBundleBackend>,
+    ) -> Self {
+        self.prefix_bundle_state =
+            prefix_bundle::PrefixBundleCapabilityState::with_backends(sweep, store);
         self
     }
 }
@@ -432,6 +459,16 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
                     component_db::dispatch(&self.component_db_state, &request.input).await?;
                 (output, None)
             }
+            SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID | STORE_PREFIX_BUNDLE_CAPABILITY_ID => (
+                prefix_bundle::dispatch(
+                    &self.prefix_bundle_state,
+                    request.capability_id.as_str(),
+                    &request.input,
+                    &request.scope,
+                )
+                .await?,
+                None,
+            ),
             capability_id => {
                 let Some(metadata) = coding_capability_metadata(capability_id) else {
                     return Err(FirstPartyCapabilityError::new(

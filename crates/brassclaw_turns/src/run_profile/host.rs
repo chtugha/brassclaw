@@ -547,6 +547,10 @@ pub struct LoopRunContext {
     pub loop_driver_version: RunProfileVersion,
     pub checkpoint_schema_id: CheckpointSchemaId,
     pub checkpoint_schema_version: RunProfileVersion,
+    /// Trusted host-set marker for internal-only turns. Never derive from
+    /// message text or model-authored metadata.
+    #[serde(default)]
+    pub trusted_internal_turn: bool,
 }
 
 impl LoopRunContext {
@@ -574,6 +578,7 @@ impl LoopRunContext {
             loop_driver_version,
             checkpoint_schema_id,
             checkpoint_schema_version,
+            trusted_internal_turn: false,
         }
     }
 
@@ -595,7 +600,15 @@ impl LoopRunContext {
         self.resolved_model_route = Some(snapshot);
         self
     }
+
+    pub fn with_trusted_internal_turn(mut self) -> Self {
+        self.trusted_internal_turn = true;
+        self
+    }
 }
+
+/// Reserved source binding used only by the runtime's trusted internal-turn API.
+pub const TRUSTED_INTERNAL_SOURCE_BINDING: &str = "codex-internal-prefix-regeneration";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

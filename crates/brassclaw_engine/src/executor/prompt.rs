@@ -10,7 +10,8 @@
 //!
 //! The CodeAct preamble (`codeact_preamble`) and postamble (`codeact_postamble`)
 //! are seeded as class-10 `reborn_skills` rows by `builtin_bootstrap.rs` and
-//! flow to the LLM via the Kohai prefix bundle assembled by `do_assemble_bundle`.
+//! flow to the LLM via the validated prefix bundle assembled by the host
+//! prefix-bundle capabilities.
 //! They are NOT loaded per-turn by the executor.
 
 // Runtime platform metadata lives in `brassclaw_common`. Re-exported
@@ -20,7 +21,6 @@ pub use brassclaw_common::PlatformInfo;
 // All constants, helper functions, and the prompt builder below are
 // test-only: the preamble/postamble reach the LLM via the Kohai prefix
 // bundle; they are NOT loaded per-turn by the executor.
-
 
 /// Returns `true` if `title` identifies a protected component that must pass the
 /// validation gate (Q1 → Q2) before being applied.
@@ -93,8 +93,7 @@ Some integrations use literal UI blocks such as `[[choice_set]]...[[/choice_set]
     const CODEACT_ACTIVATABLE_INTEGRATIONS_HEADING: &str = "\n## Activatable Integrations\n";
     const PRIOR_KNOWLEDGE_HEADING: &str = "\n\n## Prior Knowledge (from completed threads)\n";
     const ACTIVE_SKILLS_HEADING: &str = "\n\n## Active Skills\n";
-    const MISSING_SKILLS_PREFIX: &str =
-        "\n\nThe user explicitly requested slash skill(s) that are not installed or were not found:";
+    const MISSING_SKILLS_PREFIX: &str = "\n\nThe user explicitly requested slash skill(s) that are not installed or were not found:";
 
     const fn capability_status_label(status: CapabilityStatus) -> &'static str {
         match status {
@@ -249,7 +248,9 @@ Some integrations use literal UI blocks such as `[[choice_set]]...[[/choice_set]
         if !disable_codeact {
             let mut compact_actions: Vec<&ActionDef> = compact_actions
                 .iter()
-                .filter(|action| matches!(action.model_tool_surface, ModelToolSurface::CompactToolInfo))
+                .filter(|action| {
+                    matches!(action.model_tool_surface, ModelToolSurface::CompactToolInfo)
+                })
                 .collect();
             compact_actions.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -287,7 +288,8 @@ Some integrations use literal UI blocks such as `[[choice_set]]...[[/choice_set]
     }
 
     fn is_codeact_system_prompt(content: &str) -> bool {
-        content.starts_with(CODEACT_SYSTEM_PROMPT_MARKER) || is_legacy_codeact_system_prompt(content)
+        content.starts_with(CODEACT_SYSTEM_PROMPT_MARKER)
+            || is_legacy_codeact_system_prompt(content)
     }
 
     fn refresh_codeact_system_prompt(existing_content: &str, system_prompt: &str) -> String {

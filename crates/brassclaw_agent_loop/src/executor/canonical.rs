@@ -96,7 +96,14 @@ impl DefaultExecutorPipeline {
             // the shared stop/exit tail.
             let completed: TurnCompletedStep = 'turn: {
                 state = match self.recipe.process(ctx, RecipeInput { state }).await? {
-                    RecipeStep::Continue { state: next } => *next,
+                    RecipeStep::Continue { state: next } => {
+                        if ctx.host.run_context().trusted_internal_turn {
+                            return Err(AgentLoopExecutorError::PlannerContract {
+                                detail: "trusted internal turn did not match a Tier-0 recipe",
+                            });
+                        }
+                        *next
+                    }
                     RecipeStep::TierZero { state: next } => match self
                         .tier_zero
                         .process(ctx, TierZeroInput { state: *next })
@@ -124,6 +131,11 @@ impl DefaultExecutorPipeline {
                                 .await?;
                         }
                         TierZeroStep::Degrade { state: degraded } => *degraded,
+                        TierZeroStep::FailClosed => {
+                            return Err(AgentLoopExecutorError::PlannerContract {
+                                detail: "trusted internal Tier-0 execution failed",
+                            });
+                        }
                     },
                 };
 

@@ -73,8 +73,8 @@ mod inner {
     /// prompt_uid ASC)` — the deterministic injection order for KV-cache
     /// stability.
     ///
-    /// Skills carrying the `05:validator` tag are excluded by the store query
-    /// (they are not yet validated — §3.5.1).
+    /// Only rows with validated status are delivered; consumer tags route rows
+    /// to this consumer independently of validation state.
     pub async fn fetch_llm_skills_as_json(
         pool: &PgPool,
         scope: &SkillScope,

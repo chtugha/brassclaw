@@ -131,7 +131,8 @@ impl PgSkillStore {
                      name, description, body,
                      class_code, consumer_tags, intent_examples,
                      source, validation_status, content_checksum)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+                         CASE WHEN $11 = 'system' THEN 'validated' ELSE $12 END,$13)
                  ON CONFLICT (tenant_id, user_id, agent_id, project_id, name)
                  DO NOTHING
                  RETURNING id",

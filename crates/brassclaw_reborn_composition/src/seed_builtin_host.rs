@@ -88,6 +88,7 @@ pub enum SeedBuiltinHostError {
 /// Built once per [`seed_builtin_host_components`] call; each slice's
 /// `seed_host_*` helper borrows it.
 struct HostStores {
+    pool: Arc<PgPool>,
     tenant: String,
     tool: PgToolStore,
     tool_skill: PgToolSkillStore,
@@ -100,6 +101,7 @@ struct HostStores {
 impl HostStores {
     fn new(pool: Arc<PgPool>, tenant_id: &str) -> Self {
         Self {
+            pool: Arc::clone(&pool),
             tenant: tenant_id.to_string(),
             tool: PgToolStore::new(pool.clone()),
             tool_skill: PgToolSkillStore::new(pool.clone()),
@@ -119,13 +121,15 @@ impl HostStores {
         if let Some(id) = self.tool.insert(row).await.map_err(map)? {
             return Ok(id);
         }
-        self.tool
+        let id = self
+            .tool
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinHostError::Db {
                 reason: format!("tool `{name}` insert no-op but not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     /// Insert-or-recover a ToolSkill id (class 13). Same ON-CONFLICT pattern.
@@ -140,13 +144,15 @@ impl HostStores {
         if let Some(id) = self.tool_skill.insert(row).await.map_err(map)? {
             return Ok(id);
         }
-        self.tool_skill
+        let id = self
+            .tool_skill
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinHostError::Db {
                 reason: format!("tool_skill `{name}` insert no-op but not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     /// Insert-or-recover a leaf Skill id (class 1). Same ON-CONFLICT pattern.
@@ -161,13 +167,15 @@ impl HostStores {
         if let Some(id) = self.skill.insert(row).await.map_err(map)? {
             return Ok(id);
         }
-        self.skill
+        let id = self
+            .skill
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinHostError::Db {
                 reason: format!("skill `{name}` insert no-op but not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     /// Insert-or-recover a PythonCode id (class 22). `insert` is not
@@ -189,7 +197,8 @@ impl HostStores {
         {
             return Ok(existing.id);
         }
-        self.python_code.insert(row).await.map_err(map)
+        let id = self.python_code.insert(row).await.map_err(map)?;
+        Ok(id)
     }
 
     /// Insert-or-recover a Recipe id (class 21). `insert` is not ON-CONFLICT,
@@ -210,7 +219,8 @@ impl HostStores {
         {
             return Ok(existing.id);
         }
-        self.recipe.insert(row).await.map_err(map)
+        let id = self.recipe.insert(row).await.map_err(map)?;
+        Ok(id)
     }
 }
 
@@ -267,21 +277,6 @@ pub async fn seed_builtin_host_components(
             let id = stores
                 .catalogue
                 .insert(row)
-                .await
-                .map_err(|e| SeedBuiltinHostError::Db {
-                    reason: e.to_string(),
-                })?;
-            // Bypass Q1 pending: graduate the builtin to `validated` directly.
-            stores
-                .catalogue
-                .update_validation_status(
-                    tenant_id,
-                    SEED_USER,
-                    SEED_AGENT,
-                    SEED_PROJECT,
-                    id,
-                    "validated",
-                )
                 .await
                 .map_err(|e| SeedBuiltinHostError::Db {
                     reason: e.to_string(),
@@ -351,6 +346,15 @@ pub async fn seed_builtin_host_components(
         child_components = child_ids.len(),
         "seeded builtin-host stack"
     );
+    crate::system_seed::ensure_system_seeds_validated(
+        &stores.pool,
+        &stores.tenant,
+        SEED_USER,
+        SEED_AGENT,
+        SEED_PROJECT,
+    )
+    .await
+    .map_err(|reason| SeedBuiltinHostError::Db { reason })?;
     Ok(())
 }
 
@@ -1731,12 +1735,10 @@ async fn seed_host_check_signals(stores: &HostStores) -> Result<Vec<Uuid>, SeedB
 /// Step 27.7.4 — `host.validate_component` (kohai/sempai → Q1 pending queue).
 ///
 /// A 4-component leaf-tool stack (Tool + ToolSkill + PythonCode + leaf Skill —
-/// no Recipe). The Tool row deliberately KEEPS the `05:validator` consumer tag:
-/// it is greyed OUT of the LLM tool list (`NOT ('05:validator' = ANY(
-/// consumer_tags))`) because `validate_component` is a kohai/sempai-path tool
-/// that must not be advertised to the LLM — yet it remains bindable BY NAME via
-/// a recipe's `rust_steps` (by-name compose keys on `validation_status=
-/// 'validated'`, NOT the consumer-tag grey-out). The leaf skill uses the fork-1
+/// no Recipe). The Tool row deliberately KEEPS the `05:validator` consumer tag
+/// as validation-workflow metadata. It is not advertised to the LLM because its
+/// consumer tags do not include the LLM route; it remains bindable BY NAME via
+/// a recipe's `rust_steps` when its validation status permits. The leaf skill uses the fork-1
 /// `05:validation` tag (the distinct retrievable validated-builtin marker).
 #[allow(clippy::too_many_lines)]
 async fn seed_host_validate_component(
@@ -1776,8 +1778,7 @@ async fn seed_host_validate_component(
                      {queued:false,reason:'no_store'}."
                         .to_string(),
                 ),
-                // KEEPS `05:validator` — greyed out of the LLM tool list, bindable by
-                // name via a recipe's rust_steps.
+                // KEEPS `05:validator` as workflow metadata; consumer tags route it.
                 consumer_tags: vec![
                     "00:rusty".into(),
                     "02:orchestrator".into(),

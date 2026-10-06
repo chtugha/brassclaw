@@ -9,8 +9,8 @@
 //!
 //! # Delivery filter
 //!
-//! `find_recipe` / `find_skills` only return `validation_status = 'validated'`
-//! rows that do NOT carry `05:validator` in `consumer_tags` (SEC-01, §3.9).
+//! `find_recipe` / `find_skills` only return rows with
+//! `validation_status = 'validated'`; consumer tags route the rows.
 //!
 //! # Scope
 //!
@@ -145,10 +145,9 @@ impl PgRecipe {
         self.consumer_tags.iter().any(|t| t == "05:validator")
     }
 
-    /// Returns true iff this recipe is deliverable to consumers (validated + no
-    /// validator tag, per §3.9 SEC-01).
+    /// Returns true iff this recipe has passed validation.
     pub(crate) fn is_deliverable(&self) -> bool {
-        self.validation_status == "validated" && !self.has_validator_tag()
+        self.validation_status == "validated"
     }
 
     /// Returns true iff this recipe is eligible for Tier-0 direct execution.
@@ -291,8 +290,9 @@ impl PgRecipeStore {
                      prior_knowledge_content, override_prompt_creation,
                      consumer_tags, intent_examples, source,
                      step_descriptions, variants, dependency_registry,
-                     validates_class_code)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                     validates_class_code, validation_status)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+                         CASE WHEN $13 = 'system' THEN 'validated' ELSE 'pending' END)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -465,7 +465,6 @@ impl PgRecipeStore {
              WHERE tenant_id = $1 AND user_id = $2
                AND agent_id  = $3 AND project_id = $4
                AND validation_status = 'validated'
-               AND NOT ('05:validator' = ANY(consumer_tags))
              ORDER BY prompt_uid ASC
              LIMIT {MAX_RECIPE_LIST_ROWS}"
         );
@@ -1906,13 +1905,13 @@ mod tests {
     }
 
     #[test]
-    fn tier0_blocked_when_validator_tag_present() {
-        // SEC-01: a row carrying the 05:validator tag is under evaluation and
-        // must not be delivered, hence not Tier-0 eligible.
+    fn tier0_not_blocked_when_validator_tag_present() {
+        // The workflow marker does not override validated status.
         let mut r = base_recipe();
         r.consumer_tags = vec!["05:validator".to_string()];
-        assert!(!r.is_tier0_eligible());
-        // A non-validator tag does not block.
+        assert!(r.is_tier0_eligible());
+        // Consumer tags are metadata here; validation status and Wilson score
+        // determine Tier-0 eligibility.
         let mut r = base_recipe();
         r.consumer_tags = vec!["misc".to_string()];
         assert!(r.is_tier0_eligible());
@@ -1928,7 +1927,7 @@ mod tests {
     }
 
     #[test]
-    fn is_deliverable_requires_validated_and_no_validator_tag() {
+    fn is_deliverable_requires_validated_status_only() {
         let r = base_recipe();
         assert!(r.is_deliverable());
 
@@ -1938,6 +1937,6 @@ mod tests {
 
         let mut r = base_recipe();
         r.consumer_tags = vec!["05:validator".to_string()];
-        assert!(!r.is_deliverable());
+        assert!(r.is_deliverable());
     }
 }

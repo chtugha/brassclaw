@@ -3984,7 +3984,12 @@ mod tests {
             crate::types::thread::ThreadConfig::default(),
         );
         let port = Arc::new(FixedOrchestratorCodePort(BASIC_MODE_PY));
-        let session = prepare_monty_session(&thread, &(port as Arc<dyn crate::executor::OrchestratorCodePort>), None).await;
+        let session = prepare_monty_session(
+            &thread,
+            &(port as Arc<dyn crate::executor::OrchestratorCodePort>),
+            None,
+        )
+        .await;
         assert!(
             session.is_ok(),
             "prepare_monty_session must construct a session from a fresh thread"
@@ -4001,9 +4006,13 @@ mod tests {
         let mut thread = session_fresh_thread();
         let (_tx, mut signal_rx) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
         let port = Arc::new(FixedOrchestratorCodePort(BASIC_MODE_PY));
-        let mut session = prepare_monty_session(&thread, &(port as Arc<dyn crate::executor::OrchestratorCodePort>), None)
-            .await
-            .expect("prepare must construct a session");
+        let mut session = prepare_monty_session(
+            &thread,
+            &(port as Arc<dyn crate::executor::OrchestratorCodePort>),
+            None,
+        )
+        .await
+        .expect("prepare must construct a session");
         let yielded = session
             .drive_to_yield(
                 &mut thread,
@@ -4032,9 +4041,18 @@ mod tests {
     async fn orchestrator_loads_from_port() {
         use crate::executor::orchestrator_code_port::OrchestratorCodePort;
         let port = FixedOrchestratorCodePort(BASIC_MODE_PY);
-        let code = port.load_orchestrator_code(false).await.expect("port must return code");
-        assert!(code.contains("def main"), "orchestrator body must contain def main");
-        assert!(code.contains("host.resolve_intent"), "orchestrator body must contain host.resolve_intent");
+        let code = port
+            .load_orchestrator_code(false)
+            .await
+            .expect("port must return code");
+        assert!(
+            code.contains("def main"),
+            "orchestrator body must contain def main"
+        );
+        assert!(
+            code.contains("host.resolve_intent"),
+            "orchestrator body must contain host.resolve_intent"
+        );
     }
 
     #[tokio::test]

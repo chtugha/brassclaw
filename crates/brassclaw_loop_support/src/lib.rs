@@ -127,13 +127,11 @@ static FAILURE_EXPLANATION_PROMPT: OnceLock<String> = OnceLock::new();
 /// function. This will happen in test contexts unless the test initialises
 /// the prompt; the panic message identifies the fix.
 pub fn failure_explanation_system_prompt() -> &'static str {
-    FAILURE_EXPLANATION_PROMPT
-        .get()
-        .expect(
-            "failure_explanation_prompt not initialised; \
+    FAILURE_EXPLANATION_PROMPT.get().expect(
+        "failure_explanation_prompt not initialised; \
              call brassclaw_loop_support::init_failure_explanation_prompt() \
              at boot (after run_content_integrity_check in webui.rs)",
-        )
+    )
 }
 
 /// Initialise the failure explanation prompt from the DB row loaded at boot.

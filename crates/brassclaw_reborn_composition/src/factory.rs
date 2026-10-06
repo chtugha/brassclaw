@@ -1050,10 +1050,36 @@ async fn build_local_dev(
         } else {
             None
         };
+    let prefix_bundle_backends = if let Some(pool) = pg_pool.as_ref() {
+        #[cfg(feature = "postgres")]
+        {
+            Some((
+                Arc::new(
+                    crate::pg_prefix_bundle_backends::PgSweepValidatedComponentsBackend::new(
+                        Arc::clone(pool),
+                    ),
+                )
+                    as Arc<dyn brassclaw_host_runtime::SweepValidatedComponentsBackend>,
+                Arc::new(
+                    crate::pg_prefix_bundle_backends::PgStorePrefixBundleBackend::new(Arc::clone(
+                        pool,
+                    )),
+                ) as Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>,
+            ))
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            let _ = pool;
+            None
+        }
+    } else {
+        None
+    };
     let mut first_party_registry = builtin_first_party_registry_with_trigger_create_hook(
         Arc::clone(&store_graph.trigger_repository),
         trigger_create_hook,
         component_db_backend,
+        prefix_bundle_backends,
     )?;
     register_bundled_gsuite_first_party_handlers(
         &mut first_party_registry,
@@ -1739,13 +1765,22 @@ fn builtin_first_party_registry_with_trigger_create_hook(
     trigger_repository: Arc<dyn TriggerRepository>,
     trigger_create_hook: Arc<dyn TriggerCreateHook>,
     component_db_backend: Option<Arc<dyn brassclaw_host_runtime::ComponentDbBackend>>,
+    prefix_bundle_backends: Option<(
+        Arc<dyn brassclaw_host_runtime::SweepValidatedComponentsBackend>,
+        Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>,
+    )>,
 ) -> Result<FirstPartyCapabilityRegistry, RebornBuildError> {
     let map_err = |error: brassclaw_host_api::HostApiError| RebornBuildError::InvalidConfig {
         reason: format!("built-in first-party handlers are invalid: {error}"),
     };
-    if let Some(backend) = component_db_backend {
-        let tools =
-            brassclaw_host_runtime::BuiltinFirstPartyTools::default().with_component_db(backend);
+    if component_db_backend.is_some() || prefix_bundle_backends.is_some() {
+        let mut tools = brassclaw_host_runtime::BuiltinFirstPartyTools::default();
+        if let Some(backend) = component_db_backend {
+            tools = tools.with_component_db(backend);
+        }
+        if let Some((sweep, store)) = prefix_bundle_backends {
+            tools = tools.with_prefix_bundle_backends(sweep, store);
+        }
         brassclaw_host_runtime::builtin_first_party_handlers_from_tools_with_trigger(
             tools,
             trigger_repository,

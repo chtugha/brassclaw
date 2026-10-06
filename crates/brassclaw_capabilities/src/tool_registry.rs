@@ -1,8 +1,8 @@
 //! `ToolRegistry` — capability surface for Rusty tool definitions.
 //!
 //! This is the surface that [`RecipeValidator::validate_tool_skill`] checks
-//! `tool_name` against.  It holds a snapshot of validated Rusty tool names
-//! (class_code = 00, no `05:validator` tag) loaded from `reborn_tools`.
+//! `tool_name` against. It holds a snapshot of validated Rusty tool names
+//! (class_code = 00) loaded from `reborn_tools`.
 //!
 //! The surface is intentionally minimal: we expose only the names needed for
 //! validation, not raw DB rows.  No Monty/LLM prompt text is included — tools
@@ -91,8 +91,8 @@ pub trait ToolRegistryStore: Send + Sync {
     /// Return the names of all **validated** Rusty tools in scope.
     ///
     /// - Only rows with `validation_status = 'validated'` are returned.
-    /// - Rows that still carry the `05:validator` consumer tag are excluded
-    ///   (the validator tag greys out delivery — §3.5.1).
+    /// - Validation status is the delivery gate; consumer tags only select
+    ///   which consumer receives a validated row.
     /// - The result is filtered to `class_code = 0` (Rusty only).
     ///
     /// An empty `Vec` is a valid result (no validated tools yet).

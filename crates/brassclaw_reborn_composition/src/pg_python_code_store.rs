@@ -7,9 +7,8 @@
 //!
 //! # Delivery filter
 //!
-//! [`PgPythonCodeStore::fetch_validated`] only returns `validation_status =
-//! 'validated'` rows that do NOT carry `05:validator` in `consumer_tags`
-//! (SEC-01, §3.9 — same filter as the recipe store).
+//! [`PgPythonCodeStore::fetch_validated`] only returns rows with
+//! `validation_status = 'validated'`. Consumer tags remain routing metadata.
 //!
 //! # Scope
 //!
@@ -153,7 +152,7 @@ pub(crate) struct NewPgPythonCode {
     pub(crate) prior_knowledge_content: Option<String>,
     pub(crate) override_prompt_creation: bool,
     /// Consumer tags — caller must include `05:validator` for new rows so the
-    /// SEC-01 delivery filter hides the row until it graduates (§3.9).
+    /// `validation_status` prevents delivery until the row graduates (§3.9).
     pub(crate) consumer_tags: Vec<String>,
     pub(crate) intent_examples: Option<Value>,
     pub(crate) source: String,
@@ -259,8 +258,11 @@ impl PgPythonCodeStore {
                      name, description, content,
                      prior_knowledge_content, override_prompt_creation,
                      consumer_tags, intent_examples, source, dependency_registry,
+                     validation_status,
                      includes, content_checksum)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+                         CASE WHEN $12 = 'system' THEN 'validated' ELSE 'pending' END,
+                         $14,$15)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -369,7 +371,6 @@ impl PgPythonCodeStore {
              WHERE tenant_id = $1 AND user_id = $2
                AND agent_id  = $3 AND project_id = $4
                AND validation_status = 'validated'
-               AND NOT ('{VALIDATOR_CONSUMER_TAG}' = ANY(consumer_tags))
              ORDER BY prompt_uid ASC
              LIMIT {MAX_PYTHON_CODE_LIST_ROWS}"
         );
@@ -510,9 +511,7 @@ mod tests {
         assert_eq!(cols[25], "includes");
     }
 
-    /// The validator consumer tag is load-bearing for the SEC-01 delivery
-    /// filter in [`PgPythonCodeStore::fetch_validated`] and
-    /// [`PgPythonCodeStore::pop_validator_tag`]; pin the literal.
+    /// Pin the stable validation-workflow tag literal.
     #[test]
     fn validator_consumer_tag_is_stable() {
         assert_eq!(VALIDATOR_CONSUMER_TAG, "05:validator");

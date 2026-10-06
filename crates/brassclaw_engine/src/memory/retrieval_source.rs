@@ -5,7 +5,7 @@
 //!   active and a `PgPool` is wired in.
 //!
 //! Enforces:
-//!   `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`
+//!   `validation_status = 'validated'`
 //!
 //! # Token budget
 //!
@@ -255,7 +255,7 @@ struct CachedSplitResult {
     cached_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// Enforces `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`.
+/// Enforces `validation_status = 'validated'`.
 #[cfg(feature = "skills-db")]
 pub struct PostgresSource {
     pool: Arc<brassclaw_pg::PgPool>,
@@ -337,7 +337,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_skills
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -352,7 +351,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_extensions_unified
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -367,7 +365,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_actions
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -382,7 +379,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_specs
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -397,7 +393,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_tool_skills
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -412,7 +407,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_plans
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -427,7 +421,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_summaries
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -442,7 +435,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_docus
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -457,7 +449,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_lessons
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -472,7 +463,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_issues
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -487,7 +477,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_notes
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -502,7 +491,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_recipes
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -517,7 +505,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_python_code
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -532,7 +519,6 @@ impl RetrievalSource for PostgresSource {
                 FROM reborn_extension_catalogues
                 WHERE tenant_id = $1
                   AND validation_status = 'validated'
-                  AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
                   AND ( (user_id = $2 AND agent_id = $3 AND project_id = $4)
                         OR source = 'system' )
@@ -1283,7 +1269,7 @@ fn component_item_from_row(row: &tokio_postgres::Row) -> ComponentItem {
 /// Fetch a single component from its class-specific table by ID (Step 6.7).
 ///
 /// Enforces the SEC-01 validation gate:
-///   `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`
+///   `validation_status = 'validated'`
 ///
 /// Returns an empty vec if the component is not found or fails the gate (e.g.
 /// it was demoted to pending/rejected between the intent lookup and this fetch).
@@ -1320,8 +1306,7 @@ pub async fn fetch_component_by_id(
            AND user_id    = $3
            AND agent_id   = $4
            AND project_id = $5
-           AND validation_status = 'validated'
-           AND '05:validator' != ALL(consumer_tags)"
+           AND validation_status = 'validated'"
     );
 
     let params: &[&(dyn ToSql + Sync)] = &[
@@ -1348,7 +1333,7 @@ pub async fn fetch_component_by_id(
 ///
 /// Mirrors [`fetch_component_by_id`]: same `class_code_to_table` mapping,
 /// the same SEC-01 validation gate
-/// (`validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`),
+/// (`validation_status = 'validated'`),
 /// and the same scope tuple — only the lookup key differs (`name = $1`
 /// instead of `id = $1`). `LIMIT 1` so a name that is unique within a scope
 /// resolves to exactly one component; bind order is **name first**, then the
@@ -1386,7 +1371,6 @@ pub async fn fetch_component_by_name(
            AND agent_id   = $4
            AND project_id = $5
            AND validation_status = 'validated'
-           AND '05:validator' != ALL(consumer_tags)
          LIMIT 1"
     );
 
@@ -1472,8 +1456,7 @@ pub async fn fetch_components_by_ids(
                AND user_id    = $3
                AND agent_id   = $4
                AND project_id = $5
-               AND validation_status = 'validated'
-               AND '05:validator' != ALL(consumer_tags)"
+               AND validation_status = 'validated'"
         );
         let params: &[&(dyn ToSql + Sync)] = &[
             ids,

@@ -68,8 +68,9 @@ pub use host::{
     NoOrchestrator, NoRecipeLookup, NoRetrieval, NoSecurityConfig, ParentLoopOutput,
     ProcessHandleSummary, PromptMode, ProviderToolCall, ProviderToolCallCapabilityIds,
     ProviderToolCallReference, ProviderToolCallReplay, ProviderToolDefinition,
-    StageCheckpointPayloadRequest, UpdateAssistantDraft, VisibleCapabilityRequest,
-    VisibleCapabilitySurface, sanitize_model_visible_text, validate_model_route_component_value,
+    StageCheckpointPayloadRequest, TRUSTED_INTERNAL_SOURCE_BINDING, UpdateAssistantDraft,
+    VisibleCapabilityRequest, VisibleCapabilitySurface, sanitize_model_visible_text,
+    validate_model_route_component_value,
 };
 pub use instruction_bundle::{
     InMemoryInstructionMaterializationStore, InstructionBundle, InstructionBundleBuilder,

@@ -42,15 +42,45 @@ irreversible decisions the user must confirm. Everything else is Tier 0.**
 
 This principle governs all Recipe, Skill, PythonCode, and ToolSkill authoring.
 
-### Turn Execution Flow — the complete picture
+### Global Monty lifecycle (binding target architecture)
 
-Every user input travels one of two paths. **Understand this before authoring anything.**
+**Exactly one global Monty orchestrator starts during system startup and stays
+alive in the background for the lifetime of the BrassClaw instance.** It starts
+after migrations, component seeding and integrity verification, before turn
+workers, trigger producers and ingress are enabled. Readiness requires a live
+orchestrator waiting for work; merely constructing a driver or seeding Python
+code does not satisfy startup.
+
+Chat messages and other admitted inputs are work items delivered to this
+already-running orchestrator. A turn is a bounded task, not a new global VM or
+OS process. Completing or cancelling a turn must not terminate Monty. While
+idle it awaits work without polling or consuming LLM tokens. Only instance
+shutdown or a supervised fatal-runtime recovery replaces the global VM.
+
+Conversation history, task state, replies, signals, tool bindings and execution
+authority remain associated with explicit conversation/run/message IDs. Global
+orchestration never means one shared chat history or a shared approval grant.
+Waiting for approval, auth or a child run must leave the orchestrator able to
+process the events needed to resume that task. Rust owns transport, VM hosting,
+durable admission and kernel enforcement; Python/Recipes own task sequencing.
+
+**Implementation gap:** current `PersistentMontyDriver` creates a VM lazily per
+`TurnScope` in `MontySessionRegistry`. This is existing code, not the target
+architecture. Follow `simplified_v3.md` Phase 3a for the cutover. This lifecycle
+contract supersedes older per-input/per-conversation lifecycle descriptions in
+crate docs and plans; it does not override kernel or Recipe authoring rules.
+
+### Turn Execution Flow — binding target
+
+Every user input travels one of two paths within the already-running global
+orchestrator. **Understand this before authoring anything.** The lifecycle
+cutover is specified in `simplified_v3.md` Phase 3a.
 
 ```
 User Input
     │
     ▼
-Orchestrator (Monty) — one long-persisting main process per input
+Global Orchestrator (Monty) — already running since system startup
     │
     ▼
 Intent-Matching System  (resolve_intent / fetch_for_turn)
@@ -72,7 +102,7 @@ Intent-Matching System  (resolve_intent / fetch_for_turn)
     │    channel:"orchestrator" → (Tier 1 only) LLM step with recipe context     │
     │    channel:"orchestrator" → host.post_reply(answer="...") → user           │
     │                                                                            │
-    │  History saved → main process exits.                                       │
+    │  History saved → task completes; global Monty awaits further work.         │
     │                                                                            │
     └─── NO MATCH ───────────────────────────────────────────────────────────────┘
          │
@@ -295,6 +325,7 @@ Fill in the UUID references in the Recipe's `step_descriptions` as you create ea
 | Validation queue | `reborn_validation_queue` table (V051, Phase A.5). Four-state pipeline: **Q1** `auto` (orchestrated, sandboxed LLM audit) → **Q2** `manual` (operator review — human-only, never automated) → **Q3** `revision` (automated revision by class-09 extension, if flagged) → **Q4** `rejection` (rejected; retained for `q4_retention_days` then wiped). All non-builtin components must pass Q1+Q2. `source='system'` builtins are **exempt** — they insert as `validated` directly. **Recovery from Q4 rejection:** read the Q1 audit output, fix the component (check for forbidden symbols, wrong class codes, missing `result =`, channel isolation violations), and re-submit. Do **not** rewrite the capability as Rust because a recipe was rejected — fix the recipe. |
 | Builtin bootstrap seeder | `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` (Phase L). Seeds full v3 component stack (Tools + ToolSkills + Skills + PythonCode + Recipes + ExtensionCatalogues) for all 23 first-party tools at boot, if not already present. Idempotent. Orchestrator and system prompt components (`orchestrator:main`, `codeact_preamble`, `codeact_postamble`, `failure_explanation`, `compaction_summarizer_fresh`, `sempai_audit`, `subagent:direction:*`) are seeded here and carry `content_checksum` (SHA-256 hex) for boot-time integrity verification. |
 | Seeding boot chain | `crates/brassclaw_reborn_composition/src/webui.rs` — all `seed_*`, `run_boot_integrity_check`, `run_content_integrity_check`, and `init_*` OnceLock calls live here in strict order. Driver port wiring (`PgOrchestratorCodePort`, etc.) lives separately in `runtime.rs`. |
+| Global Orchestrator lifecycle (target) | `simplified_v3.md` Phase 3a: move the shared boot prerequisites out of WebUI-only construction, start one global Monty before workers/ingress, route work through its bounded inbox and retain task-local context. Current transition sites: composition `runtime.rs`, `persistent_monty_driver.rs`, `session_registry.rs`; engine `executor/orchestrator.rs`, `orchestrator/basic_mode.py`; Reborn `turn_runner.rs`. |
 | Content integrity check | `crates/brassclaw_reborn_composition/src/content_integrity.rs` (`run_content_integrity_check`) — SHA-256 prose checksum verification for `source='system'` rows. Called at boot after seeding. Hard error on mismatch. Distinct from `boot_integrity.rs` (Phase N queue-consistency check). |
 | `BootedDb` newtype | `crates/brassclaw_reborn_composition/src/booted_db.rs` — type-level proof that migrations completed. All seeding and integrity functions accept `&BootedDb`, not raw `Arc<PgPool>`. |
 | `brassclaw repair` command | `crates/brassclaw_reborn_cli/src/commands/repair.rs` — force-reseeds all `source='system'` rows using `ON CONFLICT DO UPDATE`. Run after a binary update that changes system prompt content. |

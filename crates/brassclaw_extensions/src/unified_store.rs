@@ -12,9 +12,8 @@
 //! | `llm` | [`project_as_prompt_template`] | Prompt assembler |
 //! | `misc` | raw `payload` | Generic consumers |
 //!
-//! Only rows with `validation_status = 'validated'` AND
-//! `'05:validator' != ANY(consumer_tags)` are returned by the fetch paths
-//! (SEC-01 delivery filter from spec §3.9).
+//! Consumer fetches require `validation_status = 'validated'` and a matching
+//! consumer tag. The validator tag is workflow metadata, not a delivery gate.
 //!
 //! The `postgres` feature gate is required — this module is a no-op when
 //! compiled without it.
@@ -33,8 +32,7 @@ use uuid::Uuid;
 // Protocol constants
 // ---------------------------------------------------------------------------
 
-/// Consumer tag that marks a component as being in the validation queue.
-/// Rows carrying this tag must not be delivered to consumers (SEC-01 §3.5.1).
+/// Consumer tag that marks a component as being in the validation workflow.
 const VALIDATOR_CONSUMER_TAG: &str = "05:validator";
 
 // ---------------------------------------------------------------------------
@@ -104,8 +102,8 @@ impl ExtensionClass {
         }
     }
 
-    /// Default consumer tags per spec §3.9 (without `05:validator` which is
-    /// added separately at insert time by application logic).
+    /// Default consumer routing tags per spec §3.9. The validation-workflow
+    /// tag is added separately by application logic.
     pub fn default_consumer_tags(self) -> Vec<String> {
         match self {
             Self::Rusty => vec!["00:rusty".to_string()],
@@ -184,17 +182,16 @@ pub struct UnifiedExtension {
 }
 
 impl UnifiedExtension {
-    /// Returns true iff the `05:validator` tag is present (component is in a
-    /// validation queue and must not be delivered to consumers — §3.5.1).
+    /// Returns true iff the validation-workflow tag is present.
     pub fn has_validator_tag(&self) -> bool {
         self.consumer_tags
             .iter()
             .any(|t| t == VALIDATOR_CONSUMER_TAG)
     }
 
-    /// Returns true iff the row is deliverable: validated + no validator tag.
+    /// Returns true iff the row has passed validation.
     pub fn is_deliverable(&self) -> bool {
-        self.validation_status == "validated" && !self.has_validator_tag()
+        self.validation_status == "validated"
     }
 }
 
@@ -211,8 +208,8 @@ pub struct NewUnifiedExtension {
     pub payload: Value,
     pub prior_knowledge_content: Option<String>,
     pub override_prompt_creation: bool,
-    /// Consumer tags.  The caller must include `05:validator` if the row is
-    /// being inserted through the validation queue.
+    /// Consumer routing tags. The caller may include `05:validator` as
+    /// validation-workflow metadata.
     pub consumer_tags: Vec<String>,
     pub intent_examples: Option<Value>,
     pub source: String,
@@ -261,10 +258,9 @@ pub trait UnifiedExtensionStore: Send + Sync {
         project_id: &str,
     ) -> Result<Vec<UnifiedExtension>, UnifiedStoreError>;
 
-    /// Fetch rows deliverable to a given consumer tag (spec §3.9):
+    /// Fetch rows routed to a given consumer tag (spec §3.9):
     ///   - `validation_status = 'validated'`
     ///   - `consumer_tags` contains `consumer_tag`
-    ///   - `consumer_tags` does NOT contain `05:validator`
     ///
     /// Ordered by `(class_code ASC, prompt_uid ASC)` for deterministic
     /// prompt assembly.
@@ -290,9 +286,8 @@ pub trait UnifiedExtensionStore: Send + Sync {
         update: ValidationStatusUpdate<'_>,
     ) -> Result<(), UnifiedStoreError>;
 
-    /// Pop the `05:validator` consumer tag from a row (Step-2 manual
-    /// validation — §3.5.1).  This is a targeted update so concurrent
-    /// consumers see the change atomically.
+    /// Pop the `05:validator` workflow tag after Step-2 validation. This is a
+    /// targeted update so concurrent consumers see the change atomically.
     async fn pop_validator_tag(
         &self,
         tenant_id: &str,
@@ -589,14 +584,12 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
         // SEC-01 delivery filter (§3.9):
         //   • validation_status = 'validated'
         //   • consumer_tags contains consumer_tag
-        //   • consumer_tags does NOT contain '05:validator'
         let q = format!(
             "SELECT {SELECT_COLS} FROM reborn_extensions_unified
              WHERE tenant_id = $1 AND user_id = $2
                AND agent_id  = $3 AND project_id = $4
                AND validation_status = 'validated'
                AND $5 = ANY(consumer_tags)
-               AND NOT ('{VALIDATOR_CONSUMER_TAG}' = ANY(consumer_tags))
              ORDER BY class_code ASC, prompt_uid ASC"
         );
         let rows = client

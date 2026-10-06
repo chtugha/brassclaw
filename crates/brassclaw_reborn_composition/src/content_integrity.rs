@@ -2,19 +2,21 @@
 //!
 //! Distinct from [`crate::boot_integrity`] (Phase N) which handles
 //! queue-consistency (unqueued non-validated rows). This module verifies the
-//! prose content of `source='system'` rows against both:
+//! prose content of checksummed `source='system'` rows against:
 //!
 //! 1. The stored `content_checksum` column (detects DB mutation after seeding).
-//! 2. The compile-time [`crate::builtin_bootstrap::EXPECTED_CHECKSUMS`]
-//!    (detects binary update without `brassclaw repair`).
+//! 2. The compile-time [`crate::builtin_bootstrap::EXPECTED_CHECKSUMS`] when a
+//!    row name is a compiled-in prompt (detects binary updates).
 //!
 //! Covered tables: `reborn_skills` (column `body`), `reborn_tool_skills`
 //! (column `content`), `reborn_python_code` (column `content`).
 //!
 //! The check is a hard boot error — if any mismatch is found the process
 //! returns [`ContentIntegrityError::Corrupted`] and the `RebornWebuiBundle`
-//! is not returned to the caller. Run `brassclaw repair` to restore all
-//! `source='system'` rows from compiled-in seed values.
+//! is not returned to the caller. `brassclaw repair` can restore only the
+//! explicitly compiled-in prompt seeds and asks before replacing differing
+//! content. Other mismatches require operator review; their expected content
+//! is not available as a compiled-in seed.
 
 #![forbid(unsafe_code)]
 

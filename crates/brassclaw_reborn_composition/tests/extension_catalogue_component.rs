@@ -87,9 +87,8 @@ fn test_scope() -> ComponentScope {
 }
 
 /// Insert a validated `reborn_extension_catalogues` row that is deliverable to
-/// `02:orchestrator` — `validation_status = 'validated'` and NO `05:validator`
-/// tag, so the SEC-01 delivery gate (`'05:validator' != ALL(consumer_tags)`)
-/// passes. UUID-derived name keeps parallel runs off the `UNIQUE(scope, name)`
+/// `02:orchestrator` — `validation_status = 'validated'` and the matching
+/// consumer tag. The validator tag is workflow metadata. UUID-derived name keeps parallel runs off the `UNIQUE(scope, name)`
 /// constraint. Carries one task group + one child component id (the catalogue
 /// shape, §0.2). Returns the assigned UUID.
 async fn insert_validated_extension_catalogue(

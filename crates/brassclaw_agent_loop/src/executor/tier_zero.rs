@@ -48,6 +48,8 @@ pub(super) enum TierZeroStep {
     /// No orchestrator bridge is wired or the channel produced no reply —
     /// degrade to the Tier-2 LLM path.
     Degrade { state: Box<LoopExecutionState> },
+    /// Trusted internal turns must never fall through to Tier 2.
+    FailClosed,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -74,8 +76,12 @@ impl ExecutorStage<TierZeroInput> for TierZeroExecutionStage {
                 "tier-zero stage: no orchestrator bridge or no stashed \
                  recipe_hint — degrading to Tier 2"
             );
-            return Ok(TierZeroStep::Degrade {
-                state: Box::new(state),
+            return Ok(if ctx.host.run_context().trusted_internal_turn {
+                TierZeroStep::FailClosed
+            } else {
+                TierZeroStep::Degrade {
+                    state: Box::new(state),
+                }
             });
         };
 
@@ -108,8 +114,12 @@ impl ExecutorStage<TierZeroInput> for TierZeroExecutionStage {
                     "tier-zero stage: orchestrator channel returned no reply — \
                      degrading to Tier 2"
                 );
-                Ok(TierZeroStep::Degrade {
-                    state: Box::new(state),
+                Ok(if ctx.host.run_context().trusted_internal_turn {
+                    TierZeroStep::FailClosed
+                } else {
+                    TierZeroStep::Degrade {
+                        state: Box::new(state),
+                    }
                 })
             }
         }

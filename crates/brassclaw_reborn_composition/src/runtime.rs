@@ -36,8 +36,8 @@ use brassclaw_events::{DurableAuditLog, DurableEventLog, InMemoryAuditSink, Runt
 use brassclaw_first_party_extension_ports::SelectableSkillContextSource;
 use brassclaw_host_api::{
     ActionResultSummary, ActionSummary, AgentId, AuditEnvelope, AuditEventId, AuditStage,
-    CapabilityId, CorrelationId, DecisionSummary, EffectKind, InvocationId, ResourceScope,
-    TenantId, ThreadId, UserId,
+    CapabilityId, CorrelationId, DecisionSummary, EffectKind, InvocationId, ProjectId,
+    ResourceScope, TenantId, ThreadId, UserId,
 };
 use brassclaw_loop_support::{
     CapabilityAllowSet, CapabilityResolveError, CapabilitySurfaceProfileResolver,
@@ -132,6 +132,15 @@ pub struct AssistantReply {
     pub text: Option<String>,
 }
 
+/// Controls the trusted internal-turn path. The current implementation only
+/// supports hard-fail Tier-0 execution; ordinary turns must use the public
+/// user-message methods.
+#[derive(Debug, Clone, Copy)]
+pub struct InternalTurnOptions {
+    pub hard_fail_on_recipe_miss: bool,
+    pub allow_tier_two: bool,
+}
+
 impl AssistantReply {
     /// True when a caller can treat the reply as a successful single-shot
     /// response. Recovery/failed/cancelled runs may still produce diagnostics,
@@ -216,6 +225,8 @@ pub struct RebornRuntime {
     default_run_profile_id: String,
     wake_sender: TurnRunnerWakeSender,
     send_locks: Mutex<HashMap<ConversationId, Arc<Mutex<()>>>>,
+    internal_conversation_scopes:
+        Mutex<HashMap<ConversationId, (brassclaw_threads::ThreadScope, TurnScope)>>,
     skill_activation_source: Option<Arc<SelectableSkillContextSource>>,
     /// Plan library processor: active when `plan_library_enabled = true`.
     /// After each completed turn, scores the session and persists plan docs.
@@ -929,6 +940,61 @@ impl RebornRuntime {
         Ok(ConversationId(thread_id))
     }
 
+    /// Create an internal conversation whose data scope is derived from the
+    /// authenticated caller and requested project reference.
+    pub async fn new_internal_conversation(
+        &self,
+        tenant_id: &str,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<ConversationId, RebornRuntimeError> {
+        let tenant = TenantId::new(tenant_id).map_err(|e| RebornRuntimeError::InvalidArgument {
+            reason: e.to_string(),
+        })?;
+        let user = UserId::new(user_id).map_err(|e| RebornRuntimeError::InvalidArgument {
+            reason: e.to_string(),
+        })?;
+        let project =
+            ProjectId::new(project_id).map_err(|e| RebornRuntimeError::InvalidArgument {
+                reason: e.to_string(),
+            })?;
+        let thread_id =
+            ThreadId::new(format!("reborn-internal-{}", Uuid::new_v4())).map_err(|reason| {
+                RebornRuntimeError::InvalidArgument {
+                    reason: reason.to_string(),
+                }
+            })?;
+        let thread_scope = brassclaw_threads::ThreadScope {
+            tenant_id: tenant.clone(),
+            agent_id: self.thread_scope.agent_id.clone(),
+            project_id: Some(project.clone()),
+            owner_user_id: Some(user.clone()),
+        };
+        self.thread_service
+            .ensure_thread(EnsureThreadRequest {
+                scope: thread_scope.clone(),
+                thread_id: Some(thread_id.clone()),
+                created_by_actor_id: user.as_str().to_string(),
+                title: None,
+                metadata_json: None,
+            })
+            .await
+            .map_err(|error| RebornRuntimeError::ThreadService(error.to_string()))?;
+        let scope = TurnScope::new_with_owner(
+            tenant,
+            Some(self.thread_scope.agent_id.clone()),
+            Some(project),
+            thread_id.clone(),
+            Some(user),
+        );
+        let conversation = ConversationId(thread_id);
+        self.internal_conversation_scopes
+            .lock()
+            .await
+            .insert(conversation.clone(), (thread_scope, scope));
+        Ok(conversation)
+    }
+
     /// Submit a user message into the conversation, wait for the run to
     /// reach a terminal state, and return the assistant reply read back
     /// from the session thread service.
@@ -955,7 +1021,28 @@ impl RebornRuntime {
         text: &str,
         cancellation: CancellationToken,
     ) -> Result<AssistantReply, RebornRuntimeError> {
-        self.send_user_message_internal(conversation, text, cancellation)
+        self.send_user_message_internal(conversation, text, cancellation, None)
+            .await
+    }
+
+    /// Submit a host-created internal message using a reserved source binding.
+    /// The marker reaches the loop through persisted turn state, never through
+    /// message text, and causes Tier-0 misses/errors to stop before Tier 2.
+    pub async fn send_internal_user_message(
+        &self,
+        conversation: &ConversationId,
+        text: &str,
+        options: InternalTurnOptions,
+    ) -> Result<AssistantReply, RebornRuntimeError> {
+        if !options.hard_fail_on_recipe_miss || options.allow_tier_two {
+            return Err(RebornRuntimeError::InvalidArgument {
+                reason: "internal turns require hard-fail Tier-0 options".into(),
+            });
+        }
+        let source =
+            SourceBindingRef::new(brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING)
+                .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
+        self.send_user_message_internal(conversation, text, CancellationToken::new(), Some(source))
             .await
     }
 
@@ -964,29 +1051,53 @@ impl RebornRuntime {
         conversation: &ConversationId,
         text: &str,
         cancellation: CancellationToken,
+        source_binding_override: Option<SourceBindingRef>,
     ) -> Result<AssistantReply, RebornRuntimeError> {
         let send_lock = self.send_lock_for(conversation).await;
         let _send_guard = send_lock.lock().await;
         if self.worker_handle.is_finished() {
             return Err(RebornRuntimeError::WorkerStopped);
         }
-        let scope = self.turn_scope_for(&conversation.0);
+        let is_internal_turn = source_binding_override.is_some();
+        let internal_scope = if is_internal_turn {
+            Some(
+                self.internal_conversation_scopes
+                    .lock()
+                    .await
+                    .remove(conversation)
+                    .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                        reason: "internal conversation scope is missing or already consumed".into(),
+                    })?,
+            )
+        } else {
+            None
+        };
+        let scope = internal_scope
+            .as_ref()
+            .map(|(_, scope)| scope.clone())
+            .unwrap_or_else(|| self.turn_scope_for(&conversation.0));
+        let thread_scope = internal_scope
+            .as_ref()
+            .map(|(thread_scope, _)| thread_scope.clone())
+            .unwrap_or_else(|| self.thread_scope.clone());
+        let actor_id = scope
+            .explicit_owner_user_id()
+            .cloned()
+            .unwrap_or_else(|| self.actor_user_id.clone());
+        let source_binding =
+            source_binding_override.unwrap_or_else(|| self.source_binding_ref.clone());
         let accepted = self
             .thread_service
             .accept_inbound_message(AcceptInboundMessageRequest {
-                scope: self.thread_scope.clone(),
+                scope: thread_scope,
                 thread_id: conversation.0.clone(),
-                actor_id: self.actor_user_id.as_str().to_string(),
-                source_binding_id: Some(self.source_binding_ref.as_str().to_string()),
+                actor_id: actor_id.as_str().to_string(),
+                source_binding_id: Some(source_binding.as_str().to_string()),
                 reply_target_binding_id: Some(self.reply_target_binding_ref.as_str().to_string()),
                 // This task-level API does not receive an upstream stable
                 // event id, so mint a best-effort unique id scoped to the
                 // caller-provided source binding.
-                external_event_id: Some(format!(
-                    "{}:{}",
-                    self.source_binding_ref.as_str(),
-                    Uuid::new_v4()
-                )),
+                external_event_id: Some(format!("{}:{}", source_binding.as_str(), Uuid::new_v4())),
                 content: MessageContent::text(text.to_string()),
             })
             .await
@@ -994,14 +1105,11 @@ impl RebornRuntime {
 
         let accepted_message_ref = AcceptedMessageRef::new(format!("msg:{}", accepted.message_id))
             .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
-        let idempotency_key = IdempotencyKey::new(format!(
-            "{}-{}",
-            self.source_binding_ref.as_str(),
-            Uuid::new_v4()
-        ))
-        .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
+        let idempotency_key =
+            IdempotencyKey::new(format!("{}-{}", source_binding.as_str(), Uuid::new_v4()))
+                .map_err(|reason| RebornRuntimeError::InvalidArgument { reason })?;
 
-        if let Some(skill_activation_source) = &self.skill_activation_source {
+        if !is_internal_turn && let Some(skill_activation_source) = &self.skill_activation_source {
             skill_activation_source
                 .record_user_message(scope.clone(), accepted_message_ref.clone(), text)
                 .map_err(|error| RebornRuntimeError::TurnSubmission(error.to_string()))?;
@@ -1011,9 +1119,9 @@ impl RebornRuntime {
             .turn_coordinator
             .submit_turn(SubmitTurnRequest {
                 scope: scope.clone(),
-                actor: TurnActor::new(self.actor_user_id.clone()),
+                actor: TurnActor::new(actor_id),
                 accepted_message_ref: accepted_message_ref.clone(),
-                source_binding_ref: self.source_binding_ref.clone(),
+                source_binding_ref: source_binding,
                 reply_target_binding_ref: self.reply_target_binding_ref.clone(),
                 requested_run_profile: None,
                 idempotency_key,
@@ -2598,24 +2706,26 @@ pub async fn build_reborn_runtime(
         // and we are already inside the skills-db block, so the two #[cfg] bindings
         // here mirror that combined gate.
         #[cfg(feature = "postgres")]
-        let orchestrator_code_port: Arc<dyn brassclaw_engine::executor::OrchestratorCodePort> =
-            if let Some(pool) = services.pg_pool.as_ref() {
-                Arc::new(
-                    crate::pg_orchestrator_code_port::PgOrchestratorCodePort::new(
-                        Arc::clone(pool),
-                        validated_identity.tenant_id.as_str(),
-                    ),
-                )
-            } else {
-                tracing::warn!(
-                    "no Postgres pool available; orchestrator will fail to load \
+        let orchestrator_code_port: Arc<
+            dyn brassclaw_engine::executor::OrchestratorCodePort,
+        > = if let Some(pool) = services.pg_pool.as_ref() {
+            Arc::new(
+                crate::pg_orchestrator_code_port::PgOrchestratorCodePort::new(
+                    Arc::clone(pool),
+                    validated_identity.tenant_id.as_str(),
+                ),
+            )
+        } else {
+            tracing::warn!(
+                "no Postgres pool available; orchestrator will fail to load \
                      (run `brassclaw serve` to start Postgres)"
-                );
-                Arc::new(FallbackOrchestratorCodePort)
-            };
+            );
+            Arc::new(FallbackOrchestratorCodePort)
+        };
         #[cfg(not(feature = "postgres"))]
-        let orchestrator_code_port: Arc<dyn brassclaw_engine::executor::OrchestratorCodePort> =
-            Arc::new(FallbackOrchestratorCodePort);
+        let orchestrator_code_port: Arc<
+            dyn brassclaw_engine::executor::OrchestratorCodePort,
+        > = Arc::new(FallbackOrchestratorCodePort);
 
         let driver = crate::persistent_monty_driver::PersistentMontyDriver::new(
             Arc::new(crate::session_registry::MontySessionRegistry::new()),
@@ -3015,6 +3125,7 @@ pub async fn build_reborn_runtime(
         default_run_profile_id,
         wake_sender,
         send_locks: Mutex::new(HashMap::new()),
+        internal_conversation_scopes: Mutex::new(HashMap::new()),
         skill_activation_source,
         plan_library,
         plan_state_slot,
@@ -3510,6 +3621,16 @@ mod tests {
 
     const RUNTIME_SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
+    async fn shutdown_shared_runtime(
+        runtime: Arc<super::RebornRuntime>,
+    ) -> Result<(), super::RebornRuntimeError> {
+        let runtime = match Arc::try_unwrap(runtime) {
+            Ok(runtime) => runtime,
+            Err(_) => panic!("runtime still has outstanding owners during test shutdown"),
+        };
+        runtime.shutdown().await
+    }
+
     fn local_dev_runtime_policy() -> EffectiveRuntimePolicy {
         EffectiveRuntimePolicy {
             deployment: DeploymentMode::LocalSingleUser,
@@ -3961,7 +4082,7 @@ mod tests {
             reply_target_binding_id: "runtime-yolo-audit-reply".to_string(),
         });
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         let stream = EventStreamKey::new(
             runtime.thread_scope.tenant_id.clone(),
             runtime.actor_user_id.clone(),
@@ -3996,7 +4117,7 @@ mod tests {
             Some(TRUSTED_LAPTOP_ACCESS_AUDIT_STATUS)
         );
         assert_eq!(audit.decision.kind, "allowed");
-        runtime.shutdown().await.expect("shutdown");
+        shutdown_shared_runtime(runtime).await.expect("shutdown");
     }
 
     #[tokio::test]
@@ -4026,12 +4147,14 @@ mod tests {
         )
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
 
         assert!(runtime.services().readiness.workers.turn_runner);
         assert!(runtime.services().readiness.workers.trigger_poller);
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4137,12 +4260,14 @@ mod tests {
         })
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
 
         assert!(runtime.services().readiness.workers.turn_runner);
         assert!(!runtime.services().readiness.workers.trigger_poller);
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4222,13 +4347,16 @@ mod tests {
         )
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         assert!(runtime.services().readiness.workers.trigger_poller);
 
-        tokio::time::timeout(std::time::Duration::from_secs(2), runtime.shutdown())
-            .await
-            .expect("shutdown returns before timeout")
-            .expect("runtime shutdown");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            shutdown_shared_runtime(runtime),
+        )
+        .await
+        .expect("shutdown returns before timeout")
+        .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4276,7 +4404,7 @@ mod tests {
         .with_model_gateway_override(gateway)
         .with_model_cost_table_override(Arc::new(cost_table));
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         let conversation = runtime.new_conversation().await.expect("conversation");
         let reply = tokio::time::timeout(
             RUNTIME_SEND_TIMEOUT,
@@ -4294,7 +4422,9 @@ mod tests {
             "local-dev-yolo must reach the model gateway even when a paid cost table is present"
         );
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4325,7 +4455,7 @@ mod tests {
         })
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         let local_runtime = runtime
             .services
             .local_runtime
@@ -4359,7 +4489,9 @@ mod tests {
         assert_eq!(reply.text.as_deref(), Some("recorded runtime reply"));
         assert_eq!(recorded_request_count(&requests), 1);
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4385,7 +4517,7 @@ mod tests {
         })
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         let conversation = runtime.new_conversation().await.expect("conversation");
         let parent_scope = runtime.turn_scope_for(&conversation.0);
         let actor = TurnActor::new(runtime.actor_user_id.clone());
@@ -4522,7 +4654,9 @@ mod tests {
             child_state.status
         );
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4550,7 +4684,7 @@ mod tests {
         })
         .with_model_gateway_override(gateway_for_runtime);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         let conversation = runtime.new_conversation().await.expect("conversation");
         let reply = tokio::time::timeout(
             RUNTIME_SEND_TIMEOUT,
@@ -4622,7 +4756,9 @@ mod tests {
             CapabilityId::new("builtin.echo").unwrap()
         );
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4657,7 +4793,7 @@ mod tests {
         })
         .with_model_gateway_override(gateway_for_runtime);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         let conversation = runtime.new_conversation().await.expect("conversation");
         let reply = tokio::time::timeout(
             RUNTIME_SEND_TIMEOUT,
@@ -4681,7 +4817,9 @@ mod tests {
             "workspace listing should require initial request plus tool-result follow-up"
         );
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4711,9 +4849,9 @@ mod tests {
         })
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
         let runtime_turn_coordinator = runtime.webui_turn_coordinator();
-        let bundle = build_webui_services(&runtime, None)
+        let bundle = build_webui_services(Arc::clone(&runtime), None)
             .await
             .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
@@ -4803,7 +4941,11 @@ mod tests {
         assert_eq!(bundle.readiness, runtime.services().readiness);
         assert_eq!(bundle.readiness.state, RebornReadinessState::DevOnly);
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        drop(_api);
+        drop(bundle);
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4833,8 +4975,8 @@ mod tests {
         })
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None)
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
+        let bundle = build_webui_services(Arc::clone(&runtime), None)
             .await
             .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
@@ -4923,7 +5065,10 @@ mod tests {
             serde_json::to_value(&google_setup.secrets[0]).expect("serialize setup secret");
         assert_eq!(google_setup_json["setup"]["kind"], "oauth");
 
-        runtime.shutdown().await.expect("runtime shutdown");
+        drop(bundle);
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -4960,7 +5105,8 @@ mod tests {
 
         let mut runtime = build_reborn_runtime(input).await.expect("runtime builds");
         runtime.services.host_runtime = None;
-        let bundle = build_webui_services(&runtime, None)
+        let runtime = Arc::new(runtime);
+        let bundle = build_webui_services(Arc::clone(&runtime), None)
             .await
             .expect("webui bundle");
         let caller_without_agent = WebUiAuthenticatedCaller::new(
@@ -4984,6 +5130,10 @@ mod tests {
             .expect("route response");
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let runtime = match Arc::try_unwrap(runtime) {
+            Ok(runtime) => runtime,
+            Err(_) => panic!("webui router retained the runtime after being dropped"),
+        };
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
@@ -5016,7 +5166,8 @@ mod tests {
 
         let mut runtime = build_reborn_runtime(input).await.expect("runtime builds");
         runtime.services.host_runtime = None;
-        let bundle = build_webui_services(&runtime, None)
+        let runtime = Arc::new(runtime);
+        let bundle = build_webui_services(Arc::clone(&runtime), None)
             .await
             .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
@@ -5036,6 +5187,11 @@ mod tests {
         assert_eq!(error.kind, RebornServicesErrorKind::ServiceUnavailable);
         assert_eq!(error.status_code, 503);
         assert!(error.retryable);
+        drop(bundle);
+        let runtime = match Arc::try_unwrap(runtime) {
+            Ok(runtime) => runtime,
+            Err(_) => panic!("webui services retained the runtime after being dropped"),
+        };
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
@@ -5066,8 +5222,8 @@ mod tests {
         })
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None)
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
+        let bundle = build_webui_services(Arc::clone(&runtime), None)
             .await
             .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
@@ -5109,7 +5265,10 @@ mod tests {
         assert_eq!(err.code, RebornServicesErrorCode::NotFound);
         assert_eq!(err.kind, RebornServicesErrorKind::NotFound);
         assert_eq!(err.status_code, 404);
-        runtime.shutdown().await.expect("runtime shutdown");
+        drop(bundle);
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -5139,8 +5298,8 @@ mod tests {
         })
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None)
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
+        let bundle = build_webui_services(Arc::clone(&runtime), None)
             .await
             .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
@@ -5181,7 +5340,10 @@ mod tests {
         assert_eq!(err.code, RebornServicesErrorCode::NotFound);
         assert_eq!(err.kind, RebornServicesErrorKind::BlockedAuthentication);
         assert_eq!(err.status_code, 404);
-        runtime.shutdown().await.expect("runtime shutdown");
+        drop(bundle);
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 
     #[tokio::test]
@@ -5211,8 +5373,8 @@ mod tests {
         })
         .with_model_gateway_override(gateway);
 
-        let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None)
+        let runtime = Arc::new(build_reborn_runtime(input).await.expect("runtime builds"));
+        let bundle = build_webui_services(Arc::clone(&runtime), None)
             .await
             .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
@@ -5363,6 +5525,9 @@ mod tests {
                 .allowed_effects
                 .contains(&EffectKind::SpawnProcess)
         );
-        runtime.shutdown().await.expect("runtime shutdown");
+        drop(bundle);
+        shutdown_shared_runtime(runtime)
+            .await
+            .expect("runtime shutdown");
     }
 }

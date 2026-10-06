@@ -44,13 +44,11 @@ static DIRECTION_CODER: OnceLock<String> = OnceLock::new();
 /// first; the panic message identifies the fix.
 pub fn direction_prompt(id: DirectionId) -> &'static str {
     match id {
-        DirectionId::General => DIRECTION_GENERAL
-            .get()
-            .expect(
-                "direction prompts not initialised; \
+        DirectionId::General => DIRECTION_GENERAL.get().expect(
+            "direction prompts not initialised; \
                  call brassclaw_reborn::subagent::directions::init_directions() \
                  at boot (after run_content_integrity_check in webui.rs)",
-            ),
+        ),
         DirectionId::Researcher => DIRECTION_RESEARCHER
             .get()
             .expect("direction prompts not initialised; call init_directions() at boot"),

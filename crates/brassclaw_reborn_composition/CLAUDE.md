@@ -333,8 +333,8 @@ Per Path A in `docs/reborn/how-to-port-channel-to-reborn.md`:
 
 ### How the standalone `brassclaw serve` consumes this
 
-The `serve` subcommand builds a full local-dev `RebornRuntime`, asks
-`build_webui_services(&runtime, None)` for the WebUI bundle, and hands
+The `serve` subcommand builds a full local-dev `RebornRuntime`, wraps it in an
+`Arc`, asks `build_webui_services(Arc::clone(&runtime), None)` for the WebUI bundle, and hands
 the resulting router to the host-owned `brassclaw_reborn_webui_ingress`
 listener lifecycle. The bundle's default projection stream is backed by
 the runtime-owned durable event log plus `EventStreamManager`, so
@@ -349,8 +349,8 @@ host runtime/event-store follow-up rather than this composition facade.
 // Inside a host-owned ingress crate / binary (NOT in this crate —
 // `reborn_product_api_crates_do_not_bind_http_ingress` forbids
 // product/API crates from owning server lifecycle).
-let runtime = build_reborn_runtime(input).await?;
-let bundle = build_webui_services(&runtime, None)?;
+let runtime = Arc::new(build_reborn_runtime(input).await?);
+let bundle = build_webui_services(Arc::clone(&runtime), None).await?;
 let config = WebuiServeConfig::new(
     TenantId::new(host_installation_tenant)?,
     Arc::new(MyHostAuthenticator::new(...)),

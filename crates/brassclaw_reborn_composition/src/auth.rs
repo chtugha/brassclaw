@@ -27,13 +27,13 @@ use serde::{Deserialize, Serialize};
 use brassclaw_host_api::UserId;
 use brassclaw_turns::{TurnRunId, TurnScope};
 
+use crate::auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 use crate::manual_token_flow::{PortBackedManualTokenFlowService, RebornManualTokenFlowService};
 use crate::oauth_dcr::{DcrGateChallengeRequest, DcrSetupFlowRequest, OAuthDcrProviderRegistry};
 use crate::oauth_gate::{GoogleOAuthGateProviderRegistry, OAuthGateChallengeRequest};
 use crate::product_auth_runtime_credentials::{
     ProductAuthRuntimeCredentialAccountSelector, RuntimeCredentialAccountSelectionService,
 };
-use crate::auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 
 /// Dispatches a typed continuation event once an OAuth callback flow has
 /// completed.

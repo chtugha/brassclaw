@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-06
+
+### Added
+
+- *(prefix / composition)* Added recipe-driven prefix-bundle assembly using focused host tools to sweep eligible validated components and persist the resulting bundle.
+- *(prefix / integrity)* Installation-seeded components are created with validated status and content checksums so they are eligible for runtime use only after integrity verification.
+- *(database)* **V087** — added prefix-bundle generation tickets for safe, scoped generation coordination.
+
+### Changed
+
+- *(runtime / validation)* Component availability is gated by validated status; pending or rejected components cannot enter the base prompt or be loaded, called, executed, or otherwise used by agent subsystems. Consumer tags remain routing metadata.
+- *(prefix / repair)* Prefix regeneration is routed through a trusted internal turn with Tier-2 fallback disabled. Repair checks component checksums before reseeding and prompts before reverting an upgraded validated component.
+
 ## [1.5.0] - 2026-09-24
 
 ### Added

@@ -1394,7 +1394,7 @@ Consumer tags control which components are visible to which consumers:
 
 ```
 02:orchestrator    — visible to the Monty orchestrator
-05:validator       — validator recipes (hidden from the assembler via NOT ANY)
+05:validator       — validation-workflow metadata; not a delivery gate
 07:sempai          — visible only to Sempai review
 ```
 
@@ -1635,11 +1635,11 @@ consumer_tags:       ["02:orchestrator"]
 
 When the operator clicks **Generate** on the Settings → Prefix tab:
 1. `POST /api/webchat/v2/prefixes/base-prompt/regenerate` is called
-2. `RebornInterceptorConfigService::do_assemble_bundle` queries all component
-   tables for `validation_status = 'validated'` rows
+2. The host prefix-bundle sweep queries available component tables for
+   `validation_status = 'validated'` rows under the server-issued scope ticket
 3. For `reborn_recipes`, it reads `COALESCE(NULLIF(prior_knowledge_content,''), '')`
 4. This document's text is included in the assembled bundle
-5. The bundle is stored in `reborn_basic_prompt` and served as the system
+5. The bundle is stored in `reborn_basic_prompt_store` and served as the system
    prompt prefix on every subsequent turn
 
 ### 19.2 KV Cache Cold Start Sequence

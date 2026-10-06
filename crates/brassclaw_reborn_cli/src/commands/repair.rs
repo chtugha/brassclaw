@@ -1,22 +1,12 @@
-//! `brassclaw repair` — force-overwrite all `source='system'` component rows
-//! from compiled-in seed values.
-//!
-//! Uses `ON CONFLICT DO UPDATE` — intentionally different from the normal
-//! seeder's `DO NOTHING`. Run this after the boot content integrity check
-//! fails to restore corrupted rows.
+//! `brassclaw repair` — checksum-aware recovery of installation-seeded prompts.
 
 use clap::Args;
 
 use crate::context::RebornCliContext;
 
-/// Force-overwrite all `source='system'` component rows from compiled-in seed
-/// constants.
-///
-/// The normal seeder uses `ON CONFLICT DO NOTHING` and will not overwrite a
-/// corrupted row. This command unconditionally restores all system components
-/// to their compiled-in state using `ON CONFLICT DO UPDATE`.
-///
-/// Run this when `brassclaw serve` fails with `CONTENT INTEGRITY FAILURE`.
+/// Repair checksummed installation-seeded prompt rows. Content that differs
+/// from this binary is treated as a possible operator upgrade and requires an
+/// interactive confirmation before it is replaced.
 #[derive(Debug, Args)]
 pub(crate) struct RepairCommand {
     /// Simulate the repair without writing to the database.
@@ -41,9 +31,7 @@ impl RepairCommand {
         #[cfg(not(feature = "postgres"))]
         {
             let _ = context;
-            anyhow::bail!(
-                "the repair command requires the `postgres` feature to be enabled"
-            );
+            anyhow::bail!("the repair command requires the `postgres` feature to be enabled");
         }
 
         #[cfg(feature = "postgres")]
@@ -57,14 +45,12 @@ impl RepairCommand {
 
             // Resolve tenant_id: CLI flag → config.toml → "default"
             let tenant_id = self.tenant.clone().unwrap_or_else(|| {
-                brassclaw_reborn_config::RebornConfigFile::load(
-                    &home.path().join("config.toml"),
-                )
-                .ok()
-                .flatten()
-                .and_then(|c| c.identity)
-                .and_then(|id| id.tenant)
-                .unwrap_or_else(|| "default".to_string())
+                brassclaw_reborn_config::RebornConfigFile::load(&home.path().join("config.toml"))
+                    .ok()
+                    .flatten()
+                    .and_then(|c| c.identity)
+                    .and_then(|id| id.tenant)
+                    .unwrap_or_else(|| "default".to_string())
             });
 
             // Build and connect to Postgres.
@@ -76,6 +62,19 @@ impl RepairCommand {
                 .await
                 .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
+            let integrity_before =
+                brassclaw_reborn_composition::content_integrity::run_content_integrity_check(
+                    &booted_db,
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("content integrity check failed: {e}"))?;
+            if let brassclaw_reborn_composition::content_integrity::ContentIntegrityOutcome::Corrupted(mismatches) = &integrity_before {
+                println!("Content checksum mismatches require review:");
+                for mismatch in mismatches {
+                    println!("  - {}:{} (expected {}, actual {})", mismatch.table, mismatch.name, mismatch.expected, mismatch.actual);
+                }
+            }
+
             let mode = if self.dry_run { "dry-run" } else { "live" };
             println!("brassclaw repair [{mode}]: tenant={tenant_id}");
 
@@ -83,16 +82,66 @@ impl RepairCommand {
                 println!("  (no writes will be performed)");
             }
 
-            let report =
-                repair_builtin_components(&booted_db, &tenant_id, self.dry_run)
+            if self.dry_run {
+                let report = repair_builtin_components(&booted_db, &tenant_id, true, &[])
                     .await
                     .map_err(|e| anyhow::anyhow!("repair failed: {e}"))?;
-
-            if self.dry_run {
-                println!("  Would restore {} system component(s).", report.restored);
+                println!(
+                    "  Would insert or validate {} checksum-matching component(s).",
+                    report.restored
+                );
+                if !report.requires_confirmation.is_empty() {
+                    println!(
+                        "  Requires confirmation before replacing differing content: {}",
+                        report.requires_confirmation.join(", ")
+                    );
+                }
                 println!("[dry-run] no writes performed");
             } else {
-                println!("  Restored {} system component(s).", report.restored);
+                let preview = repair_builtin_components(&booted_db, &tenant_id, true, &[])
+                    .await
+                    .map_err(|e| anyhow::anyhow!("repair failed: {e}"))?;
+                let confirmed_overwrite = if preview.requires_confirmation.is_empty() {
+                    Vec::new()
+                } else {
+                    use std::io::{self, Write};
+                    println!(
+                        "The following system prompt(s) have content or validation state that differs from the safe repair baseline:"
+                    );
+                    for name in &preview.requires_confirmation {
+                        println!("  - {name}");
+                    }
+                    print!(
+                        "Replace content and reset status to validated where needed? Type 'yes' to confirm: "
+                    );
+                    io::stdout().flush()?;
+                    let mut answer = String::new();
+                    io::stdin().read_line(&mut answer)?;
+                    if answer.trim() == "yes" {
+                        preview.requires_confirmation.clone()
+                    } else {
+                        Vec::new()
+                    }
+                };
+                if confirmed_overwrite.is_empty() && !preview.requires_confirmation.is_empty() {
+                    anyhow::bail!("repair cancelled; differing components were left unchanged");
+                }
+                let report =
+                    repair_builtin_components(&booted_db, &tenant_id, false, &confirmed_overwrite)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("repair failed: {e}"))?;
+                println!("  Restored or validated {} component(s).", report.restored);
+                if let brassclaw_reborn_composition::content_integrity::ContentIntegrityOutcome::Corrupted(mismatches) =
+                    brassclaw_reborn_composition::content_integrity::run_content_integrity_check(&booted_db)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("post-repair integrity check failed: {e}"))?
+                {
+                    let remaining = mismatches
+                        .iter()
+                        .map(|mismatch| format!("{}:{}", mismatch.table, mismatch.name))
+                        .collect::<Vec<_>>();
+                    anyhow::bail!("repair completed only for compiled-in prompts; unresolved checksum mismatches remain and need operator review: {}", remaining.join(", "));
+                }
             }
 
             Ok(())

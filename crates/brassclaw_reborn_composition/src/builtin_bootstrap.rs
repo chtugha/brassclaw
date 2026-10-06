@@ -47,12 +47,12 @@ use serde_json::{Value, json};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::checksum::sha256_hex;
 use crate::pg_extension_catalogue_store::{NewPgExtensionCatalogue, PgExtensionCatalogueStore};
 use crate::pg_python_code_store::{NewPgPythonCode, PgPythonCodeStore};
 use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
 use crate::pg_skill_store::{NewPgSkill, PgSkillStore};
 use crate::pg_tool_skill_store::{NewPgToolSkill, PgToolSkillStore};
-use crate::checksum::sha256_hex;
 use crate::pg_tool_store::{NewPgTool, PgToolStore};
 use crate::validation_queue::ValidationQueueStore;
 
@@ -115,6 +115,11 @@ pub(crate) const DIRECTION_EXPLORER_SEED: &str =
 pub(crate) const DIRECTION_CODER_SEED: &str =
     include_str!("../../brassclaw_reborn/src/subagent/directions/coder.md");
 
+/// Architecture reference embedded in operator-generated prefix bundles.
+pub(crate) const CLAUDE_MD_SEED: &str = include_str!("../../../CLAUDE.md");
+/// Agent routing reference embedded in operator-generated prefix bundles.
+pub(crate) const AGENTS_MD_SEED: &str = include_str!("../../../AGENTS.md");
+
 /// Compile-time expected SHA-256 checksums for every source='system' component
 /// covered by the boot integrity check. Key = component name; value = hex
 /// digest of the seed constant. Derived automatically — no manual updates
@@ -144,10 +149,7 @@ pub(crate) static EXPECTED_CHECKSUMS: std::sync::LazyLock<
         "subagent:direction:explorer",
         sha256_hex(DIRECTION_EXPLORER_SEED),
     );
-    m.insert(
-        "subagent:direction:coder",
-        sha256_hex(DIRECTION_CODER_SEED),
-    );
+    m.insert("subagent:direction:coder", sha256_hex(DIRECTION_CODER_SEED));
     m
 });
 
@@ -283,13 +285,15 @@ impl BootstrapStores {
             self.audit_builtin_graduation(id, 0, name).await;
             return Ok(id);
         }
-        self.tool
+        let id = self
+            .tool
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool `{name}` insert no-op but not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     /// Insert-or-recover a ToolSkill id (class 13). Same ON-CONFLICT pattern.
@@ -307,13 +311,15 @@ impl BootstrapStores {
             self.audit_builtin_graduation(id, 13, name).await;
             return Ok(id);
         }
-        self.tool_skill
+        let id = self
+            .tool_skill
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool_skill `{name}` insert no-op but not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     /// Insert-or-recover a leaf Skill id (class 1). Same ON-CONFLICT pattern.
@@ -330,19 +336,21 @@ impl BootstrapStores {
             self.audit_builtin_graduation(id, 1, name).await;
             return Ok(id);
         }
-        self.skill
+        let id = self
+            .skill
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("skill `{name}` insert no-op but not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     /// Insert-or-recover a PythonCode id (class 22). `insert` is not
     /// ON-CONFLICT, so get-then-insert via [`PgPythonCodeStore::get_by_name`].
-    /// Builtins bypass Q1, so the row is graduated to `validated` directly
-    /// (the DDL default is `pending`, which the SEC-01 delivery filter hides).
+    /// System rows are inserted directly with `validation_status='validated'`;
+    /// user-authored rows remain pending for Q1/Q2.
     /// Phase P.0: the audit queue path records `q2_actor='builtin'` after insert.
     async fn upsert_python_code(
         &self,
@@ -363,17 +371,6 @@ impl BootstrapStores {
             return Ok(existing.id);
         }
         let id = self.python_code.insert(row).await.map_err(map)?;
-        self.python_code
-            .update_validation_status(
-                &self.tenant,
-                SEED_USER,
-                SEED_AGENT,
-                SEED_PROJECT,
-                id,
-                "validated",
-            )
-            .await
-            .map_err(map)?;
         // New insert — record the builtin audit graduation.
         self.audit_builtin_graduation(id, 22, name).await;
         Ok(id)
@@ -426,18 +423,6 @@ impl BootstrapStores {
             return Ok(existing.id);
         }
         let id = self.catalogue.insert(row).await.map_err(map)?;
-        // Bypass Q1 pending: graduate the builtin to `validated` directly.
-        self.catalogue
-            .update_validation_status(
-                &self.tenant,
-                SEED_USER,
-                SEED_AGENT,
-                SEED_PROJECT,
-                id,
-                "validated",
-            )
-            .await
-            .map_err(map)?;
         // New insert — record the builtin audit graduation.
         self.audit_builtin_graduation(id, 23, name).await;
         Ok(id)
@@ -732,6 +717,248 @@ pub async fn seed_builtin_components(
     // dependency is always satisfied.
     crate::zencoder_bootstrap::seed_zencoder_extension(stores.pool.clone(), tenant_id).await?;
 
+    // Pass 17 — operator-triggered prefix-bundle assembly through two focused
+    // host capabilities and a Tier-0 recipe.
+    seed_prefix_bundle_group(&stores).await?;
+
+    crate::system_seed::ensure_system_seeds_validated(
+        &stores.pool,
+        &stores.tenant,
+        SEED_USER,
+        SEED_AGENT,
+        SEED_PROJECT,
+    )
+    .await
+    .map_err(|reason| SeedBuiltinBootstrapError::Db { reason })?;
+
+    Ok(())
+}
+
+async fn seed_prefix_bundle_group(
+    stores: &BootstrapStores,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    let tenant = stores.tenant.clone();
+    let sweep_name = "host.sweep_validated_components";
+    let store_name = "host.store_prefix_bundle";
+    let tool_sweep_id = stores.upsert_tool(NewPgTool {
+        tenant_id: tenant.clone(), user_id: SEED_USER.into(), agent_id: SEED_AGENT.into(),
+        project_id: SEED_PROJECT.into(), name: sweep_name.into(),
+        description: "Assemble a prefix bundle from validated component rows and architecture references.".into(),
+        param_schema: None, param_template: None, effect_type: "mixed".into(),
+        preconditions: None, error_handling: None,
+        consumer_tags: vec!["00:rusty".into(), "05:validator".into()], source: "system".into(),
+        validation_status: "validated".into(), capability_id: sweep_name.into(),
+    }, sweep_name).await?;
+    let tool_store_id = stores
+        .upsert_tool(
+            NewPgTool {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.into(),
+                agent_id: SEED_AGENT.into(),
+                project_id: SEED_PROJECT.into(),
+                name: store_name.into(),
+                description: "Persist a pre-assembled validated prefix bundle.".into(),
+                param_schema: None,
+                param_template: None,
+                effect_type: "write".into(),
+                preconditions: None,
+                error_handling: None,
+                consumer_tags: vec!["00:rusty".into(), "05:validator".into()],
+                source: "system".into(),
+                validation_status: "validated".into(),
+                capability_id: store_name.into(),
+            },
+            store_name,
+        )
+        .await?;
+
+    let ts_sweep_id = stores.upsert_tool_skill(NewPgToolSkill {
+        tenant_id: tenant.clone(), user_id: SEED_USER.into(), agent_id: SEED_AGENT.into(),
+        project_id: SEED_PROJECT.into(), name: "ts-host-sweep-validated-components".into(),
+        description: "Binding for validated prefix component sweep.".into(),
+        content: "Call host.sweep_validated_components(scope_ticket=<server ticket>) and pass its bundle and generation_ms directly to host.store_prefix_bundle.".into(),
+        prior_knowledge_content: None, override_prompt_creation: false,
+        tool_name: Some(sweep_name.into()),
+        param_schema: Some(json!([{"name":"scope_ticket","param_type":"string","required":true}])),
+        param_template: Some(json!({"scope_ticket":"{{scope_ticket}}"})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()], intent_examples: None,
+        source: "system".into(), validation_status: "validated".into(), includes: vec![], content_checksum: None,
+    }, "ts-host-sweep-validated-components").await?;
+    let ts_store_id = stores.upsert_tool_skill(NewPgToolSkill {
+        tenant_id: tenant.clone(), user_id: SEED_USER.into(), agent_id: SEED_AGENT.into(),
+        project_id: SEED_PROJECT.into(), name: "ts-host-store-prefix-bundle".into(),
+        description: "Binding for storing the assembled prefix bundle.".into(),
+        content: "Call host.store_prefix_bundle(scope_ticket=<server ticket>, bundle=<bundle>, generation_ms=<ms>) after the sweep.".into(),
+        prior_knowledge_content: None, override_prompt_creation: false,
+        tool_name: Some(store_name.into()),
+        param_schema: Some(json!([
+            {"name":"scope_ticket","param_type":"string","required":true},
+            {"name":"bundle","param_type":"string","required":true},
+            {"name":"generation_ms","param_type":"integer","required":true}
+        ])),
+        param_template: Some(json!({"scope_ticket":"{{scope_ticket}}","bundle":"{{bundle}}","generation_ms":"{{generation_ms}}"})),
+        consumer_tags: vec!["00:rusty".into(), "02:orchestrator".into()], intent_examples: None,
+        source: "system".into(), validation_status: "validated".into(), includes: vec![], content_checksum: None,
+    }, "ts-host-store-prefix-bundle").await?;
+
+    let pc_id = stores.upsert_python_code(pc_row(
+        &tenant, "pc-host-assemble-prefix-bundle", "Sweep and persist the prefix bundle.",
+        "# Channel: orchestrator | Class: 22 | No imports.\nbundle_parts = host.sweep_validated_components(scope_ticket=\"{{vars.slot0}}\")\nresult = host.store_prefix_bundle(scope_ticket=\"{{vars.slot0}}\", bundle=bundle_parts[\"bundle\"], generation_ms=bundle_parts[\"generation_ms\"])\n",
+    ), "pc-host-assemble-prefix-bundle").await?;
+    let skill_sweep_id = stores.upsert_skill(skill_row(
+        &tenant, "skill-sweep-validated-components", "Sweep validated components for the prefix bundle.",
+        "Use host.sweep_validated_components(scope_ticket) to assemble the validated bundle and architecture references.", 1,
+        &["02:orchestrator"],
+    ), "skill-sweep-validated-components").await?;
+    let skill_store_id = stores
+        .upsert_skill(
+            skill_row(
+                &tenant,
+                "skill-store-prefix-bundle",
+                "Store the assembled prefix bundle.",
+                "Use host.store_prefix_bundle(scope_ticket, bundle, generation_ms) after sweeping.",
+                1,
+                &["02:orchestrator"],
+            ),
+            "skill-store-prefix-bundle",
+        )
+        .await?;
+
+    let ts_post_reply_id = stores
+        .tool_skill
+        .get_id_by_name(
+            &tenant,
+            SEED_USER,
+            SEED_AGENT,
+            SEED_PROJECT,
+            "ts-host-post-reply",
+        )
+        .await
+        .map_err(|e| SeedBuiltinBootstrapError::Db {
+            reason: e.to_string(),
+        })?
+        .ok_or_else(|| SeedBuiltinBootstrapError::Db {
+            reason: "ts-host-post-reply missing before prefix seed".into(),
+        })?;
+    let pc_post_reply_id = stores
+        .python_code
+        .get_by_name(
+            &tenant,
+            SEED_USER,
+            SEED_AGENT,
+            SEED_PROJECT,
+            "pc-host-post-reply",
+        )
+        .await
+        .map_err(|e| SeedBuiltinBootstrapError::Db {
+            reason: e.to_string(),
+        })?
+        .map(|row| row.id)
+        .ok_or_else(|| SeedBuiltinBootstrapError::Db {
+            reason: "pc-host-post-reply missing before prefix seed".into(),
+        })?;
+    let steps = vec![
+        step_entry(
+            1,
+            "rust",
+            "Pre-load sweep tool binding",
+            "component",
+            &[ts_sweep_id],
+        ),
+        step_entry(
+            2,
+            "rust",
+            "Pre-load store tool binding",
+            "component",
+            &[ts_store_id],
+        ),
+        step_entry(
+            3,
+            "orchestrator",
+            "Sweep and store prefix bundle",
+            "component",
+            &[pc_id, skill_sweep_id, skill_store_id],
+        ),
+        step_entry(
+            4,
+            "rust",
+            "Pre-load post-reply tool binding",
+            "component",
+            &[ts_post_reply_id],
+        ),
+        step_entry(
+            5,
+            "orchestrator",
+            "Emit confirmation reply",
+            "component",
+            &[pc_post_reply_id],
+        ),
+    ];
+    let recipe_name = "host-assemble-prefix-bundle";
+    let intent_examples: Vec<String> = [
+        "regenerate prefix bundle ticket=00000000-0000-0000-0000-000000000000",
+        "assemble base prompt ticket=00000000-0000-0000-0000-000000000000",
+        "rebuild prefix cache ticket=00000000-0000-0000-0000-000000000000",
+    ]
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
+    let recipe_id = stores.upsert_recipe(NewPgRecipe {
+        tenant_id: tenant.clone(), user_id: SEED_USER.into(), agent_id: SEED_AGENT.into(), project_id: SEED_PROJECT.into(),
+        name: recipe_name.into(), description: "Tier-0: assemble full prefix bundle — no LLM.".into(),
+        trigger: None, steps: json!([]), prior_knowledge_content: None, override_prompt_creation: false,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: Some(json!(intent_examples.iter().map(|input| json!({"input":input,"class":0})).collect::<Vec<_>>())),
+        source: "system".into(),
+        step_descriptions: Some(json!([{"desc_idx":0,"label":"Assemble prefix bundle","yaml_source":"","steps":steps}])),
+        variants: Some(json!([{"variant_key":recipe_name,"step_link":"0:1-0:E","description":"Tier-0 prefix assembly","intent_examples":intent_examples,
+            "variable_patterns":[{"name":"slot0","pattern":"ticket=([A-Fa-f0-9-]{36})","description":"server-issued one-use scope ticket"}]}])),
+        dependency_registry: None, validates_class_code: None,
+    }, recipe_name).await?;
+    stores.mark_recipe_tier0(recipe_id).await?;
+    stores
+        .audit_builtin_graduation(recipe_id, 21, recipe_name)
+        .await;
+
+    let cat_id = stores
+        .upsert_catalogue(
+            NewPgExtensionCatalogue {
+                tenant_id: tenant.clone(),
+                user_id: SEED_USER.into(),
+                agent_id: SEED_AGENT.into(),
+                project_id: SEED_PROJECT.into(),
+                name: "builtin-prefix-bundle".into(),
+                description: "Validated prefix bundle assembly tools and recipe.".into(),
+                version: "1.0.0".into(),
+                overview_doc: "Assemble the base prompt from validated components.".into(),
+                task_groups: json!([]),
+                child_component_ids: vec![],
+                intent_index: None,
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into()],
+                intent_examples: None,
+                source: "system".into(),
+                dependency_registry: None,
+            },
+            "builtin-prefix-bundle",
+        )
+        .await?;
+    stores
+        .append_children(
+            cat_id,
+            &[
+                tool_sweep_id,
+                tool_store_id,
+                ts_sweep_id,
+                ts_store_id,
+                pc_id,
+                skill_sweep_id,
+                skill_store_id,
+                recipe_id,
+            ],
+        )
+        .await?;
     Ok(())
 }
 
@@ -1133,8 +1360,7 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
     // 4. PythonCode rows (class 22) — the orchestrator executor bodies that
     //    drive every Tier-0 recipe. Transcribed verbatim from
     //    builtin_stuff_v3.md Steps 2.3 / 3.3 / 4.3 / 5.3 / 6.3 / 7.x.1.
-    //    consumer_tags omit `05:validator` (builtins bypass Q1; the SEC-01
-    //    delivery filter would otherwise hide the row even when validated).
+    //    consumer tags follow the builtin's consumer routing; builtins bypass Q1.
     let pc_read_file = stores
         .upsert_python_code(
             pc_row(
@@ -1383,8 +1609,8 @@ async fn seed_filesystem_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
 
     // 4c. Filesystem Leaf Skills (class 1). Prose bodies reference the
     //     ToolSkill + PythonCode above by name. consumer_tags carry
-    //     05:validator (safe: the skill store has no SEC-01 hiding filter,
-    //     unlike pg_python_code_store). No intent_examples in the doc source
+    //     05:validator workflow metadata. Validation status remains the runtime
+    //     gate. No intent_examples in the doc source
     //     -> json!([]) (leaf skills are pulled in via recipe steps, not direct
     //     intent matching). Transcribed verbatim from builtin_stuff_v3.md
     //     Steps 2.4/2.5, 3.4/3.5/3.x.1, 4.4/4.5/4.x.1/4.x.2, 5.4/5.5/5.6,
@@ -3616,10 +3842,8 @@ fn ts_apply_patch_row(tenant: &str) -> NewPgToolSkill {
 // I/O — pure sandbox dispatch. Transcribed verbatim from builtin_stuff_v3.md.
 // ---------------------------------------------------------------------------
 
-/// Build a `NewPgPythonCode` builtin row. `consumer_tags` omit `05:validator`
-/// (builtins bypass Q1; the SEC-01 delivery filter hides `05:validator` rows
-/// even when `validated`). The row is graduated to `validated` by
-/// [`BootstrapStores::upsert_python_code`].
+/// Build a `NewPgPythonCode` builtin row. Builtins bypass Q1 and are inserted
+/// directly with validated status; consumer tags route them to consumers.
 fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPythonCode {
     NewPgPythonCode {
         tenant_id: tenant.to_string(),
@@ -3641,9 +3865,8 @@ fn pc_row(tenant: &str, name: &str, description: &str, content: &str) -> NewPgPy
 }
 
 /// consumer_tags shared by every filesystem leaf skill (class 1) — transcribed
-/// verbatim from the doc. The skill store has no SEC-01 `05:validator`-hiding
-/// filter (unlike `pg_python_code_store`), so carrying `05:validator` here is
-/// safe and matches the doc source.
+/// verbatim from the doc. The validation tag is workflow metadata; validated
+/// status is the runtime gate.
 const LEAF_SKILL_TAGS: &[&str] = &["02:orchestrator", "05:validator"];
 
 /// consumer_tags for spawn-subagent skills (class 1 + domain class 2) —
@@ -3735,8 +3958,7 @@ fn step_entry(stepnumber: u32, knowledge: &str, goal: &str, ty: &str, include: &
 ///   objects verbatim.
 ///
 /// `consumer_tags` includes `05:validator` per the `NewPgRecipe` contract;
-/// recipes are not subject to the SEC-01 delivery filter (only `pg_python_code`
-/// is), so this does not hide the row.
+/// consumer tags route the row while validated status gates availability.
 fn recipe_row(
     tenant: &str,
     name: &str,

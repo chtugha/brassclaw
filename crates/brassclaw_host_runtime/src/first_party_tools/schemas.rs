@@ -49,6 +49,22 @@ pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value>
         }),
         "schemas/builtin/http.input.v1.json" => http_schema(false),
         "schemas/builtin/http-save.input.v1.json" => http_schema(true),
+        "schemas/builtin/host-sweep_validated_components.input.v1.json" => json!({
+            "type": "object",
+            "properties": { "scope_ticket": { "type": "string", "minLength": 1 } },
+            "required": ["scope_ticket"],
+            "additionalProperties": false
+        }),
+        "schemas/builtin/host-store_prefix_bundle.input.v1.json" => json!({
+            "type": "object",
+            "properties": {
+                "scope_ticket": { "type": "string", "minLength": 1 },
+                "bundle": { "type": "string" },
+                "generation_ms": { "type": "integer", "minimum": 0 }
+            },
+            "required": ["scope_ticket", "bundle", "generation_ms"],
+            "additionalProperties": false
+        }),
         "schemas/builtin/memory_search.input.v1.json" => json!({
             "type": "object",
             "properties": {

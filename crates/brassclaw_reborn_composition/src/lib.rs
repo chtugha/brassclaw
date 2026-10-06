@@ -118,12 +118,16 @@ pub(crate) mod pg_docus_store;
 pub(crate) mod pg_extension_catalogue_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_intent_inputs_store;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
-pub(crate) mod pg_orchestrator_code_port;
 pub(crate) mod pg_kohai_port;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_memory_doc_store;
 pub(crate) mod pg_monty_vm_settings;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_orchestrator_code_port;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_prefix_bundle_backends;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_prefix_scope_ticket;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_python_code_store;
 #[cfg(feature = "postgres")]
@@ -164,6 +168,7 @@ pub mod seed_builtin_host;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod sempai_proposal_sink;
 pub(crate) mod session_registry;
+pub(crate) mod system_seed;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 mod tier_zero_llm_guard;
@@ -189,9 +194,9 @@ pub(crate) mod checksum;
 #[cfg(feature = "postgres")]
 pub mod content_integrity;
 #[cfg(feature = "postgres")]
-pub mod repair;
-#[cfg(feature = "postgres")]
 pub mod q1_orchestrator;
+#[cfg(feature = "postgres")]
+pub mod repair;
 #[cfg(feature = "postgres")]
 pub mod validation_queue;
 
@@ -263,7 +268,8 @@ pub use readiness::{
     RebornFacadeReadiness, RebornReadiness, RebornReadinessState, RebornWorkerReadiness,
 };
 pub use runtime::{
-    AssistantReply, ConversationId, RebornRuntime, RebornRuntimeError, build_reborn_runtime,
+    AssistantReply, ConversationId, InternalTurnOptions, RebornRuntime, RebornRuntimeError,
+    build_reborn_runtime,
 };
 #[cfg(feature = "root-llm-provider")]
 pub use runtime_input::ResolvedRebornLlm;

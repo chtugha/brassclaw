@@ -45,14 +45,14 @@ impl std::fmt::Debug for RebornWebuiBundle {
 /// composition and attaches the runtime-owned projection stream unless the
 /// caller supplies a custom stream.
 pub async fn build_webui_services(
-    runtime: &RebornRuntime,
+    runtime: Arc<RebornRuntime>,
     event_stream: Option<Arc<dyn ProjectionStream>>,
 ) -> Result<RebornWebuiBundle, RebornBuildError> {
     build_webui_services_with_connectable_channels(runtime, event_stream, None).await
 }
 
 pub(crate) async fn build_webui_services_with_connectable_channels(
-    runtime: &RebornRuntime,
+    runtime: Arc<RebornRuntime>,
     event_stream: Option<Arc<dyn ProjectionStream>>,
     connectable_channels: Option<Arc<dyn ConnectableChannelsProductFacade>>,
 ) -> Result<RebornWebuiBundle, RebornBuildError> {
@@ -246,17 +246,14 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         }
 
         // Step 4 — content integrity check.
-        // Verifies that all source='system' rows in the three prose-bearing
-        // tables match their compile-time expected checksums. Hard error on
-        // mismatch — the RebornWebuiBundle is NOT returned.
-        // Run `brassclaw repair` to restore corrupted rows.
+        // Verifies stored checksums for source='system' prose rows and also
+        // checks compiled-in prompt seeds against their expected checksums.
+        // Hard error on mismatch — the RebornWebuiBundle is NOT returned.
+        // `brassclaw repair` reviews compiled-in prompt seeds and confirms before replacing differing content.
         {
             match crate::content_integrity::run_content_integrity_check(&booted_db).await {
                 Ok(crate::content_integrity::ContentIntegrityOutcome::Ok { checked }) => {
-                    tracing::debug!(
-                        checked,
-                        "content integrity: all system components verified"
-                    );
+                    tracing::debug!(checked, "content integrity: all system components verified");
                 }
                 Ok(crate::content_integrity::ContentIntegrityOutcome::Corrupted(mismatches)) => {
                     for m in &mismatches {
@@ -265,8 +262,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                             name = %m.name,
                             expected = %m.expected,
                             actual = %m.actual,
-                            "CONTENT INTEGRITY FAILURE: system component corrupted or \
-                             binary updated without repair. Run `brassclaw repair`."
+                            "CONTENT INTEGRITY FAILURE: system component checksum mismatch; review the component before repair."
                         );
                     }
                     return Err(crate::error::RebornBuildError::ContentIntegrity(
@@ -287,11 +283,12 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         // These must run after run_content_integrity_check so we only load rows
         // that have passed the integrity check. Failures here are boot-fatal.
         {
-            let fe_body = load_system_skill_body(&booted_db, &host_tenant_id, "failure_explanation")
-                .await
-                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-                    reason: format!("failed to load failure_explanation skill from DB: {e}"),
-                })?;
+            let fe_body =
+                load_system_skill_body(&booted_db, &host_tenant_id, "failure_explanation")
+                    .await
+                    .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                        reason: format!("failed to load failure_explanation skill from DB: {e}"),
+                    })?;
             brassclaw_loop_support::init_failure_explanation_prompt(fe_body);
         }
 
@@ -309,40 +306,42 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
 
         #[cfg(feature = "root-llm-provider")]
         {
-            let sempai_body =
-                load_system_skill_body(&booted_db, &host_tenant_id, "sempai_audit")
-                    .await
-                    .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-                        reason: format!("failed to load sempai_audit skill from DB: {e}"),
-                    })?;
+            let sempai_body = load_system_skill_body(&booted_db, &host_tenant_id, "sempai_audit")
+                .await
+                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                    reason: format!("failed to load sempai_audit skill from DB: {e}"),
+                })?;
             brassclaw_reborn::loop_driver_host::init_sempai_persona(sempai_body);
         }
 
         {
-            let general = load_system_skill_body(
-                &booted_db, &host_tenant_id, "subagent:direction:general")
-                .await
-                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-                    reason: format!("failed to load subagent:direction:general from DB: {e}"),
-                })?;
+            let general =
+                load_system_skill_body(&booted_db, &host_tenant_id, "subagent:direction:general")
+                    .await
+                    .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                        reason: format!("failed to load subagent:direction:general from DB: {e}"),
+                    })?;
             let researcher = load_system_skill_body(
-                &booted_db, &host_tenant_id, "subagent:direction:researcher")
-                .await
-                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-                    reason: format!("failed to load subagent:direction:researcher from DB: {e}"),
-                })?;
-            let explorer = load_system_skill_body(
-                &booted_db, &host_tenant_id, "subagent:direction:explorer")
-                .await
-                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-                    reason: format!("failed to load subagent:direction:explorer from DB: {e}"),
-                })?;
-            let coder = load_system_skill_body(
-                &booted_db, &host_tenant_id, "subagent:direction:coder")
-                .await
-                .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-                    reason: format!("failed to load subagent:direction:coder from DB: {e}"),
-                })?;
+                &booted_db,
+                &host_tenant_id,
+                "subagent:direction:researcher",
+            )
+            .await
+            .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                reason: format!("failed to load subagent:direction:researcher from DB: {e}"),
+            })?;
+            let explorer =
+                load_system_skill_body(&booted_db, &host_tenant_id, "subagent:direction:explorer")
+                    .await
+                    .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                        reason: format!("failed to load subagent:direction:explorer from DB: {e}"),
+                    })?;
+            let coder =
+                load_system_skill_body(&booted_db, &host_tenant_id, "subagent:direction:coder")
+                    .await
+                    .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                        reason: format!("failed to load subagent:direction:coder from DB: {e}"),
+                    })?;
             brassclaw_reborn::subagent::directions::init_directions(
                 general, researcher, explorer, coder,
             );
@@ -482,14 +481,17 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     // Wire the interceptor configuration service (Phase 5.5, postgres +
     // root-llm-provider only).  When the pool is available, the service
     // provides snapshot/update/reassemble/prewarm over brassclaw_config.
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    #[cfg(feature = "postgres")]
     if let Some(pool) = services.pg_pool.clone() {
         let tenant_id = runtime.webui_tenant_id().to_string();
         let mut interceptor_svc =
-            crate::interceptor_config_service::RebornInterceptorConfigService::new(pool, tenant_id);
+            crate::interceptor_config_service::RebornInterceptorConfigService::new(pool, tenant_id)
+                .with_runtime(Arc::clone(&runtime));
+        #[cfg(feature = "root-llm-provider")]
         if let Some(mode) = runtime.interceptor_mode() {
             interceptor_svc = interceptor_svc.with_interceptor_mode(mode);
         }
+        #[cfg(feature = "root-llm-provider")]
         if let Some(gateway) = runtime.sempai_gateway() {
             interceptor_svc = interceptor_svc.with_sempai_gateway(gateway);
         }

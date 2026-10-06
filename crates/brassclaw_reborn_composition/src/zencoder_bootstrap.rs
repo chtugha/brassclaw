@@ -122,13 +122,15 @@ impl ZencoderStores {
             self.audit(id, 0, name).await;
             return Ok(id);
         }
-        self.tool
+        let id = self
+            .tool
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool `{name}` not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     async fn upsert_tool_skill(
@@ -144,13 +146,15 @@ impl ZencoderStores {
             self.audit(id, 13, name).await;
             return Ok(id);
         }
-        self.tool_skill
+        let id = self
+            .tool_skill
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool_skill `{name}` not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     async fn upsert_skill(
@@ -165,13 +169,15 @@ impl ZencoderStores {
             self.audit(id, 1, name).await;
             return Ok(id);
         }
-        self.skill
+        let id = self
+            .skill
             .get_id_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
             .map_err(map)?
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("skill `{name}` not found"),
-            })
+            })?;
+        Ok(id)
     }
 
     async fn upsert_python_code(
@@ -193,17 +199,6 @@ impl ZencoderStores {
             return Ok(existing.id);
         }
         let id = self.python_code.insert(row).await.map_err(map)?;
-        self.python_code
-            .update_validation_status(
-                &self.tenant,
-                SEED_USER,
-                SEED_AGENT,
-                SEED_PROJECT,
-                id,
-                "validated",
-            )
-            .await
-            .map_err(map)?;
         self.audit(id, 22, name).await;
         Ok(id)
     }
@@ -264,17 +259,6 @@ impl ZencoderStores {
             return Ok(existing.id);
         }
         let id = self.catalogue.insert(row).await.map_err(map)?;
-        self.catalogue
-            .update_validation_status(
-                &self.tenant,
-                SEED_USER,
-                SEED_AGENT,
-                SEED_PROJECT,
-                id,
-                "validated",
-            )
-            .await
-            .map_err(map)?;
         self.audit(id, 23, name).await;
         Ok(id)
     }

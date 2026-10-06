@@ -5,8 +5,8 @@
 //!
 //! **Stores the full bundle text** in `bundle_json` so that per-turn Kohai and
 //! Sempai calls can read it cheaply (single row fetch, no component-table
-//! re-assembly).  The bundle is assembled only during [`PgBasicPromptStore::store`],
-//! which is called by `do_assemble_bundle` / `regenerate_prefix` on operator demand.
+//! re-assembly). The bundle is assembled by the host prefix-bundle sweep and
+//! persisted by [`PgBasicPromptStore::store`] during `regenerate_prefix`.
 //!
 //! Per-turn usage pattern:
 //! ```text
@@ -75,6 +75,8 @@ mod inner {
         /// Wall-clock milliseconds the last bundle assembly took (V083).
         /// `None` for rows written before V083 was applied.
         pub generation_ms: Option<i64>,
+        /// Request UUID that wrote this generation (V085).
+        pub generation_id: Option<uuid::Uuid>,
     }
 
     // -----------------------------------------------------------------------
@@ -114,14 +116,14 @@ mod inner {
             project_id: &str,
         ) -> Result<Option<BasicPromptEntry>, BasicPromptStoreError> {
             let client = self.pool.get().await?;
-            // Try to read generation_ms (V083). If the column doesn't exist on
-            // an older schema, fall back to a query without it.
+            // Prefer current columns, then fall back for databases that have
+            // not yet applied V083/V085.
             let row = {
                 let full_row = client
                     .query_opt(
                         "SELECT id, bundle_json::text, fingerprint,
                                 is_stale, assembled_at, prewarm_last_at, updated_at,
-                                generation_ms
+                                generation_ms, generation_id
                          FROM reborn_basic_prompt_store
                          WHERE tenant_id = $1 AND user_id = $2
                            AND agent_id  = $3 AND project_id = $4",
@@ -135,13 +137,13 @@ mod inner {
                     .await;
 
                 match full_row {
-                    Ok(row) => (row, true),
+                    Ok(row) => (row, 2_u8),
                     Err(_) => {
-                        // V083 column absent — fall back to the pre-V083 query.
-                        let row = client
+                        let with_generation_ms = client
                             .query_opt(
                                 "SELECT id, bundle_json::text, fingerprint,
-                                        is_stale, assembled_at, prewarm_last_at, updated_at
+                                        is_stale, assembled_at, prewarm_last_at, updated_at,
+                                        generation_ms
                                  FROM reborn_basic_prompt_store
                                  WHERE tenant_id = $1 AND user_id = $2
                                    AND agent_id  = $3 AND project_id = $4",
@@ -152,12 +154,31 @@ mod inner {
                                     &project_id,
                                 ],
                             )
-                            .await?;
-                        (row, false)
+                            .await;
+                        if let Ok(row) = with_generation_ms {
+                            (row, 1_u8)
+                        } else {
+                            let row = client
+                                .query_opt(
+                                    "SELECT id, bundle_json::text, fingerprint,
+                                        is_stale, assembled_at, prewarm_last_at, updated_at
+                                 FROM reborn_basic_prompt_store
+                                 WHERE tenant_id = $1 AND user_id = $2
+                                   AND agent_id  = $3 AND project_id = $4",
+                                    &[
+                                        &self.tenant_id.as_str(),
+                                        &user_id,
+                                        &self.agent_id.as_str(),
+                                        &project_id,
+                                    ],
+                                )
+                                .await?;
+                            (row, 0_u8)
+                        }
                     }
                 }
             };
-            let (row, has_generation_ms) = row;
+            let (row, schema_version) = row;
 
             Ok(row.map(|r| {
                 // bundle_json is a JSONB string value — extract the inner string.
@@ -171,7 +192,8 @@ mod inner {
                     assembled_at: r.get(4),
                     prewarm_last_at: r.get(5),
                     updated_at: r.get(6),
-                    generation_ms: if has_generation_ms { r.get(7) } else { None },
+                    generation_ms: if schema_version >= 1 { r.get(7) } else { None },
+                    generation_id: if schema_version >= 2 { r.get(8) } else { None },
                 }
             }))
         }
@@ -189,6 +211,7 @@ mod inner {
             bundle: &str,
             with_prewarm: bool,
             generation_ms: Option<i64>,
+            generation_id: uuid::Uuid,
         ) -> Result<BasicPromptEntry, BasicPromptStoreError> {
             let fp = compute_fingerprint(bundle);
             // Encode bundle as a JSON string value for the JSONB column.
@@ -201,10 +224,11 @@ mod inner {
                     "INSERT INTO reborn_basic_prompt_store
                          (tenant_id, user_id, agent_id, project_id,
                           bundle_json, fingerprint, is_stale,
-                          assembled_at, prewarm_last_at, updated_at, generation_ms)
+                          assembled_at, prewarm_last_at, updated_at, generation_ms,
+                          generation_id)
                      VALUES ($1, $2, $3, $4, $5::text::jsonb, $6, false, now(),
                              CASE WHEN $7 THEN now() ELSE NULL END,
-                             now(), $8)
+                             now(), $8, $9)
                      ON CONFLICT ON CONSTRAINT reborn_basic_prompt_store_scope_unique
                      DO UPDATE SET
                          bundle_json     = EXCLUDED.bundle_json,
@@ -216,7 +240,8 @@ mod inner {
                              ELSE reborn_basic_prompt_store.prewarm_last_at
                          END,
                          updated_at      = now(),
-                         generation_ms   = EXCLUDED.generation_ms",
+                         generation_ms   = EXCLUDED.generation_ms,
+                         generation_id   = EXCLUDED.generation_id",
                     &[
                         &self.tenant_id.as_str(),
                         &user_id,
@@ -226,6 +251,7 @@ mod inner {
                         &fp,
                         &with_prewarm,
                         &generation_ms,
+                        &generation_id,
                     ],
                 )
                 .await?;

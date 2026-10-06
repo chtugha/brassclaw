@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use brassclaw_host_api::SYSTEM_RESERVED_ID;
 use brassclaw_pg::PgPool;
+use brassclaw_reborn_composition::booted_db::BootedDb;
 use brassclaw_reborn_composition::seed_builtin_host::seed_builtin_host_components;
 use tokio_postgres::types::ToSql;
 use uuid::Uuid;
@@ -32,6 +33,7 @@ struct PgRig {
         testcontainers_modules::postgres::Postgres,
     >,
     pool: PgPool,
+    booted_db: BootedDb,
 }
 
 /// Start an isolated Postgres-16 testcontainer, build a pool, and run every
@@ -74,12 +76,15 @@ async fn pg_rig_or_skip() -> Option<PgRig> {
         .max_size(4)
         .build()
         .expect("Postgres pool must build");
-    brassclaw_pg::migrations::run_migrations(&pool)
-        .await
-        .expect("migrations must apply");
+    let booted_db = brassclaw_reborn_composition::booted_db::run_migrations_and_return_booted_db(
+        Arc::new(pool.clone()),
+    )
+    .await
+    .expect("BootedDb requires completed migrations");
     Some(PgRig {
         _container: container,
         pool,
+        booted_db,
     })
 }
 
@@ -162,7 +167,7 @@ async fn builtin_host_seed_lands_all_step27_components() {
     let tenant = format!("t-{}", Uuid::new_v4());
 
     // First seed.
-    seed_builtin_host_components(Arc::new(rig.pool.clone()), &tenant)
+    seed_builtin_host_components(&rig.booted_db, &tenant)
         .await
         .expect("seed must succeed");
 
@@ -206,6 +211,10 @@ async fn builtin_host_seed_lands_all_step27_components() {
     );
     assert_children_resolve(&rig.pool, &children).await;
 
+    seed_builtin_host_components(&rig.booted_db, &tenant)
+        .await
+        .expect("reseed must preserve checksummed validation policy");
+
     // Idempotency: a re-seed leaves every count unchanged.
     let before = (
         count_validated_system(&rig.pool, "reborn_tools", &tenant, "host.").await,
@@ -214,7 +223,7 @@ async fn builtin_host_seed_lands_all_step27_components() {
         count_validated_system(&rig.pool, "reborn_skills", &tenant, "skill-host-").await,
         count_validated_system(&rig.pool, "reborn_recipes", &tenant, "host-").await,
     );
-    seed_builtin_host_components(Arc::new(rig.pool.clone()), &tenant)
+    seed_builtin_host_components(&rig.booted_db, &tenant)
         .await
         .expect("re-seed must succeed");
     let after = (
