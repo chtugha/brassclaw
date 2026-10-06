@@ -132,6 +132,10 @@ pub trait MontyTurnDriverPort: Send + Sync {
 
     /// Stop one claimed attempt. A completed/missing attempt is an idempotent
     /// no-op; another claim of the same run must never receive this signal.
+    /// Success acknowledges termination of the driving future, not merely
+    /// acceptance or consumption of a stop signal. Adapters bound the wait;
+    /// supervisors independently enforce their stop deadline and quarantine
+    /// unacknowledged attempts. External effects still require reconciliation.
     async fn stop_attempt(
         &self,
         _attempt: super::MontyTaskAttempt,

@@ -621,3 +621,29 @@ and absent-row rollback. All five native composition tests, 72 product unit
 tests, four Monty WebUI handler contracts and affected strict all-target Clippy
 passed sequentially in screen. JavaScript syntax checks passed. Existing mock
 HTTP contracts do not prove production runtime status, restart or live uptake.
+
+### Attempt stop receipts and final/error CPU clocks (2026-10-06)
+
+The legacy driver no longer acknowledges a stop merely because its bounded
+channel accepted the signal. Each exact claim registration owns a completion
+receipt; stop waits for that receipt with a five-second bound. Duplicate live
+registration is rejected without replacing the original sender. Missing/closed
+receipts and full queues fail explicitly. The runner retains its independent
+supervision deadline and admission quarantine. Actual channel tests cover
+consumed-but-unacknowledged Stop, deadline, late claims, duplicate registration
+and missing receipts. All 13 driver tests, selected runner tests, affected strict
+all-target Clippy and all architecture checks passed sequentially in screen.
+This is acknowledgement of the driving future's termination; detached external
+effects, reply-transaction claim fencing and global-host quiescence/reconciliation
+still require their separate production contracts.
+
+Actual tagged Monty 1.0 tests establish an alternative to the `MontyRun`
+final-clock gap: `MontyRepl` retains its tracker on successful completion and
+inside `ReplStartError`, including timeout. Both final clocks feed the same
+neutral task account without duplicate debit or reset during revision changes.
+A real infinite Python loop wrapped in `except BaseException` times out rather
+than reaching the subsequent host effect. Three actual task-accounting tests
+and all-target strict upgrade-workspace Clippy passed on Rust 1.96.0. This proves
+clock recovery with the REPL API, not production task attribution, resumable CPU
+quanta, active native-operation control, global boot or live WebUI uptake. A
+failed Recipe must still end; its mutated REPL must not be continued or replayed.

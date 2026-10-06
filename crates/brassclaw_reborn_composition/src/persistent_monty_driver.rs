@@ -187,7 +187,15 @@ impl Drop for SessionGuard {
 /// when `drive_turn` returns.
 #[cfg(feature = "skills-db")]
 pub(crate) struct SignalBroker {
-    senders: Mutex<HashMap<MontyTaskAttempt, SignalSender>>,
+    senders: Mutex<HashMap<MontyTaskAttempt, AttemptControl>>,
+}
+
+/// Completion is owned by the driving future's RAII registration, not by
+/// receipt of a Stop signal. Channel acceptance never implies termination.
+#[cfg(feature = "skills-db")]
+struct AttemptControl {
+    signal: SignalSender,
+    finished: tokio::sync::watch::Receiver<bool>,
 }
 
 #[cfg(feature = "skills-db")]
@@ -198,12 +206,58 @@ impl SignalBroker {
         }
     }
 
-    /// Register the signal sender for this exact durable run claim.
-    pub(crate) fn set(&self, attempt: MontyTaskAttempt, tx: SignalSender) {
-        self.senders
-            .lock()
-            .expect("signal broker lock")
-            .insert(attempt, tx);
+    /// Register exactly once. A duplicate cannot replace the original sender
+    /// or let the first future's cleanup unregister a second execution.
+    pub(crate) fn set(
+        &self,
+        attempt: MontyTaskAttempt,
+        tx: SignalSender,
+    ) -> Result<tokio::sync::watch::Sender<bool>, AgentLoopDriverError> {
+        use std::collections::hash_map::Entry;
+        let mut senders = self.senders.lock().expect("signal broker lock");
+        match senders.entry(attempt) {
+            Entry::Vacant(entry) => {
+                let (finished, receiver) = tokio::sync::watch::channel(false);
+                entry.insert(AttemptControl {
+                    signal: tx,
+                    finished: receiver,
+                });
+                Ok(finished)
+            }
+            Entry::Occupied(_) => Err(AgentLoopDriverError::InvalidRequest {
+                reason: "Monty attempt is already executing".into(),
+            }),
+        }
+    }
+
+    /// Signal only this attempt, then await its driving future's completion.
+    /// The caller also has an independent supervisor deadline. This bounds
+    /// the port itself, including callers other than TurnRunnerWorker.
+    async fn stop(
+        &self,
+        attempt: &MontyTaskAttempt,
+        deadline: std::time::Duration,
+    ) -> Result<(), AgentLoopDriverError> {
+        let Some(mut finished) = self.send(attempt, ThreadSignal::Stop)? else {
+            return Ok(());
+        };
+        tokio::time::timeout(deadline, async {
+            loop {
+                if *finished.borrow_and_update() {
+                    return Ok(());
+                }
+                finished
+                    .changed()
+                    .await
+                    .map_err(|_| AgentLoopDriverError::Unavailable {
+                        reason: "Monty attempt completion acknowledgement lost".into(),
+                    })?;
+            }
+        })
+        .await
+        .map_err(|_| AgentLoopDriverError::Unavailable {
+            reason: "Monty attempt did not acknowledge termination before deadline".into(),
+        })?
     }
 
     /// Drop the signal sender for this claim (the attempt ended).
@@ -224,22 +278,24 @@ impl SignalBroker {
         &self,
         attempt: &MontyTaskAttempt,
         signal: ThreadSignal,
-    ) -> Result<(), AgentLoopDriverError> {
-        let tx = {
+    ) -> Result<Option<tokio::sync::watch::Receiver<bool>>, AgentLoopDriverError> {
+        let control = {
             let senders = self.senders.lock().expect("signal broker lock");
-            senders.get(attempt).cloned()
+            senders
+                .get(attempt)
+                .map(|control| (control.signal.clone(), control.finished.clone()))
         };
-        if let Some(tx) = tx {
-            match tx.try_send(signal) {
-                Ok(()) | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    return Err(AgentLoopDriverError::Unavailable {
-                        reason: "Monty attempt control channel is full".to_owned(),
-                    });
-                }
+        let Some((tx, finished)) = control else {
+            return Ok(None);
+        };
+        match tx.try_send(signal) {
+            Ok(()) | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => Ok(Some(finished)),
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                Err(AgentLoopDriverError::Unavailable {
+                    reason: "Monty attempt control channel is full".to_owned(),
+                })
             }
         }
-        Ok(())
     }
 }
 
@@ -248,11 +304,13 @@ impl SignalBroker {
 struct SignalRegistration {
     broker: Arc<SignalBroker>,
     attempt: MontyTaskAttempt,
+    finished: tokio::sync::watch::Sender<bool>,
 }
 
 #[cfg(feature = "skills-db")]
 impl Drop for SignalRegistration {
     fn drop(&mut self) {
+        self.finished.send_replace(true);
         self.broker.remove(&self.attempt);
     }
 }
@@ -673,10 +731,11 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
         // runner (slice 4d) can forward Stop/Suspend/Inject; the receiver feeds
         // host.check_signals inside drive_to_yield.
         let (signal_tx, mut signal_rx) = signal_channel(32);
-        self.signal_broker.set(attempt, signal_tx);
+        let finished = self.signal_broker.set(attempt, signal_tx)?;
         let _registration = SignalRegistration {
             broker: Arc::clone(&self.signal_broker),
             attempt,
+            finished,
         };
 
         let result = self
@@ -695,7 +754,9 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
     }
 
     async fn stop_attempt(&self, attempt: MontyTaskAttempt) -> Result<(), AgentLoopDriverError> {
-        self.signal_broker.send(&attempt, ThreadSignal::Stop)
+        self.signal_broker
+            .stop(&attempt, std::time::Duration::from_secs(5))
+            .await
     }
 }
 
@@ -715,9 +776,9 @@ mod tests {
         let broker = SignalBroker::new();
         let attempt = test_attempt();
         let (tx, mut rx) = signal_channel(32);
-        broker.set(attempt, tx);
+        broker.set(attempt, tx).unwrap();
 
-        broker.send(&attempt, ThreadSignal::Stop).unwrap();
+        let _ = broker.send(&attempt, ThreadSignal::Stop).unwrap();
 
         let received = rx.recv().await.expect("signal delivered");
         assert!(matches!(received, ThreadSignal::Stop));
@@ -728,10 +789,10 @@ mod tests {
         let broker = SignalBroker::new();
         let attempt = test_attempt();
         let (tx, mut rx) = signal_channel(32);
-        broker.set(attempt, tx);
+        broker.set(attempt, tx).unwrap();
         broker.remove(&attempt);
 
-        broker.send(&attempt, ThreadSignal::Stop).unwrap();
+        let _ = broker.send(&attempt, ThreadSignal::Stop).unwrap();
         // The sender was removed from the broker; the only remaining sender is
         // the one we moved into `set` (now dropped on remove). With all senders
         // dropped, `recv` returns `None` (channel closed).
@@ -744,7 +805,7 @@ mod tests {
         let broker = SignalBroker::new();
         let attempt = test_attempt();
         // No `set` — send must not panic and must not block.
-        broker.send(&attempt, ThreadSignal::Stop).unwrap();
+        let _ = broker.send(&attempt, ThreadSignal::Stop).unwrap();
         assert!(broker.senders.lock().unwrap().is_empty());
     }
 
@@ -757,13 +818,13 @@ mod tests {
             ..stale
         };
         let (tx, mut rx) = signal_channel(1);
-        broker.set(current, tx);
-        broker.send(&stale, ThreadSignal::Stop).unwrap();
+        broker.set(current, tx).unwrap();
+        let _ = broker.send(&stale, ThreadSignal::Stop).unwrap();
         assert!(matches!(
             rx.try_recv(),
             Err(tokio::sync::mpsc::error::TryRecvError::Empty)
         ));
-        broker.send(&current, ThreadSignal::Stop).unwrap();
+        let _ = broker.send(&current, ThreadSignal::Stop).unwrap();
         assert!(matches!(rx.recv().await, Some(ThreadSignal::Stop)));
     }
 
@@ -772,8 +833,8 @@ mod tests {
         let broker = SignalBroker::new();
         let attempt = test_attempt();
         let (tx, _rx) = signal_channel(1);
-        broker.set(attempt, tx);
-        broker.send(&attempt, ThreadSignal::Stop).unwrap();
+        broker.set(attempt, tx).unwrap();
+        let _ = broker.send(&attempt, ThreadSignal::Stop).unwrap();
         assert!(matches!(
             broker.send(&attempt, ThreadSignal::Stop),
             Err(AgentLoopDriverError::Unavailable { .. })
@@ -787,16 +848,115 @@ mod tests {
         let other = test_attempt();
         let (tx, mut rx) = signal_channel(1);
         let (other_tx, mut other_rx) = signal_channel(1);
-        broker.set(attempt, tx);
-        broker.set(other, other_tx);
+        let finished = broker.set(attempt, tx).unwrap();
+        broker.set(other, other_tx).unwrap();
         let registration = SignalRegistration {
             broker: broker.clone(),
             attempt,
+            finished,
         };
         drop(registration);
         assert!(rx.recv().await.is_none());
-        broker.send(&other, ThreadSignal::Stop).unwrap();
+        let _ = broker.send(&other, ThreadSignal::Stop).unwrap();
         assert!(matches!(other_rx.recv().await, Some(ThreadSignal::Stop)));
+    }
+
+    #[tokio::test]
+    async fn stop_acknowledges_completion_not_channel_acceptance() {
+        let broker = Arc::new(SignalBroker::new());
+        let attempt = test_attempt();
+        let (tx, mut rx) = signal_channel(1);
+        let finished = broker.set(attempt, tx).unwrap();
+        let registration = SignalRegistration {
+            broker: broker.clone(),
+            attempt,
+            finished,
+        };
+        let stopping = broker.stop(&attempt, std::time::Duration::from_secs(1));
+        tokio::pin!(stopping);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), &mut stopping)
+                .await
+                .is_err()
+        );
+        assert!(matches!(rx.recv().await, Some(ThreadSignal::Stop)));
+        // Consuming Stop is still not completion acknowledgement.
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), &mut stopping)
+                .await
+                .is_err()
+        );
+        drop(registration);
+        stopping.await.unwrap();
+        broker
+            .stop(&attempt, std::time::Duration::from_millis(10))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn unacknowledged_stop_is_bounded_and_stale_attempt_is_isolated() {
+        let broker = Arc::new(SignalBroker::new());
+        let attempt = test_attempt();
+        let stale = MontyTaskAttempt {
+            lease_token: brassclaw_turns::TurnLeaseToken::new(),
+            ..attempt
+        };
+        let (tx, mut rx) = signal_channel(1);
+        let finished = broker.set(attempt, tx).unwrap();
+        let registration = SignalRegistration {
+            broker: broker.clone(),
+            attempt,
+            finished,
+        };
+        broker
+            .stop(&stale, std::time::Duration::from_millis(10))
+            .await
+            .unwrap();
+        assert!(matches!(
+            rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
+        assert!(matches!(
+            broker
+                .stop(&attempt, std::time::Duration::from_millis(10))
+                .await,
+            Err(AgentLoopDriverError::Unavailable { .. })
+        ));
+        assert!(matches!(rx.recv().await, Some(ThreadSignal::Stop)));
+        assert!(broker.senders.lock().unwrap().contains_key(&attempt));
+        drop(registration);
+    }
+
+    #[tokio::test]
+    async fn duplicate_registration_does_not_replace_live_attempt() {
+        let broker = SignalBroker::new();
+        let attempt = test_attempt();
+        let (tx, mut rx) = signal_channel(1);
+        let _finished = broker.set(attempt, tx).unwrap();
+        let (duplicate, mut duplicate_rx) = signal_channel(1);
+        assert!(matches!(
+            broker.set(attempt, duplicate),
+            Err(AgentLoopDriverError::InvalidRequest { .. })
+        ));
+        assert!(duplicate_rx.recv().await.is_none());
+        let _ = broker.send(&attempt, ThreadSignal::Stop).unwrap();
+        assert!(matches!(rx.recv().await, Some(ThreadSignal::Stop)));
+    }
+
+    #[tokio::test]
+    async fn missing_completion_receipt_does_not_acknowledge_stop() {
+        let broker = SignalBroker::new();
+        let attempt = test_attempt();
+        let (tx, _rx) = signal_channel(1);
+        let finished = broker.set(attempt, tx).unwrap();
+        drop(finished);
+        assert!(matches!(
+            broker
+                .stop(&attempt, std::time::Duration::from_secs(1))
+                .await,
+            Err(AgentLoopDriverError::Unavailable { .. })
+        ));
     }
 
     #[test]

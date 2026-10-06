@@ -120,3 +120,81 @@ fn nested_execution_and_limit_changes_share_consumption_without_wait_or_double_d
     );
     assert_eq!(rust.check(), vm.check());
 }
+
+#[test]
+fn repl_completion_and_errors_retain_the_final_clock_for_shared_accounting() {
+    use monty::{MontyRepl, ReplProgress};
+    use monty_types::ExcType;
+
+    let live = LiveMontyTaskSettings::new(settings(1, 600)).unwrap();
+    let rust = SharedMontyTaskBudget::new(live.clone());
+    let vm = rust.clone();
+    let repl = MontyRepl::new(
+        "owned_program.py",
+        ResourceTracker::new(ResourceLimits::default().max_feed_duration(Duration::from_secs(5))),
+        CompileOptions::default(),
+    );
+    let mut clock = vm.execution_clock(repl.tracker().elapsed());
+    let ReplProgress::Complete { repl, value } = repl
+        .feed_start(
+            "total = 0\nfor i in range(10000):\n    total += i\ntotal",
+            vec![],
+            PrintWriter::Disabled,
+        )
+        .unwrap()
+    else {
+        panic!("pure program must complete");
+    };
+    assert_eq!(value, MontyObject::int(49_995_000));
+    let completed_time = repl.tracker().elapsed();
+    assert!(completed_time > Duration::ZERO);
+    clock.checkpoint(completed_time).unwrap();
+    assert_eq!(rust.check().unwrap().usage.compute_time, completed_time);
+
+    let error = repl
+        .feed_start(
+            "for i in range(10000):\n    total += i\n1 / 0",
+            vec![],
+            PrintWriter::Disabled,
+        )
+        .unwrap_err();
+    assert_eq!(error.error.exc_type(), ExcType::ZeroDivisionError);
+    let failed_time = error.repl.tracker().elapsed();
+    assert!(failed_time > completed_time);
+    clock.checkpoint(failed_time).unwrap();
+    clock.checkpoint(failed_time).unwrap();
+    assert_eq!(rust.check().unwrap().usage.compute_time, failed_time);
+    assert_eq!(rust.check(), vm.check());
+    live.publish(1, settings(2, 120)).unwrap();
+    assert_eq!(rust.check().unwrap().usage.compute_time, failed_time);
+    // Recovery of counters does not permit continuing this failed Recipe.
+    // The caller must terminate its task and reconcile any preceding effects.
+}
+
+#[test]
+fn repl_timeout_retains_consumption_and_cannot_be_caught_to_continue_effects() {
+    use monty::MontyRepl;
+    use monty_types::ExcType;
+
+    let live = LiveMontyTaskSettings::new(settings(1, 600)).unwrap();
+    let rust = SharedMontyTaskBudget::new(live);
+    let repl = MontyRepl::new(
+        "timeout_program.py",
+        ResourceTracker::new(
+            ResourceLimits::default().max_feed_duration(Duration::from_millis(10)),
+        ),
+        CompileOptions::default(),
+    );
+    let mut clock = rust.execution_clock(repl.tracker().elapsed());
+    let error = repl.feed_start(
+        "try:\n    while True:\n        pass\nexcept BaseException:\n    forbidden_after_timeout()",
+        vec![], PrintWriter::Disabled,
+    ).unwrap_err();
+    assert_eq!(error.error.exc_type(), ExcType::TimeoutError);
+    let elapsed = error.repl.tracker().elapsed();
+    assert!(elapsed >= Duration::from_millis(10));
+    clock.checkpoint(elapsed).unwrap();
+    assert_eq!(rust.check().unwrap().usage.compute_time, elapsed);
+    // Actual timeout returns an error rather than a host FunctionCall to
+    // forbidden_after_timeout. Final/error time does not require a Python hook.
+}
