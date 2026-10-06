@@ -1,5 +1,10 @@
 HOW TO CREATE A PREFIX — EXACT PROMPT FOR CODEX
 
+Defensive-compiler.py --mode run now enforces shared citation validation.
+See RESPONSE-VALIDATION-USAGE.txt for active-prefix setup and copy/paste examples.
+Copy prefix_response_validation.py and check_homeassistant_configuration.py beside
+the compiler. Server/firewall configuration adapters are not implemented yet.
+
 Copy the following prompt into Codex from your BrassClaw repository checkout:
 
 BEGIN PROMPT

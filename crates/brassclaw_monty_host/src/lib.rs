@@ -15,7 +15,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use brassclaw_resources::{MontyTaskBudgetError, MontyTaskClock, SharedMontyTaskBudget};
@@ -185,6 +185,7 @@ pub enum VmFailure {
     UnsupportedBoundary,
     InvalidResult,
     InvalidHostArguments,
+    ResourceLimit,
     Python,
 }
 /// Full diagnostic/output evidence stays available to the trusted supervisor.
@@ -223,6 +224,7 @@ impl std::error::Error for VmError {}
 
 #[derive(Debug)]
 struct TaskControl {
+    budget: SharedMontyTaskBudget,
     clock: Mutex<MontyTaskClock>,
     cancelled: AtomicBool,
     last_yield: Mutex<Duration>,
@@ -301,6 +303,7 @@ impl RecipeVm {
         }
         let control = Arc::new(TaskControl {
             clock: Mutex::new(budget.execution_clock(Duration::ZERO)),
+            budget,
             cancelled: AtomicBool::new(false),
             last_yield: Mutex::new(Duration::ZERO),
             slice: bounds.execution_slice,
@@ -352,13 +355,15 @@ impl RecipeVm {
                 VmFailure::WrongBoundary
             }));
         }
-        let Some(mapping) = inputs.as_object() else {
-            return Err(VmError::kind(VmFailure::InvalidInputs));
-        };
-        if mapping.keys().any(|name| !input_identifier(name)) {
-            return Err(VmError::kind(VmFailure::InvalidInputs));
-        }
-        let inputs = json_input(&inputs, self.bounds)?;
+        let inputs = self.adapt(|bounds| {
+            let Some(mapping) = inputs.as_object() else {
+                return Err(VmError::kind(VmFailure::InvalidInputs));
+            };
+            if mapping.keys().any(|name| !input_identifier(name)) {
+                return Err(VmError::kind(VmFailure::InvalidInputs));
+            }
+            json_input(&inputs, bounds)
+        })?;
         // A constant result expression supports the class-22 assignment contract.
         // No task values or source interpolation are involved.
         let bytes = artifact.body.len().checked_add("\nresult\n".len());
@@ -420,11 +425,11 @@ impl RecipeVm {
         let result = match answer {
             HostAnswer::Abort(error) => call.abort(error, self.print_writer()),
             HostAnswer::Return(value) => {
-                let converted = match json_input(&value, self.bounds) {
+                let converted = match self.adapt(|bounds| json_input(&value, bounds)) {
                     Ok(converted) => converted,
                     Err(mut error) => {
                         self.artifact = None;
-                        error.stdout = self.take_stdout();
+                        error.stdout.push_str(&self.take_stdout());
                         error.rejected_answer = Some(Box::new(HostAnswer::Return(value)));
                         return Err(error);
                     }
@@ -496,6 +501,58 @@ impl RecipeVm {
         PrintWriter::CollectString(&mut self.stdout, Some(self.bounds.max_stdout_bytes))
     }
 
+    /// Charge only this synchronous data adapter. Never wrap interpreter calls,
+    /// provider waits or a child in this wall-clock interval: those own separate
+    /// clocks and would otherwise be charged twice or include external waits.
+    fn adapt<T>(
+        &mut self,
+        operation: impl FnOnce(VmBounds) -> Result<T, VmError>,
+    ) -> Result<T, VmError> {
+        let check = || {
+            if self.control.cancelled.load(Ordering::Acquire) {
+                let mut failure = VmError::kind(VmFailure::ResourceLimit);
+                failure.exception = Some(Box::new(cancel_exception()));
+                return Err(failure);
+            }
+            self.control.budget.check().map(|_| ()).map_err(|error| {
+                let control_error = match error {
+                    MontyTaskBudgetError::ComputeExceeded => {
+                        ExecutionControlError::TaskComputeExceeded
+                    }
+                    _ => ExecutionControlError::AccountingUnavailable,
+                };
+                let mut failure = VmError::kind(VmFailure::ResourceLimit);
+                failure.exception = Some(Box::new(MontyException::new(
+                    ExcType::RuntimeError,
+                    Some(format!("{control_error:?}")),
+                )));
+                failure
+            })
+        };
+        let result = check().and_then(|()| {
+            let started = Instant::now();
+            let result = operation(self.bounds);
+            let charge = self.control.budget.record_compute_time(started.elapsed());
+            // Check even a rejected value, and never expose successful output
+            // or a dispatch request if its conversion exhausted the account.
+            check()?;
+            charge.map_err(|_| VmError::kind(VmFailure::ResourceLimit))?;
+            result
+        });
+        if let Err(error) = &result
+            && error.failure == VmFailure::ResourceLimit
+        {
+            self.state = VmState::Terminal;
+            self.artifact = None;
+        }
+        result.map_err(|mut error| {
+            if error.failure == VmFailure::ResourceLimit {
+                error.stdout = self.take_stdout();
+            }
+            error
+        })
+    }
+
     fn validate_key(&self, key: ContinuationKey, control: bool) -> Result<(), VmError> {
         match &self.state {
             VmState::Paused {
@@ -542,11 +599,11 @@ impl RecipeVm {
                         rejected_answer: None,
                     });
                 }
-                let value = match json_output(value.as_ref(), self.bounds) {
+                let value = match self.adapt(|bounds| json_output(value.as_ref(), bounds)) {
                     Ok(value) => value,
                     Err(mut error) => {
                         self.state = VmState::Terminal;
-                        error.stdout = self.take_stdout();
+                        error.stdout.push_str(&self.take_stdout());
                         return Err(error);
                     }
                 };
@@ -559,13 +616,13 @@ impl RecipeVm {
                         artifact.bindings.contains(&call.function_name)
                     }) =>
             {
-                let arguments = call_values(&call.args, self.bounds);
+                let arguments = self.adapt(|bounds| call_values(&call.args, bounds));
                 let (args, kwargs) = match arguments {
                     Ok(arguments) => arguments,
                     Err(mut error) => {
                         self.artifact = None;
                         self.state = VmState::Terminal;
-                        error.stdout = self.take_stdout();
+                        error.stdout.push_str(&self.take_stdout());
                         return Err(error);
                     }
                 };

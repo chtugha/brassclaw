@@ -2034,13 +2034,10 @@ def build_runtime_context(task: str, target: int = RUNTIME_CONTEXT_TOKENS) -> st
 
 
 def run_task(task:str)->str:
-    ref = build_runtime_context(task)
-    return stream_text(
-        RUN_SYSTEM,
-        f"{ref}\n\n--- USER TASK ---\n{task}",
-        thinking=True,
-        label="run-task",
-    )
+    from prefix_response_validation import run_compiler_task
+    return run_compiler_task(task, system=RUN_SYSTEM, server=VLLM_URL,
+                             prefix_file=ACTIVE_SERVER_PREFIX, verify_local=active_prefix_text,
+                             stream=stream_text, receipt=os.getenv('PREFIX_RESPONSE_RECEIPT'))
 
 
 def plan():

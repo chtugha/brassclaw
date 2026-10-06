@@ -3,7 +3,7 @@ import copy
 import os
 import unittest
 
-from prefix_response_validation import check_citations, check_configuration, resolve_card, validated_generate
+from prefix_response_validation import check_citations, check_configuration, resolve_card, materialize_quotes
 
 
 class ValidationTests(unittest.TestCase):
@@ -29,6 +29,10 @@ class ValidationTests(unittest.TestCase):
         self.answer['claims'][0]['citations'] = []
         self.assertEqual(check_citations(self.answer, self.cards)['status'], 'failed')
 
+    def test_real_but_unrelated_quote_is_rejected(self):
+        self.answer['claims'][0]['text'] = 'The router firewall allows incoming SSH packets.'
+        self.assertEqual(check_citations(self.answer, self.cards)['status'], 'failed')
+
     def test_ambiguous_short_ids_and_unsolicited_yaml(self):
         duplicate = copy.deepcopy(self.cards[self.identity]); duplicate['id'] = 'a'*12+'b'*52
         self.cards[duplicate['id']] = duplicate
@@ -40,6 +44,17 @@ class ValidationTests(unittest.TestCase):
         checks = check_configuration('modbus: []', 'ha-modbus', '/nonexistent/python', '2026.2.3')
         self.assertEqual(checks['application_schema'], 'not_checked')
         self.assertTrue(checks['errors'])
+        self.assertTrue(check_configuration([], 'ha-modbus')['errors'])
+
+    def test_quote_selection_copies_source_and_rejects_invalid_index(self):
+        answer = copy.deepcopy(self.answer)
+        citation = answer['claims'][0]['citations'][0]
+        citation.pop('quote'); citation['quote_index'] = 0
+        converted = materialize_quotes(answer, self.cards)
+        self.assertEqual(converted['claims'][0]['citations'][0]['quote'], self.cards[self.identity]['excerpt'])
+        citation.pop('quote'); citation['quote_index'] = 99
+        with self.assertRaises(ValueError):
+            materialize_quotes(answer, self.cards)
 
     @unittest.skipUnless(os.getenv('PREFIX_TEST_HA_PYTHON'), 'Set PREFIX_TEST_HA_PYTHON for real HA schemas')
     def test_real_schema_and_safe_yaml_regressions(self):

@@ -44,7 +44,18 @@ Parent and child interpreters can share one live task compute account, with one
 cumulative-clock cursor per interpreter. Parked parent execution is not charged
 again during the child. Actual bytecode control yields retain the exact frames;
 cancellation and technical-budget failures remain uncatchable by Python.
-Compilation and boundary export are not yet charged to that account. Native
+Host-side typed input, host-return, argument and result conversion now debit
+that same account in separate synchronous intervals. Rejected conversions also
+debit their actual work. Cancellation and the live revision are checked before
+and after conversion; no dispatch/result is published after a budget failure.
+Completed external return values and stdout remain private failure evidence.
+These intervals never wrap a VM run, child or external wait, so they do not
+double count interpreter time or charge parked tasks. Monty's internal
+REPL source scanning and compilation are now charged by the versioned interpreter
+extension's preparation clock, separate from both the VM execution windows and
+these adapter intervals. Compiler-exit cancellation preserves REPL metadata and
+prevents any opcode execution. One-shot artifact/root construction, snapshot and
+internal graph export/import still need accounting. Native
 operations without interpreter polling, full logical heap attribution/adaptive
 memory, allocator/process containment, durable continuation manifests, production
 boot/inbox/ports and WebUI effective-revision acknowledgement remain Phase 3a

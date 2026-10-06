@@ -1179,3 +1179,68 @@ resource/allocator/heap/root-CPU gates, exclusive boot ownership, durable ports 
 wait/resume supervision, selected component manifests and production-caller
 acceptance. Do not activate this candidate or mark the seven resolved solely from
 its VM-level handshake and interpreter tests.
+
+### 2026-10-06 — Task-owned typed boundary accounting
+
+The isolated child host now debits typed input, host-return, host-argument and
+result conversion to the same `SharedMontyTaskBudget` as its interpreter. Each
+interval wraps only synchronous data conversion, never interpreter execution,
+nested work or external waits. Rejected conversions retain their compute charge.
+The live account and cancellation are checked before and after conversion;
+resource failure terminates the child context before publishing a dispatch or
+result. A completed host return and prior stdout remain private error evidence,
+including when the live budget rejects conversion on parent resumption.
+
+Validation against `aa4dd3df` plus this host/caller diff: eleven real child-host
+cases and five root-host cases pass. Strict host-library and isolated-caller
+all-target Clippy also pass, sequentially in the background screen queue. Logs:
+`/private/tmp/brassclaw-monty-child-host.log`,
+`/private/tmp/brassclaw-monty-child-host-lints.log` and
+`/private/tmp/brassclaw-monty-child-caller-lints.log`. Existing production-suite
+evidence is unchanged; the original seven failures were not rerun or resolved.
+
+This closes only the host-side typed-adapter accounting gap. Monty's internal
+compilation, snapshot and graph import/export still need separate accounting;
+unpolled native work, root coroutine attribution and logical shared heap/allocator
+containment remain prerequisite implementation and acceptance work. Measuring a
+whole interpreter hosting call by elapsed wall time would wrongly charge waits
+or nested work, so it cannot substitute for those ownership boundaries. No
+production dependency, global service wiring or component activation changed.
+
+### 2026-10-06 — REPL scanning/compilation task accounting
+
+The isolated extension is now `1.0.0-brassclaw.control.2`, dump ABI `0xBC02`.
+REPL source scanning and synchronous compilation have preparation windows that
+retain actual active time on success, rejected syntax and unwinding. Trusted
+control checks before and after those windows include preparation plus VM time
+in the same cumulative task cursor. Static Monty feed/turn limits and `elapsed()`
+remain VM-only; `preparation_elapsed()` reports the separate retained component.
+Snapshot adapters must preserve both clocks and the account cursor without
+charging earlier consumption again. Old extension/upstream dumps are rejected;
+no migration or resumption compatibility is claimed.
+
+A live cancellation/budget failure after successful compilation restores compiler
+tables to the REPL before returning failure and executes no opcode. Preparation
+does not wrap VM execution or external waits. Three actual-interpreter regressions
+cover charged syntax failure and retained tables on compiler-exit cancellation,
+dump persistence/old ABI rejection, and a shared 600→30-second revision published
+at compiler exit before Python effects. Raising the budget cannot revive the
+failed task account. This is accounting and boundary enforcement, not compiler
+preemption or a measured bound on native/compiler response time.
+
+Validation: all 47 isolated interpreter checks pass against `aa4dd3df` plus the
+host/preparation diff. Strict extension (`monty`, `monty-types` libraries), host
+library and isolated caller all-target Clippy pass. Cargo ran sequentially in
+background screen. Evidence: `/private/tmp/brassclaw-monty-preparation.log`,
+`/private/tmp/brassclaw-monty-preparation-lints.log`,
+`/private/tmp/brassclaw-monty-child-host-lints.log` and
+`/private/tmp/brassclaw-monty-child-caller-lints.log`. The extension patch is
+regenerated from the hash-verified upstream baseline; production pins remain
+unchanged. The original seven failures remain unresolved and were not rerun.
+
+Remaining resource gates include one-shot artifact/root construction, graph
+import/export and snapshot accounting, compiler/native response bounds, root
+coroutine ownership and shared logical heap/allocator containment. Production
+boot, durable ports/continuations, selected catalogue manifests and WebUI effective
+revision acceptance still require implementation; this isolated evidence does
+not authorize activating the candidate or declaring Phase 3a complete.

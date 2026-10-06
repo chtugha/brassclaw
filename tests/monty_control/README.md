@@ -28,7 +28,19 @@ and publishes a 600→30-second revision during actual Python execution. It does
 not spend 31 seconds executing Python or establish production settings delivery.
 Raising the limit after failure cannot revive the terminated account.
 
-Unpolled native operations, compilation and graph export need separate bounded
+REPL source scanning and compilation now use serialized preparation windows,
+charged on success and syntax failure, with live control checked on entry/exit.
+Compiler-exit cancellation restores the moved REPL compiler tables and prevents
+any opcode from running. Three additional actual-interpreter cases cover that
+failure path, preparation persistence and old-ABI rejection, and a real shared
+600→30-second settings publication at compiler exit. Extension `control.2` uses
+dump ABI `0xBC02`; reconcile `0xBC01` continuations before any upgrade. Static
+feed/turn clocks and `elapsed()` remain VM-only; the control clock additionally
+includes `preparation_elapsed()`. Restore adapters must preserve both parts and
+their shared-account cursor, without debiting earlier preparation twice.
+
+Unpolled native operations, compiler response bounds, one-shot construction,
+internal graph import/export and snapshots still need separate bounded
 accounting/containment evidence. This hook does not attribute a shared global
 coroutine clock to different tasks. Root service work and task-owned child
 execution need separate ownership clocks. Heap attribution, adaptive memory,
@@ -39,7 +51,7 @@ Thread loading; this test workspace neither bypasses that path nor activates the
 new global source.
 
 The isolated [`brassclaw_monty_host`](../../crates/brassclaw_monty_host/README.md)
-candidate now has ten real child-interpreter cases in `tests/child_host.rs`.
+candidate now has eleven real child-interpreter cases in `tests/child_host.rs`.
 They cover typed hostile text/u64/nested values, retained locals and mandatory
 result assignment, actual parent/child computation and independent task progress,
 foreign/stale/late continuation evidence, parked and busy cancellation, live
@@ -49,11 +61,21 @@ child exceptions. A completed child result remains evidence when a later live
 budget check rejects the parent. These cases are VM-boundary evidence; the
 candidate remains outside the production graph.
 
+Host-side typed conversion now charges the same task account in non-overlapping
+synchronous intervals, including rejected inputs. The added case observes actual
+conversion charges, retained usage through a subsequent real feed and cancellation
+before another feed. Live-budget failure retains both a completed child return
+and prior stdout. Monty's internal preparation/export and native containment
+remain separate open requirements; this does not meter the whole hosting call.
+
 Five `tests/global_host.rs` cases exercise the root hosting candidate against
 actual `global_mode.py`: complete boot work waits, early/incomplete/busy boot,
 opaque and empty-input task interleaving, an actual child exception, pending-call
 retention, malformed/oversized/extra-field rejection, foreign/stale replies and
 explicit shutdown. No successful Recipe/provider/durable finish is fabricated.
-Together with the ten child cases, these 15 checks and strict library/caller
+Together with the eleven child cases, these 16 checks and strict library/caller
 lints passed sequentially. Production dependency pins and driver wiring remain
 unchanged; this is not the seven composition tests' acceptance.
+
+After the preparation change, all 47 actual interpreter checks in this workspace
+and strict extension/host/caller lints passed in the sequential screen queue.

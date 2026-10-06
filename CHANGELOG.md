@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(prefix / evidence)* Add citation-profile verification and live Home Assistant citation/configuration validation receipts, retaining rejected answers and static-check limitations.
 - *(Monty / upgrade candidate)* Add an isolated root/child VM hosting crate with typed inputs/results, retained locals, correlated continuations, boot work-wait readiness and explicit cancellation/shutdown. Fifteen real-interpreter host tests and strict host/caller lints pass; production driver integration and the seven existing composition failures remain outstanding.
 - *(components / documentation)* Add the ToolSkill authoring guide covering IBS binding descriptors, Skill/PythonCode associations, immutable version selection, approval evidence and the distinction between binding and Tool execution.
 - *(prefix / validation)* Add shared structured-response citation checks, a bounded repair pass, Home Assistant YAML/static-schema validation and regression tests. Unsupported or unavailable checks remain explicit; static validation does not establish device/runtime success.
@@ -20,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(Monty / isolated control extension)* Upgrade to `1.0.0-brassclaw.control.2` with dump ABI `0xBC02`, retained REPL scanning/compilation time and live preparation-boundary checks. Old dumps are rejected and require reconciliation before upgrade. All 47 isolated interpreter checks and strict extension/host/caller lints pass; production adoption remains pending.
+- *(prefix / compiler run modes)* Route Defensive, tomedo and Home Assistant run modes through shared verified-prefix citation validation, with optional response receipts and compiler-entry-point regression coverage. Citation provenance and lexical overlap do not prove semantic entailment.
 - *(planning / components)* Add Phase 0a implementation and acceptance requirements for exact association approvals, complete immutable component/Tool artifacts, typed recursive bindings, actual ToolSkill preparation and durable retry/effect state. Integrate these contracts into runtime, policy, migration, WebUI and production cutover gates; this is plan work, not completed enforcement.
 - *(documentation / architecture)* Align root agent guides and Tool definitions with the Recipe, Skill, Tool and ToolSkill ground truth, including stable policy identity across retained versions/aliases and honest implementation boundaries.
 - *(prefix / Home Assistant)* Route compiler run mode through the shared structured-response validation path and document configuration-check prerequisites.
@@ -30,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(Monty / task accounting)* Charge synchronous typed boundary conversions to the shared child-task budget, including rejected conversions, without charging nested execution or external waits. Preserve completed-return/stdout evidence on resource failure and restore REPL compiler tables after compiler-exit cancellation before any opcode executes.
 - *(prefix / database)* V088 corrects system prefix-tool capability identities to `builtin.*` while preserving component names and UUIDs; prefix schemas use the runtime's expected keys.
 - *(boot / integrity)* Verify loaded system prompt bodies together with their checksums before initialization; required component boot failures abort startup.
 - *(PostgreSQL / build)* Track the migrations directory so newly added SQL migrations invalidate embedded migration builds; improve embedded-PostgreSQL shutdown ownership and report corrupt execution snapshots instead of silently omitting them.

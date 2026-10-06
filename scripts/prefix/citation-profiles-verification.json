@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-06",
+  "scope": "Shared runtime citation validation in all three compiler run modes; no prefix rebuild or remote deployment",
+  "files_sha256": {
+    "Defensive-compiler.py": "dcd41f787d1ba6b0fa82a71042bad27f269da6bda8ae18df2d4174fc6a4ba8cb",
+    "tomedo-compiler.py": "794476c14353dc2f3765a7c62df6d0ace0d6ac74c80b57dbe4a429f0a7293295",
+    "Homeassistant-compiler.py": "e3445ebe35bbf61b5951127cbc4953b1586440537cd2b55409171dfbcfdb367f",
+    "prefix_response_validation.py": "788759d6f59dd961034d93579dbf0c6b35a64e296d0c68afb30c491e4c112c11",
+    "test_prefix_compiler_citations.py": "3a18877b6ccee42f4630e17153e1765c59ae07f11c845caf7096dff97d8d161d",
+    "test_prefix_response_validation.py": "0043b6c2b2ca3ca9c3007e9653807929148aa7166fec7ae0765a9e19317ad7f6"
+  },
+  "checks": {
+    "compiler_entry_points": "All three reject missing verified active prefix before generation",
+    "evidence_contracts": "All three compiler-produced cards accept literal English/German supporting quotes and reject forged quotations",
+    "shared_validation": "Six tests passed; real HA schema test skipped locally (HA not installed in this interpreter)",
+    "syntax": "All changed compiler modules and shared validator passed py_compile",
+    "diff": "git diff --check passed"
+  },
+  "limitations": [
+    "No live Defensive/tomedo generation test: their prefixes were not activated or deployed in this change.",
+    "Citation provenance and conservative word overlap do not certify semantic entailment.",
+    "Configuration adapters remain Home Assistant-only; direct vLLM requests bypass client validation."
+  ]
+}

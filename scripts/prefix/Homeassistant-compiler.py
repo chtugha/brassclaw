@@ -1794,26 +1794,12 @@ def build_runtime_context(task: str, target: int = RUNTIME_CONTEXT_TOKENS) -> st
 
 
 def run_task(task:str)->str:
-    # Post-generation checks do not change the published/cacheable prefix.
-    from prefix_response_validation import load_bundle, validated_generate
-    if not ACTIVE_SERVER_PREFIX:
-        raise ValueError('Validated run requires VLLM_SERVER_PREFIX_FILE from the active immutable generation')
-    active_prefix_text()  # Existing exact server-token/profile verification.
-    manifest, cards = load_bundle(Path(ACTIVE_SERVER_PREFIX).resolve().parent)
-    kind = os.getenv('PREFIX_CONFIGURATION_KIND', 'none')
-    ha_version = os.getenv('PREFIX_HA_VERSION')
-    if kind != 'none' and not ha_version:
-        raise ValueError('Set PREFIX_HA_VERSION to the exact target release for configuration checks')
-    def generate(instruction, schema):
-        return stream_text(RUN_SYSTEM, instruction, thinking=False, label='validated-run-task',
-                           response_format={'type':'json_schema','json_schema':{
-                               'name':'evidence_answer','strict':True,'schema':schema}})
-    result = validated_generate(generate, task, cards, kind,
-                                os.getenv('PREFIX_HA_PYTHON'), ha_version)
-    result['generation'] = manifest['generation']
-    if not result['accepted']:
-        raise RuntimeError('Response validation failed: '+json.dumps(result['checks'],ensure_ascii=False))
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    from prefix_response_validation import run_compiler_task
+    return run_compiler_task(task, system=RUN_SYSTEM, server=VLLM_URL,
+                             prefix_file=ACTIVE_SERVER_PREFIX, verify_local=active_prefix_text,
+                             stream=stream_text, kind=os.getenv('PREFIX_CONFIGURATION_KIND', 'none'),
+                             ha_python=os.getenv('PREFIX_HA_PYTHON'), ha_version=os.getenv('PREFIX_HA_VERSION'),
+                             receipt=os.getenv('PREFIX_RESPONSE_RECEIPT'))
 
 
 def plan():

@@ -1,7 +1,7 @@
 SHARED CITATION VALIDATION AND CONFIGURATION CHECKS
 
 Workflow: verify immutable bundle and deployed token prefix -> generate structured
-claims/citations -> verify exact supporting quotations -> check requested YAML and
+claims/citation selections -> copy and verify exact quotations -> check requested YAML and
 installed application schemas -> allow one repair -> return accepted answer or
 failure receipt. No configuration is applied. No service is modified.
 
@@ -10,10 +10,12 @@ generations. The configuration adapter currently supports Home Assistant only.
 Additional adapters can use the same passed/failed/not_checked result contract.
 The existing server prefix and its cached leading tokens remain unchanged.
 
-This is enforced by the client below, and by Homeassistant-compiler.py --mode run.
+This is enforced by the client below, and by all three compilers' --mode run:
+Defensive-compiler.py, Homeassistant-compiler.py and tomedo-compiler.py.
 Ordinary direct requests to vLLM do NOT automatically receive these checks.
-The Defensive and tomedo compiler run modes are not wired to this layer yet;
-use the shared client with their own bundle and matching deployed prefix.
+Each run mode requires its own bundle and matching deployed prefix. Defensive and
+tomedo enforce citations; only the Home Assistant adapter supports configuration
+checks. Their configuration fields must remain empty until adapters are provided.
 
 PORTABLE COPY/PASTE EXAMPLES (LINUX AND MACOS)
 
@@ -33,7 +35,12 @@ example. Sources, URLs, versions and line ranges are resolved from evidence card
 by the validator. Unknown/ambiguous IDs, invented quotes, uncited factual claims
 and unsolicited YAML fail validation. Failed candidates remain in the receipt
 for diagnosis and are not returned as accepted answers. Exit code 1 means failure.
+The model selects a card ID and indexed quotation; Python copies its exact text,
+including PDF spacing. The receipt contains the expanded ID/quote citations.
 Quotation matching verifies provenance, NOT that a claim follows from a quote.
+An additional minimum word-overlap guard rejects clearly unrelated citations.
+It is conservative and may reject translations or paraphrases; it is not a
+semantic verifier. Failed support checks require a revised answer or review.
 Source reliability, semantic entailment and relevance still require review.
 
 HOME ASSISTANT CONFIGURATION
@@ -86,19 +93,42 @@ python3 scripts/prefix/prefix_response_validation.py \
 The candidate JSON has exactly these fields (quotes must be literal source text):
 {"claims":[{"text":"A factual claim","citations":[{"card_id":"FULL_64_HEX_ID","quote":"Exact supporting source quotation"}]}],"configuration":"","missing_information":[]}
 
-HOMEASSISTANT COMPILER RUN MODE
+ALL COMPILER RUN MODES
 
 Set VLLM_SERVER_PREFIX_FILE to the active generation's context_100k.md locally,
 with its manifest/evidence/template alongside it. Existing compiler server and
 tokenizer settings still apply. Copy prefix_response_validation.py and
 check_homeassistant_configuration.py alongside the compiler when copying it.
-Optional configuration settings for --mode run:
+Optional configuration settings for Homeassistant-compiler.py --mode run:
   PREFIX_CONFIGURATION_KIND=ha-script  (otherwise none)
   PREFIX_HA_PYTHON=/absolute/path/to/isolated-ha-checker/bin/python
   PREFIX_HA_VERSION=<exact installed target release>
 The compiler returns the accepted structured answer plus checks; failed validation
-raises an error. The shared CLI above additionally preserves every candidate in a
+raises an error. Set PREFIX_RESPONSE_RECEIPT=/absolute/path/to/answer-validation.json
+in any compiler run mode to preserve candidates and checks, including failures.
+The shared CLI above always preserves every candidate in a
 JSON receipt and needs neither model weights nor transformers.
+
+With the matching prefix active and the compiler's Python dependencies installed,
+run from the repository root on the serving host (compiler run modes also inspect
+the local vLLM process/template). Use the appropriate immutable generation:
+
+export VLLM_SERVER_PREFIX_FILE=/absolute/path/to/active/generation/context_100k.md
+export PREFIX_RESPONSE_RECEIPT="$PWD/defensive-answer-validation.json"
+python3 scripts/prefix/Defensive-compiler.py --mode run \
+  --task 'Explain how to preserve firewall backups and management access before a change. Cite the sources.'
+
+For tomedo, first activate its matching generation, then use:
+
+export VLLM_SERVER_PREFIX_FILE=/absolute/path/to/active/tomedo/generation/context_100k.md
+export PREFIX_RESPONSE_RECEIPT="$PWD/tomedo-answer-validation.json"
+python3 scripts/prefix/tomedo-compiler.py --mode run \
+  --task 'Explain the documented prerequisites for a tomedo API write, citing exact source evidence. Do not perform a write.'
+
+The tomedo example requires a compiled and deployed tomedo generation; it does not
+activate one. When working from another host, use the portable shared CLI instead
+of the compiler run mode. Merely setting an environment path does not deploy a
+prefix or grant access to a remote filesystem.
 
 ON BRASSCLAW2 (CURRENT VERIFIED PATHS)
 

@@ -1342,7 +1342,7 @@ dependencies = [
 
 [[package]]
 name = "monty"
-version = "1.0.0-brassclaw.control.1"
+version = "1.0.0-brassclaw.control.2"
 dependencies = [
  "ahash",
  "chrono",
@@ -1381,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "monty-macros"
-version = "1.0.0-brassclaw.control.1"
+version = "1.0.0-brassclaw.control.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1390,7 +1390,7 @@ dependencies = [
 
 [[package]]
 name = "monty-types"
-version = "1.0.0-brassclaw.control.1"
+version = "1.0.0-brassclaw.control.2"
 dependencies = [
  "chrono",
  "jiff",

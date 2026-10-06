@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-06",
+  "files_sha256": {
+    "prefix_response_validation.py": "dab86e8ff5d71ba5c575af675b971b801657fd2bbef3d989b973b624adf04651",
+    "check_homeassistant_configuration.py": "66a38b45543bae12c09701d07412bbbfd2d6c558e0269b6edd9d475d3c6b3145",
+    "Homeassistant-compiler.py": "a6cabe3d9310cfd3302e6ed44bb50e86bbb7f82bb9cbdad7a98e4b243bc6cfd3",
+    "test_prefix_response_validation.py": "0043b6c2b2ca3ca9c3007e9653807929148aa7166fec7ae0765a9e19317ad7f6"
+  },
+  "tests": {
+    "host": "brassclaw2",
+    "python": "3.13",
+    "homeassistant": "2026.2.3",
+    "pymodbus": "3.11.2",
+    "command": "PREFIX_TEST_HA_PYTHON=/root/prefix-validation-ha-venv/bin/python PREFIX_TEST_HA_VERSION=2026.2.3 /root/prefix-compiler/.venv/bin/python -m unittest test_prefix_response_validation -v",
+    "tests": 7,
+    "result": "passed",
+    "real_schema_cases": 11,
+    "wrong_version_rejected": true
+  },
+  "live_vllm": {
+    "server": "http://192.168.10.171:8000",
+    "prefix_generation": "7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999",
+    "mqtt_receipt": "homeassistant-citation-validation.json",
+    "mqtt_result": "Unrelated citation rejected, then correct MQTT 5 SUBACK quotation accepted after one repair",
+    "script_receipt": "homeassistant-configuration-validation.json",
+    "script_result": "Generated script passed syntax and HA static schema; weak citation rejected the combined answer",
+    "server_leading_token_hash_verified": true,
+    "vllm_and_lmcache_health": "active, HTTP 200"
+  },
+  "remote_changes": {
+    "brassclaw": "No deployment/service/environment changes",
+    "brassclaw2": "Copied helpers into /root/prefix-compiler; installed isolated /root/prefix-validation-ha-venv with HA 2026.2.3 and pymodbus 3.11.2; installed python3.13-dev for dependency compilation"
+  },
+  "limitations": [
+    "Provenance plus lexical overlap is not semantic entailment.",
+    "HA checks are static schema checks for script, automation and Modbus, not full installation or runtime checks.",
+    "Target HA release is operator-supplied; 2026.2.3 was used for verification.",
+    "Direct vLLM requests do not enforce the client checks.",
+    "Defensive/tomedo run modes are not yet wired; shared CLI supports their compatible bundles."
+  ]
+}

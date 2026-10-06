@@ -14,7 +14,7 @@ use std::{mem, sync::Arc};
 use ahash::AHashMap;
 use monty_types::{
     CallArgs, ExcType, MontyException, MontyObject, MontyUuid, NamedValues, OsFunctionCall, OsPolicy, PrintWriter,
-    ResourceTracker, SOURCE_SCAN_THRESHOLD, SourceRange,
+    ResourceError, ResourceTracker, SOURCE_SCAN_THRESHOLD, SourceRange,
     unstable::{self, MontyGraph, NodeId},
 };
 use ruff_python_ast::token::TokenKind;
@@ -40,6 +40,18 @@ use crate::{
     value::Value,
     virtual_path::canonical_cwd,
 };
+
+// Preparation happens outside Python execution: no sandbox handler can intercept
+// cancellation/resource failure, and no source data is needed in this exception.
+fn preparation_exception(error: &ResourceError) -> MontyException {
+    let exc_type = match &error {
+        ResourceError::Control(_) => ExcType::RuntimeError,
+        ResourceError::Time { .. } => ExcType::TimeoutError,
+        ResourceError::Memory { .. } => ExcType::MemoryError,
+        ResourceError::Recursion { .. } => ExcType::RecursionError,
+    };
+    MontyException::new(exc_type, Some(error.to_string()))
+}
 
 /// Stateful REPL session that executes snippets incrementally without replay.
 ///
@@ -141,7 +153,14 @@ impl MontyRepl {
     /// # Errors
     /// The `SyntaxError: Source is too deeply nested` located in the snippet.
     pub fn check_source<'a>(&self, code: &'a str) -> Result<CheckedSource<'a>, MontyException> {
-        source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold)?;
+        let window = self
+            .heap
+            .tracker
+            .preparation_window()
+            .map_err(|error| preparation_exception(&error))?;
+        let result = source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold);
+        window.finish().map_err(|error| preparation_exception(&error))?;
+        result?;
         Ok(CheckedSource(code))
     }
 
@@ -242,27 +261,53 @@ impl MontyRepl {
             });
         }
 
-        let (input_values, names) = unstable::into_named_values_parts(inputs.into());
-        let (input_names, input_ids): (Vec<_>, Vec<_>) = names.into_iter().unzip();
-
         let input_script_name = this.next_input_script_name();
-        // Preserve this snippet's source (see `feed_run` for rationale).
-        let code: Arc<str> = Arc::from(code);
-        this.sources.insert(input_script_name.clone(), Arc::clone(&code));
-        let session = ReplSession {
-            script_name: &this.script_name,
-            cwd: &this.cwd,
-            os_policy: &this.os_policy,
+        // Consume the borrowed guard entirely inside this closure. Its output
+        // owns only compiler data/errors, so returning or mutating the whole
+        // REPL below never retains a guard borrow (including the entry error).
+        let preparation = this.heap.tracker.preparation_window().map(|window| {
+            let (input_values, names) = unstable::into_named_values_parts(inputs.into());
+            let (input_names, input_ids): (Vec<_>, Vec<_>) = names.into_iter().unzip();
+            let code: Arc<str> = Arc::from(code);
+            this.sources.insert(input_script_name.clone(), Arc::clone(&code));
+            let session = ReplSession {
+                script_name: &this.script_name,
+                cwd: &this.cwd,
+                os_policy: &this.os_policy,
+            };
+            let compiled = Executor::new_repl_snippet(
+                code,
+                &input_script_name,
+                &mut this.global_names,
+                &mut this.interns,
+                &input_names,
+                this.options,
+                session,
+            );
+            (compiled, window.finish(), input_values, input_ids)
+        });
+        let (compiled, preparation, input_values, input_ids) = match preparation {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                return Err(Box::new(ReplStartError {
+                    repl: this,
+                    error: preparation_exception(&error),
+                }));
+            }
         };
-        let mut executor = match Executor::new_repl_snippet(
-            code,
-            &input_script_name,
-            &mut this.global_names,
-            &mut this.interns,
-            &input_names,
-            this.options,
-            session,
-        ) {
+        if let Err(error) = preparation {
+            // Successful compilation moved the tables into the executor. Return
+            // them even when live control rejects preparation before any opcode.
+            if let Ok(executor) = compiled {
+                this.ensure_globals_size(executor.namespace_size());
+                this.commit_executor(executor);
+            }
+            return Err(Box::new(ReplStartError {
+                repl: this,
+                error: preparation_exception(&error),
+            }));
+        }
+        let mut executor = match compiled {
             Ok(exec) => exec,
             Err(error) => return Err(Box::new(ReplStartError { repl: this, error })),
         };
@@ -332,12 +377,17 @@ impl MontyRepl {
         if code.is_empty() {
             return Ok(MontyObject::none());
         }
-        source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold)?;
+        self.check_source(code)?;
 
+        let input_script_name = self.next_input_script_name();
+        let window = self
+            .heap
+            .tracker
+            .preparation_window()
+            .map_err(|error| preparation_exception(&error))?;
         let (input_values, names) = unstable::into_named_values_parts(inputs.into());
         let (input_names, input_ids): (Vec<_>, Vec<_>) = names.into_iter().unzip();
 
-        let input_script_name = self.next_input_script_name();
         // Preserve this snippet's source before anything can fail, so later
         // tracebacks with frames from this snippet can still resolve line/
         // column/preview information — `Executor.code` only survives until
@@ -349,7 +399,7 @@ impl MontyRepl {
             cwd: &self.cwd,
             os_policy: &self.os_policy,
         };
-        let mut executor = Executor::new_repl_snippet(
+        let compiled = Executor::new_repl_snippet(
             code,
             &input_script_name,
             &mut self.global_names,
@@ -357,7 +407,15 @@ impl MontyRepl {
             &input_names,
             self.options,
             session,
-        )?;
+        );
+        if let Err(error) = window.finish() {
+            if let Ok(executor) = compiled {
+                self.ensure_globals_size(executor.namespace_size());
+                self.commit_executor(executor);
+            }
+            return Err(preparation_exception(&error));
+        }
+        let mut executor = compiled?;
 
         self.ensure_globals_size(executor.namespace_size());
 

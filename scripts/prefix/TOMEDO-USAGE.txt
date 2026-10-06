@@ -1,5 +1,10 @@
 HOW TO CREATE A TOMEDO PREFIX — EXACT PROMPT
 
+tomedo-compiler.py --mode run now enforces shared citation validation.
+See RESPONSE-VALIDATION-USAGE.txt for active-prefix setup and copy/paste examples.
+Copy prefix_response_validation.py and check_homeassistant_configuration.py beside
+the compiler. SQL and tomedo API configuration adapters are not implemented yet.
+
 BEGIN PROMPT
 Create a large tomedo, REST API, macOS, PostgreSQL, GOÄ, EBM and ICD-10-GM
 reference prefix with scripts/prefix/tomedo-compiler.py. Exclude clinical

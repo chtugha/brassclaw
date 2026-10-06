@@ -282,7 +282,11 @@ fn live_duration_update_interrupts_retained_context_without_resetting_usage() {
     let mut vm = RecipeVm::new(shared.clone(), bounds()).unwrap();
     let pending = call(
         vm.start_step(
-            artifact("result = host.run_program()", &["run_program"], bounds()),
+            artifact(
+                "print('before')\nresult = host.run_program()",
+                &["run_program"],
+                bounds(),
+            ),
             json!({}),
         )
         .unwrap(),
@@ -312,13 +316,57 @@ fn live_duration_update_interrupts_retained_context_without_resetting_usage() {
             HostAnswer::Return(completed_value.clone()),
         )
         .unwrap_err();
-    assert_eq!(parent_failure.failure, VmFailure::Python);
+    assert_eq!(parent_failure.failure, VmFailure::ResourceLimit);
+    assert_eq!(parent_failure.stdout, "before\n");
     let HostAnswer::Return(retained) = *parent_failure.rejected_answer.unwrap() else {
         panic!("completed child return lost after live budget failure")
     };
     assert_eq!(retained, completed_value);
     assert!(shared.check().is_err());
     assert_eq!(live.current(), settings(2, 30));
+}
+
+#[test]
+fn typed_boundary_work_charges_the_shared_account_even_when_input_is_rejected() {
+    let shared = budget();
+    let mut vm = RecipeVm::new(shared.clone(), bounds()).unwrap();
+    let selected = artifact("result = inputs['items']", &[], bounds());
+    let initial = shared.check().unwrap().usage.compute_time;
+    let invalid = json!({"items": vec!["payload"; bounds().max_value_nodes]});
+    let error = vm.start_step(selected.clone(), invalid).unwrap_err();
+    assert_eq!(error.failure, VmFailure::InvalidInputs);
+    let after_rejection = shared.check().unwrap().usage.compute_time;
+    assert!(after_rejection > initial);
+    // Pre-dispatch invalid input leaves the context available, but never resets
+    // already charged conversion work. A real feed then imports/exports data.
+    let items = json!(vec!["payload"; 512]);
+    assert_eq!(
+        complete(
+            vm.start_step(selected, json!({"items": items.clone()}))
+                .unwrap()
+        ),
+        items
+    );
+    assert!(shared.check().unwrap().usage.compute_time > after_rejection);
+
+    vm.cancellation().request();
+    let error = vm
+        .start_step(artifact("result = 42", &[], bounds()), json!({}))
+        .unwrap_err();
+    assert_eq!(error.failure, VmFailure::ResourceLimit);
+    assert!(
+        error
+            .exception
+            .unwrap()
+            .to_string()
+            .contains("task_cancelled")
+    );
+    assert_eq!(
+        vm.start_step(artifact("result = 42", &[], bounds()), json!({}))
+            .unwrap_err()
+            .failure,
+        VmFailure::Terminal
+    );
 }
 
 #[test]

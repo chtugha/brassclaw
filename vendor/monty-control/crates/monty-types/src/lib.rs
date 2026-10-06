@@ -49,7 +49,7 @@ pub use crate::{
     resource::{
         BASELINE_MEMORY, DEFAULT_MAX_RECURSION_DEPTH, DEFAULT_MAX_SUSPENSIONS, ExecutionControl,
         ExecutionControlAction, ExecutionControlError, LARGE_RESULT_THRESHOLD, LIVE_MEMORY, OOM_EXIT_CODE,
-        ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope, allocate_into_baseline,
+        PreparationWindow, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope, allocate_into_baseline,
         memory_limit_with_headroom,
     },
     results::{ExtFunctionResult, NameLookupResult},

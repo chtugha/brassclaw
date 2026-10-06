@@ -294,6 +294,11 @@ pub struct ResourceTracker {
     /// to hosts for telemetry — but is serialized so a loaded session keeps
     /// counting from where it left off.
     total_execution_time: Cell<Duration>,
+    /// Synchronous interpreter preparation, accounted independently of VM
+    /// feed/turn limits but included in the trusted task-control clock.
+    preparation_time: Cell<Duration>,
+    #[serde(skip)]
+    preparing: Cell<bool>,
     /// Execution time accumulated since the last [`on_feed_start`](Self::on_feed_start).
     /// Serialized like `total_execution_time`: a dump taken mid-feed resumes
     /// that feed, so its budget must survive the round trip.
@@ -327,9 +332,42 @@ impl Default for ResourceTracker {
     }
 }
 
+/// A trusted synchronous preparation segment. It must not wrap VM execution,
+/// nested preparation, external I/O or child execution.
+pub struct PreparationWindow<'a> {
+    tracker: &'a ResourceTracker,
+    started: Option<Instant>,
+}
+impl PreparationWindow<'_> {
+    /// Preserve the segment before checking cancellation/the current task budget.
+    pub fn finish(mut self) -> Result<(), ResourceError> {
+        self.record();
+        self.tracker.poll_execution_control()
+    }
+    fn record(&mut self) {
+        if let Some(started) = self.started.take() {
+            match self.tracker.preparation_time.get().checked_add(started.elapsed()) {
+                Some(total) => self.tracker.preparation_time.set(total),
+                None => self
+                    .tracker
+                    .control_error
+                    .set(Some(ExecutionControlError::AccountingUnavailable)),
+            }
+            self.tracker.preparing.set(false);
+        }
+    }
+}
+impl Drop for PreparationWindow<'_> {
+    fn drop(&mut self) {
+        // Charge unwinding but never invoke host callbacks from a destructor.
+        // An explicit finish or the next checkpoint observes any latched error.
+        self.record();
+    }
+}
+
 /// Trusted, nonblocking control invoked on periodic checkpoints and every
-/// execution-window exit. `elapsed` is cumulative active VM time, including
-/// the current window, excluding host waits. A separate cursor is required for
+/// execution-window exit and preparation boundaries. `elapsed` is cumulative
+/// active VM plus preparation time, excluding host waits. A separate cursor is required for
 /// every task-owned interpreter; this does not attribute global coroutine CPU.
 /// Implementations must neither reenter the VM nor perform blocking I/O.
 pub trait ExecutionControl: fmt::Debug + Send + Sync {
@@ -370,7 +408,13 @@ impl ResourceTracker {
             .execution_control
             .as_ref()
             .ok_or(ExecutionControlError::AccountingUnavailable)
-            .and_then(|control| control.checkpoint(self.elapsed()));
+            .and_then(|control| {
+                let elapsed = self
+                    .elapsed()
+                    .checked_add(self.preparation_time.get())
+                    .ok_or(ExecutionControlError::AccountingUnavailable)?;
+                control.checkpoint(elapsed)
+            });
         match outcome {
             Ok(ExecutionControlAction::Continue) => Ok(()),
             Ok(ExecutionControlAction::Yield) => {
@@ -390,6 +434,29 @@ impl ResourceTracker {
         self.control_yield.replace(false)
     }
 
+    /// Begin synchronous interpreter preparation, never execution or a host wait.
+    /// The guard charges success, error and unwinding without resetting usage.
+    /// Finish explicitly before publishing any result to observe live control.
+    pub fn preparation_window(&self) -> Result<PreparationWindow<'_>, ResourceError> {
+        if self.running_since.get().is_some() || self.preparing.get() {
+            self.control_error
+                .set(Some(ExecutionControlError::AccountingUnavailable));
+            return Err(ResourceError::Control(ExecutionControlError::AccountingUnavailable));
+        }
+        self.poll_execution_control()?;
+        self.preparing.set(true);
+        Ok(PreparationWindow {
+            tracker: self,
+            started: Some(Instant::now()),
+        })
+    }
+
+    /// Preparation telemetry excludes VM execution and remains cumulative over feeds.
+    #[must_use]
+    pub fn preparation_elapsed(&self) -> Duration {
+        self.preparation_time.get()
+    }
+
     /// Creates a new ResourceTracker with the given limits.
     ///
     /// The execution-time clock starts at zero and only runs while the VM
@@ -407,6 +474,8 @@ impl ResourceTracker {
             control_error: Cell::new(None),
             control_yield: Cell::new(false),
             total_execution_time: Cell::new(Duration::ZERO),
+            preparation_time: Cell::new(Duration::ZERO),
+            preparing: Cell::new(false),
             feed_execution_time: Cell::new(Duration::ZERO),
             turn_execution_time: Cell::new(Duration::ZERO),
             running_since: Cell::new(None),

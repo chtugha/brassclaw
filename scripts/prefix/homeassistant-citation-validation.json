@@ -1,0 +1,167 @@
+{
+  "accepted": true,
+  "answer": {
+    "claims": [
+      {
+        "text": "Under MQTT 5.0 section 3.8.4, the Server is permitted to start sending PUBLISH packets matching the Subscription before it sends the SUBACK packet.",
+        "citations": [
+          {
+            "card_id": "e7b3c9609d1d4b0f8a9d12bb31e01a314659c5261994b5e461071099899d54bd",
+            "quote": "The Server is permitted to start sending PUBLISH packets matching the Subscription before the Server sends the SUBACK packet."
+          }
+        ]
+      }
+    ],
+    "configuration": "",
+    "missing_information": [
+      "Installed Home Assistant release and installation type",
+      "Actual broker and client MQTT protocol versions",
+      "Whether the target device supports MQTT 5.0"
+    ]
+  },
+  "checks": {
+    "accepted": true,
+    "citations": {
+      "status": "passed",
+      "errors": [],
+      "sources": [
+        {
+          "claim": 0,
+          "card_id": "e7b3c9609d1d4b0f8a9d12bb31e01a314659c5261994b5e461071099899d54bd",
+          "quote": "The Server is permitted to start sending PUBLISH packets matching the Subscription before the Server sends the SUBACK packet.",
+          "url": "https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html",
+          "version": "MQTT 5.0 OASIS Standard",
+          "path": "mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html.md",
+          "line_start": 8084,
+          "line_end": 8172
+        }
+      ],
+      "scope": "ID, exact quotation provenance and minimum lexical overlap; semantic support is not certified"
+    },
+    "configuration_checks": {
+      "syntax": "not_applicable",
+      "application_schema": "not_applicable",
+      "runtime": "not_checked",
+      "errors": [],
+      "version": null
+    }
+  },
+  "attempts": [
+    {
+      "answer": {
+        "claims": [
+          {
+            "text": "Under MQTT 5.8.4, the Server is permitted to start sending PUBLISH packets matching the Subscription before it sends the SUBACK packet.",
+            "citations": [
+              {
+                "card_id": "56e2769e868a8277bfff39d5d43b53c55f14a5be22978399afafde2489f3b174",
+                "quote": "The key words \"MUST\", \"MUST NOT\", \"REQUIRED\", \"SHALL\", \"SHALL NOT\", \"SHOULD\", \"SHOULD NOT\", \"RECOMMENDED\", \"MAY\", and \"OPTIONAL\" in this specification are to be interpreted as described in IETF RFC 2119 [RFC2119], except where they appear in text that is marked as non-normative."
+              }
+            ]
+          }
+        ],
+        "configuration": "",
+        "missing_information": [
+          "Installed Home Assistant release and installation type",
+          "Actual broker and client MQTT protocol versions",
+          "Whether the target device supports MQTT 5.0"
+        ]
+      },
+      "checks": {
+        "accepted": false,
+        "citations": {
+          "status": "failed",
+          "errors": [
+            "Claim 0: Quotation lacks minimum claim-term overlap; support requires review"
+          ],
+          "sources": [],
+          "scope": "ID, exact quotation provenance and minimum lexical overlap; semantic support is not certified"
+        },
+        "configuration_checks": {
+          "syntax": "not_applicable",
+          "application_schema": "not_applicable",
+          "runtime": "not_checked",
+          "errors": [],
+          "version": null
+        }
+      }
+    },
+    {
+      "answer": {
+        "claims": [
+          {
+            "text": "Under MQTT 5.0 section 3.8.4, the Server is permitted to start sending PUBLISH packets matching the Subscription before it sends the SUBACK packet.",
+            "citations": [
+              {
+                "card_id": "e7b3c9609d1d4b0f8a9d12bb31e01a314659c5261994b5e461071099899d54bd",
+                "quote": "The Server is permitted to start sending PUBLISH packets matching the Subscription before the Server sends the SUBACK packet."
+              }
+            ]
+          }
+        ],
+        "configuration": "",
+        "missing_information": [
+          "Installed Home Assistant release and installation type",
+          "Actual broker and client MQTT protocol versions",
+          "Whether the target device supports MQTT 5.0"
+        ]
+      },
+      "checks": {
+        "accepted": true,
+        "citations": {
+          "status": "passed",
+          "errors": [],
+          "sources": [
+            {
+              "claim": 0,
+              "card_id": "e7b3c9609d1d4b0f8a9d12bb31e01a314659c5261994b5e461071099899d54bd",
+              "quote": "The Server is permitted to start sending PUBLISH packets matching the Subscription before the Server sends the SUBACK packet.",
+              "url": "https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html",
+              "version": "MQTT 5.0 OASIS Standard",
+              "path": "mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html.md",
+              "line_start": 8084,
+              "line_end": 8172
+            }
+          ],
+          "scope": "ID, exact quotation provenance and minimum lexical overlap; semantic support is not certified"
+        },
+        "configuration_checks": {
+          "syntax": "not_applicable",
+          "application_schema": "not_applicable",
+          "runtime": "not_checked",
+          "errors": [],
+          "version": null
+        }
+      }
+    }
+  ],
+  "generation": "7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999",
+  "requests": [
+    {
+      "usage": {
+        "prompt_tokens": 106356,
+        "total_tokens": 106560,
+        "completion_tokens": 204,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "raw_answer": "{\n  \"claims\": [\n    {\n      \"text\": \"Under MQTT 5.8.4, the Server is permitted to start sending PUBLISH packets matching the Subscription before it sends the SUBACK packet.\",\n      \"citations\": [\n        {\n          \"card_id\": \"56e2769e868a8277bfff39d5d43b53c55f14a5be22978399afafde2489f3b174\",\n          \"quote_index\": 0\n        }\n      ]\n    }\n  ],\n  \"configuration\": \"\"\n,\n  \"missing_information\": [\n    \"Installed Home Assistant release and installation type\",\n    \"Actual broker and client MQTT protocol versions\",\n    \"Whether the target device supports MQTT 5.0\"\n  ]\n}"
+    },
+    {
+      "usage": {
+        "prompt_tokens": 106690,
+        "total_tokens": 106898,
+        "completion_tokens": 208,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "raw_answer": "{\n  \"claims\": [\n    {\n      \"text\": \"Under MQTT 5.0 section 3.8.4, the Server is permitted to start sending PUBLISH packets matching the Subscription before it sends the SUBACK packet.\",\n      \"citations\": [\n        {\n          \"card_id\": \"e7b3c9609d1d4b0f8a9d12bb31e01a314659c5261994b5e461071099899d54bd\",\n          \"quote_index\": 1\n        }\n      ]\n    }\n  ],\n  \"configuration\": \"\"\n,\n  \"missing_information\": [\n    \"Installed Home Assistant release and installation type\",\n    \"Actual broker and client MQTT protocol versions\",\n    \"Whether the target device supports MQTT 5.0\"\n  ]\n}"
+    }
+  ]
+}

@@ -229,3 +229,134 @@ fn native_callbacks_defer_yield_until_the_rust_stack_has_returned() {
     };
     assert_eq!(value, MontyObject::int(99));
 }
+
+#[test]
+fn repl_compilation_is_charged_on_syntax_failure_and_before_any_opcode() {
+    let control = Arc::new(Control::default());
+    let mut repl = MontyRepl::new(
+        "preparation.py",
+        tracker(control.clone()),
+        CompileOptions::default(),
+    );
+    repl.feed_run(
+        "def original():\n    return 41",
+        vec![],
+        PrintWriter::Disabled,
+    )
+    .unwrap();
+    assert!(repl.has_function("original"));
+    let before_syntax = repl.tracker().preparation_elapsed();
+    let before_vm = repl.tracker().elapsed();
+    assert!(
+        repl.feed_run("def broken(:", vec![], PrintWriter::Disabled)
+            .is_err()
+    );
+    assert!(repl.tracker().preparation_elapsed() > before_syntax);
+    assert_eq!(repl.tracker().elapsed(), before_vm);
+    assert!(repl.has_function("original"));
+
+    // The four preparation checkpoints are scan entry/exit and compile
+    // entry/exit. Cancel after successful compilation has moved the tables.
+    let checkpoints = control.calls.load(Ordering::SeqCst);
+    control
+        .cancel_after
+        .store(checkpoints + 4, Ordering::SeqCst);
+    let mut stdout = String::new();
+    let error = repl
+        .feed_start(
+            "new_name = 99\nprint('must not execute')\noriginal()",
+            vec![],
+            PrintWriter::CollectString(&mut stdout, None),
+        )
+        .unwrap_err();
+    assert!(error.error.to_string().contains("Cancelled"));
+    assert!(stdout.is_empty());
+    assert_eq!(error.repl.tracker().elapsed(), before_vm);
+    assert!(error.repl.tracker().preparation_elapsed() > before_syntax);
+    assert!(error.repl.has_function("original"));
+    let mut retained = error.repl;
+    retained
+        .tracker_mut()
+        .set_execution_control(Arc::new(Control::default()));
+    assert!(
+        retained
+            .feed_run("original()", vec![], PrintWriter::Disabled)
+            .unwrap_err()
+            .to_string()
+            .contains("Cancelled")
+    );
+}
+
+#[test]
+fn preparation_clock_survives_dumps_without_resetting_or_accepting_old_abi() {
+    let control = Arc::new(Control::default());
+    let mut repl = MontyRepl::new(
+        "preparation.py",
+        tracker(control),
+        CompileOptions::default(),
+    );
+    repl.feed_run("answer = 42", vec![], PrintWriter::Disabled)
+        .unwrap();
+    let preparation = repl.tracker().preparation_elapsed();
+    let execution = repl.tracker().elapsed();
+    let bytes = dump("preparation.py", None, SessionRef::Idle(&repl)).unwrap();
+    let Session::Idle(mut loaded) = Dump::load(&bytes).unwrap().state else {
+        panic!("must restore idle REPL");
+    };
+    assert_eq!(loaded.tracker().preparation_elapsed(), preparation);
+    assert_eq!(loaded.tracker().elapsed(), execution);
+    let reattached = Arc::new(Control::default());
+    loaded
+        .tracker_mut()
+        .set_execution_control(reattached.clone());
+    assert_eq!(
+        loaded
+            .feed_run("answer", vec![], PrintWriter::Disabled)
+            .unwrap(),
+        MontyObject::int(42)
+    );
+    assert!(loaded.tracker().preparation_elapsed() > preparation);
+    assert_eq!(
+        *reattached.elapsed.lock().unwrap(),
+        loaded.tracker().elapsed() + loaded.tracker().preparation_elapsed()
+    );
+    let mut old_abi = bytes;
+    assert_eq!(&old_abi[..6], b"MONTY\0");
+    old_abi[6..8].copy_from_slice(&0xBC01_u16.to_le_bytes());
+    assert!(Dump::load(&old_abi).is_err());
+}
+
+#[test]
+fn live_shared_task_limit_is_checked_at_compiler_exit_before_python_effects() {
+    let live = LiveMontyTaskSettings::new(settings(1, 600)).unwrap();
+    let shared = SharedMontyTaskBudget::new(live.clone());
+    shared.record_compute_time(Duration::from_secs(31)).unwrap();
+    let control = Arc::new(LiveBudgetControl {
+        clock: Mutex::new(shared.execution_clock(Duration::ZERO)),
+        live: live.clone(),
+        calls: AtomicUsize::new(0),
+    });
+    // Here checkpoint four is compiler exit, after scan entry/exit and
+    // compiler entry. The real live publication must reject the compiled feed.
+    let repl = MontyRepl::new(
+        "preparation.py",
+        tracker(control),
+        CompileOptions::default(),
+    );
+    let mut stdout = String::new();
+    let error = repl
+        .feed_start(
+            "try:\n    print('must not execute')\nexcept BaseException:\n    print('caught')",
+            vec![],
+            PrintWriter::CollectString(&mut stdout, None),
+        )
+        .unwrap_err();
+    assert!(error.error.to_string().contains("TaskComputeExceeded"));
+    assert!(error.repl.tracker().preparation_elapsed() > Duration::ZERO);
+    assert_eq!(error.repl.tracker().elapsed(), Duration::ZERO);
+    assert!(stdout.is_empty());
+    assert_eq!(live.current(), settings(2, 30));
+    assert_eq!(shared.check(), Err(MontyTaskBudgetError::ComputeExceeded));
+    live.publish(2, settings(3, 600)).unwrap();
+    assert_eq!(shared.check(), Err(MontyTaskBudgetError::ComputeExceeded));
+}

@@ -10,12 +10,18 @@ CONTROL.patch uses zero-context hunks so blank context markers do not create
 trailing-whitespace warnings when the patch is tracked. Apply it only to the
 verified upstream files, using `git apply --unidiff-zero`.
 
-Extension version: `1.0.0-brassclaw.control.1`. Production still uses the old
+Extension version: `1.0.0-brassclaw.control.2`. Production still uses the old
 compatible interpreter; this library is used only by `tests/monty_control`.
 
 The trusted ExecutionControl hook observes cumulative active execution time
 at periodic resource checks and execution-window exits, including completion
-and errors. Errors latch and become uncatchable. Its Arc is never serialized;
+and errors. REPL source scanning and compilation have separate preparation
+windows, checked on entry and exit and included in the same cumulative control
+clock. Rejected syntax and compiler-exit cancellation retain their charges.
+Successful compiler metadata is restored before returning a control failure;
+no opcode executes after that failure. The upstream VM-only feed/turn clocks
+and `elapsed()` telemetry retain their meanings; `preparation_elapsed()` exposes
+the additional cumulative preparation clock. Errors latch and become uncatchable. Its Arc is never serialized;
 a controlled snapshot requires trusted reattachment before resuming. Reattachment
 does not erase observed terminal failures or time consumption.
 
@@ -27,10 +33,12 @@ operations can observe cancellation through existing resource checks, but
 unpolled native operations remain a bounded-response gap. Synchronous `run`
 does not service yields; callers must use iterative execution.
 
-Dump ABI `0xBC01` deliberately rejects upstream dumps and previous binaries.
+Dump ABI `0xBC02` stores preparation time and deliberately rejects upstream dumps
+and the previous `0xBC01` extension. It does not reset preparation on reattachment.
 It does not authenticate snapshots; the existing trusted-producer requirement
 still applies. Deployment must reconcile old continuations before cutover.
 
 This does not prove heap isolation, async coroutine CPU attribution, complete
-native-operation preemption, export/compile CPU accounting, production global
+native-operation preemption, bounded compiler response, graph import/export
+and snapshot accounting, one-shot construction accounting, production global
 hosting or WebUI acknowledgement. Phase 3a acceptance remains required.

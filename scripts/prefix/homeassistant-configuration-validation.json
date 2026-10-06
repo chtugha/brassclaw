@@ -1,0 +1,123 @@
+{
+  "accepted": false,
+  "answer": null,
+  "checks": {
+    "accepted": false,
+    "citations": {
+      "status": "failed",
+      "errors": [
+        "Claim 0: Quotation lacks minimum claim-term overlap; support requires review"
+      ],
+      "sources": [],
+      "scope": "ID, exact quotation provenance and minimum lexical overlap; semantic support is not certified"
+    },
+    "configuration_checks": {
+      "syntax": "passed",
+      "application_schema": "passed",
+      "runtime": "not_checked",
+      "errors": [],
+      "version": "2026.2.3"
+    }
+  },
+  "attempts": [
+    {
+      "answer": {
+        "claims": [
+          {
+            "text": "A script step can be turned off by adding enabled: false, and Home Assistant skips it until it is turned on again.",
+            "citations": [
+              {
+                "card_id": "47007fb2d75fdd38a61d1e6bb988e1a5253ec4f1fd30f7c850ea4d0b291611f4",
+                "quote": "    async def async_attach_trigger(self) -> None:\n        \"\"\"Attach MQTT trigger.\"\"\"\n        mqtt_config: dict[str, Any] = {\n            CONF_PLATFORM: DOMAIN,\n            CONF_TOPIC: self.trigger.topic,\n            CONF_ENCODING: DEFAULT_ENCODING,\n            CONF_QOS: self.trigger.qos,\n        }\n        if self.trigger.payload:\n            mqtt_config[CONF_PAYLOAD] = self.trigger.payload\n        if self.trigger.value_template:\n            mqtt_config[CONF_VALUE_TEMPLATE] = self.trigger.value_template\n        mqtt_config = mqtt_trigger.TRIGGER_SCHEMA(mqtt_config)"
+              }
+            ]
+          }
+        ],
+        "configuration": "mode: single\n\nsequence:\n  - delay: \"00:00:01\"\n    enabled: false",
+        "missing_information": []
+      },
+      "checks": {
+        "accepted": false,
+        "citations": {
+          "status": "failed",
+          "errors": [
+            "Claim 0: Quotation lacks minimum claim-term overlap; support requires review"
+          ],
+          "sources": [],
+          "scope": "ID, exact quotation provenance and minimum lexical overlap; semantic support is not certified"
+        },
+        "configuration_checks": {
+          "syntax": "passed",
+          "application_schema": "passed",
+          "runtime": "not_checked",
+          "errors": [],
+          "version": "2026.2.3"
+        }
+      }
+    },
+    {
+      "answer": {
+        "claims": [
+          {
+            "text": "A script step can be turned off by adding enabled: false, and Home Assistant skips it until it is turned on again.",
+            "citations": [
+              {
+                "card_id": "5a53be41bc8cf700d9574126573625693db39d1baa52ce75b6fbc3498551fe70",
+                "quote": "type PublishPayloadType = str | bytes | int | float | None"
+              }
+            ]
+          }
+        ],
+        "configuration": "mode: single\n\nsequence:\n  - delay: \"00:00:01\"",
+        "missing_information": []
+      },
+      "checks": {
+        "accepted": false,
+        "citations": {
+          "status": "failed",
+          "errors": [
+            "Claim 0: Quotation lacks minimum claim-term overlap; support requires review"
+          ],
+          "sources": [],
+          "scope": "ID, exact quotation provenance and minimum lexical overlap; semantic support is not certified"
+        },
+        "configuration_checks": {
+          "syntax": "passed",
+          "application_schema": "passed",
+          "runtime": "not_checked",
+          "errors": [],
+          "version": "2026.2.3"
+        }
+      }
+    }
+  ],
+  "generation": "7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999",
+  "requests": [
+    {
+      "usage": {
+        "prompt_tokens": 109700,
+        "total_tokens": 109875,
+        "completion_tokens": 175,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "raw_answer": "{\n  \"claims\": [\n    {\n      \"text\": \"A script step can be turned off by adding enabled: false, and Home Assistant skips it until it is turned on again.\",\n      \"citations\": [\n        {\"card_id\": \"47007fb2d75fdd38a61d1e6bb988e1a5253ec4f1fd30f7c850ea4d0b291611f4\", \"quote_index\": 11}\n      ]\n    }\n  ],\n  \"configuration\": \"mode: single\\n\\nsequence:\\n  - delay: \\\"00:00:01\\\"\\n    enabled: false\",\n  \"missing_information\": []\n}"
+    },
+    {
+      "usage": {
+        "prompt_tokens": 110014,
+        "total_tokens": 110189,
+        "completion_tokens": 175,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "raw_answer": "{\n  \"claims\": [\n    {\n      \"text\": \"A script step can be turned off by adding enabled: false, and Home Assistant skips it until it is turned on again.\",\n      \"citations\": [\n        {\n          \"card_id\": \"5a53be41bc8cf700d9574126573625693db39d1baa52ce75b6fbc3498551fe70\",\n          \"quote_index\": 18\n        }\n      ]\n    }\n  ],\n  \"configuration\": \"mode: single\\n\\nsequence:\\n  - delay: \\\"00:00:01\\\"\",\n  \"missing_information\": []\n}"
+    }
+  ]
+}
