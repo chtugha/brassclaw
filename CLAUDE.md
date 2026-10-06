@@ -294,11 +294,13 @@ Intent-Matching System (resolve_intent / fetch_for_turn, currently Rust)
 - The base-prompt is assembled by the Kohai from the component library — it is not hardcoded. It grows as new components are added.
 - Tier 0: no LLM involved at all. Tier 1: LLM guided by recipe prior-knowledge. Tier 2: LLM over full base-prompt (no recipe matched).
 
-> **Anti-pattern — do not merge primitives into Rust to solve cross-step isolation:**
-> The step isolation invariant (each `host.run_program` call gets a fresh empty state)
-> is not a reason to merge two independent operations into a single monolithic Rust tool.
-> If tool B needs tool A's output, place both calls in **one PythonCode body** (they share
-> local scope within one `host.run_program` execution). Only combine into one Rust tool if
+> **Monty owns Recipe data flow:** IBS compiles the Recipe into a BuildInstruction;
+> Monty executes its steps and retains the intermediate values needed by later steps.
+> Fresh empty state per PythonCode step is not mandatory. If a step runs in a child VM
+> or process, Monty manages its inputs and returned results within the same Recipe
+> execution context. Unrelated tasks and attempts remain isolated. Do not merge separate
+> Recipe steps or independent Rust primitives to work around missing state handoff.
+> Only combine into one Rust tool if
 > the operations are genuinely inseparable at the system level (e.g. an atomic DB transaction
 > that cannot be split). Convenience and data flow alone do not justify a new monolithic tool.
 

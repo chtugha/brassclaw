@@ -1306,9 +1306,8 @@ pub async fn fetch_component_by_id(
          FROM {table}
          WHERE id = $1
            AND tenant_id  = $2
-           AND user_id    = $3
-           AND agent_id   = $4
-           AND project_id = $5
+           AND (source = 'system' OR
+                (user_id = $3 AND agent_id = $4 AND project_id = $5))
            AND validation_status = 'validated'"
     );
 
@@ -1337,10 +1336,10 @@ pub async fn fetch_component_by_id(
 /// Mirrors [`fetch_component_by_id`]: same `class_code_to_table` mapping,
 /// the same SEC-01 validation gate
 /// (`validation_status = 'validated'`),
-/// and the same scope tuple — only the lookup key differs (`name = $1`
-/// instead of `id = $1`). `LIMIT 1` so a name that is unique within a scope
-/// resolves to exactly one component; bind order is **name first**, then the
-/// scope tuple, matching the §0.9 plan.
+/// and the same tenant-anchored visibility: exact caller scope or validated
+/// system components. A caller-scoped row takes precedence over a system row
+/// with the same name; UUID ordering makes ties deterministic. The requested
+/// class is checked even when several classes share a table.
 ///
 /// Returns an empty vec if no validated component with that name exists
 /// under the scope or the class code is unmapped (e.g. class 0 tools).
@@ -1370,10 +1369,11 @@ pub async fn fetch_component_by_name(
          FROM {table}
          WHERE name = $1
            AND tenant_id  = $2
-           AND user_id    = $3
-           AND agent_id   = $4
-           AND project_id = $5
+           AND (source = 'system' OR
+                (user_id = $3 AND agent_id = $4 AND project_id = $5))
            AND validation_status = 'validated'
+           AND class_code::int = $6
+         ORDER BY (user_id = $3 AND agent_id = $4 AND project_id = $5) DESC, id
          LIMIT 1"
     );
 
@@ -1383,6 +1383,7 @@ pub async fn fetch_component_by_name(
         &scope.user_id,
         &scope.agent_id,
         &scope.project_id,
+        &component_class_code,
     ];
 
     let rows = client
@@ -1456,9 +1457,8 @@ pub async fn fetch_components_by_ids(
              FROM {table}
              WHERE id = ANY($1)
                AND tenant_id  = $2
-               AND user_id    = $3
-               AND agent_id   = $4
-               AND project_id = $5
+               AND (source = 'system' OR
+                    (user_id = $3 AND agent_id = $4 AND project_id = $5))
                AND validation_status = 'validated'"
         );
         let params: &[&(dyn ToSql + Sync)] = &[
@@ -1502,7 +1502,7 @@ pub async fn fetch_components_by_ids(
 /// include UUID (PERF-02: one indexed `SELECT` per UUID) before calling
 /// `fetch_component_by_id`.
 ///
-/// Scoped so a foreign-tenant UUID never resolves (SEC-01 tenant isolation):
+/// Exact caller scope or validated system visibility, always tenant-anchored:
 /// the `WHERE` clause simply returns no row. Returns `Ok(None)` when the UUID
 /// is absent from the registry (caller skips that step's item rather than
 /// failing the turn — a missing include is a soft authoring gap, not a hard
@@ -1519,8 +1519,17 @@ pub async fn lookup_component_class(
         .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
     let row = client
         .query_opt(
-            "SELECT class_code::int FROM reborn_components \
-             WHERE id = $1 AND tenant_id = $2 AND user_id = $3 AND agent_id = $4 AND project_id = $5",
+            "SELECT class_code::int FROM reborn_components AS registry
+             WHERE id = $1 AND tenant_id = $2
+               AND ((user_id = $3 AND agent_id = $4 AND project_id = $5)
+                 OR EXISTS (SELECT 1 FROM reborn_component_catalog AS component
+                            WHERE component.id = registry.id AND component.tenant_id = $2
+                              AND component.source = 'system'
+                              AND component.validation_status = 'validated')
+                 OR EXISTS (SELECT 1 FROM reborn_tools AS tool
+                            WHERE tool.id = registry.id AND tool.tenant_id = $2
+                              AND tool.source = 'system'
+                              AND tool.validation_status = 'validated'))",
             &[
                 &component_id,
                 &scope.tenant_id,

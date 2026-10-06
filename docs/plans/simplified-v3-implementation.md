@@ -715,3 +715,45 @@ Their correct repair belongs to the global task-host cutover and its binding
 Monty upgrade gate; this approval change does not complete that work. No IDs
 were reformatted, engine Threads synthesized, legacy Rust loop restored, LLM
 fallback introduced, or remaining failure expectations weakened.
+
+### 2026-10-06 — Recipe compiler visibility and No-Match metadata repair
+
+The binding Recipe-state contract was corrected with the operator: Monty owns
+intermediate state within a Recipe execution, including required inputs/results
+across child execution and waits. Mandatory fresh empty state per PythonCode
+step is not the target. Earlier references here to isolated-step data flow are
+superseded by that contract. AGENTS.md, CLAUDE.md and Phase 3a now describe it;
+this documentation does not implement the missing task host.
+
+IBS composition now follows tenant-anchored catalog visibility for validated
+system Recipes/Actions and rejects pending components. Included components on
+both channels must resolve, so a missing or unvalidated Rust ToolSkill cannot
+silently disappear. The native regression exposed exact-scope-only name, UUID,
+batch and registry retrieval too; those paths now admit validated system rows
+consistently. Name resolution checks the requested class and deterministically
+prefers an exact caller-scoped row over a system row with the same name. These
+changes repair existing catalog readers, not the pending instance-policy cutover.
+
+The seeded No-Match Recipe now carries canonical IBS step descriptions and a
+variant with actual assembler, ToolSkill, tool and call-component UUIDs.
+V093 upgrades the known legacy system metadata shape, retaining IDs and prose
+annotations, leaving operator overrides and already authored IBS metadata
+untouched. It does not modify PythonCode bodies or claim that this Recipe can
+already execute through the production task host.
+
+Sequential background screen validation: all eight focused composition/IBS
+tests passed, including native PostgreSQL visibility, missing binding, malformed
+metadata and idempotent upgrade/override checks. Strict engine/composition
+all-target Clippy passed with composition/skills-db. Evidence:
+`/private/tmp/brassclaw-composition-ibs-contract-v2.log` and
+`/private/tmp/brassclaw-composition-ibs-lints-v2.log`.
+
+Full composition library: **702 passed, seven failed, zero ignored** in
+`/private/tmp/brassclaw-composition-after-ibs-repair.log`. The seven original
+message-path failures remain. No opaque conversation ID was reformatted into
+a UUID, engine Thread synthesized, per-chat/global-key fallback introduced,
+legacy Rust loop restored, or failed Recipe replayed as direct LLM work.
+Global hosting, Monty-owned Recipe state continuity, exact task handoff and
+neutral prompt/model/capability/transcript wiring still need their implementation
+and production-caller acceptance; Phase 3a and its Monty upgrade gate remain
+incomplete. Do not mark any of the seven failures resolved from compiler tests.

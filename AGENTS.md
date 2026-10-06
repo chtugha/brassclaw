@@ -261,7 +261,30 @@ result = host.tool_name(param="{{vars.slot0}}")
 **Required:** the body must assign `result = <value>` before returning.
 **Forbidden:** `import os`, `import subprocess`, `exec(`, `eval(`, `open(` — scanned at Q1.
 
-**Step isolation invariant:** each PythonCode step runs with a **fresh empty state dict `{}`**. A step does NOT see state mutations from previous steps. If step B needs data produced by step A, redesign: either combine both operations into one self-contained PythonCode body, or model the data handoff through template variables (`{{vars.name}}`).
+**Monty-owned Recipe execution context (binding target architecture):** the
+matched Recipe goes into IBS, which produces the `BuildInstruction`; the global
+Monty Orchestrator executes its steps and owns their execution context. Values
+and intermediate results needed by later steps remain available within that
+Recipe execution. PythonCode steps do **not** have to start with a fresh empty
+state dict `{}`. Do not discard required state between steps or merge otherwise
+separate steps merely to work around the current executor's isolation.
+
+When Monty delegates a step to a child VM or process, Monty manages the handoff
+of the required inputs and returned results into the same Recipe execution
+context. A separate execution boundary must not break the Recipe's data flow.
+IBS compiles the instructions; Rust provides transport, hosting, tools and kernel
+enforcement; Monty owns sequencing and intermediate state. Runtime results are
+data, not Python source to interpolate into the next step.
+
+**Isolation applies between unrelated task executions, not automatically between
+steps of one Recipe.** Keep each execution's context associated with its exact
+conversation, run and attempt. A retry or replacement attempt must not inherit
+another attempt's state implicitly; any checkpoint restoration is explicit and
+validated. Preserve needed state across waits/resumption and release transient
+state when the task completes or is cancelled. Child execution does not grant
+additional authority, and claim tokens or secrets must not enter model-visible
+state. Existing fresh-step execution is an implementation limitation to repair,
+not an authoring requirement.
 
 One PythonCode step = exactly one `host.<tool>(...)` call. Pure-logic helpers (zero tool calls) are valid. Never combine two independent tool dispatches into one PythonCode block.
 
@@ -271,7 +294,9 @@ One PythonCode step = exactly one `host.<tool>(...)` call. Pure-logic helpers (z
 - Ambiguous intent where the LLM must choose between distinct alternatives
 - Irreversible operations benefiting from LLM confirmation
 - User-supplied strings that must be validated before tool dispatch
-- Conditional logic where step B depends on the runtime output of step A in a way that cannot be pre-determined (split into two Tier-0 recipes instead where possible)
+- Conditional decisions that require LLM reasoning. Deterministic branching or
+  passing step A's runtime result to step B is handled by Monty within the Recipe
+  execution context and does not, by itself, force Tier 1.
 
 ### Q1 Hard Errors (enforced on all authored components)
 

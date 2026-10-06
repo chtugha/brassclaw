@@ -308,7 +308,13 @@ pub async fn seed_builtin_host_components(
 
     // Slice 9 — Step 27.10.3 host.kohai_complete (4 components, no Recipe).
     // The 8th + last net-new host.* Tool — the Orchestrator→Kohai LLM handoff.
-    child_ids.extend(seed_host_kohai_complete(&stores).await?);
+    let kohai = seed_host_kohai_complete(&stores).await?;
+    child_ids.extend([
+        kohai.tool_id,
+        kohai.tool_skill_id,
+        kohai.python_code_id,
+        kohai.skill_id,
+    ]);
 
     // Slice 10 — Step 27.4 host-save-history (Recipe over builtin.memory_write;
     // 3 components: pc-host-history-format + pc-memory-write + the Recipe).
@@ -322,7 +328,7 @@ pub async fn seed_builtin_host_components(
     // 2 components: pc-host-assemble-non-match-prompt + the Recipe. Reuses
     // pc-host-kohai-complete seeded in slice 9 via orchestrator_steps + the
     // host.kohai_complete tool via rust_steps.)
-    child_ids.extend(seed_host_non_match_llm_answer(&stores).await?);
+    child_ids.extend(seed_host_non_match_llm_answer(&stores, &kohai).await?);
 
     // Register the minted component ids on the `builtin-host` catalogue row.
     stores
@@ -1097,7 +1103,9 @@ async fn seed_host_fetch_component(stores: &HostStores) -> Result<Vec<Uuid>, See
 /// adds the provider prefix → Kohai calls `first_party_tools/http` → Kohai saves
 /// the answer → answer back to the Orchestrator.
 #[allow(clippy::too_many_lines)]
-async fn seed_host_kohai_complete(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+async fn seed_host_kohai_complete(
+    stores: &HostStores,
+) -> Result<KohaiComponentIds, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
     let tool_id = stores
@@ -1241,7 +1249,19 @@ async fn seed_host_kohai_complete(stores: &HostStores) -> Result<Vec<Uuid>, Seed
         )
         .await?;
 
-    Ok(vec![tool_id, tool_skill_id, python_code_id, skill_id])
+    Ok(KohaiComponentIds {
+        tool_id,
+        tool_skill_id,
+        python_code_id,
+        skill_id,
+    })
+}
+
+struct KohaiComponentIds {
+    tool_id: Uuid,
+    tool_skill_id: Uuid,
+    python_code_id: Uuid,
+    skill_id: Uuid,
 }
 
 /// Step 27.4 — `host-save-history` (Recipe over `builtin.memory_write`).
@@ -1511,6 +1531,7 @@ result = "\n".join(_lines)
 #[allow(clippy::too_many_lines)]
 async fn seed_host_non_match_llm_answer(
     stores: &HostStores,
+    kohai: &KohaiComponentIds,
 ) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
@@ -1596,11 +1617,32 @@ result = prompt
                     "(internal Non-Matching-Mode fallback — not user-routed)"
                 ])),
                 source: "system".into(),
-                step_descriptions: Some(json!([
-                    {"step": 0, "action": "assemble_prompt", "desc": "Assemble chat history + user question + a prefix-PLACEHOLDER into the prompt (kohai swaps the placeholder for the provider prefix last)."},
-                    {"step": 1, "action": "kohai_complete", "desc": "Hand the assembled prompt to Kohai via host.kohai_complete; Kohai saves, optional Sempai optimize, adds provider prefix, calls first_party_tools/http, saves the answer, and returns it."}
-                ])),
-                variants: None,
+                step_descriptions: Some(json!([{
+                    "desc_idx": 0,
+                    "label": "Non-Matching-Mode prompt and model handoff",
+                    "yaml_source": "",
+                    "steps": [
+                        {"stepnumber": 1, "knowledge": "orchestrator", "type": "component",
+                         "goal": "Assemble the prompt", "content": "",
+                         "include": [pc_assemble_id]},
+                        {"stepnumber": 2, "knowledge": "rust", "type": "component",
+                         "goal": "Bind the Kohai tool", "content": "",
+                         "include": [kohai.tool_skill_id],
+                         "tool_bindings": [{"tool_id": kohai.tool_id,
+                             "tool_name": "host.kohai_complete", "params": {},
+                             "error_policy": {"policy": "fail"}}]},
+                        {"stepnumber": 3, "knowledge": "orchestrator", "type": "component",
+                         "goal": "Pass the assembled prompt to Kohai", "content": "",
+                         "include": [kohai.python_code_id]}
+                    ]
+                }])),
+                variants: Some(json!([{
+                    "variant_key": "default",
+                    "description": "Internal Tier-2 path for a genuine intent No-Match",
+                    "step_link": "0:1-0:E",
+                    "intent_examples": [],
+                    "variable_patterns": []
+                }])),
                 dependency_registry: None,
                 validates_class_code: None,
             },

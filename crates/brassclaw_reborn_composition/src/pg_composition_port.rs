@@ -196,9 +196,9 @@ impl PgCompositionPort {
                  FROM reborn_actions
                  WHERE id = $1
                    AND tenant_id  = $2
-                   AND user_id    = $3
-                   AND agent_id   = $4
-                   AND project_id = $5",
+                   AND validation_status = 'validated'
+                   AND (source = 'system' OR
+                        (user_id = $3 AND agent_id = $4 AND project_id = $5))",
                 &[
                     &component_id,
                     &scope.tenant_id,
@@ -294,7 +294,11 @@ impl PgCompositionPort {
         for item in &items {
             map.insert(item.id, component_item_to_resolved(item));
         }
-        for step in &instruction.orchestrator_steps {
+        for step in instruction
+            .orchestrator_steps
+            .iter()
+            .chain(instruction.rust_steps.iter())
+        {
             for id in &step.include {
                 if !map.contains_key(id) {
                     return Err(ComponentPortError::IncludeNotResolved {
@@ -335,9 +339,9 @@ impl PgCompositionPort {
                  FROM reborn_recipes
                  WHERE id = $1
                    AND tenant_id  = $2
-                   AND user_id    = $3
-                   AND agent_id   = $4
-                   AND project_id = $5",
+                   AND validation_status = 'validated'
+                   AND (source = 'system' OR
+                        (user_id = $3 AND agent_id = $4 AND project_id = $5))",
                 &[
                     &component_id,
                     &scope.tenant_id,
@@ -441,7 +445,7 @@ impl PgCompositionPort {
                 reason: e.to_string(),
             })?;
 
-        // 8. Resolver map — check that every orchestrator-step include UUID
+        // 8. Resolver map — check that every include UUID on both channels
         //    resolved. A missing include means the included component is absent
         //    or unvalidated; surface IncludeNotResolved so the caller can
         //    invalidate + re-queue the declaring component (HI.1 / Gap 2).
@@ -449,7 +453,11 @@ impl PgCompositionPort {
         for item in &items {
             map.insert(item.id, component_item_to_resolved(item));
         }
-        for step in &instruction.orchestrator_steps {
+        for step in instruction
+            .orchestrator_steps
+            .iter()
+            .chain(instruction.rust_steps.iter())
+        {
             for id in &step.include {
                 if !map.contains_key(id) {
                     return Err(ComponentPortError::IncludeNotResolved {
@@ -654,6 +662,214 @@ mod tests {
 
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[tokio::test]
+    async fn native_non_match_metadata_migration_preserves_overrides_and_component_ids() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let pool = Arc::clone(&rig.pool);
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(pool.clone())
+            .await
+            .expect("schema migrations");
+        let tenant = "composition-upgrade-test";
+        crate::component_boot::initialize_runtime_components(&booted, tenant)
+            .await
+            .expect("native component boot");
+        let scope = ComponentScope {
+            tenant_id: tenant.into(),
+            user_id: "caller".into(),
+            agent_id: "caller-agent".into(),
+            project_id: "caller-project".into(),
+        };
+        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let recipe = port
+            .resolve_component_by_name(&scope, "host-non-match-llm-answer", 21)
+            .await
+            .expect("recipe lookup")
+            .expect("seeded recipe");
+        let original = port
+            .compose(&scope, recipe.id, "0:1-0:E", "input")
+            .await
+            .expect("fresh IBS metadata");
+        let legacy = r#"[{"step":0,"action":"assemble_prompt","desc":"Assemble prompt"},
+                         {"step":1,"action":"kohai_complete","desc":"Call Kohai"}]"#;
+        let migration =
+            include_str!("../../brassclaw_pg/migrations/V093__non_match_recipe_ibs_metadata.sql");
+        let client = pool.get().await.expect("database connection");
+        client
+            .execute(
+                "UPDATE reborn_recipes SET variants=NULL, step_descriptions=$2::text::jsonb,
+             override_prompt_creation=true WHERE id=$1",
+                &[&recipe.id, &legacy],
+            )
+            .await
+            .expect("legacy override fixture");
+        client
+            .batch_execute(migration)
+            .await
+            .expect("migration preserves override");
+        let preserved: Option<String> = client
+            .query_one(
+                "SELECT variants::text FROM reborn_recipes WHERE id=$1",
+                &[&recipe.id],
+            )
+            .await
+            .expect("read override")
+            .get(0);
+        assert!(preserved.is_none());
+        client
+            .execute(
+                "UPDATE reborn_recipes SET override_prompt_creation=false WHERE id=$1",
+                &[&recipe.id],
+            )
+            .await
+            .expect("known unmodified legacy metadata");
+        client
+            .batch_execute(migration)
+            .await
+            .expect("upgrade legacy metadata");
+        let upgraded = port
+            .compose(&scope, recipe.id, "0:1-0:E", "input")
+            .await
+            .expect("upgraded Recipe compiles through IBS");
+        assert_eq!(upgraded, original);
+        let upgraded_at: String = client
+            .query_one(
+                "SELECT updated_at::text FROM reborn_recipes WHERE id=$1",
+                &[&recipe.id],
+            )
+            .await
+            .expect("upgrade timestamp")
+            .get(0);
+        client
+            .batch_execute(migration)
+            .await
+            .expect("idempotent migration");
+        let unchanged_at: String = client
+            .query_one(
+                "SELECT updated_at::text FROM reborn_recipes WHERE id=$1",
+                &[&recipe.id],
+            )
+            .await
+            .expect("unchanged timestamp")
+            .get(0);
+        assert_eq!(unchanged_at, upgraded_at);
+        drop(client);
+        drop(port);
+        drop(booted);
+        pool.close();
+        drop(pool);
+        drop(rig);
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[tokio::test]
+    async fn native_composition_enforces_catalog_visibility_and_resolves_rust_includes() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let pool = Arc::clone(&rig.pool);
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(pool.clone())
+            .await
+            .expect("schema migrations");
+        let tenant = "composition-visibility-test";
+        crate::component_boot::initialize_runtime_components(&booted, tenant)
+            .await
+            .expect("native component boot");
+        let caller = ComponentScope {
+            tenant_id: tenant.into(),
+            user_id: "caller".into(),
+            agent_id: "caller-agent".into(),
+            project_id: "caller-project".into(),
+        };
+        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let recipe = port
+            .resolve_component_by_name(&caller, "host-assemble-prefix-bundle", 21)
+            .await
+            .expect("catalog lookup")
+            .expect("system recipe visible to caller");
+        let program = port
+            .compose(&caller, recipe.id, "0:1-0:E", "accepted input")
+            .await
+            .expect("IBS compiles a visible system recipe");
+        assert_eq!(program.tier, "tier0");
+        assert_eq!(program.steplist.len(), 2);
+        assert!(
+            program
+                .steplist
+                .iter()
+                .all(|step| !step.executable_code.is_empty())
+        );
+
+        let other_tenant = ComponentScope {
+            tenant_id: "other-tenant".into(),
+            ..caller.clone()
+        };
+        assert!(matches!(
+            port.compose(&other_tenant, recipe.id, "0:1-0:E", "input")
+                .await,
+            Err(ComponentPortError::RecipeNotFound { .. })
+        ));
+
+        let client = pool.get().await.expect("database connection");
+        client
+            .execute(
+                "UPDATE reborn_recipes SET source = 'authored' WHERE id = $1",
+                &[&recipe.id],
+            )
+            .await
+            .expect("make recipe private to its stored scope");
+        assert!(matches!(
+            port.compose(&caller, recipe.id, "0:1-0:E", "input").await,
+            Err(ComponentPortError::RecipeNotFound { .. })
+        ));
+        let owner = ComponentScope {
+            tenant_id: tenant.into(),
+            user_id: brassclaw_host_api::SYSTEM_RESERVED_ID.into(),
+            agent_id: "default".into(),
+            project_id: "system".into(),
+        };
+        port.compose(&owner, recipe.id, "0:1-0:E", "input")
+            .await
+            .expect("validated private recipe remains visible to owner");
+        client
+            .execute(
+                "UPDATE reborn_recipes SET validation_status = 'pending' WHERE id = $1",
+                &[&recipe.id],
+            )
+            .await
+            .expect("withdraw validation");
+        assert!(matches!(
+            port.compose(&owner, recipe.id, "0:1-0:E", "input").await,
+            Err(ComponentPortError::RecipeNotFound { .. })
+        ));
+        client.execute(
+            "UPDATE reborn_recipes SET source = 'system', validation_status = 'validated' WHERE id = $1",
+            &[&recipe.id],
+        ).await.expect("restore system recipe");
+
+        let binding = port
+            .resolve_component_by_name(&caller, "ts-host-sweep-validated-components", 13)
+            .await
+            .expect("binding lookup")
+            .expect("seeded binding");
+        client
+            .execute(
+                "UPDATE reborn_tool_skills SET validation_status = 'pending' WHERE id = $1",
+                &[&binding.id],
+            )
+            .await
+            .expect("withdraw binding validation");
+        assert!(matches!(
+            port.compose(&caller, recipe.id, "0:1-0:E", "input").await,
+            Err(ComponentPortError::IncludeNotResolved { include_id, .. })
+                if include_id == binding.id.to_string()
+        ));
+        drop(client);
+        drop(port);
+        drop(booted);
+        pool.close();
+        drop(pool);
+        drop(rig);
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[tokio::test]
     async fn native_composition_reports_malformed_recipe_data_as_a_contract_failure() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         let pool = Arc::clone(&rig.pool);
@@ -676,6 +892,14 @@ mod tests {
             .await
             .expect("native component lookup")
             .expect("seeded no-match recipe");
+        let program = port
+            .compose(&scope, component.id, "0:1-0:E", "accepted input")
+            .await
+            .expect("seeded no-match Recipe compiles through IBS");
+        assert_eq!(program.tier, "tier1");
+        assert_eq!(program.steplist.len(), 2);
+        assert_eq!(program.rust_directives.len(), 1);
+        assert_eq!(program.rust_directives[0].tool_name, "host.kohai_complete");
         let client = pool.get().await.expect("database connection");
         let valid_variants = r#"[{"variant_key":"default","step_link":"0:1-0:E"}]"#;
         for (variants, descriptions, expected) in [
