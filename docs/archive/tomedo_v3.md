@@ -1,3 +1,10 @@
+> **Recipe architecture precedence (2026-10-06):** This inventory/reference
+> preserves historical examples. For current authoring use
+> [recipe.md](../../recipe.md): one component per Recipe step, internal PythonCode
+> composition allowed, typed task data, and immutable versions pinned by IBS in
+> BuildInstruction. Old source-substitution or overwrite examples are not the
+> target input/version contract; do not copy them as new requirements.
+
 # tomedo v3 — Extension Plan
 
 > [!CAUTION]

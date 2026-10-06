@@ -1,0 +1,12 @@
+{
+  "generation": "7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999",
+  "bundle": "/opt/vLLM/prefixes/homeassistant/7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999",
+  "base_unit": "/etc/systemd/system/vllm.service",
+  "base_unit_sha256": "0a61271c8e7901796101d2a2ca8abcb97bb06e8ffb18168bbbb89da826101192",
+  "override": "/etc/systemd/system/vllm.service.d/90-reference-prefix.conf",
+  "backup": "/opt/vLLM/prefixes/homeassistant/7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999/deployment-backups/20261006T173810Z",
+  "activated": false,
+  "health_verified": false,
+  "automatic_server_injection_verified": false,
+  "rolled_back": true
+}

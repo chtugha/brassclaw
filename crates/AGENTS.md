@@ -1,5 +1,15 @@
 # BrassClaw Crates Map
 
+## Recipe-first routing
+
+Read [recipe.md](../recipe.md) for new capabilities and component edits. Behavior
+belongs in Recipes over reusable ToolSkills, Skills and small PythonCode
+components; add Rust only for a missing primitive. One component per Recipe
+step, with internal PythonCode composition permitted. IBS resolves and pins
+immutable versions in BuildInstruction at task start. The runtime preserves
+those versions and typed task values across steps, child execution and waits.
+The linked document distinguishes the target from current implementation gaps.
+
 Instructions for AI coding assistants entering `crates/` on `main`.
 
 This file is a routing map, not a full architecture spec. Pick the crate(s) that match the change, then read crate-local guidance before editing:

@@ -1,5 +1,77 @@
 # BrassClaw Reborn — Agents v3 System Documentation
 
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
+## Binding Skill definition (v3)
+
+A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
+**both prose instructions and explicitly associated executable PythonCode**:
+the prose explains purpose, parameters, prerequisites and result/error handling;
+the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
+different kind of Skill. A broader domain or multi-tool overview belongs to an
+**Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
+ordered workflow and references reusable components by UUID.
+
+**Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
+the ToolSkill describes its IBS binding. Binding executes nothing and grants no
+permission. The Orchestrator executes the associated PythonCode, which calls
+`host.<tool>(...)`; the kernel checks the current global tool policy.
+
+**Storage is not the definition:** today Skill prose is stored in `reborn_skills`
+(classes 1–3), while executable code is stored separately in `reborn_python_code`
+(class 22). The current composer emits `SkillRef.body` and
+`ComposedStep.executable_code` separately. The target requires an explicit,
+validated UUID/revision association between the two parts; separate rows are
+permitted and do not make the Skill prose-only. A code example inside prose is
+documentation, not an implicit executable entry point. The class labels
+`skill_rusty`, `skill_monty`, `skill_llm` are existing consumer classifications,
+not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
+records sharing the table, not additional tool-usage Skill types.
+
+**Execution and validation:** deterministic Tier-0 execution uses the associated
+PythonCode without an LLM interpreting prose. Tier 1 can use the prose in its
+explicit LLM steps. Prose must never be executed as Python. ToolSkill UUIDs stay
+in `channel:"rust"`; executable PythonCode UUIDs stay in
+`channel:"orchestrator"`. Q1/Q2, isolation between unrelated tasks/attempts and the existing dependent-chain
+exception remain applicable. Monty preserves needed state within each Recipe. This documentation change does not implement a
+new database schema, association editor or runtime path.
+
+
 > **Purpose.** This directory is the authoritative, human-readable documentation set for the
 > **agents v3 system**: every system, subsystem, functionality, skill kind, recipe/tool
 > construct, and the supporting kernel/composition/WebUI surface that together make up the
@@ -30,7 +102,7 @@ documentation effort.
 | 02 | `02-intent-system.md` | Intent matching: `resolve_intent`, 4-class classifier, `reborn_intent_inputs` (V028), `step_link` (Phase D/V053), disambiguation | done |
 | 03 | `03-recipe-system.md` | Recipes, `step_descriptions` JSONB (Phase A/V050), variants/steps, tiers 0/1/2, store round-trip | done |
 | 04 | `04-ibs.md` | Instruction Builder System: `build_instruction`, `VariablePattern`/`ToolBinding`/`ErrorPolicy`, `SplitResult`, two-channel delivery | done |
-| 05 | `05-skills-system.md` | Four skill kinds: Classic (Claude-style, DB-stored, `SKILL.md`-exportable), ToolSkills (Rust executor), Orchestrator Skills, ExtensionCatalogues (class 23) | done |
+| 05 | `05-skills-system.md` | Skill = prose + associated PythonCode; Rust ToolSkills; ExtensionCatalogues; storage and execution contracts | done |
 | 06 | `06-tools-system.md` | `reborn_tools` + `capability_id` (V071 — the Executioner's dispatch id; dropped `cdylib_artifact_path` + 5 legacy cols), builtin bootstrap (`host.*` tools), tool approval/auth, Rust-Executioner framing | done |
 | 07 | `07-pythoncode-system.md` | `reborn_python_code` (V052 + `includes` JSONB V069), snippet→component promotion, `{{...}}` placeholder-grammar Q1 gate (`validate_python_code_placeholders` — shipped), `UnpromotedSnippet`, shell-injection scan, class 22 in retrieval UNION/by-id | done |
 | 08 | `08-actions-system.md` | Class-16 Actions, 13 step types, `execute_action_procedure` (no-LLM), `override_prompt_creation` (Solution Override, LLM path), `action_short_circuit` (Phase E/G), dead `__retrieve_docs__` shim (§0.9), `call_action` by-name→UUID migration (Phase G) | done |
@@ -43,7 +115,7 @@ documentation effort.
 | 15 | `15-component-catalog.md` | Full class-code taxonomy (0–23), `COMPONENT_TABLES` + `class_label`, common content-table shape (V036 canonical), content-column dispatch (`fetch_component_by_id`), `prompt_uid` stable ordering key, SCH-02 `prior_knowledge_content`, lineage, legacy `MemoryDoc`→class-table import (`component_import.rs`), hierarchy (§0.1), ExtensionCatalogue (§0.2), StepContextSpec (§0.5), cognitive-weight/`FINDING B` (frozen `DocType`), V050–V059 additive migrations | done |
 | 16 | `16-kernel-composition.md` | Kernel authority crates (`brassclaw_trust`/`secrets`/`safety`/`capabilities`/`runtime_policy`/`process_sandbox`/`reborn_identity`/`outbound`/`approvals`) with non-negotiable boundaries; composition wiring (`brassclaw_reborn_composition`: `factory.rs` `RebornServices`/`build_reborn_services`, `runtime.rs` `RebornRuntime`, `webui_v2_app` security middleware stack); runtime profile (Goal 1 done: `RebornCompositionProfile` removed, `BRASSCLAW_RUNTIME_PROFILE` = capability policy only; Goal 2 done: Postgres always, no DB-less mode); `PostgresSource`/`PgBasicPromptStore`/15 loop ports/`ValidationQueueStore` all shipped; kernel is not a v3 migration target | done |
 | 17 | `17-webui-prefix-tab.md` | WebUI v2 SPA (React + Rust route layer + host ingress), descriptor-driven routes, 18 settings tabs incl. `prefix`; **Prefix Tab shipped** (item 8: `prefix` SPA route + `usePrefixes` hook + `fetchPrefixes`/`regeneratePrefix` API; `GET /api/webchat/v2/prefixes` + `POST …/prefixes/{name}/regenerate`; `do_assemble_bundle`/`regenerate_prefix`/`get_system_bundle`; `reborn_basic_prompt_store` V063 + `PgBasicPromptStore`; `mark_stale`-on-graduation; `base-prompt` placeholder substitution §0.13); SKILL.md export (item 5.1, pending) | done |
-| — | `DOC_CONVERSION_MECHANISM_DESIGN.md` | Design/approach (presented, not yet implemented, stopped for approval) for the auto-conversion mechanism (repeat item 4): converts each `docs/agents-v3/*.md` to LLM-optimized form, stores as `reborn_docus` (class 17) components, auto-updates via `content_hash` + idle-time Sempai-Kohai loop, injects into base prompt (Prefix Tab) + per-turn retrieval; built AS v3 artifacts per the **recycling principle** (§4.0: many one-tool reusable leaf skills/tools the library recycles + ONE doc-specific domain skill `doc-convert-method`) — Recipe `doc-convert` (class 21) + Action `doc-sync` (class 16, no-LLM) **compose** the leaves; PythonCode `sha256`/`hash_changed`/`markdown_section`/`token_estimate`/`format_component_header` (class 22, pure logic); Tools `component_get_content_hash`/`docu_upsert`/`mark_prefix_stale` (class 0) + ToolSkills (class 13); ExtensionCatalogue `doc-sync` (class 23) | presented |
+| — | `DOC_CONVERSION_MECHANISM_DESIGN.md` | Design/approach (presented, not yet implemented, stopped for approval) for the auto-conversion mechanism (repeat item 4): converts each `docs/agents-v3/*.md` to LLM-optimized form, stores as `reborn_docus` (class 17) components, auto-updates via `content_hash` + idle-time Sempai-Kohai loop, injects into base prompt (Prefix Tab) + per-turn retrieval; built AS v3 artifacts per the **recycling principle** (§4.0: many one-tool reusable leaf skills/tools the library recycles + ONE doc-specific Extension overview `doc-convert-method`) — Recipe `doc-convert` (class 21) + Action `doc-sync` (class 16, no-LLM) **compose** the leaves; PythonCode `sha256`/`hash_changed`/`markdown_section`/`token_estimate`/`format_component_header` (class 22, pure logic); Tools `component_get_content_hash`/`docu_upsert`/`mark_prefix_stale` (class 0) + ToolSkills (class 13); ExtensionCatalogue `doc-sync` (class 23) | presented |
 
 ---
 
@@ -68,18 +140,12 @@ parseable by the conversion mechanism:
 
 ## v3 architecture principle — recycling (read this before authoring any recipe)
 
-**The library is the asset.** Skills should be as small as practical — **at best, the
-description of ONE tool usage** — so they can be reused in many recipes. Tools too: one concern
-each. A Recipe (class 21) is a **composition** of already-existing, one-purpose library parts
-(leaf Skills, ToolSkills, PythonCode) referenced by UUID in each step's `include`; the recipe is
-the *ordering* + the *wiring*, not the capability itself. Prefer reusing a library part over
-authoring a new one; when a genuinely new capability is needed, add it as a small leaf so the next
-recipe can reuse it too. **Never bake a whole procedure into one fat skill.** Two skill grains
-coexist: **leaf skills** (one tool — the reusable unit, user case (a)) and **domain skills** (span
-tools, the bigger picture that *references* leaves by name, user case (b)); one domain skill per
-task area. See `05-skills-system.md` "Recycling" and `03-recipe-system.md` §1; the worked example
-is `DOC_CONVERSION_MECHANISM_DESIGN.md` §4.0/§4.3 (one recipe + one action composing ~11 reusable
-leaves + one domain skill).
+**The library is the asset.** A Skill is one reusable tool-usage pattern with
+prose and associated executable PythonCode. A Recipe references components by
+UUID and provides ordering and wiring. Reuse existing units before authoring
+new ones. A larger domain or multi-tool mechanism is an Extension, documented
+by its ExtensionCatalogue; it is not a larger kind of Skill. The doc-sync
+example uses an Extension overview plus reusable Skills and their code.
 
 ---
 

@@ -1,9 +1,58 @@
+> **Recipe architecture precedence (2026-10-06):** This inventory/reference
+> preserves historical examples. For current authoring use
+> [recipe.md](../../recipe.md): one component per Recipe step, internal PythonCode
+> composition allowed, typed task data, and immutable versions pinned by IBS in
+> BuildInstruction. Old source-substitution or overwrite examples are not the
+> target input/version contract; do not copy them as new requirements.
+
 # Built-in Functionality — v3 Artifact Plan (Revised)
+
+## Binding Skill definition (v3)
+
+A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
+**both prose instructions and explicitly associated executable PythonCode**:
+the prose explains purpose, parameters, prerequisites and result/error handling;
+the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
+different kind of Skill. A broader domain or multi-tool overview belongs to an
+**Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
+ordered workflow and references reusable components by UUID.
+
+**Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
+the ToolSkill describes its IBS binding. Binding executes nothing and grants no
+permission. The Orchestrator executes the associated PythonCode, which calls
+`host.<tool>(...)`; the kernel checks the current global tool policy.
+
+**Storage is not the definition:** today Skill prose is stored in `reborn_skills`
+(classes 1–3), while executable code is stored separately in `reborn_python_code`
+(class 22). The current composer emits `SkillRef.body` and
+`ComposedStep.executable_code` separately. The target requires an explicit,
+validated UUID/revision association between the two parts; separate rows are
+permitted and do not make the Skill prose-only. A code example inside prose is
+documentation, not an implicit executable entry point. The class labels
+`skill_rusty`, `skill_monty`, `skill_llm` are existing consumer classifications,
+not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
+records sharing the table, not additional tool-usage Skill types.
+
+**Execution and validation:** deterministic Tier-0 execution uses the associated
+PythonCode without an LLM interpreting prose. Tier 1 can use the prose in its
+explicit LLM steps. Prose must never be executed as Python. ToolSkill UUIDs stay
+in `channel:"rust"`; executable PythonCode UUIDs stay in
+`channel:"orchestrator"`. Q1/Q2, step isolation and the existing dependent-chain
+exception remain applicable. This documentation change does not implement a
+new database schema, association editor or runtime path.
+
+**Archive interpretation:** component IDs, example rows and counts below are
+historical authoring material, not proof of the target association. Sections
+headed “Leaf Skill” give the prose part; combine it with the corresponding
+explicit PythonCode reference before treating it as a complete Skill. Historical
+class-2 domain overview rows are marked as Extension migration material; their
+identifiers are retained for migration, not prescribed for new authoring.
+
 
 > **Purpose:** For every built-in first-party capability this document defines the exact v3
 > artifacts: class-0 Tools (full DB row spec), class-13 ToolSkills (executor-facing only),
-> class-22 PythonCode (pure logic + orchestrator executor bodies), class-1–3 Skills (leaf +
-> domain, orchestrator-facing narrative), class-21 Recipes (with `step_descriptions` JSONB +
+> class-22 PythonCode (pure logic + orchestrator executor bodies), class-1–3 Skill prose parts with associated class-22 PythonCode;
+> historical Extension overview records are explicitly marked below, class-21 Recipes (with `step_descriptions` JSONB +
 > intent examples), and class-23 ExtensionCatalogues (24 total: 5 global domain catalogues +
 > 19 per-tool catalogues, one per individual tool/capability section).
 >
@@ -82,8 +131,8 @@
 >
 > **Q1 §tier0-orchestrator-channel rules (hard errors):**
 > - Rule 1: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). Skill
->   bodies are LLM prose — unexecutable without an LLM. Found Skill in Tier-0 orchestrator
->   channel → promote to Tier 1 or replace with PythonCode.
+>   prose parts are not Python entry points. Execute the associated class-22 PythonCode
+>   at Tier 0; use the prose only as explicit context when an LLM step is required.
 > - Rule 2: If `llm_call_required == false` AND `rust_steps` has tool_bindings, then
 >   `orchestrator_steps` MUST contain ≥1 PythonCode UUID. Empty orchestrator channel with
 >   tool bindings in a Tier-0 recipe → hard Q1 error.
@@ -106,7 +155,7 @@
 > **Skill granularity rule (one approach per skill):**
 > Author ONE leaf skill per *approach* to a tool, not one skill per tool. Three skills
 > covering three use-case approaches to `grep` (by file list, by content, by count) are
-> better than one monolithic grep skill. Domain skills reference leaves by name — they
+> better than one monolithic grep skill. Historical Extension overview records reference leaves by name — they
 > never duplicate content. When in doubt: split.
 >
 > **Recipe variant rule (one recipe per variant):**
@@ -163,7 +212,7 @@
 > **Reference implementation for extensions:** `tomedo_v3.md` applies every
 > principle in this document to a real external API (tomedo EMR). Read it as
 > the canonical example of how to structure an extension's full component stack:
-> Tools → ToolSkills → PythonCode → Leaf Skills → Domain Skills → Recipes →
+> Tools → ToolSkills → PythonCode → Leaf Skills → Historical Extension overview records → Recipes →
 > ExtensionCatalogues, with Tier-0 coverage of all deterministic operations and
 > Tier-1 only where the LLM genuinely adds value.
 
@@ -243,7 +292,7 @@ validation_status: "validated"
 
 ### Step 1.3 — Leaf Skill: `skill-shell-run` (class 1)
 
-> Orchestrator narrative. One tool, one concern: how to run a shell command.
+> Prose part of the Skill; pair with its associated executable PythonCode. One tool, one usage pattern.
 
 ```
 name:        "skill-shell-run"
@@ -283,14 +332,16 @@ validation_status: "validated"
 consumer_tags: ["02:orchestrator", "05:validator"]
 ```
 
-### Step 1.5 — Domain Skill: `skill-shell` (class 2)
+### Step 1.5 — Historical Extension overview record: `skill-shell` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 > References leaf skills. No duplication of content.
 
 ```
 name:        "skill-shell"
 class_code:  2
-description: "Domain skill: when and how to use shell execution — two tiers."
+description: "Historical Extension overview record: when and how to use shell execution — two tiers."
 body: |
   Shell execution is the most powerful and most dangerous builtin. Use it only when no
   higher-level tool covers the need (prefer filesystem domain tools for file operations;
@@ -2409,7 +2460,7 @@ consumer_tags: ["02:orchestrator", "05:validator"]
 
 > **Tier:** 0 — orchestrator reads the file deterministically via PythonCode executor.
 > **Corrected from previous version:** orchestrator step now uses PythonCode (pc-exec-read-file),
-> NOT a Skill body (which would be LLM prose, violating §tier0-orchestrator-channel Rule 1).
+> Execute the associated PythonCode entry point, not the Skill prose part (§tier0-orchestrator-channel Rule 1).
 
 ```
 name:        "file-read"
@@ -3628,7 +3679,9 @@ validation_status: "validated"
 
 ---
 
-## Step 7.x — Domain Skill `skill-filesystem` (class 2)
+## Step 7.x — Historical Extension overview record `skill-filesystem` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 > References all filesystem leaf skills by name. No duplicated content.
 
@@ -4140,7 +4193,9 @@ validation_status: "validated"
 
 ---
 
-## Step 9.x — HTTP Domain Skill + PythonCode Helpers
+## Step 9.x — HTTP Historical Extension overview record + PythonCode Helpers
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 ### Step 9.x.0 — Additional HTTP Variant: PATCH method
 
@@ -4275,7 +4330,9 @@ validation_status: "validated"
 
 ---
 
-### Step 9.x.1 — Domain Skill `skill-http` (class 2)
+### Step 9.x.1 — Historical Extension overview record `skill-http` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 ```
 name:        "skill-http"
@@ -5240,7 +5297,9 @@ validation_status: "validated"
 
 ---
 
-## Step 13.x — Memory PythonCode Helpers + Domain Skill
+## Step 13.x — Memory PythonCode Helpers + Historical Extension overview record
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 ### Step 13.x.1 — PythonCode `pc-memory-extract-section` (class 22)
 
@@ -5294,7 +5353,9 @@ source:        "system"
 validation_status: "validated"
 ```
 
-### Step 13.x.3 — Domain Skill `skill-memory` (class 2)
+### Step 13.x.3 — Historical Extension overview record `skill-memory` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 ```
 name:        "skill-memory"
@@ -6742,12 +6803,14 @@ consumer_tags: ["02:orchestrator"]
 
 ---
 
-### Step 16.11 — Domain Skill: `skill-skills` (class 2)
+### Step 16.11 — Historical Extension overview record: `skill-skills` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 ```
 name:        "skill-skills"
 class_code:  2
-description: "Domain skill: skill management — list, install, remove."
+description: "Historical Extension overview record: skill management — list, install, remove."
 body: |
   Skill management gives the agent and user visibility and control over the installed
   skill library. Use the right grain for each task:
@@ -7132,12 +7195,14 @@ consumer_tags: ["02:orchestrator"]
 
 ---
 
-### Step 17.11 — Domain Skill: `skill-triggers` (class 2)
+### Step 17.11 — Historical Extension overview record: `skill-triggers` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 ```
 name:        "skill-triggers"
 class_code:  2
-description: "Domain skill: trigger management — list, create, remove scheduled runs."
+description: "Historical Extension overview record: trigger management — list, create, remove scheduled runs."
 body: |
   Triggers are persistent scheduled invocations of recipes. Use the right grain:
 
@@ -7692,12 +7757,14 @@ consumer_tags: ["02:orchestrator"]
 
 ---
 
-### Step 18.5 — Domain Skill: `skill-subagent` (class 2)
+### Step 18.5 — Historical Extension overview record: `skill-subagent` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 ```
 name:        "skill-subagent"
 class_code:  2
-description: "Domain skill: child agent delegation via spawn_subagent."
+description: "Historical Extension overview record: child agent delegation via spawn_subagent."
 body: |
   Delegation gives the parent agent a way to hand off a well-scoped sub-task to a
   child run with full tool access and its own budget.
@@ -9611,7 +9678,9 @@ validation_status: "validated"
 
 ---
 
-## Step 14.x — Domain Skill `skill-time` (class 2)
+## Step 14.x — Historical Extension overview record `skill-time` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 > References all time leaf skills by name. No duplicated content. Replaces the
 > individual leaf skills being referenced loosely from the management catalogue.
@@ -9656,7 +9725,9 @@ validation_status: "validated"
 
 ---
 
-## Step 15.x — Domain Skill `skill-json` (class 2)
+## Step 15.x — Historical Extension overview record `skill-json` (class 2)
+
+> Historical row/identifier, not a target Skill. Move its domain prose to the ExtensionCatalogue overview with a validated reference migration; the class/IDs below document the old representation.
 
 > References all JSON leaf skills by name. No duplicated content.
 
@@ -12321,11 +12392,11 @@ validation_status: "validated"
 | 13 | ToolSkill | 30 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, **ts-time-diff**, **ts-time-format**, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
 | 22 | PythonCode | 98 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, **pc-exec-grep-invert**, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, **pc-exec-trigger-list-active**, **pc-exec-trigger-list-scheduled**, **pc-exec-trigger-resolve-and-remove**, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, **pc-exec-shell-git-diff-name-only**, **pc-exec-shell-git-log-stat**, **pc-exec-shell-git-stash-show**, **pc-exec-shell-git-config-list**, **pc-exec-shell-git-add**, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l, **pc-string-split**, **pc-string-join**, **pc-string-strip**, **pc-string-replace**, **pc-string-contains**, **pc-list-filter-nonempty**, **pc-list-slice**, **pc-list-unique**, **pc-dict-pick**, **pc-dict-merge**, **pc-csv-parse-lines**, **pc-csv-rows-to-text** |
 | 1 | Leaf Skill | 105 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, **skill-shell-git-diff-name-only**, **skill-shell-git-log-stat**, **skill-shell-git-stash-show**, **skill-shell-git-config-list**, **skill-shell-git-commit**, **skill-shell-git-push**, **skill-shell-git-pull**, **skill-shell-git-fetch**, skill-read-file, skill-read-file-range, **skill-read-file-head**, **skill-read-file-tail**, **skill-file-exists**, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, **skill-grep-invert**, **skill-read-and-grep**, **skill-list-and-filter**, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, **skill-memory-write-append**, skill-memory-read, skill-memory-tree, **skill-memory-search-and-read**, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, **skill-json-parse-and-query**, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, **skill-trigger-list-active**, **skill-trigger-list-scheduled**, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search, **skill-spawn-research**, **skill-spawn-coding**, **skill-spawn-exploration**, **skill-spawn-query**, **skill-shell-git-add** (105 total) |
-| 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
+| 2 | Historical Extension overview record | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
 | 21 | Recipe | 118 | file-read, file-read-range, **file-read-head**, **file-read-tail**, **file-exists**, **file-read-and-grep**, **file-list-and-filter**, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, **file-grep-invert**, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, **memory-write-append**, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, **memory-search-and-read**, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, **json-parse-and-query**, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, trigger-remove-by-name, **trigger-list-active**, **trigger-list-scheduled**, subagent-spawn, **subagent-research**, **subagent-coding**, **subagent-exploration**, **subagent-query**, web-search, echo-ping, shell-run, shell-script, **shell-git-fetch**, **shell-git-add**, **shell-git-commit**, **shell-git-push**, **shell-git-pull**, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l, **shell-git-diff-name-only**, **shell-git-log-stat**, **shell-git-stash-show**, **shell-git-config-list** |
 | 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3-final, all optimizations applied):** 23 Tools + 30 ToolSkills + 98 PythonCode + 105 Leaf Skills + 9 Domain Skills + 118 Recipes + 24 ExtensionCatalogues = **407 components**
+> **Actual totals (v3-final, all optimizations applied):** 23 Tools + 30 ToolSkills + 98 PythonCode + 105 Leaf Skills + 9 Historical Extension overview records + 118 Recipes + 24 ExtensionCatalogues = **407 components**
 >
 > **Changes in this revision (v3-revised, since v3-base 368):**
 >
@@ -12369,7 +12440,7 @@ For each domain group:
   3. ToolSkill rows          (class 13 — references tool_name)
   4. PythonCode rows         (class 22 — standalone, no FK deps)
   5. Leaf Skill rows         (class  1 — reference ToolSkill names in body text)
-  6. Domain Skill rows       (class  2 — reference leaf skill names in body text)
+  6. Historical Extension overview record rows       (class  2 — reference leaf skill names in body text)
   7. Recipe rows             (class 21 — step_descriptions reference UUIDs of all above)
      → for each Recipe: run IBS build_instruction pre-flight before insert
      → seed intent_examples into reborn_intent_inputs
@@ -12377,7 +12448,7 @@ For each domain group:
 
 #### Group insertion order
 
-| Pass | Group | Primary ExtCatalogue | Per-tool ExtCatalogues | Tools | ToolSkills | PythonCode | Leaf Skills | Domain Skills | Recipes |
+| Pass | Group | Primary ExtCatalogue | Per-tool ExtCatalogues | Tools | ToolSkills | PythonCode | Leaf Skills | Historical Extension overview records | Recipes |
 |------|-------|----------------------|------------------------|-------|------------|------------|-------------|---------------|---------|
 | 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 19 | 30 | 1 | 35 |
 | 2 | network | builtin-network | ext-http, ext-http-save, ext-web-search | 2 | 3 | 14 | 11 | 1 | 14 |
@@ -12422,7 +12493,7 @@ producing duplicate rows.
 | §tier0-orchestrator-channel Rule 2 | Every recipe with `llm_call_required=false` AND rust_steps tool_bindings has ≥1 PythonCode UUID in orchestrator_steps |
 | §capability-id | Every Tool row's capability_id matches a known `BuiltinFirstPartyTools` variant |
 | §non-empty-overview | Every ExtensionCatalogue has non-empty `overview_doc` |
-| §non-empty-body | Every ToolSkill, Leaf Skill, Domain Skill has non-empty body/content |
+| §non-empty-body | Every ToolSkill, Leaf Skill, Historical Extension overview record has non-empty body/content |
 
 ---
 
@@ -12450,7 +12521,7 @@ producing duplicate rows.
 > - **ToolSkill (Rust)** = one verb under a Tool + its call syntax/params
 >   (`component.fetch`, `intent.resolve`, `composition.compose`,
 >   `chat.post_reply`, `memory.write`, …).
-> - **Skill (Monty)** = narrative how-to for the Orchestrator, hierarchical.
+> - **Skill (Monty)** = one tool-usage unit: prose how-to plus associated executable PythonCode. Larger overviews belong to Extensions.
 > - **Recipe (Monty)** = the intent-specific step-script (PythonCode steps using
 >   Skills/ToolSkills) the Orchestrator runs.
 >

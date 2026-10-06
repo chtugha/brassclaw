@@ -219,7 +219,17 @@ impl HostStores {
         {
             return Ok(existing.id);
         }
-        let id = self.recipe.insert(row).await.map_err(map)?;
+        let tier0_builtin = row.source == "system"
+            && row
+                .steps
+                .get("llm_call_required")
+                .and_then(serde_json::Value::as_bool)
+                == Some(false);
+        let id = self
+            .recipe
+            .insert_with_builtin_tier(row, tier0_builtin)
+            .await
+            .map_err(map)?;
         Ok(id)
     }
 }
@@ -318,7 +328,14 @@ pub async fn seed_builtin_host_components(
 
     // Slice 10 — Step 27.4 host-save-history (Recipe over builtin.memory_write;
     // 3 components: pc-host-history-format + pc-memory-write + the Recipe).
-    child_ids.extend(seed_host_save_history(&stores).await?);
+    // Recover the capability's existing IDs before constructing its IBS binding.
+    // Host components precede the full capability catalogue during runtime boot.
+    let memory_binding = crate::builtin_bootstrap::seed_memory_write_binding(booted_db, tenant_id)
+        .await
+        .map_err(|e| SeedBuiltinHostError::Db {
+            reason: e.to_string(),
+        })?;
+    child_ids.extend(seed_host_save_history(&stores, memory_binding).await?);
 
     // Slice 11 — Step 27.10.1 host-assemble-prior-knowledge (fallback Recipe;
     // 2 components: pc-host-fallback-prior-knowledge + the Recipe).
@@ -1202,11 +1219,7 @@ async fn seed_host_kohai_complete(
                 description: "Orchestrator→Kohai handoff: hand the assembled prompt to Kohai \
                               and await the provider-LLM answer."
                     .to_string(),
-                // `prompt` is the in-scope variable holding the prior assembler
-                // step's result (Option 2 — one continuous program).
-                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
-                          answer = host.kohai_complete(prompt=prompt)\n"
-                    .to_string(),
+                content: include_str!("../components/host/kohai_complete.py").to_string(),
                 prior_knowledge_content: None,
                 override_prompt_creation: false,
                 consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
@@ -1277,7 +1290,10 @@ struct KohaiComponentIds {
 /// new-architecture first-class callable to the `memory_write` tool. Returns
 /// the minted ids in `[pc-host-history-format, pc-memory-write, recipe]` order.
 #[allow(clippy::too_many_lines)]
-async fn seed_host_save_history(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
+async fn seed_host_save_history(
+    stores: &HostStores,
+    (memory_tool_id, memory_binding_id): (Uuid, Uuid),
+) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();
 
     let pc_history_format_id = stores
@@ -1291,21 +1307,7 @@ async fn seed_host_save_history(stores: &HostStores) -> Result<Vec<Uuid>, SeedBu
                 description: "Orchestrator step: format a structured turn-summary \
                               doc body for the daily memory log."
                     .to_string(),
-                content: r###"# Channel: orchestrator | Class: 22 | No I/O, no imports, no network, no DB.
-# Compose a structured turn-summary doc body from slot vars.
-summary = {
-  "user_input": "{{vars.slot0}}",
-  "answer": "{{vars.slot1}}",
-  "mode": "{{vars.slot2}}",
-  "matched_component": "{{vars.slot3}}",
-  "timestamp": "{{vars.slot4}}"
-}
-body = "## Turn summary\n"
-for k, v in summary.items():
-    body += f"- **{k}**: {v}\n"
-# handed to the following memory_write step
-"###
-                .to_string(),
+                content: include_str!("../components/host/history_format.py").to_string(),
                 prior_knowledge_content: None,
                 override_prompt_creation: false,
                 consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
@@ -1333,14 +1335,7 @@ for k, v in summary.items():
                               pc-exec-memory-write that called the RETIRED \
                               __execute_action__)."
                     .to_string(),
-                // `body` is the in-scope variable holding the prior
-                // pc-host-history-format step's result (Option 2 — one
-                // continuous program). The memory_write tool is pre-bound into
-                // the host namespace by the Recipe's rust_steps.
-                content: "# Channel: orchestrator | Class: 22 | No I/O, no imports.\n\
-                          # body = the formatted turn-summary from the prior step (in scope).\n\
-                          host.memory_write(content=body, target=\"daily_log\")\n"
-                    .to_string(),
+                content: include_str!("../components/host/memory_write.py").to_string(),
                 prior_knowledge_content: None,
                 override_prompt_creation: false,
                 consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
@@ -1385,11 +1380,32 @@ for k, v in summary.items():
                     "(internal end-of-turn history save — not user-routed)"
                 ])),
                 source: "system".into(),
-                step_descriptions: Some(json!([
-                    {"step": 0, "action": "format", "desc": "Format the turn summary body."},
-                    {"step": 1, "action": "memory_write", "desc": "Append the summary to the daily memory log."}
-                ])),
-                variants: None,
+                step_descriptions: Some(json!([{
+                    "desc_idx": 0,
+                    "label": "Persist the admitted turn summary",
+                    "yaml_source": "",
+                    "steps": [
+                        {"stepnumber": 1, "knowledge": "orchestrator", "type": "component",
+                         "goal": "Format typed turn inputs", "content": "",
+                         "include": [pc_history_format_id]},
+                        {"stepnumber": 2, "knowledge": "rust", "type": "component",
+                         "goal": "Bind the memory-write tool", "content": "",
+                         "include": [memory_binding_id],
+                         "tool_bindings": [{"tool_id": memory_tool_id,
+                             "tool_name": "memory_write", "params": {},
+                             "error_policy": {"policy": "fail"}}]},
+                        {"stepnumber": 3, "knowledge": "orchestrator", "type": "component",
+                         "goal": "Append the formatter result to the daily log", "content": "",
+                         "include": [pc_memory_write_id]}
+                    ]
+                }])),
+                variants: Some(json!([{
+                    "variant_key": "default",
+                    "description": "Internal end-of-turn history persistence",
+                    "step_link": "0:1-0:E",
+                    "intent_examples": [],
+                    "variable_patterns": []
+                }])),
                 dependency_registry: None,
                 validates_class_code: None,
             },
@@ -1548,23 +1564,8 @@ async fn seed_host_non_match_llm_answer(
                               Pure-logic assembler — no host call; Kohai swaps the \
                               placeholder for the provider prefix last."
                     .to_string(),
-                // Multi-line indented Python — raw string preserves the `\n`
-                // and the literal dict indentation (not `\`-continuation, which
-                // would strip leading whitespace). IBS binds chat_history /
-                // user_query / placeholder into slots 0 / 1 / 2.
-                content: r###"# Channel: orchestrator | Class: 22 | No I/O, no imports.
-# Non-Matching-Mode prompt assembly (Kohai swaps the placeholder last).
-chat_history = "{{vars.slot0}}"
-user_query   = "{{vars.slot1}}"
-placeholder  = "{{vars.slot2}}"
-prompt = {
-  "chat_history": chat_history,
-  "user_query": user_query,
-  "prefix_placeholder": placeholder
-}
-result = prompt
-"###
-                .to_string(),
+                content: include_str!("../components/host/assemble_non_match_prompt.py")
+                    .to_string(),
                 prior_knowledge_content: None,
                 override_prompt_creation: false,
                 consumer_tags: vec!["01:monty".into(), "02:orchestrator".into()],
@@ -1655,12 +1656,27 @@ result = prompt
 
 /// Step 27.9.1 — `host.check_signals` (stop/suspend/inject poll).
 ///
-/// A 4-component leaf-tool stack (Tool + ToolSkill + PythonCode + leaf Skill —
-/// no Recipe). The ONLY surviving VM-control verb: external signals
-/// (stop/suspend/inject) arrive asynchronously from outside the Orchestrator's
-/// own step sequence, so a poll verb is needed. The five other VM-control verbs
-/// (emit_event, save_checkpoint, transition_to, check_budget, log_budget_warning)
-/// are RETIRED (Q-D) — the Orchestrator owns its own thread/run state.
+/// Rust provides the Tool and its ToolSkill binding descriptor. The Orchestrator
+/// Skill is one reusable tool-usage unit comprising prose instructions plus
+/// associated executable PythonCode. This seeder currently stores those parts
+/// as four separate rows: Tool, ToolSkill, PythonCode and Skill prose. It does
+/// not establish the target's explicit validated Skill–PythonCode association.
+/// Binding a ToolSkill executes nothing and grants no permission; PythonCode
+/// calls `host.check_signals()`, with dispatch subject to kernel enforcement.
+/// No standalone Recipe is seeded here: this is an Orchestrator control
+/// primitive, not a separately intent-matched user workflow.
+///
+/// In the v3 target, one global Monty Orchestrator remains alive across tasks.
+/// External stop/suspend/inject signals are addressed to the relevant task;
+/// Rust supplies signal transport and hosting, while Python owns sequencing
+/// and signal handling. A non-blocking check at execution points must not become
+/// an idle busy-poll loop or terminate the global Orchestrator with one task.
+///
+/// The v3 component surface retires emit_event, save_checkpoint, transition_to,
+/// check_budget and log_budget_warning as explicit Orchestrator control verbs.
+/// Legacy Rust handlers still exist; their removal is not completed by this
+/// seeder. Durable state, event delivery and technical resource enforcement
+/// remain required infrastructure responsibilities.
 #[allow(clippy::too_many_lines)]
 async fn seed_host_check_signals(stores: &HostStores) -> Result<Vec<Uuid>, SeedBuiltinHostError> {
     let tenant = stores.tenant.clone();

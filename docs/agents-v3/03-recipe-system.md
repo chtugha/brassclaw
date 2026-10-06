@@ -1,11 +1,48 @@
 # 03 — Recipe System
 
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
 > **Subsystem:** Recipes — the unit of v3 orchestration. A recipe is a trigger plus an ordered
 > list of steps; each step says exactly which skills/tools/Python code/LLM prompts are needed and
 > how the orchestrator and the Rust executor should run it.
 > **Grounded in:** `crates/brassclaw_engine/src/types/recipe.rs`,
 > `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`,
-> `crates/brassclaw_reborn_composition/src/composition.rs`,
+> `crates/brassclaw_engine/src/memory/composition.rs`,
 > `crates/brassclaw_reborn_composition/src/pg_composition_port.rs`,
 > `crates/brassclaw_pg/migrations/V033__reborn_recipes.sql`,
 > `crates/brassclaw_pg/migrations/V050__reborn_recipe_step_descriptions.sql`,
@@ -13,25 +50,36 @@
 
 ## 1. Purpose
 
-A **recipe** is a reusable, validated solution component (class 21) that drives the "match →
-orchestrate" branch. When the intent system matches a user message to a recipe, the **Monty
-orchestrator** runs the recipe's steps in order, composing concrete Python for each step and
-executing it via `host.run_program`. Each step carries everything needed: which skills/tools/
-Python code to preload, how to execute, whether an LLM call is required and how its prompt is
-built. Recipes are Wilson-scored and tiered: a high-confidence recipe can execute with **no LLM
-round-trip** (Tier 0); a lower-confidence match injects known-good patterns into the prompt
-(Tier 1); no match falls through to full LLM reasoning (Tier 2 / Non-Matching-Mode), and a
-success can be **extracted** into a new recipe + ToolSkill pair.
+A **Recipe** (class 21) tells the orchestrator how to fulfill a task by using
+Rust Tools, many ToolSkills, many Skills and many small reusable PythonCode
+components. It carries ordered instructions and the component inventory needed
+by IBS to assemble each step and prepare its bindings/context. The Recipe is
+the ordering and wiring, not a specialized Rust workflow implementation.
 
-**A recipe is a composition, not a monolith (the v3 recycling principle,
-`05-skills-system.md` "Recycling").** Each step `include`s **already-existing,
-one-purpose library parts** — leaf Skills (one tool each), ToolSkills, PythonCode
-— by UUID; the recipe is the *ordering* and the *wiring* (`{{vars.*}}`), not the
-capability itself. Prefer reusing a library part over authoring a new one; when a
-genuinely new capability is needed, add it as a small leaf so the next recipe can
-reuse it too. Never bake a whole procedure into one fat skill — split it into
-leaves. (See `DOC_CONVERSION_MECHANISM_DESIGN.md` §4.0/§4.3 for a worked
-example: one `doc-convert` recipe composing ~11 reusable leaves + one domain skill.)
+Each component step references exactly one stable UUID. A referenced PythonCode
+may internally compose smaller components; IBS must resolve and version-pin
+the entire graph. Pure logic and Tool usages have explicit reusable contracts.
+More clear steps are preferable to hiding complex behavior in a new Rust Tool;
+add a primitive only if the existing Tools cannot provide the operation.
+
+IBS reads newest activated approved versions at task start from a consistent
+catalogue snapshot and records exact UUID/version/checksum references in
+BuildInstruction. Recipes contain no version numbers. Authored replacements
+pass Q1 and human Q2; approved versions remain immutable and available for
+running/suspended tasks. New tasks select the new active versions, while current
+global Tool permission is checked before every dispatch in all tasks.
+
+Inputs captured from the matched user message are validated typed values.
+Recipe bindings supply step-local inputs and pass earlier result fields to later
+steps as data; they do not paste runtime strings into Python source. Monty owns
+sequencing and task context across steps, child execution and waits. The exact
+binding grammar and target inputs mapping are specified in
+[recipe.md](../../recipe.md); current source substitution and fresh-step state
+are implementation gaps, not authoring constraints.
+
+Tier 0 runs associated class-22 code with no LLM. Tier 1 uses only its explicitly
+wired reasoning/composition steps. Only an actual No-Match enters Tier 2; errors,
+ambiguity and begun Recipe failures stay distinct and cannot replay effects.
 
 ## 1.1 Dual-nature syntax (human-readable + machine-readable)
 
@@ -63,7 +111,7 @@ explanation of what happens** carried alongside the machine form.
 - **Production store (Postgres, class 21):** `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`
   (`PgRecipe`, `NewPgRecipe`, `PgRecipeStore`, `RECIPE_SELECT`, `decode_recipe_row`,
   `PgRecipeLibrary`, `PgRecipeStoreFacade`).
-- **Composition system (split + assemble):** `crates/brassclaw_reborn_composition/src/composition.rs`
+- **Composition system (split + assemble):** `crates/brassclaw_engine/src/memory/composition.rs`
   (`ComposedProgram`, `compose_program`, `ComponentResolver`, `MapComponentResolver`) and
   `crates/brassclaw_reborn_composition/src/pg_composition_port.rs` (`PgCompositionPort` — the
   engine `CompositionPort` impl that runs the 8-step compose pipeline against Postgres).

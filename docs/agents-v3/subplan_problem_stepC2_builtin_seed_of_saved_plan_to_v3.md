@@ -1,3 +1,11 @@
+> **Recipe architecture precedence (2026-10-06):** This document preserves an
+> earlier plan or implementation record. Its component granularity, input
+> substitution, fresh-step state and mutable-version descriptions are superseded
+> where they conflict with [recipe.md](../../recipe.md). One component per Recipe step
+> permits internal PythonCode composition; IBS must pin immutable versions,
+> including nested components, and preserve typed task input/result flow.
+> Do not implement obsolete examples as new requirements.
+
 # Subplan — Problem Step C.2 of `saved_plan_to_v3.md` (builtin host-component seed)
 
 > **Scope locked by the user (2026-09-03):** C.2 = **spec + seed (data only, no Rust)**.

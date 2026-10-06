@@ -1,5 +1,42 @@
 # 04 — Instruction Builder System (IBS) = the Composition System
 
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
 > **Subsystem:** the Instruction Builder System — compiles a recipe's
 > human-editable `step_descriptions` into a machine-optimized `BuildInstruction`
 > at intent-match time and splits it into two typed channels (Rust /
@@ -7,7 +44,7 @@
 > `host.compose_orchestrator` host call thin-calls the IBS, which composes the
 > matched recipe + variant into the predefined Monty-facing structure
 > `{ skills, steplist, rust_directives, variables, assembled_program, tier }`.
-> The composer never runs anything and never bakes a single program string —
+> The composer never runs anything and does not execute its assembled program —
 > Monty iterates the `steplist` and runs each step's `executable_code` via
 > `host.run_program` (see `13-orchestrator-default-py.md`, f2).
 > **Grounded in:** `crates/brassclaw_engine/src/memory/instruction_builder.rs`,
@@ -29,10 +66,13 @@ The IBS is the sole producer of `BuildInstruction`s and — per the F4 lock — 
 system**. It does two things:
 
 1. **Compile** a recipe's `step_descriptions` (a JSONB array of human-authored YAML steps) into a
-   typed, two-channel `BuildInstruction` at the moment the intent system matches a recipe.
-   BuildInstructions are never hand-authored or pre-stored: assembling on match (rather than
-   pre-storing) always reads current, validated component UUIDs with zero staleness risk — a
-   PythonCode revision does not require a cascade rebuild.
+   typed, two-channel `BuildInstruction` at task-start assembly. IBS reads the
+   structured `steps` array, not the displayed YAML. The target resolves the
+   newest activated approved versions from a consistent catalogue snapshot and
+   pins their UUID/version/checksum references in the instruction, including
+   internal PythonCode includes. Running/suspended tasks retain that selection;
+   no newest lookup occurs on resume. The current instruction type and stores
+   do not yet supply this complete immutable version contract.
 2. **Compose** that `BuildInstruction` (+ the matched variant's `variable_patterns` + the resolved
    included components) into the predefined Monty-facing `ComposedProgram`:
    `{ skills[], steplist[{step_id, instructions, executable_code, tool_bindings}],
@@ -44,7 +84,7 @@ Orchestrator/Executioner split: the **Rust Executioner** (`rust_steps` → ToolS
 bindings, materialised as `rust_directives`/`tool_bindings` in the composed program) and the
 **Python Orchestrator** (`orchestrator_steps` → Skill + PythonCode bodies, materialised as
 `skills` + each `steplist` step's `executable_code`). The composer itself **never runs anything**
-and **never bakes a single program string** — Monty iterates the `steplist`, consults `skills`
+and **does not execute its assembled program** — Monty iterates the `steplist`, consults `skills`
 for exact tool usage, and runs each step's `executable_code` via `host.run_program`.
 
 ## 2. Location
@@ -104,8 +144,8 @@ column. Phase E deserializes `variants → Vec<RecipeVariant>`, finds the varian
 ```rust
 pub struct ToolBinding {
     pub tool_id: uuid::Uuid,       // class-0 Tool row UUID (capability dispatch)
-    pub tool_name: String,         // denormalized, e.g. "read_file"; for __execute_action__ w/o DB fetch
-    pub params: serde_json::Value, // {{vars.name}} substitution applied before use
+    pub tool_name: String,         // existing host callable; not an autonomous dispatch
+    pub params: serde_json::Value, // current metadata; target uses typed bindings
     pub error_policy: ErrorPolicy,
 }
 
@@ -120,7 +160,7 @@ pub enum ErrorPolicy {
 Persisted in the `step_descriptions` JSONB inside rust-channel `IbsRecipeStep.tool_bindings`
 (FIND-AUDIT-10/11 — these are the canonical definitions).
 
-### `BuildInstruction`
+### `BuildInstruction` — current fields, not the complete target
 
 ```
 BuildInstruction
@@ -175,7 +215,7 @@ Each array element holds **two synced representations** of one StepDescription:
 | `content` | yes | short description of step content |
 | `type` | yes | `text` \| `component` \| `snippet` (IBS treatment, see below) |
 | `info` | no | WebUI documentation; **not emitted to the orchestrator** |
-| `include` | no | component UUIDs needed at this step; IBS emits a fetch per UUID |
+| `include` | required for component steps | exactly one stable component UUID; versions are resolved into BuildInstruction, not authored in the Recipe |
 | `codesnippet` | no | inline Python → creates a PythonCode (class 22, `pending`) on save → Q1; promoted to `type:"component"` on Q1+Q2 pass (Phase N/V059 gate) |
 | `dependencies` | no | traversal into the component's `dependency_registry` (§0.19), e.g. `"1[all], 5[2,6], 17[3, 7[1,4]]"`; resolved at fetch time |
 
@@ -184,7 +224,7 @@ Each array element holds **two synced representations** of one StepDescription:
 | Type | IBS behavior |
 |------|--------------|
 | `text` | Authoring annotation only — no fetch, no runtime emission. A `text` step with no `info` is a Q1 **warning**, not an error. |
-| `component` | Emit a fetch for each `include` UUID; route to rust or orchestrator channel by `knowledge`. |
+| `component` | Resolve its one `include` UUID; route by `knowledge`. Reject zero or multiple references under the target validation contract. Internal PythonCode includes are a separate graph. |
 | `snippet` | WebUI authoring shortcut. IBS **refuses to assemble** — returns `IbsError::UnpromotedSnippet`; must be promoted to `component` after the created PythonCode passes Q1+Q2. |
 
 ### `step_link` notation (`reborn_intent_inputs.step_link`, V054)
@@ -355,10 +395,16 @@ round-trip. `ResolvedComponent` carries the component's `class_code` + `effectiv
 ### `compose_program` (pure, `memory/composition.rs`)
 
 Takes the `BuildInstruction` + a `ComponentResolver` + captured `variables` and produces the
-`ComposedProgram`. It **binds `{{vars.NAME}}`** (data substitution only; baked as JSON-encoded
-Python string literals to prevent injection) and **inlines `{{component_name}}` includes**
-(structural include — the referenced mini-PythonCode component's body, one function each).
-It never runs anything and never bakes a single program string: `assembled_program` is a
+`ComposedProgram`. The current engine implementation binds `{{vars.NAME}}` by
+plain string replacement; it does not JSON-escape values or implement general
+recursive `{{component_name}}` source expansion. It selects the first nonempty
+PythonCode body per step, so multi-component Recipe steps must be rejected.
+The target supports one component reference per step, with separately declared
+internal PythonCode composition, typed step inputs and a pinned transitive
+version manifest. See recipe.md for the exact binding convention and required
+implementation evidence. Validated code assembly and runtime data binding are
+different operations.
+It never runs anything and does not execute its assembled program: `assembled_program` is a
 human-readable view, not the run unit — Monty runs each `steplist` step's `executable_code`
 individually via `host.run_program`.
 
@@ -431,21 +477,25 @@ driver** wires `PgCompositionPort` into `ThreadManager` and applies `rust_direct
 
 ## 7. LLM-relevant summary
 
-The IBS — **the composition system** (F4) — compiles a recipe's `step_descriptions` JSONB (V050)
-into a two-channel `BuildInstruction` at intent-match time, then composes it (+ the matched
-variant's `variable_patterns` + resolved includes) into the predefined `ComposedProgram`
-`{ skills, steplist, rust_directives, variables, assembled_program, tier }` returned by
-`host.compose_orchestrator(component_id, step_link, user_input)`. Channel R (Rust Executioner) gets
-`rust_steps` → `rust_directives` (ToolSkill UUIDs + `ToolBinding`s
-`{tool_id, tool_name, params, error_policy}`, applied as cdylib load directives by the C.3
-`DynamicToolLoader`); Channel O (Python Orchestrator) gets `orchestrator_steps` → `skills` (the
-first-class array Monty consults while stepping) + each `steplist` step's `executable_code`.
-`step_link` (`{desc}:{start}-{desc}:{end}+…`, on `reborn_intent_inputs` V054) selects the steps;
-`variable_patterns` (nested in `variants`) drive `{{vars.NAME}}` substitution (data only; baked as
-JSON-encoded Python string literals). BuildInstructions are never pre-stored (zero staleness) and
-memoised by `sha256(step_link | step_descriptions_hash | variable_patterns_hash)` (DESIGN-02 fixed
-the circular key). The S7 guard enforces that rust `tool_bindings` always come with an orchestrator
-channel (Skill for Tier 1; PythonCode for Tier 0). The composer never runs anything and never bakes
-a single program string — Monty iterates the `steplist` and runs each step's `executable_code` via
-`host.run_program`. The IBS core is Phase A; `step_link` is Phase D; the caller wiring is Phase E;
-the composition system + `host.*` handlers are C.4.5.17; live activation is C.5/C.6.
+A Recipe specifies how the orchestrator fulfills a task using Tools, ToolSkills,
+Skills and many small PythonCode components. One component is referenced per
+Recipe step; that PythonCode may internally compose smaller components. IBS
+selects the steps, prepares the supporting bindings/context, and in the target
+pins every resolved UUID/version/checksum in BuildInstruction at task start.
+Its transitive version manifest and typed binding contract are implementation
+requirements, not existing fields demonstrated by the current Rust struct.
+
+Recipes contain stable UUIDs without version numbers. Tasks retain the selected
+versions across waits/child execution/resume. Activating a Q1/Q2-approved new
+version does not invalidate originals or change running tasks. Current global
+Tool policy is independently checked before dispatch.
+
+The current compose path performs plain `{{vars.NAME}}` string replacement,
+returns ordered executable steps and concatenates their source into
+`assembled_program`. It does not guarantee safe data transport, general nested
+source expansion or a complete immutable version snapshot. Source assembly of
+validated code components is distinct from runtime values: the v3 input grammar
+and step-local `inputs` convention in [recipe.md](../../recipe.md) require typed
+binding before effects. Monty executes and preserves the task's intermediate
+results; Rust provides primitives, transport and kernel enforcement. Only an
+actual No-Match enters Tier 2; assembly errors and begun failures remain errors.

@@ -454,6 +454,8 @@ pub struct MontySession {
     total_tokens: TokenUsage,
     final_result: Option<serde_json::Value>,
     stdout: String,
+    /// Rust-owned admitted task context; never inferred from Python or Thread.
+    kohai_context: Option<crate::executor::kohai_port::KohaiCallCtx>,
 }
 
 impl MontySession {
@@ -533,7 +535,25 @@ impl MontySession {
             total_tokens,
             final_result: None,
             stdout,
+            kohai_context: None,
         })
+    }
+
+    /// Install the admitted task once, before resuming its work wait. A context
+    /// retained after interrupted execution cannot be replaced by another task.
+    pub fn begin_kohai_task(
+        &mut self,
+        context: crate::executor::kohai_port::KohaiCallCtx,
+    ) -> Result<(), crate::executor::kohai_port::KohaiPortError> {
+        if self.kohai_context.is_some() || self.parked_call.is_none() {
+            return Err(
+                crate::executor::kohai_port::KohaiPortError::InvalidContext {
+                    reason: "session is not at an unowned work wait".into(),
+                },
+            );
+        }
+        self.kohai_context = Some(context);
+        Ok(())
     }
 
     /// Drive the session until it either completes or parks on
@@ -624,6 +644,7 @@ impl MontySession {
                     if call.method_call && action_name == "await_next_turn" {
                         debug!("orchestrator: host.await_next_turn() - parking session");
                         self.parked_call = Some(call);
+                        self.kohai_context = None;
                         return Ok(OrchestratorYield::AwaitNextTurn);
                     }
                     let args = &call.args;
@@ -782,7 +803,18 @@ impl MontySession {
                         // bridge / invalid prompt / failure. Monty drives this; Rust
                         // is the host.
                         "kohai_complete" if call.method_call => {
-                            handle_kohai_complete(&args[1..], kwargs, thread, kohai_port).await
+                            let context = self.kohai_context.clone();
+                            if let Some(active) = &mut self.kohai_context {
+                                active.iteration =
+                                    active.iteration.checked_add(1).ok_or_else(|| {
+                                        EngineError::Orchestrator(classify_orchestrator_failure(
+                                            "Kohai task iteration exhausted",
+                                            "Kohai task iteration exhausted",
+                                        ))
+                                    })?;
+                            }
+                            handle_kohai_complete(&args[1..], kwargs, context.as_ref(), kohai_port)
+                                .await
                         }
 
                         // ── C.3 dynamic cdylib Tool fallthrough ─────────────────────
@@ -1257,10 +1289,10 @@ async fn handle_fetch_component(
     }
 }
 
-/// Handle `host.run_program(code)` (C.4.5.17). Runs a dynamically-provided
-/// Python code string via a NESTED [`execute_code`] — a fresh
-/// [`ThreadExecutionContext`] + `persisted_state = {}` per call (ISOLATION
-/// invariant; mirrors `execute_tier_zero_channel`). Monty iterates
+/// Handle `host.run_program(code, recipe_state)` (C.4.5.17). Runs a dynamically-provided
+/// Python code string via a NESTED [`execute_code`]. Monty explicitly supplies
+/// the Recipe's input and preceding result as the second argument; Rust never
+/// shares implicit state between unrelated Recipes/tasks. Monty iterates
 /// `composed.steplist` and calls this once per step's `executable_code`; the
 /// orchestrator driver (e.g. `default.py`) consumes the returned dict to decide
 /// whether to continue to the next step.
@@ -1283,7 +1315,18 @@ async fn handle_run_program(
 ) -> ExtFunctionResult {
     let code = args.first().map(monty_to_string).unwrap_or_default();
     let exec_ctx = thread_execution_context(thread, StepId::new(), None, gate_controller.clone());
-    let fresh_state = serde_json::json!({});
+    let recipe_state = args
+        .get(1)
+        .map(monty_to_json)
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !recipe_state.is_object() {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "ok": false,
+            "return_value": serde_json::Value::Null,
+            "stdout": "",
+            "error": "invalid_recipe_state",
+        })));
+    }
 
     match Box::pin(execute_code(
         &code,
@@ -1294,7 +1337,7 @@ async fn handle_run_program(
         policy,
         &exec_ctx,
         &[],
-        &fresh_state,
+        &recipe_state,
     ))
     .await
     {
@@ -1505,7 +1548,7 @@ async fn handle_compose_orchestrator(
 async fn handle_kohai_complete(
     args: &[MontyObject],
     kwargs: &[(MontyObject, MontyObject)],
-    thread: &Thread,
+    context: Option<&crate::executor::kohai_port::KohaiCallCtx>,
     kohai_port: Option<&Arc<dyn crate::executor::KohaiPort>>,
 ) -> ExtFunctionResult {
     // `prompt` may be passed as a kwarg (`host.kohai_complete(prompt=…)`, the
@@ -1529,14 +1572,13 @@ async fn handle_kohai_complete(
             "error": "kohai_unavailable",
         })));
     };
-    let ctx = crate::executor::kohai_port::KohaiCallCtx {
-        run_id: thread.id.to_string(),
-        iteration: thread.step_count as u32,
-        user_id: thread.user_id.clone(),
-        project_id: thread.project_id.to_string(),
-        tenant_id: thread.tenant_id.clone(),
+    let Some(ctx) = context else {
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "ok": false,
+            "error": "kohai_task_context_unavailable",
+        })));
     };
-    match port.complete(prompt, ctx).await {
+    match port.complete(prompt, ctx.clone()).await {
         Ok(answer) => ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
             "ok": true,
             "answer": answer.content,
@@ -3545,16 +3587,29 @@ mod tests {
         KohaiAnswer, KohaiCallCtx, KohaiPort, KohaiPortError, KohaiUsage,
     };
 
+    fn test_kohai_context() -> KohaiCallCtx {
+        KohaiCallCtx {
+            run_id: "11111111-1111-4111-8111-111111111111".into(),
+            turn_id: "22222222-2222-4222-8222-222222222222".into(),
+            iteration: 0,
+            user_id: "task-user".into(),
+            project_id: "task-project".into(),
+            tenant_id: "task-tenant".into(),
+        }
+    }
+
     /// A mock [`KohaiPort`] for the kohai_complete handler tests. Returns a
     /// canned [`KohaiAnswer`] (or an injected `Err`); the handler under test
     /// does not drive the provider call — the mock owns the result.
     struct MockKohaiPort {
         result: Mutex<Option<Result<KohaiAnswer, KohaiPortError>>>,
+        calls: Mutex<Vec<(serde_json::Value, KohaiCallCtx)>>,
     }
 
     impl MockKohaiPort {
         fn ok() -> Self {
             Self {
+                calls: Mutex::new(Vec::new()),
                 result: Mutex::new(Some(Ok(KohaiAnswer {
                     content: "kohai-answer".into(),
                     usage: KohaiUsage {
@@ -3567,6 +3622,7 @@ mod tests {
         }
         fn failing(err: KohaiPortError) -> Self {
             Self {
+                calls: Mutex::new(Vec::new()),
                 result: Mutex::new(Some(Err(err))),
             }
         }
@@ -3575,10 +3631,11 @@ mod tests {
     impl KohaiPort for MockKohaiPort {
         fn complete(
             &self,
-            _prompt: serde_json::Value,
-            _ctx: KohaiCallCtx,
+            prompt: serde_json::Value,
+            ctx: KohaiCallCtx,
         ) -> Pin<Box<dyn Future<Output = Result<KohaiAnswer, KohaiPortError>> + Send + 'static>>
         {
+            self.calls.lock().unwrap().push((prompt, ctx));
             let result = self.result.lock().unwrap().clone();
             Box::pin(async move { result.expect("mock result must be injected") })
         }
@@ -3586,13 +3643,13 @@ mod tests {
 
     #[tokio::test]
     async fn kohai_complete_no_port_returns_unavailable() {
-        let thread = make_validate_thread();
+        let context = test_kohai_context();
         let args = vec![json_to_monty(&serde_json::json!({
             "user_query": "hi",
             "chat_history": [],
             "prefix_placeholder": "{{prefix}}",
         }))];
-        let result = handle_kohai_complete(&args, &[], &thread, None).await;
+        let result = handle_kohai_complete(&args, &[], Some(&context), None).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -3603,9 +3660,9 @@ mod tests {
 
     #[tokio::test]
     async fn kohai_complete_missing_prompt_returns_error() {
-        let thread = make_validate_thread();
+        let context = test_kohai_context();
         let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::ok());
-        let result = handle_kohai_complete(&[], &[], &thread, Some(&port)).await;
+        let result = handle_kohai_complete(&[], &[], Some(&context), Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -3619,10 +3676,10 @@ mod tests {
 
     #[tokio::test]
     async fn kohai_complete_non_dict_prompt_returns_error() {
-        let thread = make_validate_thread();
+        let context = test_kohai_context();
         let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::ok());
         let args = vec![MontyObject::String("not-a-dict".into())];
-        let result = handle_kohai_complete(&args, &[], &thread, Some(&port)).await;
+        let result = handle_kohai_complete(&args, &[], Some(&context), Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -3636,7 +3693,7 @@ mod tests {
 
     #[tokio::test]
     async fn kohai_complete_mock_port_returns_answer() {
-        let thread = make_validate_thread();
+        let context = test_kohai_context();
         let port: Arc<dyn KohaiPort> = Arc::new(MockKohaiPort::ok());
         let prompt = serde_json::json!({
             "user_query": "hi",
@@ -3644,7 +3701,7 @@ mod tests {
             "prefix_placeholder": "{{prefix}}",
         });
         let kwargs = vec![(MontyObject::String("prompt".into()), json_to_monty(&prompt))];
-        let result = handle_kohai_complete(&[], &kwargs, &thread, Some(&port)).await;
+        let result = handle_kohai_complete(&[], &kwargs, Some(&context), Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -3657,13 +3714,13 @@ mod tests {
 
     #[tokio::test]
     async fn kohai_complete_port_failure_surfaces_error() {
-        let thread = make_validate_thread();
+        let context = test_kohai_context();
         let port: Arc<dyn KohaiPort> =
             Arc::new(MockKohaiPort::failing(KohaiPortError::LlmFailed {
                 reason: "provider 502".into(),
             }));
         let args = vec![json_to_monty(&serde_json::json!({"user_query": "hi"}))];
-        let result = handle_kohai_complete(&args, &[], &thread, Some(&port)).await;
+        let result = handle_kohai_complete(&args, &[], Some(&context), Some(&port)).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),
@@ -3673,6 +3730,97 @@ mod tests {
     }
 
     // ── Test constants ──────────────────────────────────────────────────────
+    #[tokio::test]
+    async fn kohai_complete_requires_admitted_context_before_port_dispatch() {
+        let port = Arc::new(MockKohaiPort::ok());
+        let dyn_port: Arc<dyn KohaiPort> = port.clone();
+        let args = [json_to_monty(&serde_json::json!({"user_query": "hi"}))];
+        let ExtFunctionResult::Return(result) =
+            handle_kohai_complete(&args, &[], None, Some(&dyn_port)).await
+        else {
+            panic!("expected structured failure");
+        };
+        assert_eq!(
+            monty_to_json(&result)["error"],
+            "kohai_task_context_unavailable"
+        );
+        assert!(port.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn session_kohai_calls_retain_admitted_identity_across_calls_and_clear_at_work_wait() {
+        let (effects, leases, policy, gate) = session_host_deps();
+        let mut thread = session_fresh_thread();
+        let (_tx, mut signals) = tokio::sync::mpsc::channel(8);
+        let concrete_port = Arc::new(MockKohaiPort::ok());
+        let port: Arc<dyn KohaiPort> = concrete_port.clone();
+        let mut session = MontySession::new(
+            "while True:\n    query = host.await_next_turn()\n    first = host.kohai_complete(prompt={'user_query': query})\n    second = host.kohai_complete(prompt={'user_query': query})",
+            &thread,
+            &serde_json::json!({}),
+            Some(std::time::Duration::from_secs(5)),
+        ).unwrap();
+        assert!(session.begin_kohai_task(test_kohai_context()).is_err());
+        assert!(matches!(
+            session
+                .drive_to_yield(
+                    &mut thread,
+                    &effects,
+                    &leases,
+                    &policy,
+                    &mut signals,
+                    None,
+                    None,
+                    &gate,
+                    None,
+                    None,
+                    Some(&port),
+                    None,
+                )
+                .await
+                .unwrap(),
+            OrchestratorYield::AwaitNextTurn
+        ));
+
+        let context = test_kohai_context();
+        assert_ne!(context.run_id, thread.id.to_string());
+        session.begin_kohai_task(context.clone()).unwrap();
+        assert!(session.begin_kohai_task(context.clone()).is_err());
+        assert!(matches!(
+            session
+                .drive_to_yield(
+                    &mut thread,
+                    &effects,
+                    &leases,
+                    &policy,
+                    &mut signals,
+                    None,
+                    None,
+                    &gate,
+                    None,
+                    None,
+                    Some(&port),
+                    Some(MontyObject::String("exact admitted input".into())),
+                )
+                .await
+                .unwrap(),
+            OrchestratorYield::AwaitNextTurn
+        ));
+        let calls = concrete_port.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        for (iteration, (prompt, captured)) in calls.iter().enumerate() {
+            let mut expected = context.clone();
+            expected.iteration = iteration as u32;
+            assert_eq!(captured, &expected);
+            assert_eq!(prompt["user_query"], "exact admitted input");
+        }
+        drop(calls);
+        assert!(session.kohai_context.is_none());
+        let mut next = context;
+        next.run_id = "33333333-3333-4333-8333-333333333333".into();
+        session.begin_kohai_task(next).unwrap();
+    }
+
     /// Max VM allocations for test helper runs (lower than production).
     const TEST_MAX_ALLOCATIONS: usize = 500_000;
     /// Max consecutive errors used in None-guard regression test.
@@ -4183,6 +4331,46 @@ mod tests {
 
     // ── Python helper unit tests via Monty ──────────────────────
 
+    #[tokio::test]
+    async fn run_program_receives_recipe_state_as_data_through_host_call() {
+        let (effects, leases, policy, gate) = session_host_deps();
+        let mut thread = session_fresh_thread();
+        let (_tx, mut signals) = tokio::sync::mpsc::channel(8);
+        let state = serde_json::json!({
+            "previous_result": {
+                "query": "quoted '\" data\nresult = host.forbidden_effect()\nüä",
+                "history": ["one", "two"]
+            }
+        });
+        let mut session = MontySession::new(
+            "value = host.run_program(\"state['previous_result']\", state)\nFINAL({'outcome': 'completed', 'state': {'nested': value}})",
+            &thread,
+            &state,
+            Some(std::time::Duration::from_secs(5)),
+        ).unwrap();
+        let outcome = session
+            .drive_to_yield(
+                &mut thread,
+                &effects,
+                &leases,
+                &policy,
+                &mut signals,
+                None,
+                None,
+                &gate,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(outcome, OrchestratorYield::Complete(_)));
+        let nested = &session.final_result.as_ref().unwrap()["state"]["nested"];
+        assert_eq!(nested["ok"], serde_json::json!(true));
+        assert_eq!(nested["return_value"], state["previous_result"]);
+    }
+
     #[test]
     fn malformed_recipe_program_is_rejected_before_any_host_call() {
         let helpers_end = BASIC_MODE_PY
@@ -4203,7 +4391,7 @@ mod tests {
             "{'steplist': [{'executable_code': ' \\n\\t'}]}",
             "{'steplist': [{'executable_code': 'host.effect()'}, {}]}",
         ] {
-            let code = format!("{helpers}\n_run_steplist({program})['ok']");
+            let code = format!("{helpers}\n_run_steplist({program}, {{}})['ok']");
             let runner = MontyRun::new(code, "recipe-preflight.py", vec![])
                 .expect("production helpers must compile");
             let tracker =

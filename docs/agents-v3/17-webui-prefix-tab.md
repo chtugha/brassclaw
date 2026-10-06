@@ -1,5 +1,42 @@
 # 17 — WebUI v2 & the Prefix Tab
 
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
 > **Subsystem:** The browser surface of the agent — the React single-page
 > app (WebUI v2), the Rust route layer that backs it, the host-owned
 > ingress that binds the listener, and the **Prefix Tab**, the new v3

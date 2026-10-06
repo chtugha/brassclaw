@@ -1,0 +1,47 @@
+{
+  "compiler": "Homeassistant-compiler.py",
+  "compiler_sha256": "12588fd1b6b5ef91f11fd79a8d7dbbad5ead8aa43edaf2818e7026838143435d",
+  "checks": {
+    "syntax": "passed",
+    "unit_tests": {
+      "passed": 7,
+      "tokenizer": "/private/tmp/ornith-prefix-tokenizer",
+      "synthetic_fixtures": "YAML evidence preservation and bounded topic selection; not model accuracy",
+      "remote_passed": 7,
+      "remote_host": "brassclaw2"
+    },
+    "live_primary_source_probes": {
+      "home_assistant_required_topics": "all 11 matched complete bounded cards in current user/developer docs",
+      "mqtt_yaml_broker_protocol_topics": "all 12 matched bounded cards using actual Ornith tokenizer",
+      "modbus_pdf_collection": {
+        "application_pages": 50,
+        "serial_pages": 44,
+        "original_pdf_hashes": "verified",
+        "extracted_text_hashes": "verified",
+        "card_provenance": "verified"
+      }
+    }
+  },
+  "limitations": [
+    "Home Assistant model task accuracy not evaluated",
+    "Disk persistence not verified",
+    "PDF tables and diagrams require original-page review"
+  ],
+  "defensive_compiler_unchanged_sha256": "fdbdda197a4459e9d8400e9b7391a60931db293739eea3129172816b195f1d2e",
+  "build": {
+    "manifest": "homeassistant-build.json",
+    "text_tokens": 99681,
+    "selected_cards": 79,
+    "source_families": 13,
+    "required_topics": 25,
+    "source_cards": 24747
+  },
+  "deployment": {
+    "activation": "homeassistant-activation.json",
+    "verification": "homeassistant-deployed-verification.json",
+    "external_cache": "homeassistant-external-replay.json",
+    "automatic_server_injection_verified": true,
+    "native_hybrid_cache_reuse_verified": true,
+    "external_prefix_reload_verified": true
+  }
+}

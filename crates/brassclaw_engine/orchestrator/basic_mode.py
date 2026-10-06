@@ -79,7 +79,7 @@ def _stringify(value):
     return str(value)
 
 
-def _run_steplist(program):
+def _run_steplist(program, recipe_state):
     """Iterate program.steplist, running each step's executable_code via
     host.run_program. Returns {ok, answer}: ok=False on the first failed step
     (answer = last good step's text); ok=True with the last step's text."""
@@ -103,10 +103,14 @@ def _run_steplist(program):
     last_answer = ""
     for step in steplist:
         code = step.get("executable_code", "")
-        result = host.run_program(code)
+        # Monty owns the handoff. Runtime values travel as data, never as
+        # substituted Python source. Unrelated Recipe executions get their
+        # own state; a child runner receives only this Recipe's input/results.
+        result = host.run_program(code, recipe_state)
         if not isinstance(result, dict) or result.get("ok") is not True:
             return {"ok": False, "answer": last_answer}
         rv = result.get("return_value")
+        recipe_state["previous_result"] = rv
         if rv is None:
             rv = result.get("stdout", "")
         step_text = _stringify(rv)
@@ -115,7 +119,7 @@ def _run_steplist(program):
     return {"ok": True, "answer": last_answer}
 
 
-def _compose_and_run(component_id, step_link, user_input):
+def _compose_and_run(component_id, step_link, user_input, recipe_state=None):
     """Execute the selected Recipe once. A failed step never restarts as Tier 2."""
     if component_id == "" or step_link == "":
         raise RuntimeError("recipe_composition_failed")
@@ -125,7 +129,9 @@ def _compose_and_run(component_id, step_link, user_input):
     program = composed.get("program")
     if program is None:
         raise RuntimeError("recipe_composition_failed")
-    ran = _run_steplist(program)
+    if recipe_state is None:
+        recipe_state = {"inputs": {"user_input": user_input}, "previous_result": None}
+    ran = _run_steplist(program, recipe_state)
     if not ran.get("ok"):
         raise RuntimeError("recipe_execution_failed")
     return ran.get("answer", "")
@@ -137,7 +143,10 @@ def _non_match_answer(context, user_input):
     recipe = host.resolve_component_by_name("host-non-match-llm-answer", 21)
     if recipe is None or recipe.get("id", "") == "":
         raise RuntimeError("non_match_instruction_unavailable")
-    answer = _compose_and_run(recipe.get("id"), "0:1-0:E", user_input)
+    answer = _compose_and_run(recipe.get("id"), "0:1-0:E", user_input, {
+        "inputs": {"user_input": user_input, "history": context[:-1]},
+        "previous_result": None
+    })
     if answer == "":
         raise RuntimeError("non_match_instruction_failed")
     return answer
@@ -149,7 +158,10 @@ def _save_history(user_input, answer):
     recipe = host.resolve_component_by_name("host-save-history", 21)
     if recipe is None or recipe.get("id", "") == "":
         raise RuntimeError("history_persistence_failed")
-    _compose_and_run(recipe.get("id"), "0:1-0:E", user_input)
+    _compose_and_run(recipe.get("id"), "0:1-0:E", user_input, {
+        "inputs": {"user_input": user_input, "answer": answer},
+        "previous_result": None
+    })
 
 
 def _seed_history(context):

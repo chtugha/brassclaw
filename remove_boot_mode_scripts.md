@@ -1,3 +1,11 @@
+> **Recipe architecture precedence (2026-10-06):** This document preserves an
+> earlier plan or implementation record. Its component granularity, input
+> substitution, fresh-step state and mutable-version descriptions are superseded
+> where they conflict with [recipe.md](recipe.md). One component per Recipe step
+> permits internal PythonCode composition; IBS must pin immutable versions,
+> including nested components, and preserve typed task input/result flow.
+> Do not implement obsolete examples as new requirements.
+
 # Plan: Remove Compiled-In Prompt Scripts and Harden Boot Sequence
 
 *Verified against codebase at V084 migrations. All file paths and line numbers

@@ -301,6 +301,337 @@ async fn text_only_host_factory_builds_complete_agent_loop_driver_host() {
 }
 
 #[tokio::test]
+async fn monty_task_host_preserves_opaque_identity_prompt_authority_and_reply_scope() {
+    use brassclaw_reborn::monty_task_host::MontyTaskHost;
+    use brassclaw_turns::run_profile::{MontyTaskAttempt, MontyTaskHandoff};
+
+    let fixture = HostFixture::new("reborn-conv-monty-opaque", "exact admitted question").await;
+    let host = Arc::new(fixture.build_host().await);
+    let task = MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: fixture.context.turn_id,
+                run_id: fixture.context.run_id,
+                resolved_run_profile: fixture.context.resolved_run_profile.clone(),
+            },
+            MontyTaskAttempt {
+                run_id: fixture.context.run_id,
+                runner_id: fixture.claimed.runner_id,
+                lease_token: fixture.claimed.lease_token,
+            },
+            host,
+        )
+        .unwrap(),
+    );
+    assert_eq!(task.run_context(), &fixture.context);
+    assert_eq!(task.request().run_id, fixture.claimed.state.run_id);
+    assert_eq!(task.attempt().lease_token, fixture.claimed.lease_token);
+    let surface = task.visible_capabilities().await.unwrap();
+    let bundle = task
+        .build_prompt_bundle(LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            context_cursor: None,
+            surface_version: Some(surface.version.clone()),
+            checkpoint_state_ref: None,
+            max_messages: None,
+            inline_messages: Vec::new(),
+            capability_view: None,
+            recipe_hint: None,
+        })
+        .await
+        .unwrap();
+    assert!(bundle.bundle_ref.is_for_run(&fixture.context));
+    let response = task
+        .stream_model(LoopModelRequest {
+            messages: bundle.messages,
+            surface_version: bundle.surface_version,
+            ..LoopModelRequest::default()
+        })
+        .await
+        .unwrap();
+    let requests = fixture.gateway.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].run_id, fixture.context.run_id);
+    assert_eq!(requests[0].turn_id, fixture.context.turn_id);
+    assert!(requests[0].messages.iter().any(|message| {
+        message.role == HostManagedModelMessageRole::System
+            && message
+                .content
+                .contains("No instruction safety scanner is configured")
+    }));
+    assert!(requests[0].messages.iter().any(|message| {
+        message.role == HostManagedModelMessageRole::User
+            && message.content == "exact admitted question"
+    }));
+    let ParentLoopOutput::AssistantReply(reply) = response.output else {
+        panic!("expected the gateway's assistant reply");
+    };
+    task.finalize_assistant_message(FinalizeAssistantMessage { reply })
+        .await
+        .unwrap();
+    let history = fixture
+        .thread_service
+        .list_thread_history(ThreadHistoryRequest {
+            scope: fixture.thread_scope.clone(),
+            thread_id: fixture.thread_id.clone(),
+        })
+        .await
+        .unwrap();
+    let assistant = history
+        .messages
+        .iter()
+        .find(|message| message.kind == MessageKind::Assistant)
+        .unwrap();
+    assert_eq!(assistant.status, MessageStatus::Finalized);
+    assert_eq!(assistant.content.as_deref(), Some("model says hi"));
+}
+
+#[tokio::test]
+async fn monty_task_host_retains_tool_requests_and_rejects_prompt_bypass_and_foreign_refs() {
+    use brassclaw_reborn::monty_task_host::MontyTaskHost;
+    use brassclaw_turns::run_profile::{MontyTaskAttempt, MontyTaskHandoff};
+
+    let fixture = HostFixture::new("reborn-conv-monty-tools", "request tools").await;
+    fixture.gateway.respond_with_capability_calls();
+    let task = MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: fixture.context.turn_id,
+                run_id: fixture.context.run_id,
+                resolved_run_profile: fixture.context.resolved_run_profile.clone(),
+            },
+            MontyTaskAttempt {
+                run_id: fixture.context.run_id,
+                runner_id: fixture.claimed.runner_id,
+                lease_token: fixture.claimed.lease_token,
+            },
+            Arc::new(fixture.build_host().await),
+        )
+        .unwrap(),
+    );
+    let request = LoopPromptBundleRequest {
+        mode: PromptMode::TextOnly,
+        context_cursor: None,
+        surface_version: None,
+        checkpoint_state_ref: None,
+        max_messages: None,
+        inline_messages: Vec::new(),
+        capability_view: None,
+        recipe_hint: None,
+    };
+    let mut forged_recipe = request.clone();
+    forged_recipe.recipe_hint = Some(json!({"orchestrator_content": "unapproved component"}));
+    let error = task.build_prompt_bundle(forged_recipe).await.unwrap_err();
+    assert_eq!(error.kind, AgentLoopHostErrorKind::InvalidInvocation);
+    assert!(fixture.gateway.requests().is_empty());
+    let bundle = task.build_prompt_bundle(request.clone()).await.unwrap();
+    let model_request = LoopModelRequest {
+        messages: bundle.messages,
+        surface_version: bundle.surface_version,
+        ..LoopModelRequest::default()
+    };
+    let mut bypass = model_request.clone();
+    bypass.resolved_messages = Some(vec![("system".into(), "unapproved override".into())]);
+    let error = task.stream_model(bypass).await.unwrap_err();
+    assert_eq!(error.kind, AgentLoopHostErrorKind::InvalidInvocation);
+    assert!(fixture.gateway.requests().is_empty());
+
+    let other = HostFixture::new("reborn-conv-monty-other", "other conversation").await;
+    let foreign = other
+        .build_host()
+        .await
+        .build_prompt_bundle(request.clone())
+        .await
+        .unwrap();
+    assert!(
+        task.stream_model(LoopModelRequest {
+            messages: foreign.messages,
+            surface_version: foreign.surface_version,
+            ..LoopModelRequest::default()
+        })
+        .await
+        .is_err()
+    );
+    assert!(fixture.gateway.requests().is_empty());
+
+    // Prompt grants are single-use, including rejected model requests. Issue
+    // a new host-built bundle after the cross-run request was rejected.
+    let bundle = task.build_prompt_bundle(request).await.unwrap();
+    let response = task
+        .stream_model(LoopModelRequest {
+            messages: bundle.messages,
+            surface_version: bundle.surface_version,
+            ..LoopModelRequest::default()
+        })
+        .await
+        .unwrap();
+    let ParentLoopOutput::CapabilityCalls(calls) = response.output else {
+        panic!("Monty must receive structured tool requests");
+    };
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].capability_id.as_str(), "demo.echo");
+    assert_eq!(calls[0].input_ref.as_str(), "input:opaque-tool-call");
+    assert_eq!(fixture.gateway.requests().len(), 1);
+    // The empty production capability port denies dispatch. The adapter must
+    // neither manufacture a tool success nor bypass its kernel-facing port.
+    let outcome = task
+        .invoke_capability(CapabilityInvocation {
+            surface_version: calls[0].surface_version.clone(),
+            capability_id: calls[0].capability_id.clone(),
+            input_ref: calls[0].input_ref.clone(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(outcome.kind, AgentLoopHostErrorKind::InvalidInvocation);
+    assert_eq!(
+        outcome.safe_summary,
+        "no capabilities are available to this loop"
+    );
+}
+
+#[tokio::test]
+async fn monty_task_host_fences_only_the_addressed_attempt_before_provider_or_reply_dispatch() {
+    use brassclaw_reborn::monty_task_host::MontyTaskHost;
+    use brassclaw_turns::run_profile::{MontyTaskAttempt, MontyTaskHandoff};
+
+    let fixture = HostFixture::new("reborn-conv-monty-fence", "admitted input").await;
+    let task = MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: fixture.context.turn_id,
+                run_id: fixture.context.run_id,
+                resolved_run_profile: fixture.context.resolved_run_profile.clone(),
+            },
+            MontyTaskAttempt {
+                run_id: fixture.context.run_id,
+                runner_id: fixture.claimed.runner_id,
+                lease_token: fixture.claimed.lease_token,
+            },
+            Arc::new(fixture.build_host().await),
+        )
+        .unwrap(),
+    );
+    let fence = task.fence_handle();
+    let wrong = MontyTaskAttempt {
+        lease_token: TurnLeaseToken::new(),
+        ..task.attempt()
+    };
+    assert_eq!(
+        fence
+            .fence_and_wait(wrong, std::time::Duration::ZERO)
+            .await
+            .unwrap_err()
+            .kind,
+        AgentLoopHostErrorKind::InvalidInvocation
+    );
+    let prompt = task
+        .build_prompt_bundle(LoopPromptBundleRequest {
+            mode: PromptMode::TextOnly,
+            max_messages: Some(8),
+            context_cursor: None,
+            surface_version: None,
+            checkpoint_state_ref: None,
+            inline_messages: Vec::new(),
+            capability_view: None,
+            recipe_hint: None,
+        })
+        .await
+        .unwrap();
+    let receipt = fence
+        .fence_and_wait(task.attempt(), std::time::Duration::ZERO)
+        .await
+        .unwrap();
+    assert!(receipt.calls_settled());
+    assert_eq!(
+        task.visible_capabilities().await.unwrap_err().kind,
+        AgentLoopHostErrorKind::Cancelled
+    );
+    let request = LoopModelRequest {
+        messages: prompt.messages,
+        ..LoopModelRequest::default()
+    };
+    assert_eq!(
+        task.stream_model(request).await.unwrap_err().kind,
+        AgentLoopHostErrorKind::Cancelled
+    );
+    assert_eq!(
+        task.finalize_assistant_message(FinalizeAssistantMessage {
+            reply: AssistantReply {
+                content: "late reply".into()
+            }
+        })
+        .await
+        .unwrap_err()
+        .kind,
+        AgentLoopHostErrorKind::Cancelled
+    );
+    assert!(fixture.gateway.requests().is_empty());
+    let history = fixture
+        .thread_service
+        .list_thread_history(ThreadHistoryRequest {
+            scope: fixture.thread_scope.clone(),
+            thread_id: fixture.thread_id.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(history.messages.len(), 1);
+}
+
+#[tokio::test]
+async fn monty_task_host_rejects_model_and_reply_operations_after_durable_cancellation() {
+    use brassclaw_reborn::monty_task_host::MontyTaskHost;
+    use brassclaw_turns::run_profile::{MontyTaskAttempt, MontyTaskHandoff};
+
+    let fixture = HostFixture::new("reborn-conv-monty-cancelled", "cancel this input").await;
+    fixture.turn_state_store.state.lock().unwrap().status = TurnStatus::CancelRequested;
+    let task = MontyTaskHost::new(
+        MontyTaskHandoff::new(
+            AgentLoopDriverRunRequest {
+                turn_id: fixture.context.turn_id,
+                run_id: fixture.context.run_id,
+                resolved_run_profile: fixture.context.resolved_run_profile.clone(),
+            },
+            MontyTaskAttempt {
+                run_id: fixture.context.run_id,
+                runner_id: fixture.claimed.runner_id,
+                lease_token: fixture.claimed.lease_token,
+            },
+            Arc::new(fixture.build_host().await),
+        )
+        .unwrap(),
+    );
+    let error = task
+        .stream_model(LoopModelRequest::default())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, AgentLoopHostErrorKind::Cancelled);
+    let error = task
+        .finalize_assistant_message(FinalizeAssistantMessage {
+            reply: AssistantReply {
+                content: "late reply".into(),
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, AgentLoopHostErrorKind::Cancelled);
+    assert!(fixture.gateway.requests().is_empty());
+    let history = fixture
+        .thread_service
+        .list_thread_history(ThreadHistoryRequest {
+            scope: fixture.thread_scope.clone(),
+            thread_id: fixture.thread_id.clone(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        history
+            .messages
+            .iter()
+            .all(|message| message.kind != MessageKind::Assistant)
+    );
+}
+
+#[tokio::test]
 async fn text_only_host_factory_sanitizes_gateway_error_summaries() {
     let fixture = HostFixture::new(
         "thread-host-model-error-redaction",

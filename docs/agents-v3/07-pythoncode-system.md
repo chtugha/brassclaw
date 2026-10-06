@@ -1,5 +1,42 @@
 # 07 — PythonCode System
 
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
 > **Subsystem:** PythonCode (class 22) — the orchestrator-channel component that carries an
 > executable Python body the orchestrator runs to drive a recipe. It is the "body" half of the
 > recipe step pair: a `type:"component"` step `include`s a PythonCode UUID and the component's
@@ -10,7 +47,7 @@
 > `crates/brassclaw_engine/src/memory/component_validator.rs`,
 > `crates/brassclaw_engine/src/memory/retrieval_source.rs`,
 > `crates/brassclaw_engine/src/memory/intent_system.rs`,
-> `crates/brassclaw_reborn_composition/src/composition.rs` (composer),
+> `crates/brassclaw_engine/src/memory/composition.rs` (composer),
 > `saved_plan_to_v3.md` (Phase B, C.4.5.2, Phase N, Phase L).
 > **Status:** **shipped.** `V052` (table), `V069` (`includes` column), `pg_python_code_store.rs`,
 > the class-22 validator arm, the class-22 retrieval arms, and `22 => "python_code"` in
@@ -40,6 +77,16 @@ integrity check) is a **Phase N** capability. Until Phase N lands, only **system
 **operator-validated** PythonCode is usable in `type:"component"` steps — but the table, store,
 validator, retrieval, and intent label are all in place today.
 
+### Current implementation caveat
+
+The schema/history sections below preserve earlier implementation accounts.
+The referenced `memory/component_validator.rs` and composition-layer
+`src/composition.rs` are not present in the inspected checkout. Do not infer
+that all described Q1 body/placeholder checks or nested source expansion are
+currently enforced. Inspect the actual validation path (`q1_orchestrator.rs`,
+`memory/recipe_validator.rs`) and engine `memory/composition.rs`, and record
+behavioral evidence before claiming a component passed those gates.
+
 ## 2. Location
 
 - **Migration (table):** `crates/brassclaw_pg/migrations/V052__reborn_python_code.sql`
@@ -60,8 +107,9 @@ validator, retrieval, and intent label are all in place today.
 - **Intent label:** `crates/brassclaw_engine/src/memory/intent_system.rs` — `22 => "python_code"`
   in `class_label` (line ~289); the legend doc-comment lists `21=recipe, 22=python_code,
   23=extension_catalogue, 50=scaffold` (line ~264).
-- **Composer:** `crates/brassclaw_reborn_composition/src/composition.rs` — inlines each
-  `{{component_name}}` placeholder by fetching the matching `includes` UUID's body (C.4.5.17).
+- **Composer:** `crates/brassclaw_engine/src/memory/composition.rs` — inlines each
+  internal includes under the target composition contract; general expansion is
+  not implemented by the inspected engine composer.
 - **Validation queue:** `reborn_validation_queue` (V051 — shipped; the Phase N populate/trigger/
   legacy-DROP is still pending).
 - **Seeder:** `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` (C.2 system seeds).
@@ -91,7 +139,7 @@ validator, retrieval, and intent label are all in place today.
 | `audit_failure_count` | SMALLINT NOT NULL DEFAULT 0 | lineage |
 | `parent_mission_id` | UUID | lineage (slated for V064-style drop, already done on some tables) |
 | `dependency_registry` | JSONB | included at creation (Phase J.2; V055 retrofits the 13 older tables) |
-| `includes` | JSONB NOT NULL DEFAULT '[]' | **V069 (C.4.5.2)** — `Vec<Uuid>` of mini-PythonCode components the composer inlines into `{{component_name}}` placeholders at compose time (one function each, like an include) |
+| `includes` | JSONB NOT NULL DEFAULT '[]' | **V069 (C.4.5.2)** — stored internal PythonCode references; target assembly must resolve and pin them; storage alone does not prove expansion |
 | `created_at`,`updated_at` | TIMESTAMPTZ | `set_updated_at()` trigger |
 
 **Deliberately absent** (§0.18 — centralised on `reborn_validation_queue`): `queue_code`,
@@ -180,8 +228,9 @@ C.4.5.17 is the sole baker):
 
 A recipe `Match` → Monty calls `host.compose_orchestrator(component_id, step_link, user_input)`;
 the composition system fetches each `type:"component"` step's PythonCode by UUID (class-22
-retrieval arm), inlines its `{{component_name}}` includes, and returns the concrete per-step
-Python in the orchestrator program. Monty runs each step via `host.run_program`. In a **Tier-0**
+retrieval arm) and returns the concrete per-step Python in the orchestrator
+program. Internal includes are permitted by the target, but the current engine
+composer does not implement general recursive source expansion. Monty runs each step via `host.run_program`. In a **Tier-0**
 recipe the PythonCode body (not a Skill — see the S7-extension guard) is what drives the Rust
 executioner **without an LLM call**. (The engine Monty VM that hosts this loop is dormant in
 production today — activation is the C.5/C.6 driver; the Tier-0 deterministic path is active via
@@ -201,10 +250,12 @@ orchestrator-channel component that can run without an LLM.
 - **StepDescription / IBS** (`03`/`04`): `codesnippet` creates a PythonCode; the `snippet` step
   type blocks IBS assembly until promotion to `component`; `StepContextSpec` for class 22 =
   `PythonCode` (`## [PythonCode: {name}]`).
-- **Composition system** (`composition.rs` / `pg_composition_port.rs`): the composer inlines
-  `{{component_name}}` includes and returns the per-step Python to Monty.
-- **Skills** (`05`): the grain-rule sibling — Skill = capability spanning tools (narrative);
-  PythonCode = sub-orchestrator utility helper. Both live in the orchestrator channel.
+- **Composition system** (`composition.rs` / `pg_composition_port.rs`): returns
+  per-step Python to Monty. Internal code composition is a target requirement;
+  verify the actual expansion path rather than infer it from the includes column.
+- **Skills** (`05`): one reusable Tool usage consists of prose and associated
+  executable PythonCode. A multi-tool domain overview belongs in an Extension,
+  not a Skill. Tier-0 steps execute the associated class-22 component, not prose.
 - **Validation Queue** (`14`): every authored PythonCode gets a `reborn_validation_queue` row
   on creation (`submit(scope, id, 22)`); Q1 (state 1→2) + Q2 (queue row deleted,
   `validation_status='validated'`) graduate it; `source='system'` (C.2) bypasses Q2.
@@ -231,7 +282,8 @@ orchestrator-channel component that can run without an LLM.
 - `22 => "python_code"` in `class_label` + the legend doc-comment.
 - `reborn_validation_queue` (V051) DDL + `ValidationQueueStore` (submit/approve/reject).
 - C.2 builtin bootstrap seeds system PythonCode helpers (`source='system'`, `validated`).
-- The composer (C.4.5.17) inlines `{{component_name}}` includes at compose time.
+- The includes column stores internal component references. General recursive
+  expansion and immutable transitive version selection remain implementation work.
 
 **Pending:**
 - **Phase N:** the gate logic that completes the `snippet`→`component` rewrite + the boot-

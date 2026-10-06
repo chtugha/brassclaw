@@ -507,6 +507,34 @@ impl PersistentMontyDriver {
         // Move the session out of the guard for driving; re-wrap afterwards.
         // `take()` disarms the guard so it won't double-park on drop.
         let mut session = session.take();
+        session
+            .begin_kohai_task(brassclaw_engine::executor::kohai_port::KohaiCallCtx {
+                run_id: context.run_id.to_string(),
+                turn_id: context.turn_id.to_string(),
+                iteration: 0,
+                user_id: context
+                    .scope
+                    .explicit_owner_user_id()
+                    .or_else(|| {
+                        if context.scope.has_explicit_thread_owner() {
+                            None
+                        } else {
+                            context.actor.as_ref().map(|actor| &actor.user_id)
+                        }
+                    })
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| brassclaw_host_api::SYSTEM_RESERVED_ID.to_owned()),
+                project_id: context
+                    .scope
+                    .project_id
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "system".into()),
+                tenant_id: context.scope.tenant_id.to_string(),
+            })
+            .map_err(|_| AgentLoopDriverError::Failed {
+                reason_kind: "monty task model context could not be installed".into(),
+            })?;
 
         // Snapshot message count before the resume drive so we can diff
         // afterwards and persist any new assistant messages from host.post_reply.
@@ -645,8 +673,9 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
         &self,
         handoff: MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
-        let (_, attempt, host) = handoff.into_parts();
-        let context = host.run_context();
+        let task_host = brassclaw_reborn::monty_task_host::MontyTaskHost::new(handoff);
+        let attempt = task_host.attempt();
+        let context = task_host.run_context();
 
         // Read the exact admitted input before touching the legacy engine store.
         // This input/history handoff does not require a UUID conversation.

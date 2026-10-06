@@ -1,0 +1,359 @@
+--- a/.rustfmt.toml
++++ b/.rustfmt.toml
+@@ -2,2 +1,0 @@
+-imports_granularity = "Crate"
+-group_imports = "StdExternalCrate"
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -3,21 +3,2 @@
+-members = [
+-    "crates/monty",
+-    "crates/monty-types",
+-    "crates/monty-alloc",
+-    "crates/monty-fs",
+-    "crates/monty-runtime",
+-    "crates/monty-proto",
+-    "crates/monty-pool",
+-    "crates/monty-wasm-runtime",
+-    "crates/monty-python",
+-    "crates/monty-js",
+-    "crates/monty-apidoc",
+-    "crates/monty-datatest",
+-    "crates/monty-doctest",
+-    "crates/monty-bench",
+-    "crates/monty-type-checking",
+-    "crates/monty-typeshed",
+-    "crates/monty-macros",
+-    "crates/fuzz"
+-]
+-default-members = ["crates/monty-runtime"]
++members = ["crates/monty", "crates/monty-types", "crates/monty-macros", "crates/monty-alloc"]
++default-members = ["crates/monty"]
+@@ -27 +8 @@
+-version = "1.0.0"
++version = "1.0.0-brassclaw.control.1"
+@@ -63,9 +44,4 @@
+-monty = { path = "crates/monty", version = "1.0.0" }
+-monty-types = { path = "crates/monty-types", version = "1.0.0" }
+-monty-alloc = { path = "crates/monty-alloc", version = "1.0.0" }
+-monty-fs = { path = "crates/monty-fs", version = "1.0.0" }
+-monty-macros = { path = "crates/monty-macros", version = "1.0.0" }
+-monty-proto = { path = "crates/monty-proto", version = "1.0.0" }
+-monty-pool = { path = "crates/monty-pool", version = "1.0.0" }
+-monty-type-checking = { path = "crates/monty-type-checking", version = "1.0.0" }
+-monty-typeshed = { path = "crates/monty-typeshed", version = "1.0.0" }
++monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.1" }
++monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.1" }
++monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.1" }
++monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.1" }
+--- a/crates/monty-alloc/Cargo.toml
++++ b/crates/monty-alloc/Cargo.toml
+@@ -1,0 +2,2 @@
++workspace = "../.."
++publish = false
+--- a/crates/monty-macros/Cargo.toml
++++ b/crates/monty-macros/Cargo.toml
+@@ -1,0 +2,2 @@
++workspace = "../.."
++publish = false
+--- a/crates/monty-types/Cargo.toml
++++ b/crates/monty-types/Cargo.toml
+@@ -1,0 +2,2 @@
++workspace = "../.."
++publish = false
+--- a/crates/monty-types/src/lib.rs
++++ b/crates/monty-types/src/lib.rs
+@@ -50,2 +50,3 @@
+-        BASELINE_MEMORY, DEFAULT_MAX_RECURSION_DEPTH, DEFAULT_MAX_SUSPENSIONS, LARGE_RESULT_THRESHOLD, LIVE_MEMORY,
+-        OOM_EXIT_CODE, ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope, allocate_into_baseline,
++        BASELINE_MEMORY, DEFAULT_MAX_RECURSION_DEPTH, DEFAULT_MAX_SUSPENSIONS, ExecutionControl,
++        ExecutionControlAction, ExecutionControlError, LARGE_RESULT_THRESHOLD, LIVE_MEMORY, OOM_EXIT_CODE,
++        ResourceError, ResourceLimits, ResourceTracker, TimeLimitScope, allocate_into_baseline,
+--- a/crates/monty-types/src/resource.rs
++++ b/crates/monty-types/src/resource.rs
+@@ -14 +14,4 @@
+-    sync::atomic::{AtomicUsize, Ordering},
++    sync::{
++        Arc,
++        atomic::{AtomicUsize, Ordering},
++    },
+@@ -92,0 +96,2 @@
++    /// Trusted host control failed; sandboxed code cannot catch this.
++    Control(ExecutionControlError),
+@@ -137,0 +143 @@
++            Self::Control(reason) => write!(f, "execution control: {reason:?}"),
+@@ -277,0 +284,7 @@
++    // Authority is never serialized. A controlled dump requires explicit trusted
++    // reattachment before execution; it must not silently become uncontrolled.
++    #[serde(skip)]
++    execution_control: Option<Arc<dyn ExecutionControl>>,
++    control_required: bool,
++    control_error: Cell<Option<ExecutionControlError>>,
++    control_yield: Cell<bool>,
+@@ -316,0 +330,23 @@
++/// Trusted, nonblocking control invoked on periodic checkpoints and every
++/// execution-window exit. `elapsed` is cumulative active VM time, including
++/// the current window, excluding host waits. A separate cursor is required for
++/// every task-owned interpreter; this does not attribute global coroutine CPU.
++/// Implementations must neither reenter the VM nor perform blocking I/O.
++pub trait ExecutionControl: fmt::Debug + Send + Sync {
++    fn checkpoint(&self, elapsed: Duration) -> Result<ExecutionControlAction, ExecutionControlError>;
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum ExecutionControlAction {
++    Continue,
++    Yield,
++}
++
++/// Terminal control failures stay latched over resumes and settings changes.
++#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
++pub enum ExecutionControlError {
++    Cancelled,
++    TaskComputeExceeded,
++    AccountingUnavailable,
++}
++
+@@ -317,0 +354,39 @@
++    /// Attach trusted control without resetting consumption or terminal failure.
++    /// Reattachment after loading a controlled dump is mandatory. It does not
++    /// clear a failure already observed while control was unavailable.
++    pub fn set_execution_control(&mut self, control: Arc<dyn ExecutionControl>) {
++        self.execution_control = Some(control);
++        self.control_required = true;
++    }
++
++    fn poll_execution_control(&self) -> Result<(), ResourceError> {
++        if let Some(error) = self.control_error.get() {
++            return Err(ResourceError::Control(error));
++        }
++        if !self.control_required {
++            return Ok(());
++        }
++        let outcome = self
++            .execution_control
++            .as_ref()
++            .ok_or(ExecutionControlError::AccountingUnavailable)
++            .and_then(|control| control.checkpoint(self.elapsed()));
++        match outcome {
++            Ok(ExecutionControlAction::Continue) => Ok(()),
++            Ok(ExecutionControlAction::Yield) => {
++                self.control_yield.set(true);
++                Ok(())
++            }
++            Err(error) => {
++                self.control_error.set(Some(error));
++                Err(ResourceError::Control(error))
++            }
++        }
++    }
++
++    /// Consume a requested yield only at a snapshot-safe bytecode boundary.
++    /// Native synchronous reentry must leave this request pending.
++    pub fn take_control_yield(&self) -> bool {
++        self.control_yield.replace(false)
++    }
++
+@@ -329,0 +405,4 @@
++            execution_control: None,
++            control_required: false,
++            control_error: Cell::new(None),
++            control_yield: Cell::new(false),
+@@ -429 +508 @@
+-        self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
++        self.control_required || self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
+@@ -492,0 +572 @@
++        self.poll_execution_control()?;
+@@ -675,0 +756,3 @@
++            if let Err(ResourceError::Control(error)) = self.poll_execution_control() {
++                self.control_error.set(Some(error));
++            }
+--- a/crates/monty/Cargo.toml
++++ b/crates/monty/Cargo.toml
+@@ -1,0 +2,2 @@
++workspace = "../.."
++publish = false
+--- a/crates/monty/src/bytecode/vm/call.rs
++++ b/crates/monty/src/bytecode/vm/call.rs
+@@ -504 +504,3 @@
+-            CallResult::Value(_) | CallResult::FramePushed => unreachable!("completed calls are handled above"),
++            CallResult::Value(_) | CallResult::FramePushed => {
++                unreachable!("completed calls are handled above")
++            }
+@@ -514,0 +517,3 @@
++            FrameExit::ControlYield => {
++                ExcType::not_implemented("control suspension cannot cross native synchronous reentry")
++            }
+--- a/crates/monty/src/bytecode/vm/mod.rs
++++ b/crates/monty/src/bytecode/vm/mod.rs
+@@ -221,0 +222,2 @@
++    /// Safe bytecode suspension without an external return value.
++    ControlYield,
+@@ -345 +347 @@
+-            Self::ResolveFutures(_) | Self::NameLookup { .. } => {}
++            Self::ControlYield | Self::ResolveFutures(_) | Self::NameLookup { .. } => {}
+@@ -1161 +1163,4 @@
+-        let result = self.run();
++        // A restored controlled snapshot must fail closed before an opcode or
++        // host effect runs, including feeds shorter than the periodic cadence.
++        let entry = self.heap.tracker.check_memory_time().map_err(RunError::from);
++        let result = entry.and_then(|()| self.run());
+@@ -1272,0 +1278,6 @@
++                // Native Rust call frames cannot be serialized. Preserve the
++                // request until their callbacks return to top-level execution.
++                if self.run_reentry_depth == recursion::MAX_RUN_REENTRY_DEPTH && self.heap.tracker.take_control_yield()
++                {
++                    return Ok(FrameExit::ControlYield);
++                }
+--- a/crates/monty/src/dump_format.rs
++++ b/crates/monty/src/dump_format.rs
+@@ -52 +52,3 @@
+-pub const DUMP_VERSION: u16 = 13;
++// BrassClaw control ABI: never accept upstream dumps or send these dumps to
++// upstream binaries. Deployment must reconcile old continuations first.
++pub const DUMP_VERSION: u16 = 0xBC01;
+--- a/crates/monty/src/lib.rs
++++ b/crates/monty/src/lib.rs
+@@ -52,2 +52,2 @@
+-        CheckedSource, MontyRepl, ReplContinuationMode, ReplFunctionCall, ReplNameLookup, ReplOsCall, ReplProgress,
+-        ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
++        CheckedSource, MontyRepl, ReplContinuationMode, ReplControlYield, ReplFunctionCall, ReplNameLookup, ReplOsCall,
++        ReplProgress, ReplResolveFutures, ReplStartError, detect_repl_continuation_mode,
+@@ -56 +56 @@
+-    run_progress::{FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
++    run_progress::{ControlYield, FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
+--- a/crates/monty/src/repl.rs
++++ b/crates/monty/src/repl.rs
+@@ -487 +487,3 @@
+-                                Ok(FrameExit::Return(value)) => break Ok(MontyObject::export(value, vm)),
++                                Ok(FrameExit::Return(value)) => {
++                                    break Ok(MontyObject::export(value, vm));
++                                }
+@@ -623,0 +626,2 @@
++    /// Trusted control checkpoint without an external return value.
++    ControlYield(ReplControlYield),
+@@ -705,0 +710 @@
++            Self::ControlYield(state) => state.snapshot.into_repl(),
+@@ -720,0 +726 @@
++            Self::ControlYield(state) => state.snapshot.repl.tracker(),
+@@ -787 +793 @@
+-            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
++            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
+@@ -862 +868 @@
+-            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
++            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
+@@ -1231,0 +1238,21 @@
++/// A snapshot-safe REPL control checkpoint. Trusted control remains attached
++/// in memory; after dump/load the host must reattach it before resumption.
++#[derive(Debug, serde::Serialize, serde::Deserialize)]
++pub struct ReplControlYield {
++    snapshot: ReplSnapshot,
++}
++impl ReplControlYield {
++    pub fn tracker(&self) -> &ResourceTracker {
++        self.snapshot.repl.tracker()
++    }
++    pub fn tracker_mut(&mut self) -> &mut ResourceTracker {
++        &mut self.snapshot.repl.heap.tracker
++    }
++    pub fn resume(self, print: PrintWriter<'_>) -> Result<ReplProgress, Box<ReplStartError>> {
++        self.snapshot.run_inner(None, None, print)
++    }
++    pub fn abort(self, exc: MontyException, print: PrintWriter<'_>) -> Result<ReplProgress, Box<ReplStartError>> {
++        self.snapshot.abort(exc, print)
++    }
++}
++
+@@ -1283 +1310 @@
+-        self.run_inner(result.into(), None, print)
++        self.run_inner(Some(result.into()), None, print)
+@@ -1290 +1317 @@
+-        ext_result: ExtFunctionResult,
++        ext_result: Option<ExtFunctionResult>,
+@@ -1313 +1340,4 @@
+-                let vm_result = resume_with_result(&mut vm, ext_result, eager_call_id);
++                let vm_result = match ext_result {
++                    Some(result) => resume_with_result(&mut vm, result, eager_call_id),
++                    None => vm.run_external(),
++                };
+@@ -1392,0 +1423,3 @@
++        ConvertedExit::ControlYield => Ok(ReplProgress::ControlYield(ReplControlYield {
++            snapshot: new_repl_snapshot!(),
++        })),
+--- a/crates/monty/src/resource_checks.rs
++++ b/crates/monty/src/resource_checks.rs
+@@ -189,0 +190 @@
++            ResourceError::Control(_) => (ExcType::RuntimeError, false),
+--- a/crates/monty/src/run.rs
++++ b/crates/monty/src/run.rs
+@@ -798,0 +799 @@
++        FrameExit::ControlYield => ExcType::not_implemented("control suspension requires iterative execution").into(),
+@@ -818 +819,3 @@
+-        FrameExit::NameLookup { .. } | FrameExit::AttrLookup { .. } => unreachable!("lookups are answered above"),
++        FrameExit::NameLookup { .. } | FrameExit::AttrLookup { .. } => {
++            unreachable!("lookups are answered above")
++        }
+--- a/crates/monty/src/run_progress.rs
++++ b/crates/monty/src/run_progress.rs
+@@ -37,0 +38,2 @@
++    /// Trusted control checkpoint; resume without supplying a call result.
++    ControlYield(ControlYield),
+@@ -208 +210 @@
+-            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
++            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
+@@ -306 +308 @@
+-            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
++            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
+@@ -556 +558,3 @@
+-        (LookupAnswer::Undefined, None) => return vm.resume_with_exception(undefined_lookup_error(scope, name)),
++        (LookupAnswer::Undefined, None) => {
++            return vm.resume_with_exception(undefined_lookup_error(scope, name));
++        }
+@@ -804,0 +809,22 @@
++/// Execution paused before the next opcode, retaining all task state.
++/// No call result is expected or injected into the operand stack.
++#[derive(Debug, serde::Serialize, serde::Deserialize)]
++pub struct ControlYield {
++    snapshot: Snapshot,
++}
++
++impl ControlYield {
++    pub fn tracker(&self) -> &ResourceTracker {
++        &self.snapshot.heap.tracker
++    }
++    pub fn tracker_mut(&mut self) -> &mut ResourceTracker {
++        &mut self.snapshot.heap.tracker
++    }
++    pub fn resume(self, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
++        self.snapshot.run_inner(None, None, print)
++    }
++    pub fn abort(self, exc: MontyException, print: PrintWriter<'_>) -> Result<RunProgress, MontyException> {
++        self.snapshot.abort(exc, print)
++    }
++}
++
+@@ -827 +853 @@
+-        self.run_inner(result.into(), None, print)
++        self.run_inner(Some(result.into()), None, print)
+@@ -834 +860 @@
+-        ext_result: ExtFunctionResult,
++        ext_result: Option<ExtFunctionResult>,
+@@ -855 +881,4 @@
+-                let vm_result = resume_with_result(&mut vm, ext_result, eager_call_id);
++                let vm_result = match ext_result {
++                    Some(result) => resume_with_result(&mut vm, result, eager_call_id),
++                    None => vm.run_external(),
++                };
+@@ -937 +966,3 @@
+-        (ExtFunctionResult::Future(_), None) => unreachable!("a future answer always carries its call id"),
++        (ExtFunctionResult::Future(_), None) => {
++            unreachable!("a future answer always carries its call id")
++        }
+@@ -991,0 +1023 @@
++    ControlYield,
+@@ -1051,0 +1084 @@
++        Ok(FrameExit::ControlYield) => ConvertedExit::ControlYield,
+@@ -1185,0 +1219,3 @@
++        ConvertedExit::ControlYield => Ok(RunProgress::ControlYield(ControlYield {
++            snapshot: new_snapshot!(),
++        })),

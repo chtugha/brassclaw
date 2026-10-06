@@ -1,0 +1,166 @@
+//! Task-scoped host operations for the global Monty hosting cutover.
+//!
+//! This adapter owns the admitted handoff, rather than loading an engine Thread.
+//! It executes one requested host operation at a time. Recipe selection, model
+//! iteration, tool sequencing and completion remain Python's responsibility.
+//! The instance service must retain this adapter across waits and fence the
+//! attempt before dropping it; ownership alone is not a cancellation handshake.
+
+use std::sync::Arc;
+
+use crate::monty_attempt_fence::{MontyHostCall, MontyTaskFence};
+
+use brassclaw_turns::{
+    LoopMessageRef,
+    run_profile::{
+        AgentLoopDriverHost, AgentLoopDriverRunRequest, AgentLoopHostError, AgentLoopHostErrorKind,
+        AppendCapabilityResultRef, CapabilityInvocation, CapabilityOutcome,
+        FinalizeAssistantMessage, LoopModelRequest, LoopModelResponse, LoopPromptBundle,
+        LoopPromptBundleRequest, LoopRunContext, MontyTaskAttempt, MontyTaskHandoff,
+        VisibleCapabilityRequest, VisibleCapabilitySurface,
+    },
+};
+
+/// Rust-owned task host. Never serialize this object or its claim identity into
+/// Python. The hosting service addresses it using its own task routing token.
+pub struct MontyTaskHost {
+    request: AgentLoopDriverRunRequest,
+    attempt: MontyTaskAttempt,
+    host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
+    fence: MontyTaskFence,
+}
+
+impl MontyTaskHost {
+    pub fn new(handoff: MontyTaskHandoff) -> Self {
+        let (request, attempt, host) = handoff.into_parts();
+        Self {
+            request,
+            attempt,
+            host,
+            fence: MontyTaskFence::new(attempt),
+        }
+    }
+
+    pub fn run_context(&self) -> &LoopRunContext {
+        self.host.run_context()
+    }
+
+    /// Trusted supervisor access only; this contains the Rust-only lease token.
+    pub fn attempt(&self) -> MontyTaskAttempt {
+        self.attempt
+    }
+
+    pub fn request(&self) -> &AgentLoopDriverRunRequest {
+        &self.request
+    }
+
+    /// Retain this handle before dispatch; the supervisor can fence a dropped
+    /// runner future without borrowing or destroying the global Monty VM.
+    pub fn fence_handle(&self) -> MontyTaskFence {
+        self.fence.clone()
+    }
+
+    fn begin_call(&self) -> Result<MontyHostCall, AgentLoopHostError> {
+        self.check_cancellation()?;
+        self.fence.begin_call()
+    }
+
+    fn finish_call<T>(
+        &self,
+        call: MontyHostCall,
+        result: Result<T, AgentLoopHostError>,
+    ) -> Result<T, AgentLoopHostError> {
+        if self.host.observe_cancellation().is_some() {
+            self.fence.close();
+        }
+        call.finish(result)
+    }
+
+    fn check_cancellation(&self) -> Result<(), AgentLoopHostError> {
+        if self.host.observe_cancellation().is_some() {
+            self.fence.close();
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Cancelled,
+                "Monty task cancellation requested",
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn visible_capabilities(
+        &self,
+    ) -> Result<VisibleCapabilitySurface, AgentLoopHostError> {
+        let call = self.begin_call()?;
+        let result = self
+            .host
+            .visible_capabilities(VisibleCapabilityRequest)
+            .await;
+        self.finish_call(call, result)
+    }
+
+    pub async fn build_prompt_bundle(
+        &self,
+        request: LoopPromptBundleRequest,
+    ) -> Result<LoopPromptBundle, AgentLoopHostError> {
+        self.check_cancellation()?;
+        // Legacy recipe_hint embeds raw component bodies. A Python payload is
+        // not an approved component revision. The global manifest adapter must
+        // resolve pinned component context behind the host boundary instead.
+        if request.recipe_hint.is_some() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "Monty prompt requests cannot supply unverified component bodies",
+            ));
+        }
+        let call = self.begin_call()?;
+        let result = self.host.build_prompt_bundle(request).await;
+        self.finish_call(call, result)
+    }
+
+    /// Return the structured response unchanged: tool requests are never
+    /// converted to assistant text or dispatched by this adapter.
+    pub async fn stream_model(
+        &self,
+        request: LoopModelRequest,
+    ) -> Result<LoopModelResponse, AgentLoopHostError> {
+        self.check_cancellation()?;
+        // This field is a trusted Sempai bypass, not a Python prompt API. Monty
+        // must use the run-scoped prompt refs issued by build_prompt_bundle.
+        if request.resolved_messages.is_some() {
+            return Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::InvalidInvocation,
+                "Monty model requests require host-issued prompt references",
+            ));
+        }
+        let call = self.begin_call()?;
+        let result = self.host.stream_model(request).await;
+        self.finish_call(call, result)
+    }
+
+    pub async fn invoke_capability(
+        &self,
+        request: CapabilityInvocation,
+    ) -> Result<CapabilityOutcome, AgentLoopHostError> {
+        let call = self.begin_call()?;
+        let result = self.host.invoke_capability(request).await;
+        self.finish_call(call, result)
+    }
+
+    pub async fn append_capability_result_ref(
+        &self,
+        request: AppendCapabilityResultRef,
+    ) -> Result<LoopMessageRef, AgentLoopHostError> {
+        let call = self.begin_call()?;
+        let result = self.host.append_capability_result_ref(request).await;
+        self.finish_call(call, result)
+    }
+
+    pub async fn finalize_assistant_message(
+        &self,
+        request: FinalizeAssistantMessage,
+    ) -> Result<LoopMessageRef, AgentLoopHostError> {
+        let call = self.begin_call()?;
+        let result = self.host.finalize_assistant_message(request).await;
+        self.finish_call(call, result)
+    }
+}

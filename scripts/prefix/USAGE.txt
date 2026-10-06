@@ -1,0 +1,263 @@
+HOW TO CREATE A PREFIX — EXACT PROMPT FOR CODEX
+
+Copy the following prompt into Codex from your BrassClaw repository checkout:
+
+BEGIN PROMPT
+Create a large engineering reference prefix on the brassclaw2 test machine.
+Use scripts/prefix/coding_mode_100k_fixed.modified.py from this repository;
+its standalone copy on brassclaw2 is
+/root/prefix-compiler/coding_mode_100k_fixed.modified.py.
+Target approximately 100,000 tokens for cyankiwi/Ornith-1.5-9B-AWQ-INT4,
+covering coding, defensive security, Linux kernel, Debian, Ubuntu Server,
+Snap, pfSense and LANCOM LCOS, including server and network maintenance,
+penetration-testing methodology, backdoor/persistence and rootkit detection,
+forensic evidence collection and incident response.
+
+First identify a local, pinned Ornith model snapshot containing config.json,
+tokenizer.json and tokenizer_config.json, and an existing evidence-cache
+directory containing knowledge.db. Report the actual paths used. Reuse valid
+extracted evidence if available. If a complete corpus is missing, collect the
+compiler's configured sources and run collect, web, atoms, triage, distill and
+reduce in order, using TRIAGE_MODE=local and a separate evidence-cache directory.
+Keep the default required source and domain coverage. Preserve source excerpts,
+warnings, parent context and provenance; do not fill the budget with repetition
+or invented knowledge.
+
+Set ORNITH_MODEL_CONFIG to that snapshot's config.json and CODING_DISTILL_CACHE
+to the evidence-cache directory. Build the final bundle with:
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode context --offline --context-tokens 100000
+
+Connect using the existing brassclaw2 SSH alias. Keep compiler files and its
+isolated environment under /root/prefix-compiler/ on that host. The prepared
+tokenizer is /root/prefix-compiler/model/config.json; the evidence cache is
+/root/prefix-compiler/evidence. Set PREFIX_PYTHON to
+/root/prefix-compiler/.venv/bin/python and PREFIX_COMPILER to the standalone
+compiler path above. Leave my restored vLLM deployment, Docker Compose files,
+containers, services and Python environments untouched. Do not activate the
+generated template or add the prefix to client requests. If a dependency or
+model snapshot is missing, report exactly what is missing before installing
+anything. Do not replace the model configuration or lower the coverage checks.
+
+Return the absolute immutable paths to context_100k.md,
+vllm_prefix_template.jinja, evidence_cards.jsonl and prefix_manifest.json.
+Report the actual text token count, shared prefix token count, selected source
+coverage and any unverified cache assumptions from the manifest.
+END PROMPT
+
+
+HOW TO CREATE IT YOURSELF — TERMINAL COMMANDS
+
+1. Choose ONE setup block below.
+
+   Run this on the machine containing the repository, the model tokenizer files
+   and the evidence corpus. Building the prefix does not require model weights.
+   Your chosen Python interpreter needs openai, httpx, jinja2 and transformers with the
+   matching fast tokenizer. Use a compiler environment separate from vLLM.
+
+   LINUX: PREPARED BRASSCLAW2 TEST MACHINE (copy this complete block)
+
+   ssh brassclaw2
+   cd /root/prefix-compiler
+   export PREFIX_COMPILER="$PWD/coding_mode_100k_fixed.modified.py"
+   export PREFIX_PYTHON="$PWD/.venv/bin/python"
+   export ORNITH_MODEL_CONFIG="$PWD/model/config.json"
+   export CODING_DISTILL_CACHE="$PWD/evidence"
+   export TRIAGE_MODE=local
+
+   These paths are the dedicated compiler workspace prepared on brassclaw2.
+   The tokenizer snapshot is Ornith revision
+   cacab98cede368fca72a795946ec26545c58bb6d. No model weights are stored here.
+
+   LINUX OR macOS: ANOTHER REPOSITORY CHECKOUT
+
+   Replace /path/to/brassclaw and BOTH /absolute/path/... values below with
+   your real paths. This block has no dependency on a /Volumes directory.
+   The model directory must contain config.json, tokenizer.json and
+   tokenizer_config.json from the same pinned model snapshot, plus any
+   additional files its tokenizer uses. The cache directory holds the corpus
+   and generated outputs; use an existing valid corpus or a new directory.
+
+   cd /path/to/brassclaw
+   export PREFIX_COMPILER="$PWD/scripts/prefix/coding_mode_100k_fixed.modified.py"
+   export PREFIX_PYTHON="$PWD/.prefix-compiler-venv/bin/python"
+   export ORNITH_MODEL_CONFIG="/absolute/path/to/pinned-model/config.json"
+   export CODING_DISTILL_CACHE="/absolute/path/to/evidence-cache"
+   export TRIAGE_MODE=local
+
+   If this separate compiler environment does not exist yet, create it:
+
+   python3 -m venv .prefix-compiler-venv
+   "$PREFIX_PYTHON" -m pip install openai httpx transformers jinja2
+
+   Keep using the chosen setup variables for all commands below. Do not point
+   PREFIX_PYTHON at your vLLM environment.
+
+2. Prepare the evidence, OR reuse evidence already extracted.
+
+   If your cache already contains valid extracted cards in knowledge.db, skip
+   directly to step 3. A directory containing only downloaded documents is not
+   enough: those documents must first be extracted into evidence cards.
+
+   For a new corpus, run each command below in order. Stop if a command fails.
+   collect and web download configured source documents and need Internet
+   access. Local triage and extraction do not call the inference server.
+
+   "$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode collect
+   "$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode web
+   "$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode atoms
+   "$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode triage
+   "$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode distill
+   "$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode reduce
+
+3. Compile the prefix without contacting or inspecting the vLLM server.
+
+   "$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode context --offline --context-tokens 100000
+
+   Success ends with a "Published ..." message and "Done". The target is
+   approximately 100,000 tokens: the compiler keeps whole evidence cards and
+   may produce fewer tokens. It does not pad the reference to hit the target.
+   A FAILED message means the build did not complete; resolve the stated input,
+   provenance or coverage problem before proceeding.
+
+   Do not substitute --mode all here: --offline only works with --mode context.
+
+4. Find the generated files.
+
+   readlink "$CODING_DISTILL_CACHE/current"
+   ls -l "$CODING_DISTILL_CACHE/current/"
+
+   The first command prints the absolute immutable generation directory.
+   That directory contains:
+
+   context_100k.md             Readable reference prefix.
+   vllm_prefix_template.jinja  Chat template for server-side prefix injection.
+   evidence_cards.jsonl        Selected original evidence and provenance.
+   prefix_manifest.json       Token counts, source coverage and artifact hashes.
+
+   Creating these files does not activate them in vLLM. Keep the immutable
+   generation path for a later, separately requested server configuration
+   change. When vLLM injects the prefix, clients must not prepend it again.
+
+5. BRASSCLAW2: run or inspect the complete build from another terminal.
+
+   The prepared build.sh runs all seven stages in order and stops on failure.
+   Run it only when an existing build is finished. Do not run manual stages
+   concurrently with it against the same cache.
+
+   ssh brassclaw2 'sh /root/prefix-compiler/build.sh'
+
+   To inspect the background run started on 2026-10-06:
+
+   ssh brassclaw2 'tail -n 30 /root/prefix-compiler/build.log'
+   ssh brassclaw2 'cat /root/prefix-compiler/build.exit'
+
+   build.exit appears when that run finishes: 0 means success, any other number
+   means failure. While running, this file does not exist. Logs and the exit
+   file describe that background run; the foreground command above prints to
+   your terminal. Confirm output by checking evidence/current as in step 4.
+
+   VERIFIED OUTPUT ON BRASSCLAW2 (2026-10-06)
+   Text: 99,098 tokens. Shared leading prefix: 99,104 tokens.
+   Selected: 77 complete cards from 34,447 available cards; 21 source families.
+   All nine regression tests passed. Artifact hashes were checked.
+   These measurements describe the compiled bundle, not a running vLLM cache.
+
+   Copy-paste commands to locate and inspect this output from your workstation:
+
+   ssh brassclaw2 'readlink /root/prefix-compiler/evidence/current'
+   ssh brassclaw2 'ls -l /root/prefix-compiler/evidence/current/'
+   ssh brassclaw2 'cat /root/prefix-compiler/build_receipt.json'
+
+
+TECHNICAL REFERENCE
+
+WARM THE EXISTING MODEL SERVER (Linux workstation or macOS)
+
+   The prepared warm_prefix.py on brassclaw2 renders the generated template
+   locally, sends its exact token IDs to the existing vLLM API on brassclaw,
+   and sends a second request with a different question to check cache reuse.
+   It does not restart services, change templates or reset caches.
+
+   ssh brassclaw2 '/root/prefix-compiler/.venv/bin/python /root/prefix-compiler/warm_prefix.py --bundle /root/prefix-compiler/evidence/current --tokenizer /root/prefix-compiler/model --server http://192.168.10.171:8000 --receipt /root/prefix-compiler/warm_receipt.json'
+   ssh brassclaw2 'cat /root/prefix-compiler/warm_receipt.json'
+
+   Retested on 2026-10-06 after the operator restarted the services:
+   cold request 49.499 seconds; second request 1.034 seconds, reusing 98,208
+   tokens through vLLM's native hybrid prefix cache. After a 130,000-token
+   cache-pressure request, LMCache reloaded 98,208 tokens from host RAM; the
+   reference request completed in 1.819 seconds with zero native cache hits.
+   Receipts: warm_receipt-retest.json and external-replay-receipt.json in
+   /root/prefix-compiler/ on brassclaw2.
+   Ordinary chat requests do not automatically receive the reference yet.
+   The server must separately be configured to use the generated template for
+   automatic injection. Cache contents can be evicted and disappear on restart.
+   The initial expired-registration failure was resolved after the operator
+   set --worker-reap-timeout-seconds 0 and restarted the services. Successful
+   external STORE and RETRIEVE are now verified. This is host-RAM caching;
+   disk persistence and recovery after a server restart were not tested.
+
+Primary compiler: coding_mode_100k_fixed.modified.py (v9).
+Other compiler files retain their historical copied versions.
+
+This script compiles source evidence and exports an immutable prefix bundle.
+It does not start containers, edit services, install packages or activate a prefix.
+
+To rebuild from an existing extracted evidence database without server access:
+
+  After choosing a setup block in step 1:
+  "$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode context --offline --context-tokens 100000
+
+The model snapshot must include tokenizer.json and tokenizer_config.json.
+Dependencies: openai, httpx, jinja2, transformers (including the matching fast tokenizer).
+Offline output explicitly marks serving configuration and external cache reuse
+as unverified. The FP8/1056-token geometry is a planning profile derived from
+the supplied Ornith config, not a measurement of the running cache.
+
+Old accepted cards remain readable if their source identity and provenance
+validate. Re-extract all lanes after collecting changed source documents.
+The default coverage requires Debian, Ubuntu Server, Snap, pfSense, LANCOM LCOS,
+Linux kernel, all seven security sources below, and the
+coding/security/infrastructure/networking domains. Existing corpora must collect
+and extract the newly added sources before they can pass default coverage.
+PREFIX_REQUIRED_SOURCES and PREFIX_REQUIRED_DOMAINS can explicitly change these.
+
+New security sources (collected as reference text, never executed):
+  owasp-wstg: OWASP Web Security Testing Guide; testing procedures.
+    https://github.com/OWASP/wstg (document/ only)
+  nmap-book: Official Nmap scanning guide; scan methodology and NSE usage.
+    https://nmap.org/book/
+  attack-rootkits: MITRE ATT&CK T1014; rootkit behavior and detection references.
+    https://attack.mitre.org/techniques/T1014/
+  attack-webshells: MITRE ATT&CK T1505.003; web-shell persistence and detection.
+    https://attack.mitre.org/techniques/T1505/003/
+  attack-ssh-persistence: MITRE ATT&CK T1098.004; unauthorized SSH-key persistence.
+    https://attack.mitre.org/techniques/T1098/004/
+  uac-docs: UAC incident-response and forensic artifact collection documentation.
+    https://github.com/tclahr/uac-docs (docs/ only)
+  ncsc-incident-response: UK NCSC incident-management and technical response guide.
+    https://www.ncsc.gov.uk/collection/incident-management
+
+Coverage ensures at least one complete bounded card from each required source;
+it is not proof that every topic or technique is covered. Source balancing and
+topic scoring prioritize useful security material without rewriting quotations.
+Git sources record the collected commit; web sources record content snapshots.
+Platform/version qualifications remain visible. These references do not prove
+compromise or replace technical review and model task-accuracy evaluation.
+
+Artifacts live beneath the chosen evidence-cache directory:
+  generations/<fingerprint>/context_100k.md
+  generations/<fingerprint>/vllm_prefix_template.jinja
+  generations/<fingerprint>/evidence_cards.jsonl
+  generations/<fingerprint>/prefix_manifest.json
+The current link publishes the release; prior immutable generations remain.
+Original excerpts, parent context and provenance remain in evidence_cards.jsonl.
+Rendered card bodies escape chat-control spellings and reserved card markers.
+
+Run local regression tests with an immutable tokenizer snapshot:
+  ORNITH_TEST_TOKENIZER=/path/to/pinned-model \
+  python3 -m unittest discover -s scripts/prefix \
+    -p test_large_prefix_compiler.py -v
+
+Source fidelity and stable token prefixes do not establish better task accuracy.
+Task accuracy and LMCache replay after restarts require separate live evaluation.
+Reference: https://docs.vllm.ai/en/latest/design/prefix_caching/

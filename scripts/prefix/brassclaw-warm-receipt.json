@@ -1,0 +1,43 @@
+{
+  "server": "http://192.168.10.171:8000",
+  "generation": "dc33f781b8897af52ad1bf04d0d244e0046c397cfc74e536ef6ce688713c6fec",
+  "shared_prefix_tokens": 99109,
+  "requests": [
+    {
+      "seconds": 49.383,
+      "usage": {
+        "prompt_tokens": 99125,
+        "total_tokens": 99126,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "metric_deltas": {
+        "prefix_cache_hits_total": 0.0,
+        "prefix_cache_queries_total": 99125.0,
+        "external_prefix_cache_hits_total": 0.0
+      }
+    },
+    {
+      "seconds": 1.02,
+      "usage": {
+        "prompt_tokens": 99124,
+        "total_tokens": 99125,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "metric_deltas": {
+        "prefix_cache_hits_total": 98208.0,
+        "prefix_cache_queries_total": 99124.0,
+        "external_prefix_cache_hits_total": 0.0
+      }
+    }
+  ],
+  "automatic_server_injection_configured": false,
+  "external_cache_replay_verified": false,
+  "native_hybrid_cache_reuse_verified": true,
+  "external_store_observation": "LMCache server rejected STORE operations: unregistered GPU instance ID",
+  "serving_observation": "Existing vllm.service and lmcache.service; no Docker containers running; services unchanged",
+  "persistence_limit": "Native GPU cache can be evicted and is lost on restart; external replay unverified"
+}

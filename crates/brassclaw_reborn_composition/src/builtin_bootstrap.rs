@@ -649,6 +649,23 @@ impl BootstrapStores {
     }
 }
 
+/// Seed the existing memory-write primitive before host Recipes reference it.
+/// The complete memory catalogue is seeded later by `seed_builtin_components`;
+/// both passes recover the same IDs without replacing existing component bodies.
+pub(crate) async fn seed_memory_write_binding(
+    booted_db: &crate::booted_db::BootedDb,
+    tenant_id: &str,
+) -> Result<(Uuid, Uuid), SeedBuiltinBootstrapError> {
+    let stores = BootstrapStores::new(Arc::clone(booted_db.pool()), tenant_id);
+    let tool_id = stores
+        .upsert_tool(tool_memory_write_row(tenant_id), "memory_write")
+        .await?;
+    let binding_id = stores
+        .upsert_tool_skill(ts_memory_write_row(tenant_id), "ts-memory-write")
+        .await?;
+    Ok((tool_id, binding_id))
+}
+
 /// Seed the built-in first-party component stack for `tenant_id`.
 ///
 /// Idempotent: safe to call on every composition boot. Each domain group is

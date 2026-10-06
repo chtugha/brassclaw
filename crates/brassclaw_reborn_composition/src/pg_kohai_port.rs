@@ -185,7 +185,7 @@ fn build_captured_prompt(
 /// handoff chat history is orchestrator-supplied and typically user/assistant
 /// turns only).
 fn gateway_role_from_str(s: &str) -> HostManagedModelMessageRole {
-    match s {
+    match s.to_ascii_lowercase().as_str() {
         "system" => HostManagedModelMessageRole::System,
         "assistant" => HostManagedModelMessageRole::Assistant,
         _ => HostManagedModelMessageRole::User,
@@ -243,17 +243,14 @@ fn build_gateway_request(
     })
 }
 
-/// Extract the answer text from a [`HostManagedModelResponse`]. Prefers the
-/// `AssistantReply.content` (the sanitized final reply); falls back to the
-/// joined `safe_text_deltas` when the output is not an assistant reply (e.g. a
-/// capability-call shape, which the force-text Kohai path does not produce).
-fn gateway_response_text(response: &HostManagedModelResponse) -> String {
-    if let ParentLoopOutput::AssistantReply(reply) = &response.output
-        && !reply.content.is_empty()
-    {
-        return reply.content.clone();
+/// Preserve the final assistant reply, including an empty reply. Tool requests
+/// require the structured task-host port; this legacy text port must never
+/// turn a tool request or its intermediate deltas into a completed answer.
+fn gateway_response_text(response: &HostManagedModelResponse) -> Result<String, KohaiPortError> {
+    match &response.output {
+        ParentLoopOutput::AssistantReply(reply) => Ok(reply.content.clone()),
+        ParentLoopOutput::CapabilityCalls(_) => Err(KohaiPortError::UnsupportedModelOutput),
     }
-    response.safe_text_deltas.join("")
 }
 
 /// Map the gateway [`LoopModelUsage`] (u32) → the interceptor packet
@@ -323,6 +320,16 @@ impl PgKohaiPort {
         prompt: serde_json::Value,
         ctx: KohaiCallCtx,
     ) -> Result<KohaiAnswer, KohaiPortError> {
+        // Validate identity before any DB write or provider call. An absent or
+        // malformed identity is not a request to manufacture a replacement run.
+        let run_id = TurnRunId::parse(&ctx.run_id).map_err(|_| KohaiPortError::InvalidContext {
+            reason: "admitted run identifier is invalid".into(),
+        })?;
+        let turn_id = uuid::Uuid::parse_str(&ctx.turn_id)
+            .map(TurnId::from_uuid)
+            .map_err(|_| KohaiPortError::InvalidContext {
+                reason: "admitted turn identifier is invalid".into(),
+            })?;
         // 1. Parse the prompt dict.
         let chat_history = prompt_chat_history(&prompt);
         let user_query = prompt_string(&prompt, "user_query");
@@ -349,11 +356,8 @@ impl PgKohaiPort {
             })?;
 
         // 5. (routing — no Sempai wired) Build the gateway request + call. The
-        //    run id is the engine thread id (a UUID) when parseable, else a
-        //    fresh id; the turn id is fresh per Kohai call.
-        let run_id = TurnRunId::parse(&ctx.run_id).unwrap_or_else(|_| TurnRunId::new());
+        //    run and turn are the driver's exact admitted task identity.
         let run_str = run_id.to_string();
-        let turn_id = TurnId::new();
         let request =
             build_gateway_request(&packet.prompt, model_profile_id, run_id, turn_id, &run_str)?;
         let response =
@@ -364,6 +368,17 @@ impl PgKohaiPort {
                     reason: e.to_string(),
                 })?;
         let answer_text = gateway_response_text(&response);
+        // Forensics records what the model actually returned, even when the
+        // legacy text-only caller cannot consume it. Never mark tool requests
+        // as an assistant answer or dispatch them in a hidden Rust loop.
+        let captured_response = match &answer_text {
+            Ok(text) => text.clone(),
+            Err(_) => serde_json::to_string(&response.output).map_err(|_| {
+                KohaiPortError::StoreFailed {
+                    reason: "model output capture serialization failed".into(),
+                }
+            })?,
+        };
 
         // 6. Close [Complete] → save.
         let (engine_usage, interceptor_usage) = match response.usage {
@@ -374,7 +389,7 @@ impl PgKohaiPort {
             }
             None => (EngineKohaiUsage::default(), None),
         };
-        let packet = packet.with_kohai_response(answer_text.clone(), interceptor_usage);
+        let packet = packet.with_kohai_response(captured_response, interceptor_usage);
         interceptor_store
             .save(&packet)
             .await
@@ -384,7 +399,7 @@ impl PgKohaiPort {
 
         // 7. Return the engine answer.
         Ok(KohaiAnswer {
-            content: answer_text,
+            content: answer_text?,
             usage: engine_usage,
         })
     }
@@ -508,7 +523,7 @@ mod tests {
             HostManagedModelMessageRole::System
         );
         assert_eq!(
-            gateway_role_from_str("assistant"),
+            gateway_role_from_str("Assistant"),
             HostManagedModelMessageRole::Assistant
         );
         assert_eq!(
@@ -579,18 +594,24 @@ mod tests {
     #[test]
     fn gateway_response_text_prefers_assistant_reply() {
         let resp = HostManagedModelResponse::assistant_reply("hello");
-        assert_eq!(gateway_response_text(&resp), "hello");
+        assert_eq!(gateway_response_text(&resp).unwrap(), "hello");
+        let mut empty = HostManagedModelResponse::assistant_reply("");
+        empty.safe_text_deltas = vec!["intermediate text".into()];
+        assert_eq!(gateway_response_text(&empty).unwrap(), "");
     }
 
     #[test]
-    fn gateway_response_text_falls_back_to_deltas_for_non_reply() {
+    fn gateway_response_text_rejects_tool_requests_even_with_text_deltas() {
         let resp = HostManagedModelResponse {
             safe_text_deltas: vec!["d1".to_string(), "d2".to_string()],
             safe_reasoning_deltas: Vec::new(),
             output: ParentLoopOutput::CapabilityCalls(Vec::new()),
             usage: None,
         };
-        assert_eq!(gateway_response_text(&resp), "d1d2");
+        assert!(matches!(
+            gateway_response_text(&resp),
+            Err(KohaiPortError::UnsupportedModelOutput)
+        ));
     }
 
     #[test]

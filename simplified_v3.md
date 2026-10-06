@@ -1,5 +1,72 @@
 # Simplified v3: Plan zur Vereinfachung von Sicherheitsmodell, Runtime und WebUI
 
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
+## Verbindliche Skill-Architektur
+
+Ein **Skill** ist genau ein wiederverwendbares Nutzungsmuster eines Tools für
+den Orchestrator: **Prosa-Anleitung plus ausdrücklich zugeordneter ausführbarer
+PythonCode**. Prosa erklärt Zweck, Parameter, Voraussetzungen und Ergebnis-/
+Fehlerbehandlung; PythonCode implementiert die Benutzung. „Leaf Skill“ meint
+dieselbe Einheit. Größere fachliche Zusammenhänge gehören zur **Extension** und
+ihrem ExtensionCatalogue; das **Recipe** bestimmt Reihenfolge und Datenübergabe.
+Tool und ToolSkill gehören zur Rust-Seite. Binden führt nichts aus; PythonCode
+ruft `host.<tool>(...)` auf, der Kernel prüft die aktuelle globale Toolregel.
+
+Heute sind Prosa (`reborn_skills`, Klassen 1–3) und Code (`reborn_python_code`,
+Klasse 22) getrennt gespeichert. Diese Trennung ist zulässig; sie macht einen
+Skill fachlich nicht zu reiner Prosa. Die vorhandenen Klassenbezeichnungen sind
+Consumer-Klassifikationen, keine Hierarchie von kleinen und großen Skills.
+
+**Umsetzung und Abnahme:** explizite Skill–PythonCode-UUID-/Revisionszuordnung
+über Store, IBS/Composer und WebUI sicherstellen; beide Teile gemeinsam sichtbar
+und einzeln bearbeitbar machen. Q1 prüft fehlende/falsche Verweise, Toolbindung
+und ausführbaren Code; Q2 und laufende Komponentenrevisionen bleiben erhalten.
+Vorhandene Prosa-Zeilen nicht blind als vollständig migrierte Skills markieren;
+Zuordnungen prüfen und fehlende als Migrationsbedarf anzeigen. Fachliche
+Mehrtool-Übersichten in Extension-Kontext überführen und bestehende UUID-Verweise
+kontrolliert migrieren. Tier 0 führt zugeordneten PythonCode ohne LLM aus;
+Tier 1 darf die Prosa in expliziten LLM-Schritten nutzen. Beispiele in Prosa
+werden niemals automatisch ausgeführt. Abnahme prüft Wiederverwendung, gültige
+Referenzen, Fortsetzung mit fixierten Revisionen und die getrennten Kanäle.
+Diese Anforderungen sind Planinhalt, keine Behauptung fertiger Implementierung.
+
+
 **Status:** Implementierung begonnen; Voraussetzungen teilweise umgesetzt, kein Produkt-/Daten-Cutover. Fortschritt und verbleibende Nachweise: `docs/plans/simplified-v3-implementation.md`.
 **Stand:** 2026-10-06 (Plan nach Einzelprüfung überarbeitet: Recipe-Vertrag, globale Toolregeln, Live-Limits, Intents, Migration und Leistungsabnahme)
 **Geltungsbereich:** gesamte BrassClaw-Codebase; Schwerpunkt Reborn, globaler Orchestrator, Authentifizierung, Autorisierung, Runtime-Auswahl, WebUI und Persistenz.
@@ -153,7 +220,7 @@ Online-Prüfung vom 2026-10-06: [Monty 1.0.0 vom 2026-09-25](https://github.com/
 - Die [generische Custom-Tracker-Schnittstelle wurde entfernt](https://github.com/pydantic/monty/pull/613/files). Der für v0.0.16 mögliche eigene `ResourceTracker` ist kein unverändert übertragbarer Lösungsweg. In der [1.0.0-Ressourcenimplementierung](https://raw.githubusercontent.com/pydantic/monty/v1.0.0/crates/monty-types/src/resource.rs) setzen `set_max_feed_duration` und `set_max_turn_duration` ihre jeweiligen Zeitakkumulatoren zurück. Einen nachgewiesenen Adapter-/Upstream-Erweiterungsvertrag für Live-Revisionen und erhaltenen Verbrauch festlegen; Upgraden allein erfüllt das nicht. Falls eine Engine-Erweiterung benötigt wird, isoliert, getestet und ausdrücklich versioniert halten.
 - [`max_allocations` wurde upstream entfernt](https://github.com/pydantic/monty/pull/611). Vor Settings-/DB-/UI-Cutover seine Disposition festlegen: nur mit einem tatsächlich nachgewiesenen separaten Task-Allokationszähler weiter anbieten; andernfalls als abgelösten Parameter ausdrücklich migrieren und WebUI/API/Abnahme konsistent auf unterstützte Ressourcenregeln umstellen. Bestehende Betreiberwerte nicht stillschweigend ignorieren oder in Bytes umdeuten. Kein unwirksames Eingabefeld und kein erfundenes 1.0.0-Allokationslimit ausliefern.
 - Das 1.0.0-Speicherlimit benötigt den installierten und aktivierten `monty-alloc`-Allocator. Dessen prozessweite Messung/Baseline ist nicht automatisch ein isolierter Monty-Heapzähler im BrassClaw-Rust-Prozess. Vor Einbau Messbereich, Nebenläufigkeit, Fremdallokationen, globale Allocator-Kompatibilität und Fehlerbereich prüfen; adaptive Heapziele und technischen Allocator-Backstop getrennt und ohne Doppelzählung abbilden. Bleibt Einbettung im selben Prozess technisch ungeeignet, eine isolierte, instanzweit langlebige Hosting-Lösung prüfen; keine globale VM pro Task und keine ungeprüfte Übernahme einer Poolarchitektur als zweiter Recipe-Loop. Ohne wirksamen Allocator- und Live-Limit-Nachweis kein Speicherabnahmeerfolg.
-- Zuerst Caller-Level-Kompatibilität nachweisen: bestehende Tier-0-/Tier-1-/No-Match-Recipes, frische Step-Isolation, abhängige Toolketten, A wartet → B läuft → A setzt fort, Hostfehler/Cancel und verschachtelte `host.run_program`-Fortsetzungen. Zusätzlich neue Zeit-/Speicherregeln, Control-Reaktionszeit und verbrauchserhaltende Live-Revisionen prüfen. Dump-/Fortsetzungsformate ändern sich; vor Versionswechsel alte Aufgaben drainen/reconciliieren, keine Kompatibilität alter RAM-/Dumpzustände behaupten. Speicher-/Async-Korrekturen des Releases sind Upgradegründe, kein Beleg für höhere BrassClaw-Geschwindigkeit; Baseline vor/nach Migration gemäß §5.1 vergleichen.
+- Zuerst Caller-Level-Kompatibilität nachweisen: bestehende Tier-0-/Tier-1-/No-Match-Recipes, Isolation zwischen unabhängigen Tasks/Attempts, erhaltenen Recipe-Zustand, abhängige Toolketten, A wartet → B läuft → A setzt fort, Hostfehler/Cancel und verschachtelte `host.run_program`-Fortsetzungen. Zusätzlich neue Zeit-/Speicherregeln, Control-Reaktionszeit und verbrauchserhaltende Live-Revisionen prüfen. Dump-/Fortsetzungsformate ändern sich; vor Versionswechsel alte Aufgaben drainen/reconciliieren, keine Kompatibilität alter RAM-/Dumpzustände behaupten. Speicher-/Async-Korrekturen des Releases sind Upgradegründe, kein Beleg für höhere BrassClaw-Geschwindigkeit; Baseline vor/nach Migration gemäß §5.1 vergleichen.
 
 **Upgrade-Gate:** Erst nach diesen Nachweisen 1.0.0 als produktive Basis übernehmen und die folgenden Phasenschritte darauf abschließen. Einen separaten, überprüfbaren Upgradecommit und Rückkehr zum vorherigen kompatiblen Binary/DB-Stand vorsehen. Ein einfaches Anheben des Git-Tags gilt nicht als abgeschlossene Migration.
 
@@ -203,7 +270,7 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 
 5. **Exakte Nachricht statt „latest“ auflösen.** `PersistentMontyDriver::drive_turn` verwendete vor Implementierungsbeginn `latest_thread_message(...Submitted)`. Der exakte Lookup der `LoopRunContext.accepted_message_ref` samt Inhalt-/Referenz-/Turn-/Run-/Thread-Prüfung ist inzwischen über `submitted_user_message` umgesetzt und gezielt getestet; die folgenden History-/Idempotenz-Anforderungen bleiben Teil dieses Schritts. Vorhandene Message-/Host-Lookups wiederverwenden oder einen schmalen neutralen Port ergänzen; keine SQL-Abfrage im Runner. Fehlende Referenz oder DB-Fehler ist ein expliziter Run-Fehler, kein leerer Text. History bis zur konkreten Eingabe ordnen und diese exakt einmal aufnehmen; später akzeptierte Nachrichten dürfen weder den Input ersetzen noch vorzeitig im LLM-Prompt erscheinen. Deduplizierung über vorhandene Message-/Turn-Idempotenz erhalten. Retry desselben Inputs erzeugt keinen zweiten Task oder Reply.
 
-6. **Globale VM und Vorgangsdaten trennen.** History/Status pro Task aus bestehenden Stores laden und am konkreten Input begrenzen. Python-Variablen, Ergebnisse, Credentials und taskgebundene Bindings dürfen nicht zwischen Vorgängen übergehen. Technische Ausführungskontexte bleiben taskbezogen; Toolrechte stammen stets aus der aktuellen globalen Konfiguration. Daten nach Abschluss freigeben; suspendierte Referenzen begrenzen. `host.run_program` erhält die frische Step-Isolation; abhängige Toolketten innerhalb eines zulässigen PythonCode-Bodys behalten ihren lokalen Zustand.
+6. **Globale VM und Vorgangsdaten trennen.** History/Status pro Task aus bestehenden Stores laden und am konkreten Input begrenzen. Python-Variablen, Ergebnisse, Credentials und taskgebundene Bindings dürfen nicht zwischen Vorgängen übergehen. Technische Ausführungskontexte bleiben taskbezogen; Toolrechte stammen stets aus der aktuellen globalen Konfiguration. Daten nach Abschluss freigeben; suspendierte Referenzen begrenzen. `host.run_program` erhält taskgebundene Eingaben und Ergebnisse; Monty hält benötigten Recipe-Zustand auch über Child-Ausführung und Waits. Frisches leeres State pro Schritt ist eine bestehende Implementierungslücke, keine Zielvorgabe.
 
    Recipe, Variante, `step_link`, ToolSkills, PythonCode und LLM-Kontextkomponenten mit ihren tatsächlich verwendeten Revisionen/Checksums am Vorgang festhalten. Aktive und suspendierte Vorgänge verwenden diese Revisionen weiter; neue validierte Revisionen gelten für folgende Vorgänge. Alte benötigte Revisionen nicht vorzeitig löschen. IBS bleibt ein Compiler mit ephemeral `BuildInstruction`; keine neue persistente Instruction-Tabelle einführen. Retainierte Programmausführung und Revisionsreferenzen nach dem bestehenden Fortsetzungsvertrag halten. Monty-Root-Code bleibt für die Dienstgeneration fix und wechselt nur kontrolliert nach Reconciliation; Ressourcen- und Toolsettings wechseln live ohne Code-Neustart.
 
@@ -311,7 +378,7 @@ Alle unterstützten Ressourcensettings gelangen ohne Prozess-, Gateway- oder Mon
 | Echtes No-Match / Tier 2 | Instruction-/Recipe-gesteuerte Promptbildung mit aktueller Kohai-Prefixgeneration und zur konkreten Eingabe gehörender History. |
 | Mehrdeutigkeit / technischer Matchingfehler | Auswahl nachvollziehbar bzw. expliziter Fehler; keine Gleichsetzung mit No-Match. |
 | Schrittfehler nach erfolgreichem Effekt | Kein Task-Neustart als Tier 2, kein Replay; Ergebnisse/Fehler/History korrekt gespeichert. |
-| Step-Isolation / abhängige Kette | Jeder neue PythonCode-Schritt hat frischen Zustand; zulässige abhängige Kette behält lokalen Zustand auch über externe Auth-/Tool-Waits. |
+| Step-Isolation / abhängige Kette | Unabhängige Tasks/Attempts sind isoliert; benötigte Zwischenwerte bleiben innerhalb eines Recipe erhalten, auch über Child-Ausführung und externe Auth-/Tool-Waits. |
 | Sempai / Q1 / Q2 | Erfolgreicher Tier-2-Verlauf erzeugt Vorschlag; automatisches Q1 und menschliches Q2; erst validierte geeignete Komponenten werden aktiv und ein erneuter Match verwendet sie. |
 | Live-Änderung / Fortsetzung | UUID-/Variantenverweise und verwendete Revisionen bleiben korrekt; neue Tasks sehen neue aktive Revision und Prefix, globale Toolsettings gelten sofort vor folgenden Dispatches. |
 | Sämtliche Produkteinstiege | CLI/WebUI/Trigger/Kanäle und unterstützte MCP-/Subagentpfade verwenden denselben Recipe-/Kernel-Vertrag. |

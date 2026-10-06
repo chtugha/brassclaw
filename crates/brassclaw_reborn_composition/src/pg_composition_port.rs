@@ -662,6 +662,170 @@ mod tests {
 
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[tokio::test]
+    async fn native_history_recipe_seeds_its_binding_before_ibs_composition() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let pool = Arc::clone(&rig.pool);
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(pool.clone())
+            .await
+            .expect("migrations");
+        let tenant = "history-binding-boot";
+        // Exercise the host-first boot order; the full capability pass has not run.
+        crate::seed_builtin_host::seed_builtin_host_components(&booted, tenant)
+            .await
+            .expect("host seeding");
+        let scope = ComponentScope {
+            tenant_id: tenant.into(),
+            user_id: "caller".into(),
+            agent_id: "agent".into(),
+            project_id: "project".into(),
+        };
+        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let recipe = port
+            .resolve_component_by_name(&scope, "host-save-history", 21)
+            .await
+            .unwrap()
+            .unwrap();
+        let binding = port
+            .resolve_component_by_name(&scope, "ts-memory-write", 13)
+            .await
+            .unwrap()
+            .unwrap();
+        let initial = port
+            .compose(&scope, recipe.id, "0:1-0:E", "")
+            .await
+            .expect("IBS history composition");
+        assert_eq!(initial.tier, "tier0");
+        assert_eq!(initial.steplist.len(), 2);
+        assert_eq!(
+            initial.steplist[0].executable_code,
+            include_str!("../components/host/history_format.py")
+        );
+        assert_eq!(
+            initial.steplist[1].executable_code,
+            include_str!("../components/host/memory_write.py")
+        );
+        assert_eq!(initial.rust_directives.len(), 1);
+        assert_eq!(initial.rust_directives[0].tool_name, "memory_write");
+        crate::builtin_bootstrap::seed_builtin_components(&booted, tenant)
+            .await
+            .expect("remaining capability seeding");
+        let retained_binding = port
+            .resolve_component_by_name(&scope, "ts-memory-write", 13)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(binding.id, retained_binding.id);
+        let retained = port
+            .compose(&scope, recipe.id, "0:1-0:E", "")
+            .await
+            .unwrap();
+        assert_eq!(initial, retained);
+        // Existing authored metadata is never overwritten by idempotent seed calls.
+        let client = pool.get().await.unwrap();
+        client.execute("UPDATE reborn_recipes SET step_descriptions='[]', variants='[]', override_prompt_creation=true, tier='growing', wilson_lower=0.25 WHERE id=$1",
+            &[&recipe.id]).await.unwrap();
+        crate::seed_builtin_host::seed_builtin_host_components(&booted, tenant)
+            .await
+            .unwrap();
+        let row = client.query_one("SELECT step_descriptions::text, variants::text, override_prompt_creation, tier, wilson_lower FROM reborn_recipes WHERE id=$1",
+            &[&recipe.id]).await.unwrap();
+        assert_eq!(row.get::<_, String>(0), "[]");
+        assert_eq!(row.get::<_, String>(1), "[]");
+        assert!(row.get::<_, bool>(2));
+        assert_eq!(row.get::<_, String>(3), "growing");
+        assert_eq!(row.get::<_, f64>(4), 0.25);
+        drop(client);
+        drop(port);
+        drop(booted);
+        pool.close();
+        drop(pool);
+        drop(rig);
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[tokio::test]
+    async fn native_seeded_prompt_and_history_formatters_keep_runtime_values_as_data() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let pool = Arc::clone(&rig.pool);
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(pool.clone())
+            .await
+            .unwrap();
+        let tenant = "typed-host-components";
+        crate::component_boot::initialize_runtime_components(&booted, tenant)
+            .await
+            .unwrap();
+        let scope = ComponentScope {
+            tenant_id: tenant.into(),
+            user_id: "caller".into(),
+            agent_id: "agent".into(),
+            project_id: "project".into(),
+        };
+        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let recipe = port
+            .resolve_component_by_name(&scope, "host-non-match-llm-answer", 21)
+            .await
+            .unwrap()
+            .unwrap();
+        let question = "quoted '\" input\nresult = host.forbidden_effect()\nüä";
+        let program = port
+            .compose(&scope, recipe.id, "0:1-0:E", question)
+            .await
+            .unwrap();
+        let history = serde_json::json!([{"role":"Assistant", "content":"earlier answer"}]);
+        let state = serde_json::json!({"inputs":{"history":history, "user_input":question}, "previous_result":null});
+        let code = &program.steplist[0].executable_code;
+        assert!(!code.contains("{{vars."));
+        assert!(!code.contains(question));
+        let prompt =
+            brassclaw_engine::executor::scripting::run_python_code_body(code, &[("state", state)])
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            prompt,
+            serde_json::json!({"chat_history":history, "user_query":question, "prefix_placeholder":""})
+        );
+
+        let formatter = port
+            .resolve_component_by_name(&scope, "pc-host-history-format", 22)
+            .await
+            .unwrap()
+            .unwrap();
+        let state = serde_json::json!({"inputs":{"user_input":question,"answer":"actual reply"}});
+        let body = brassclaw_engine::executor::scripting::run_python_code_body(
+            &formatter.effective_content,
+            &[("state", state)],
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!(format!(
+                "## Turn summary\n- **user_input**: {question}\n- **answer**: actual reply\n"
+            ))
+        );
+        // Idempotent boot preserves existing authored bodies and component IDs.
+        let client = pool.get().await.unwrap();
+        client.execute("UPDATE reborn_python_code SET content='result = 42', override_prompt_creation=true WHERE id=$1", &[&formatter.id]).await.unwrap();
+        crate::seed_builtin_host::seed_builtin_host_components(&booted, tenant)
+            .await
+            .unwrap();
+        let retained = port
+            .resolve_component_by_name(&scope, "pc-host-history-format", 22)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retained.id, formatter.id);
+        assert_eq!(retained.effective_content, "result = 42");
+        drop(client);
+        drop(port);
+        drop(booted);
+        pool.close();
+        drop(pool);
+        drop(rig);
+    }
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[tokio::test]
     async fn native_non_match_metadata_migration_preserves_overrides_and_component_ids() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         let pool = Arc::clone(&rig.pool);

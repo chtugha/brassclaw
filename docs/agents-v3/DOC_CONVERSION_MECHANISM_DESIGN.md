@@ -1,5 +1,77 @@
 # Auto-Documentation-Conversion Mechanism — Design & Approach (item 4)
 
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
+## Binding Skill definition (v3)
+
+A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
+**both prose instructions and explicitly associated executable PythonCode**:
+the prose explains purpose, parameters, prerequisites and result/error handling;
+the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
+different kind of Skill. A broader domain or multi-tool overview belongs to an
+**Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
+ordered workflow and references reusable components by UUID.
+
+**Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
+the ToolSkill describes its IBS binding. Binding executes nothing and grants no
+permission. The Orchestrator executes the associated PythonCode, which calls
+`host.<tool>(...)`; the kernel checks the current global tool policy.
+
+**Storage is not the definition:** today Skill prose is stored in `reborn_skills`
+(classes 1–3), while executable code is stored separately in `reborn_python_code`
+(class 22). The current composer emits `SkillRef.body` and
+`ComposedStep.executable_code` separately. The target requires an explicit,
+validated UUID/revision association between the two parts; separate rows are
+permitted and do not make the Skill prose-only. A code example inside prose is
+documentation, not an implicit executable entry point. The class labels
+`skill_rusty`, `skill_monty`, `skill_llm` are existing consumer classifications,
+not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
+records sharing the table, not additional tool-usage Skill types.
+
+**Execution and validation:** deterministic Tier-0 execution uses the associated
+PythonCode without an LLM interpreting prose. Tier 1 can use the prose in its
+explicit LLM steps. Prose must never be executed as Python. ToolSkill UUIDs stay
+in `channel:"rust"`; executable PythonCode UUIDs stay in
+`channel:"orchestrator"`. Q1/Q2, step isolation and the existing dependent-chain
+exception remain applicable. This documentation change does not implement a
+new database schema, association editor or runtime path.
+
+
 > **Status:** DESIGN — presented for approval, **NOT implemented**. This
 > document proposes how repeat item 4 will be built. Per the user's
 > instruction, the mechanism is to be created **as v3 agent artifacts**
@@ -199,7 +271,7 @@ The mechanism is **not a monolith** — it is a composition of mostly
 **reusable library parts**, plus exactly **one** doc-specific skill. This
 follows v3's core architecture (§4.0): a growing library of small,
 one-purpose Skills + Tools that many Recipes compose. Only the
-`doc-convert-method` domain skill and the two doc-specific leaf skills
+`doc-convert-method` Extension overview and the two doc-specific leaf skills
 (`db-upsert-docus`, `db-mark-prefix-stale`, both over the one generic
 `component_db` Tool — §4.0.1) are mechanism-specific; every other
 part is a reusable leaf that future recipes can — and should — reuse. One
@@ -219,32 +291,17 @@ any future agent authors — not just this mechanism.** State it plainly:
 > procedure into one fat skill** — split it into leaves the library can
 > recycle.
 
-Two skill grains coexist (`05-skills-system.md` §3, and the user's two
-cases):
-
-- **Leaf Orchestrator Skill (one tool / one pythoncode) — the reusable
-  building block.** Describes how to drive the executor to use ONE tool
-  (user case (a)): e.g. `file-read`, `hash-compute`, `markdown-section`,
-  `prompt-compress`. This is the unit of reuse. **Author these.**
-- **Domain Orchestrator Skill (spans tools — user case (b)) — the bigger
-  picture.** An explanation of how a task area works and *which leaf skills
-  it needs* (e.g. "how doc-conversion works: read → extract §7 →
-  [compress if noisy] → render → write, using the `file-read`,
-  `markdown-section`, `prompt-compress`, `db-upsert-docus` leaves"). A
-  domain skill **references** leaves by name; it does **not** duplicate
-  their tool instructions. One domain skill per mechanism; do not
-  proliferate.
-
-The ExtensionCatalogue (class 23) is the level above the domain skill — the
-namespace + `overview_doc` + `task_groups` — and likewise never re-documents
-its children (`05-skills-system.md` §3 ExtensionCatalogue).
+A Skill is one reusable tool-usage pattern with prose and associated PythonCode.
+The multi-tool doc-conversion explanation belongs to the doc-sync Extension's
+ExtensionCatalogue overview. Recipes sequence the reusable Skills and code.
+There is no separate broader Skill category above the reusable usage units.
 
 **Why this matters here — and the correction.** The previous draft built ONE
 monolithic `doc-convert` skill bundling the whole conversion method + ONE
 monolithic `doc_store` tool bundling get_hash + upsert. That is the opposite
 of reusable: no other recipe could reuse any part. **Corrected:** the method
 is split into ~11 leaf skills + ~5 pythoncode + ~4 atomic tools (§4.1), only
-the `doc-convert-method` domain skill (§4.2) is doc-specific, and the
+the `doc-convert-method` Extension overview (§4.2) is doc-specific, and the
 `doc-convert` Recipe (§4.3) + `doc-sync` Action (§4.4) merely **compose**
 them. Most leaves are candidates for the Phase L builtin bootstrap
 (`05-skills-system.md` §4.7: the bootstrap seeds ~23 Tools + 23 ToolSkills +
@@ -257,19 +314,19 @@ general-purpose, not doc-specific.
 |------|------|---------|--------------|------------------------------|
 | **Action** | 16 | orchestrator (no IBS, no LLM) | the orchestrator | the deterministic driver `doc-sync` — **composes** leaves (§4.4). |
 | **Recipe** | 21 | orchestrator (IBS); routes sub-steps to channels | the orchestrator (runs steps one by one) | the per-doc converter `doc-convert` — **composes** leaves (§4.3). |
-| **Orchestrator Skill (leaf)** | 1-3 | orchestrator (`orchestrator_items`) | the orchestrator | ONE tool-usage description (case a) — the reusable unit. |
-| **Orchestrator Skill (domain)** | 1-3 | orchestrator (`orchestrator_items`) | the orchestrator | the one doc-specific overview `doc-convert-method` (case b); references leaves. |
+| **Skill** | 1-3 prose + 22 code | orchestrator | the orchestrator | ONE tool-usage pattern: prose plus explicitly associated PythonCode. |
+| **Extension overview** | 23 | context, not executable steps | humans / explicit LLM context | `doc-convert-method` in the doc-sync catalogue overview; references reusable units. |
 | **ToolSkill** | 13 | **rust** (`rust_items`) | the **executor** (never the orchestrator) | executor-facing param/precondition description, one per Tool, <5000 tok. |
 | **Tool** | 0 | **rust** (executor applies it) | opaque to the orchestrator | the Rust capability; one concern each; the only kind that touches Postgres. |
-| **PythonCode** | 22 | orchestrator (`orchestrator_items`) | the orchestrator | pure-logic helper, one concern each; no I/O, no DB. |
+| **PythonCode** | 22 | orchestrator (`orchestrator_items`) | the orchestrator | executable Skill part calling `host.<tool>(...)`, or standalone pure-logic helper; no direct I/O/DB. |
 | **ExtensionCatalogue** | 23 | (namespace) | humans / overview | the `doc-sync` namespace + `overview_doc`. |
 
 **Channel rule.** The IBS splits a Recipe's `include` list into
 `orchestrator_items` (Skill + PythonCode) and `rust_items` (ToolSkill). The
-orchestrator never calls a Tool directly and never holds a DB handle; it
-drives the executor, which calls the Tool (guided by its ToolSkill). So a DB
-write is always a **Tool + ToolSkill**, never a PythonCode (the earlier
-draft's `doc_upsert` PythonCode was wrong). And the LLM prompt is authored
+orchestrator never holds a DB handle. A Rust-channel step binds the ToolSkill;
+an Orchestrator-channel PythonCode step calls `host.component_db(...)`.
+Rust performs the actual database I/O. PythonCode must not implement direct
+database access. The LLM prompt is authored
 **in the Recipe's `type: llm` step**, built *from* the Skill body — the
 Skill is the reusable method, not the prompt (the earlier draft overlapped
 them).
@@ -293,7 +350,7 @@ Rationale and definitions:
   stale-mark shape — that was the earlier draft's mistake
   (`component_get_content_hash` + `docu_upsert` + `mark_prefix_stale` as
   three separate Tools).
-- **Skill (classes 1-3, leaf)** = the description of **one** way to use
+- **Skill (classes 1-3, leaf)** = prose plus explicitly associated PythonCode for **one** way to use
   the generic DB Tool for a specific purpose: `db-read-hash` ("read a
   stored `content_hash` for a component row"), `db-upsert-docus`
   ("upsert a `reborn_docus` row"), `db-mark-prefix-stale` ("mark the
@@ -320,9 +377,13 @@ general-purpose → bootstrap candidate), **mechanism-specific** (only this
 mechanism needs it). Per §4.0.1, the three DB-access shapes are **one
 generic Tool + three leaf skills** (not three Tools).
 
-**Leaf Orchestrator Skills (classes 1-3), one tool / pythoncode each — user case (a):**
+**Reusable units:** tool usages below are Skills with prose plus associated
+PythonCode. Hashing, comparison, extraction and rendering are standalone
+class-22 pure-logic helpers, not additional Skill kinds. `prompt-compress` is
+an explicit Recipe LLM step with a reusable rubric, not a Rust Tool or a
+tool-usage Skill. The table names the primitive used, not a binding made by prose.
 
-| Skill | Binds to | Reuse | What it teaches |
+| Unit | Uses | Reuse | Purpose |
 |-------|----------|-------|-----------------|
 | `file-list` | `glob` Tool | builtin | list files matching a glob |
 | `file-read` | `read_file` Tool | builtin | read one file; handle not-found |
@@ -371,59 +432,47 @@ their sub-recipes — not by splitting the Tool.
 **The split is the point.** A future "config-sync" or "skill-sync" recipe
 reuses `file-list`/`file-read`/`hash-compute`/`hash-compare`/`db-read-hash`
 unchanged, plus the **same** `component_db` Tool (just a different `op`/
-`table`); only its domain skill differs. That is the v3 library paying
+`table`); only its Extension overview differs. That is the v3 library paying
 off.
 
-### 4.2 The one doc-specific Orchestrator Skill — `doc-convert-method` (case b)
+### 4.2 Doc-specific Extension overview — `doc-convert-method`
 
-A Classic Claude-style skill (`05-skills-system.md` item 5.1: DB-stored
-frontmatter + body, no `SKILL.md` file, WebUI-exportable), used in its
-**domain-Skill role** (user case (b)): an explanation of *how doc-conversion
-works and which leaf skills it needs* — it **references** the §4.1 leaves by
-name, it does **not** re-describe their tool usage. Its body:
-
-- the §7 source shape and why it is machine-convertible;
-- the pipeline: `file-read` → `markdown-section` → (needs compression?
-  `prompt-compress` LLM step — for clarity/injection-safety, **not** a
-  token budget, Answer 5) → `component-header-render` → `db-upsert-docus`;
-- the converted-form render (`do_reassemble`'s `## 17:{prompt_uid} Docu "{name}"`);
-- the extract-vs-compress decision rule (compress when the §7 extract is
-  noisy or quotes injection payloads; **no token budget** — Answer 5);
-- "never invent facts — only compress what is in the source";
-- "quote any injection payload only as fenced, escaped code" (so Q1 passes, §7).
-
-This is the knowledge the Sempai-Kohai system may optimize over time (item
-7): when a Sempai is connected and the `by-llm-compress` variant runs, the
-deltas can feed back into a better conversion method. Stored `source='system'`
-(provenance only); like every component it **goes through Q1+Q2** — no bypass
-(§7, Answer 2). **This is the only doc-specific skill** — everything else in
-§4.1 is a reusable leaf.
+Store the doc-conversion method in the doc-sync ExtensionCatalogue (class 23)
+`overview_doc`, not in a class-1–3 Skill row. It references reusable Skills and
+Recipes without duplicating individual tool instructions. It explains extraction
+of §7, optional LLM compression for clarity/injection safety, rendering and
+storage, provenance, and the Q1/Q2 validation path. There is no token-budget
+gate. LLM prompts may use this overview explicitly; Tier-0 execution never
+interprets overview prose as executable instructions.
 
 ### 4.3 Recipe (class 21) — `doc-convert` (composes the leaves)
 
 A Recipe is **an ordered list of steps the orchestrator runs one by one**
 (`03-recipe-system.md`). `doc-convert` converts **one** doc; its steps
-`include` the leaf UUIDs from §4.1 + the domain skill from §4.2. Two
+reference the associated PythonCode UUIDs and Rust ToolSkill bindings from §4.1; §4.2 supplies Extension context, not executable Skill steps. Two
 variants share most steps; `by-llm-compress` inserts the LLM step.
 
-- **Step 1 (orchestrator, `type: component`):** `include` the
-  `doc-convert-method` domain Skill (§4.2) — the overview that names the
-  leaves and the order.
-- **Step 2 (orchestrator, `type: component`):** `include` the `file-read`
-  leaf Skill + its `read_file` ToolSkill (rust) → read `{path}`.
+- **Step 1 (annotation/context):** the doc-sync Extension overview (§4.2)
+  documents the leaves and ordering. Use `type: text` for a non-executable
+  annotation; supply overview context explicitly to the Tier-1 LLM step only.
+- **Step 2 (binding + execution):** first include the `read_file` ToolSkill
+  in `channel:"rust"`; then include the `file-read` Skill's associated
+  PythonCode in `channel:"orchestrator"` to read `{path}`.
 - **Step 3 (orchestrator, `type: component`):** `include` `markdown-section`
-  (PythonCode) → extract §7; `include` `hash-compute` leaf → `content_hash`.
+  (PythonCode) → extract §7; run the `hash-compute` PythonCode helper in a
+  separate step → `content_hash`.
   (No `token-estimate` — there is no token budget, Answer 5.)
 - **Step 4 (orchestrator, `type: llm`) — `by-llm-compress` variant only:**
-  `__llm_complete__` using the `prompt-compress` leaf Skill's rubric; the
-  prompt is assembled here from the domain skill (step 1) + the §7 text
+  use the `prompt-compress` rubric in the explicit LLM step; the
+  prompt is assembled here from the Extension overview (step 1) + the §7 text
   (step 3). Sempai reviews before shipment (`09-sempai-kohai.md`) when a
-  Sempai is connected. (The Skill is the reusable rubric; the prompt is
-  assembled per-call — they are not the same thing.)
+  Sempai is connected. The rubric is LLM context, not a tool-usage Skill;
+  the prompt is assembled per call.
 - **Step 5 (orchestrator, `type: component`):** `include` `component-header-render`
   (PythonCode) → render the `## 17:…` header.
-- **Step 6 (rust, `type: component`):** `include` the `db-upsert-docus` leaf
-  Skill + the `component_db` ToolSkill (`op=upsert`, rust) → the executor
+- **Step 6 (binding + execution):** bind the `component_db` ToolSkill in
+  `channel:"rust"`, then execute the `db-upsert-docus` Skill's associated
+  PythonCode in `channel:"orchestrator"` with `op=upsert`. The Rust Tool
   writes **both** `reborn_docus` rows (§2.1.1): the source row and the
   converted row, each with `validation_status='pending'` (they go to the
   Q1+Q2 queue — never `'validated'` on write, §7), `consumer_tags={03:llm}`,
@@ -461,7 +510,7 @@ assembly). `doc-sync` composes the §4.1 leaves:
 
 `15-component-catalog.md` §0.2: one ExtensionCatalogue grouping the
 `doc-sync` Action (16), `doc-convert` Recipe (21), the `doc-convert-method`
-domain Skill (1-3), the §4.1 leaf Skills + PythonCode + Tools/ToolSkills —
+Extension overview (class 23), the §4.1 leaf Skills + PythonCode + Tools/ToolSkills —
 under the `doc-sync` namespace, with an `overview_doc` describing the
 mechanism and how the parts fit (the bigger picture; it never re-documents
 the components). `source='system'` (provenance); **goes through Q1+Q2 like
@@ -471,7 +520,7 @@ general-purpose leaves (`file-read`, `hash-compute`, `markdown-section`,
 `prompt-compress`, …) belong in the matching *builtin* catalogue
 (`builtin-filesystem` / `builtin-memory` / `builtin-management`,
 `05-skills-system.md` §4.7) and are only *referenced* by `doc-sync`; the
-`doc-sync` catalogue owns only the doc-specific parts (the domain skill,
+`doc-sync` catalogue owns only the doc-specific parts (the Extension overview,
 the `db-upsert-docus` / `db-mark-prefix-stale` leaf skills over the one
 `component_db` Tool, the Recipe, the Action).
 
@@ -555,7 +604,7 @@ bypasses Q1+Q2**:
   content) + injection scan on the converted text. A converted doc that
   accidentally contains an injection pattern (e.g. the source doc
   documents prompt-injection and the §7 summary quotes a payload) fails
-  Q1 — the converter must sanitize (the `doc-convert-method` domain skill
+  Q1 — the converter must sanitize (the `doc-convert-method` Extension overview
   and the `prompt-compress` leaf both carry "quote injection payloads only
   as fenced, escaped code").
 - **Q2 (review)** graduates the doc. For system-authored/builtin docs
@@ -610,22 +659,21 @@ task rules):
    boundary); the orchestrator drives the executor to call it via the leaf
    skills + sub-recipes. (Host Rust code — see §9.3.) One generic Tool, not
    three — so every future "sync" recipe recycles it with a different `op`.
-4. **Reusable + DB leaf Orchestrator Skills (classes 1-3):** author the
-   one-tool-each leaves — `file-list`, `file-read`, `hash-compute`,
-   `hash-compare`, `db-read-hash`, `markdown-section`,
-   `component-header-render`, `prompt-compress`, plus the doc-specific
-   `db-upsert-docus` and `db-mark-prefix-stale` (§4.1). The DB leaves bind
-   to the one `component_db` Tool (different `op`); the rest bind to their
-   own tool/pythoncode (user case (a)). All **go through Q1+Q2** (§7) — no
+4. **Reusable tool-usage Skills:** author prose plus associated executable
+   PythonCode for `file-list`, `file-read`, `db-read-hash`, `db-upsert-docus`
+   and `db-mark-prefix-stale` (§4.1). Reuse the pure-logic helpers from step 2;
+   supply the `prompt-compress` rubric to the explicit Recipe LLM step.
+   DB Skill code calls the single `component_db` Tool with the appropriate
+   `op`; Rust ToolSkills provide bindings. All **go through Q1+Q2** (§7) — no
    bypass. Most are general-purpose → bootstrap candidates.
-5. **The one domain Orchestrator Skill (classes 1-3):** author
+5. **The one Extension overview (class 23):** author
    `doc-convert-method` (§4.2) — the doc-specific overview that *references*
-   the §4.1 leaves by name (user case (b); NOT the LLM prompt, NOT a
+   the §4.1 leaves by name (the Extension contract; NOT the LLM prompt, NOT a
    tool-param description). Goes through Q1+Q2 (§7) — no bypass.
 6. **Recipe (class 21):** author `doc-convert` (variants `by-extract`
    Tier 0, `by-llm-compress` Tier 1) with `step_descriptions` JSONB. Its
-   steps `include` the leaf UUIDs from step 4 + the domain skill from
-   step 5 + the `component_db` ToolSkill UUID from step 3 — so steps 3-5
+   steps reference the associated PythonCode UUIDs from step 4 and the
+   `component_db` ToolSkill UUID from step 3 in their respective channels — so steps 3-5
    must exist first. Goes through Q1+Q2 (§7) — no bypass.
 7. **Action (class 16):** author `doc-sync` (`execute_action_procedure`,
    no LLM) — the scan/decide/extract/upsert/mark-stale driver that
@@ -633,7 +681,7 @@ task rules):
    §7 extract needs compression (no budget gate — Answer 5). Goes through
    Q1+Q2 (§7) — no bypass.
 8. **ExtensionCatalogue (class 23):** register `doc-sync` owning only the
-   doc-specific parts (domain skill, the `db-upsert-docus`/
+   doc-specific parts (Extension overview, the `db-upsert-docus`/
    `db-mark-prefix-stale` leaf skills over the one `component_db` Tool,
    Recipe, Action); the general-purpose leaves live in the matching
    builtin catalogue and are referenced. With `overview_doc`.

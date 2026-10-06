@@ -1,0 +1,160 @@
+HOW TO CREATE A HOME ASSISTANT PREFIX — EXACT PROMPT
+
+BEGIN PROMPT
+Create a large Home Assistant, MQTT, Modbus and YAML reference prefix using
+scripts/prefix/Homeassistant-compiler.py from the BrassClaw repository.
+Run the compiler on brassclaw2 in an isolated compiler environment. Copy the
+new compiler there first; do not assume it is already installed remotely.
+Use the pinned Ornith tokenizer/config in /root/prefix-compiler/model and a NEW
+cache /root/prefix-compiler/homeassistant-evidence. Do not reuse the defensive
+cache. Target 100000 tokens with at least 31072 tokens reserved for requests.
+Install any missing compiler-only dependencies in the isolated environment,
+including pypdf and fonttools. Run collect, web, atoms, triage, distill, reduce and then context
+--offline, using TRIAGE_MODE=local. Preserve complete quotations, YAML spacing,
+code fences, templates, source versions and provenance. Keep all default source,
+domain and topic coverage checks; missing coverage must fail, not be waived.
+Return immutable artifact paths and manifest token counts, source coverage and
+required_topic_card_ids. Report collection failures and unverified assumptions.
+Leave vLLM, LMCache, Compose, services and host Python environments untouched.
+Do not activate the template, send the prefix to vLLM or replace the defensive
+prefix. A reference prefix is context, not model training or proof of expertise.
+END PROMPT
+
+PORTABLE TERMINAL EXAMPLE — LINUX OR MACOS
+
+Run from the repository root on the compiler machine. Point ORNITH_MODEL_CONFIG
+at a local pinned tokenizer snapshot containing config.json, tokenizer.json,
+tokenizer_config.json and chat_template.jinja. Model weights and a GPU are not
+needed for the local extraction path. Git and Python 3 are required.
+
+python3 -m venv .homeassistant-compiler-venv
+.homeassistant-compiler-venv/bin/python -m pip install openai httpx transformers jinja2 pypdf fonttools
+export PREFIX_PYTHON="$PWD/.homeassistant-compiler-venv/bin/python"
+export PREFIX_COMPILER="$PWD/scripts/prefix/Homeassistant-compiler.py"
+export ORNITH_MODEL_CONFIG="/absolute/path/to/pinned/model/config.json"
+export TOKENIZER_MODEL="$(dirname "$ORNITH_MODEL_CONFIG")"
+export CODING_DISTILL_CACHE="$PWD/homeassistant-evidence"
+export TRIAGE_MODE=local
+
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode collect
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode web
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode atoms
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode triage
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode distill
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode reduce
+"$PREFIX_PYTHON" "$PREFIX_COMPILER" --mode context --offline --context-tokens 100000
+
+On brassclaw2 after copying the compiler to /root/prefix-compiler/, use instead:
+export PREFIX_PYTHON=/root/prefix-compiler/.venv/bin/python
+export PREFIX_COMPILER=/root/prefix-compiler/Homeassistant-compiler.py
+export ORNITH_MODEL_CONFIG=/root/prefix-compiler/model/config.json
+export TOKENIZER_MODEL=/root/prefix-compiler/model
+export CODING_DISTILL_CACHE=/root/prefix-compiler/homeassistant-evidence
+export TRIAGE_MODE=local
+
+Check that pypdf, fonttools and the other dependencies exist in that compiler interpreter
+before running the seven mode commands. These paths describe the intended new
+build; they do not assert the Home Assistant copy was deployed or compiled there.
+Record dependency versions with "$PREFIX_PYTHON" -m pip freeze for reproducibility.
+
+OUTPUT AND CACHE
+
+The immutable generation is under "$CODING_DISTILL_CACHE/generations/<hash>/".
+It contains context_100k.md, vllm_prefix_template.jinja, evidence_cards.jsonl and
+prefix_manifest.json. The manifest binds the template, exact evidence, tokenizer
+profile and stable leading token prefix across request variants. Cache reuse still
+requires deployment/runtime measurement. Do not add the same reference in client
+messages if the server uses the generated template. Building does not change the
+running server and does not create its attention cache or recurrent state.
+
+CONTENT AND QUALITY
+
+Primary sources: Home Assistant user/developer/Core/OS repositories, ESPHome
+manuals, Eclipse Paho MQTT Python, PyModbus, Mosquitto manuals, OASIS MQTT 3.1.1
+and 5.0 standards, Modbus Organization application/serial specifications, YAML
+1.2.2 and ruamel.yaml documentation. Exact URLs and source roots are in the script.
+Home Assistant user docs use the published current branch. Git snapshots record
+commits; web/PDF snapshots record hashes, versions where
+published and retrieval times. Installed versions must be checked separately.
+
+Required topic cards cover automations, script sequences, Jinja, YAML syntax,
+!include, !secret, blueprint !input, configuration validation, integration
+programming, MQTT discovery/QoS/retain/sessions/wills/broker security, Modbus
+addresses/functions/serial framing, YAML scalar types/anchors/block scalars and
+safe parsing. Full source collection adds broader installation, dashboards,
+integrations, device examples, client APIs and troubleshooting knowledge.
+
+This compiler preserves YAML examples as reference text. It does not execute YAML
+or treat it as its own configuration. The prefix teaches the model to distinguish
+YAML parsing, Home Assistant schema validation and Jinja rendering; application
+custom tags need application-aware handling. It includes safe loading, duplicate
+keys and round-trip editing references. Generic parsers do not validate Home
+Assistant configuration. Preserve secrets and never execute arbitrary YAML tags.
+
+PDF text extraction can flatten tables and omit diagrams; original PDF snapshots
+remain in raw/web/. Use original pages and the actual device register manual to
+resolve ambiguity. MQTT acknowledgements do not prove actuator completion. Do
+not invent Modbus register maps or assume permission to write physical controls.
+
+Source fidelity and coverage are mechanically checked. Neither token count nor
+citation count proves that the 9B model answers correctly. Evaluate actual YAML,
+automation, protocol and maintenance tasks before relying on the prefix.
+
+DEPLOYMENT — SERVER-SIDE CHAT PREFIX
+
+The verified bundle can be activated on the model host with
+scripts/prefix/deploy_prefix_systemd.py. It verifies model/tokenizer and bundle
+hashes, backs up the base unit and previous override, and creates only
+/etc/systemd/system/vllm.service.d/90-reference-prefix.conf. The base service
+file stays intact. With the current LMCache MP connector, it stops vLLM,
+restarts LMCache to release imported GPU buffers, then starts vLLM. This clears
+runtime cache contents. A failed activation restores the previous override.
+
+On brassclaw, after copying the immutable bundle and deploy helper:
+
+export BUNDLE="/opt/vLLM/prefixes/homeassistant/7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999"
+export MODEL_SNAPSHOT="/opt/vLLM/huggingface/hub/models--cyankiwi--Ornith-1.5-9B-AWQ-INT4/snapshots/cacab98cede368fca72a795946ec26545c58bb6d"
+python3 /opt/vLLM/prefixes/homeassistant/deploy_prefix_systemd.py \
+  --bundle "$BUNDLE" --tokenizer "$MODEL_SNAPSHOT" \
+  --receipt /opt/vLLM/prefixes/homeassistant/activation-receipt.json
+
+To verify from brassclaw2 (ordinary chat messages; no client-side prefix):
+
+/root/prefix-compiler/.venv/bin/python /root/prefix-compiler/verify_deployed_prefix.py \
+  --bundle /root/prefix-compiler/homeassistant-evidence/current \
+  --tokenizer /root/prefix-compiler/model \
+  --server http://192.168.10.171:8000 \
+  --receipt /root/prefix-compiler/homeassistant-deployed-verification.json
+
+The script compares exact /tokenize IDs for normal, thinking and tool request
+variants, then sends two chat requests to prefill and verify native reuse.
+The automatic reference applies to chat-template requests. Raw /v1/completions
+prompts do not pass through the chat template and do not receive it automatically.
+Do not add this reference again in client chat messages.
+
+To revert this first activation to the untouched base unit on brassclaw:
+
+systemctl stop vllm
+mv /etc/systemd/system/vllm.service.d/90-reference-prefix.conf \
+  /opt/vLLM/prefixes/homeassistant/disabled-reference-prefix.conf
+systemctl daemon-reload
+systemctl restart lmcache
+systemctl start vllm
+
+If a later activation replaced a prior override, restore its saved override from
+that activation's receipt backup path instead. The first-activation rollback
+above removes the reference override and does not delete any bundle or source.
+
+VERIFIED DEPLOYMENT: 2026-10-06
+
+Generation 7304b383cb667ac7221c0c480f5c163955cba207a90ae438ba136f128bd50999
+is active on brassclaw. It contains 99681 text tokens, 79 cards from 13 source
+families and all 25 required topics. Automatic chat injection matched exact
+compiled token IDs. First chat prefill: 50.227 seconds; native reuse: 0.966
+seconds with 99264 cached tokens. After GPU-cache pressure, LMCache RAM restored
+99264 tokens in 1.516 seconds with zero native hits. These timings are one-token
+warm-up probes, not full-answer latency. Disk/restart persistence was not tested.
+Receipts are homeassistant-build.json, homeassistant-activation.json,
+homeassistant-deployed-verification.json and homeassistant-external-replay.json
+in the repository scripts/prefix directory. The original vllm.service fingerprint
+remained 0a61271c8e7901796101d2a2ca8abcb97bb06e8ffb18168bbbb89da826101192.

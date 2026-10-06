@@ -1,0 +1,231 @@
+use std::{
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+
+use brassclaw_resources::{
+    LiveMontyTaskSettings, MontyTaskBudgetError, MontyTaskClock, MontyTaskLimits,
+    MontyTaskSettingsRevision, SharedMontyTaskBudget,
+};
+use monty::{Dump, MontyRepl, MontyRun, ReplProgress, RunProgress, Session, SessionRef, dump};
+use monty_types::{
+    CompileOptions, ExecutionControl, ExecutionControlAction, ExecutionControlError, MontyObject,
+    PrintWriter, ResourceLimits, ResourceTracker,
+};
+
+#[derive(Debug, Default)]
+struct Control {
+    yield_once: AtomicBool,
+    cancel_after: AtomicUsize,
+    calls: AtomicUsize,
+    elapsed: Mutex<Duration>,
+}
+impl ExecutionControl for Control {
+    fn checkpoint(
+        &self,
+        elapsed: Duration,
+    ) -> Result<ExecutionControlAction, ExecutionControlError> {
+        let mut last = self.elapsed.lock().unwrap();
+        assert!(elapsed >= *last);
+        *last = elapsed;
+        let calls = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        let cancel_after = self.cancel_after.load(Ordering::SeqCst);
+        if cancel_after != 0 && calls >= cancel_after {
+            return Err(ExecutionControlError::Cancelled);
+        }
+        Ok(if self.yield_once.swap(false, Ordering::SeqCst) {
+            ExecutionControlAction::Yield
+        } else {
+            ExecutionControlAction::Continue
+        })
+    }
+}
+fn tracker(control: Arc<dyn ExecutionControl>) -> ResourceTracker {
+    let mut tracker =
+        ResourceTracker::new(ResourceLimits::default().max_feed_duration(Duration::from_secs(5)));
+    tracker.set_execution_control(control);
+    tracker
+}
+fn program(code: &str) -> MontyRun {
+    MontyRun::new(code.into(), "control.py", vec![], CompileOptions::default()).unwrap()
+}
+fn settings(revision: u64, seconds: u64) -> MontyTaskSettingsRevision {
+    MontyTaskSettingsRevision {
+        revision,
+        limits: MontyTaskLimits {
+            max_compute_time: Duration::from_secs(seconds),
+            token_budgets_enabled: false,
+        },
+    }
+}
+
+#[test]
+fn pure_loop_yields_without_replaying_or_injecting_a_value() {
+    let control = Arc::new(Control::default());
+    control.yield_once.store(true, Ordering::SeqCst);
+    let RunProgress::ControlYield(paused) =
+        program("total = 0\nfor i in range(10000):\n    total += i\ntotal")
+            .start(vec![], tracker(control.clone()), PrintWriter::Disabled)
+            .unwrap()
+    else {
+        panic!("busy Python must yield to the host");
+    };
+    let before = paused.tracker().elapsed();
+    // Another real interpreter runs while this continuation is parked.
+    let RunProgress::Complete(other) = program("40 + 2")
+        .start(vec![], ResourceTracker::default(), PrintWriter::Disabled)
+        .unwrap()
+    else {
+        panic!("independent task should complete");
+    };
+    assert_eq!(other, MontyObject::int(42));
+    assert_eq!(paused.tracker().elapsed(), before);
+    let RunProgress::Complete(value) = paused.resume(PrintWriter::Disabled).unwrap() else {
+        panic!("the same loop must finish");
+    };
+    assert_eq!(value, MontyObject::int(49_995_000));
+    assert!(*control.elapsed.lock().unwrap() > before);
+}
+
+#[test]
+fn repl_resume_preserves_locals_exception_state_and_later_feeds() {
+    let control = Arc::new(Control::default());
+    control.yield_once.store(true, Ordering::SeqCst);
+    let repl = MontyRepl::new("recipe.py", tracker(control), CompileOptions::default());
+    let ReplProgress::ControlYield(paused) = repl.feed_start(
+        "def calculate():\n    total = 0\n    try:\n        for i in range(10000):\n            total += i\n        raise ValueError('expected')\n    except ValueError:\n        return total\nanswer = calculate()\nanswer",
+        vec![], PrintWriter::Disabled,
+    ).unwrap() else { panic!("must suspend inside the Recipe's function"); };
+    let ReplProgress::Complete { repl, value } = paused.resume(PrintWriter::Disabled).unwrap()
+    else {
+        panic!("must complete after handling the Python exception");
+    };
+    assert_eq!(value, MontyObject::int(49_995_000));
+    let ReplProgress::Complete { value, .. } = repl
+        .feed_start("answer + 1", vec![], PrintWriter::Disabled)
+        .unwrap()
+    else {
+        panic!("next step must retain Recipe state");
+    };
+    assert_eq!(value, MontyObject::int(49_995_001));
+}
+
+#[test]
+fn cancellation_inside_a_busy_try_block_is_uncatchable() {
+    let control = Arc::new(Control::default());
+    control.cancel_after.store(4, Ordering::SeqCst);
+    let error = program("try:\n    while True:\n        pass\nexcept BaseException:\n    123")
+        .start(vec![], tracker(control.clone()), PrintWriter::Disabled)
+        .unwrap_err();
+    assert!(error.to_string().contains("Cancelled"));
+    assert!(*control.elapsed.lock().unwrap() > Duration::ZERO);
+}
+
+#[derive(Debug)]
+struct LiveBudgetControl {
+    clock: Mutex<MontyTaskClock>,
+    live: LiveMontyTaskSettings,
+    calls: AtomicUsize,
+}
+impl ExecutionControl for LiveBudgetControl {
+    fn checkpoint(
+        &self,
+        elapsed: Duration,
+    ) -> Result<ExecutionControlAction, ExecutionControlError> {
+        // Publish while the actual bytecode loop is executing. The next budget
+        // check uses the same live revision as Rust, with no clock reset.
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 3 {
+            self.live.publish(1, settings(2, 30)).unwrap();
+        }
+        self.clock
+            .lock()
+            .unwrap()
+            .checkpoint(elapsed)
+            .map_err(|error| match error {
+                MontyTaskBudgetError::ComputeExceeded => ExecutionControlError::TaskComputeExceeded,
+                _ => ExecutionControlError::AccountingUnavailable,
+            })?;
+        Ok(ExecutionControlAction::Continue)
+    }
+}
+#[test]
+fn live_revision_interrupts_busy_python_and_preserves_prior_task_usage() {
+    let live = LiveMontyTaskSettings::new(settings(1, 600)).unwrap();
+    let budget = SharedMontyTaskBudget::new(live.clone());
+    // Actual earlier active segments are represented by the retained task
+    // account, independent of this interpreter's fresh cumulative clock.
+    budget.record_compute_time(Duration::from_secs(31)).unwrap();
+    let control = Arc::new(LiveBudgetControl {
+        clock: Mutex::new(budget.execution_clock(Duration::ZERO)),
+        live: live.clone(),
+        calls: AtomicUsize::new(0),
+    });
+    let error = program("while True:\n    pass")
+        .start(vec![], tracker(control), PrintWriter::Disabled)
+        .unwrap_err();
+    assert!(error.to_string().contains("TaskComputeExceeded"));
+    assert_eq!(live.current(), settings(2, 30));
+    assert_eq!(budget.check(), Err(MontyTaskBudgetError::ComputeExceeded));
+    live.publish(2, settings(3, 600)).unwrap();
+    assert_eq!(budget.check(), Err(MontyTaskBudgetError::ComputeExceeded));
+}
+
+#[test]
+fn completed_and_failed_short_feeds_report_the_final_execution_window() {
+    for code in ["1 + 2", "raise ValueError('failure')"] {
+        let control = Arc::new(Control::default());
+        let result = program(code).start(vec![], tracker(control.clone()), PrintWriter::Disabled);
+        assert_eq!(result.is_ok(), code == "1 + 2");
+        assert!(*control.elapsed.lock().unwrap() > Duration::ZERO);
+    }
+}
+
+#[test]
+fn controlled_dumps_require_reattachment_before_execution() {
+    let control = Arc::new(Control::default());
+    control.yield_once.store(true, Ordering::SeqCst);
+    let progress = program("total = 0\nfor i in range(1000):\n    total += i\ntotal")
+        .start(vec![], tracker(control), PrintWriter::Disabled)
+        .unwrap();
+    let bytes = dump("control.py", None, SessionRef::Running(&progress)).unwrap();
+    let Session::Running(state) = Dump::load(&bytes).unwrap().state else {
+        panic!("must restore running state");
+    };
+    let RunProgress::ControlYield(paused) = *state else {
+        panic!("must restore control suspension");
+    };
+    let error = paused.resume(PrintWriter::Disabled).unwrap_err();
+    assert!(error.to_string().contains("AccountingUnavailable"));
+    let Session::Running(state) = Dump::load(&bytes).unwrap().state else {
+        panic!("must restore running state");
+    };
+    let RunProgress::ControlYield(mut paused) = *state else {
+        panic!("must restore control suspension");
+    };
+    paused
+        .tracker_mut()
+        .set_execution_control(Arc::new(Control::default()));
+    let RunProgress::Complete(value) = paused.resume(PrintWriter::Disabled).unwrap() else {
+        panic!("trusted reattachment must permit exact continuation");
+    };
+    assert_eq!(value, MontyObject::int(499_500));
+}
+
+#[test]
+fn native_callbacks_defer_yield_until_the_rust_stack_has_returned() {
+    let control = Arc::new(Control::default());
+    control.yield_once.store(true, Ordering::SeqCst);
+    let progress = program(
+        "def key(value):\n    total = 0\n    for i in range(1000):\n        total += i\n    return -value\nvalues = sorted(range(100), key=key)\nfor i in range(1000):\n    pass\nvalues[0]",
+    ).start(vec![], tracker(control), PrintWriter::Disabled).unwrap();
+    let RunProgress::ControlYield(paused) = progress else {
+        panic!("native callback must return before suspension");
+    };
+    let RunProgress::Complete(value) = paused.resume(PrintWriter::Disabled).unwrap() else {
+        panic!("native result and caller locals must survive");
+    };
+    assert_eq!(value, MontyObject::int(99));
+}

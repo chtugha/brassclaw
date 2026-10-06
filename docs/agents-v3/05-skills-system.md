@@ -1,29 +1,89 @@
 # 05 — Skills System
 
-> **Subsystem:** The skills system — four kinds of "skill" that teach the agent how to act:
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
+## Binding Skill definition (v3)
+
+A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
+**both prose instructions and explicitly associated executable PythonCode**:
+the prose explains purpose, parameters, prerequisites and result/error handling;
+the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
+different kind of Skill. A broader domain or multi-tool overview belongs to an
+**Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
+ordered workflow and references reusable components by UUID.
+
+**Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
+the ToolSkill describes its IBS binding. Binding executes nothing and grants no
+permission. The Orchestrator executes the associated PythonCode, which calls
+`host.<tool>(...)`; the kernel checks the current global tool policy.
+
+**Storage is not the definition:** today Skill prose is stored in `reborn_skills`
+(classes 1–3), while executable code is stored separately in `reborn_python_code`
+(class 22). The current composer emits `SkillRef.body` and
+`ComposedStep.executable_code` separately. The target requires an explicit,
+validated UUID/revision association between the two parts; separate rows are
+permitted and do not make the Skill prose-only. A code example inside prose is
+documentation, not an implicit executable entry point. The class labels
+`skill_rusty`, `skill_monty`, `skill_llm` are existing consumer classifications,
+not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
+records sharing the table, not additional tool-usage Skill types.
+
+**Execution and validation:** deterministic Tier-0 execution uses the associated
+PythonCode without an LLM interpreting prose. Tier 1 can use the prose in its
+explicit LLM steps. Prose must never be executed as Python. ToolSkill UUIDs stay
+in `channel:"rust"`; executable PythonCode UUIDs stay in
+`channel:"orchestrator"`. Q1/Q2, isolation between unrelated tasks/attempts and the existing dependent-chain
+exception remain applicable. Monty preserves needed state within each Recipe. This documentation change does not implement a
+new database schema, association editor or runtime path.
+
+
+> **Subsystem:** The Skill system and its storage/binding neighbours:
 > Classic Claude-style skills (SKILL.md format, DB-stored), ToolSkills (for the Rust executor),
-> Orchestrator Skills (narrative task-pattern guidance), and ExtensionCatalogues (the
+> Orchestrator Skills (prose plus associated PythonCode), and ExtensionCatalogues (the
 > documentation namespace, class 23).
 > **Grounded in:** `crates/brassclaw_skills/` (types, parser, v2 — selector/gating/registry/catalog v1-only+dormant), `crates/brassclaw_engine/src/types/recipe.rs` (`ToolSkill`), `crates/brassclaw_engine/src/memory/composition.rs` (`SkillRef`, `ComposedProgram.skills`), `crates/brassclaw_reborn_composition/src/pg_composition_port.rs` + `db_skill_store.rs` + `db_skill_loader.rs`, `crates/brassclaw_reborn_composition/src/seed_builtin_host.rs`, `crates/brassclaw_pg/migrations/V053`/`V070`/`V071`/`V072`, `saved_plan_to_v3.md` §0.1/§0.2/§0.16, Steps C.2/C.4.5.
 
 ## 1. Purpose
 
-"Skill" is overloaded in BrassClaw. The v3 system distinguishes **four kinds**, each with a
-different class code, storage table, runtime reader, and authoring grain:
-
-1. **Classic Claude-style skills** — the Anthropic `SKILL.md` format (YAML frontmatter + markdown
-   prompt body) that feeds the LLM. In v3 the **parts are stored in the database** (`reborn_skills`,
-   classes 1–3); an actual `SKILL.md` file does not exist on disk, but can be **exported** via the
-   WebUI on demand.
-2. **ToolSkills** (class 13) — tight, < 5000-token descriptions of one tool-usage pattern for the
-   **Rust execution layer** (param schema, preconditions, error handling). The orchestrator never
-   reads ToolSkill bodies.
-3. **Orchestrator Skills** — a *role* of a Skill (classes 1–3): narrative instructions for the
-   orchestrator on how to perform a task pattern (often spanning multiple tools) with the help of
-   the executor. Distinguished from PythonCode by the **grain rule**.
-4. **ExtensionCatalogues** (class 23) — the documentation namespace. One per cognitive domain; it
-   draws the bigger picture (which Recipes cover which task groups) and never re-documents the
-   components it owns.
+There is one architectural Skill definition, given above: one tool-usage
+pattern with prose and associated PythonCode. `SKILL.md` is an import/export
+representation, not another architectural Skill kind. ToolSkill is a Rust-side
+binding descriptor. ExtensionCatalogue documents the wider Extension context.
 
 ## 2. Location
 
@@ -58,8 +118,8 @@ different class code, storage table, runtime reader, and authoring grain:
 │  Recipe (class 21) — primary intent target (see 03-recipe)      │
 ├─────────────────────────────────────────────────────────────────┤
 │  Skill (classes 1–3)    │  PythonCode (class 22) [NEW]           │
-│  Orchestrator instruct. │  Python utilities / inline instruct.  │
-│  for using one Rust tool│  for the orchestrator (see 07)        │
+│  Prose usage part       │  Associated executable usage part    │
+│  One tool pattern       │  Also standalone pure helpers (07)   │
 ├─────────────────────────────────────────────────────────────────┤
 │  ToolSkill (class 13) — Rust-layer only. The orchestrator never │
 │  reads ToolSkill bodies directly.                                │
@@ -108,50 +168,24 @@ pub struct SkillManifest {
   (no ambient time/network/filesystem in scoring — `brassclaw_skills/AGENTS.md`).
 - `source CHECK ('authored','extracted','migrated','imported')` today — **no `'system'`** until
   V057 (FIND-P7-12). The Phase L seeder needs `'system'` (FIND-P6-02).
-- The markdown **body** is the prompt text; in v3 it is stored in the DB column
+- The markdown **body** is the prose part of the Skill; it is stored in the DB column
   (`body` / `prior_knowledge_content`) — there is no `SKILL.md` file. The WebUI can **export** a
   row back to `SKILL.md` (frontmatter + body) on demand.
 
-### Orchestrator Skills vs PythonCode — the grain rule (§0.16)
+### Skill parts and reuse
 
-| Use a **Skill** when | Use **PythonCode** when |
-|----------------------|--------------------------|
-| The orchestrator needs **narrative instructions** for a task pattern spanning one or more tools — a complete capability description. | The component is a **utility helper** used inside another Recipe's orchestrator channel, not a standalone capability. |
+A Skill has two complementary parts, not a choice between prose and code.
+Author the prose for one tool-usage pattern and associate the reusable class-22
+PythonCode UUID/revision implementing it. Pure-logic PythonCode helpers remain
+valid standalone components; they need not be mislabeled as tool-usage Skills.
+Recipes supply ordering and data handoff. Extensions supply the larger domain
+context through their ExtensionCatalogue and reference the Skills/Recipes.
 
-`echo`, `time`, `json` → PythonCode helpers. Filesystem/network/memory/skill-management/trigger
-patterns → Skills. Both live in the **orchestrator channel** (`orchestrator_steps[]` in the IBS);
-the formatter derives a `StepContextSpec` (`Skill` vs `PythonCode`) from `class_code`.
-
-### Recycling — compose recipes from one-tool leaf skills (the v3 library principle)
-
-The grain rule above says *when* to use a Skill vs PythonCode. The **recycling
-rule** says *how big* a Skill should be: **as small as practical — at best, the
-description of ONE tool usage — so it can be reused across many recipes. Tools
-too: one concern each.** The library (the catalog of validated Skills + Tools +
-ToolSkills + PythonCode) is the asset; a Recipe is a **composition** of
-already-existing library parts. Prefer reusing a library part over authoring a
-new one; when a genuinely new capability is needed, add it as a small leaf so
-the next recipe can reuse it too. **Never bake a whole procedure into one fat
-skill** — split it into leaves the library can recycle.
-
-Two skill grains therefore coexist (the user's two cases):
-
-- **Leaf skill (one tool / one pythoncode)** — the reusable building block;
-  describes how to drive the executor to use ONE tool (user case (a): "a
-  description how to make the executioner use a tool"). This is the unit of
-  reuse. **Author these.**
-- **Domain skill (spans tools)** — the bigger picture (user case (b): "an
-  explanation about how a filesystem works and what's needed to read/write/
-  format/list"). A domain skill **references** leaf skills by name; it does
-  **not** re-duplicate their tool instructions. One per task area; do not
-  proliferate.
-
-The ExtensionCatalogue (class 23, below) is the level above the domain skill and
-likewise never re-documents its children. The Phase L builtin bootstrap (§4.7)
-seeds the first ~85–90 library components into 5 catalogues — the starter
-library every recipe composes from. `DOC_CONVERSION_MECHANISM_DESIGN.md` §4.0
-applies this concretely: the `doc-sync` mechanism is one domain skill + many
-reusable leaves, composed by one recipe + one action.
+The current formatter/composer distinguishes class-1–3 prose from class-22 code.
+This is a storage/execution distinction within the complete usage unit. Do not
+infer a multi-tool Skill hierarchy from class codes or from the separate tables.
+The doc-sync example therefore comprises an Extension overview, reusable Skills
+with associated code, Recipes and an Action; its overview is not another Skill.
 
 ### ExtensionCatalogue (class 23) — `reborn_extension_catalogues` (V053, Phase C)
 
@@ -178,7 +212,7 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
 
 ## 4. Behavior / flow
 
-1. **Authoring:** a Classic skill is authored in the WebUI (frontmatter fields + markdown body) →
+1. **Current prose authoring:** a Skill prose row is authored in the WebUI (frontmatter fields + markdown body) →
    `reborn_skills`; a ToolSkill in `reborn_tool_skills`; an ExtensionCatalogue in
    `reborn_extension_catalogues`. On save the WebUI submits each new component to the validation
    queue (`ValidationQueueStore::submit(scope, component_id, class)`); the ExtensionCatalogue save
@@ -188,13 +222,12 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
    `orchestrator_steps[].include` UUIDs and fetches the exact Skills + PythonCode + ToolSkills.
    Selection is **exact (UUIDs), not scored** — the intent system already resolved the match; the
    retired `default.py` `select_skills()`/`__list_skills__()` keyword-scoring path is gone.
-3. **Skills as a first-class array (the v3 role):** the composed `program.skills` is a
-   `Vec<SkillRef { id, class_code, name, body }>` Monty **consults while stepping**. Each skill
-   carries the **exact usage of one or more tools**, so a `steplist` step need only name the
-   approach + carry its `executable_code` — the tool-call detail lives in the skills, not the
-   steplist. This is the point of the recycling rule (§3): small leaf skills (one tool each) are
-   reused across many recipes, and the steplist stays lean. Monty does **not** bake skills into a
-   static prefix; it reads the array as it works through the steps.
+3. **Current representation:** `program.skills` carries Skill prose as
+   `SkillRef { id, class_code, name, body }`; `steplist[].executable_code` carries
+   resolved class-22 PythonCode. `executable_code` is a step field, not a field
+   on `SkillRef`. The architectural Skill comprises both parts. The explicit
+   validated Skill–PythonCode association remains an implementation requirement;
+   do not claim that the current arrays alone prove it is implemented.
 4. **ToolSkill at runtime:** the IBS routes ToolSkill UUIDs to `rust_steps[]` → composed as
    `rust_directives`/`tool_bindings`; the Executioner applies them (cdylib load via the C.3
    `DynamicToolLoader`); the Orchestrator never sees the ToolSkill body (a ToolSkill UUID in
@@ -202,7 +235,7 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
 5. **ExtensionCatalogue at runtime:** surfaced as LLM fallback context (the domain overview) and
    as the grouping for the builtin bootstrap; its `intent_index` is audit-only (never an intent
    input).
-6. **SKILL.md export:** the WebUI reconstructs `SKILL.md` (frontmatter YAML + markdown body) from a
+6. **Current prose export:** the WebUI reconstructs `SKILL.md` (frontmatter YAML + markdown body) from a
    `reborn_skills` row on demand — no on-disk file exists otherwise.
 7. **Builtin bootstrap (shipped, C.2):** the builtin host.* seed seeds the system Skills/
    ToolSkills/PythonCode/Recipes idempotently at boot (`source='system'`,
@@ -213,7 +246,7 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
 ## 5. Relations
 
 - **Recipe System** (`03`): recipes reference Skills/ToolSkills/PythonCode by UUID in step
-  `include`; the grain rule decides Skill vs PythonCode per step.
+  `include`; the composer routes the prose and executable parts separately.
 - **IBS** (`04`): routes class 13 → `rust_steps`; classes 1–3/22 → `orchestrator_steps`;
   `StepContextSpec` derives the formatter heading from `class_code`.
 - **Tools** (`06`): a ToolSkill binds to a Tool (class 0) via `tool_name`/`tool_id`; `capability_id`
@@ -254,18 +287,11 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
 
 ## 7. LLM-relevant summary
 
-Four skill kinds: **Classic skills** (`SKILL.md` format, `reborn_skills` classes 1–3 —
-`skill_rusty`/`skill_monty`/`skill_llm`, DB-stored frontmatter+body, WebUI-exportable to `SKILL.md`,
-no on-disk file); **ToolSkills** (class 13, `reborn_tool_skills`, tool-usage patterns,
-Rust-channel only — composed into `rust_directives`, orchestrator never reads them);
-**Orchestrator Skills** (the narrative task-pattern role of a class 1–3 Skill — grain rule: Skill =
-capability spanning tools, PythonCode = sub-orchestrator helper); **ExtensionCatalogues** (class 23,
-`reborn_extension_catalogues` V053, documentation namespace, one per domain,
-`overview_doc`+`task_groups`+`child_component_ids`, `intent_index` audit-only). Selection is
-**deterministic and exact (UUIDs)** via `host.resolve_intent` → `host.compose_orchestrator`; the
-retired `default.py` keyword-scoring path is gone. Skills ride in `program.skills` as a first-class
-`Vec<SkillRef>` Monty consults while stepping — they carry the exact tool usage so the steplist stays
-lean. `DocType` is frozen (no 22/23 variants); ordering is automatic via `class_code ASC,
-prompt_uid ASC`. The builtin bootstrap (C.2) seeds system components idempotently at boot; the
-Phase-L `~85–90 component` library across 5 ExtensionCatalogues is the starter set recipes compose
-from. C.5/C.6 activates the composition host-calls in production.
+A Skill is one reusable tool-usage pattern containing prose instructions and
+associated executable PythonCode. Current storage separates the prose
+(`reborn_skills`, classes 1–3) from code (`reborn_python_code`, class 22).
+Consumer labels are not hierarchy levels. ToolSkill (class 13) binds the Rust
+Tool and never executes it. Recipe (class 21) orders the workflow; Extension
+and its ExtensionCatalogue (class 23) hold the wider domain context. Explicit
+Skill–PythonCode UUID/revision association, validation and UI presentation are
+target requirements; this documentation change does not implement them.

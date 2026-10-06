@@ -26,6 +26,8 @@ pub mod loop_driver_host;
 pub mod loop_exit_applier;
 pub mod milestone_events;
 pub mod model_routes;
+pub mod monty_attempt_fence;
+pub mod monty_task_host;
 pub mod planned_driver;
 pub mod planned_driver_factory;
 pub mod production_readiness;

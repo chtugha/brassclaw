@@ -4,11 +4,24 @@ paths:
 ---
 # Skills
 
-A Skill is a **v3 component** (class codes 1/2/3) — orchestrator-facing prose that
-describes one task pattern. Skills live in `reborn_skills`, scoped to
-`(tenant_id, user_id, agent_id, project_id)`, and are injected into the base prompt by
-`PgBasicPromptStore`. Classes 10 (Orchestrator) and 50 (Scaffold) share the same table
-and are distinguished only by `class_code`.
+Read [recipe.md](../../recipe.md) before v3 component work. A Skill (classes
+1–3) is one reusable Tool usage: orchestrator-facing prose plus explicitly
+associated executable PythonCode. ToolSkills (class 13) are Rust-side IBS
+binding descriptors, not Skill prose. Build a large reusable PythonCode library;
+Recipes instruct the orchestrator how to fulfill tasks with these components.
+
+Each Recipe component step references one UUID. Internal PythonCode composition
+is allowed and must be validated/version-pinned transitively. IBS selects the
+newest activated approved versions at task start and pins them in BuildInstruction;
+Recipes do not carry version numbers. Approved versions are immutable; authored
+replacements pass Q1 and human Q2 and do not change or invalidate old task
+snapshots. Keep runtime values as typed data and preserve task result flow;
+current source substitution/fresh-step execution are implementation gaps.
+
+Skill prose currently lives in `reborn_skills`, code in `reborn_python_code`;
+classes 10 (Orchestrator) and 50 (Scaffold) share the prose table but are not new
+Skill usage types. Existing scope columns are storage/legacy implementation,
+not new v3 feature-role authorization requirements.
 
 ## The v1 SKILL.md Subsystem Is Gone
 

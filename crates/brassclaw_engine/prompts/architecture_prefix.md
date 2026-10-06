@@ -1,5 +1,34 @@
 # BrassClaw Reborn — Complete Orchestrator Reference Manual
 
+## Recipe architecture precedence (v3 target)
+
+This standalone reference preserves an older architecture description; it is
+not a replacement for the component-library prefix assembled by Kohai. Follow
+[recipe.md](../../../recipe.md) and root AGENTS.md where older sections differ.
+Rust Tools are primitives, ToolSkills are IBS binding descriptors, Skills are
+one Tool usage with prose and associated PythonCode, and many small PythonCode
+components are reusable executable building blocks. Recipes instruct the
+orchestrator how to use them to fulfill task goals. A domain overview belongs
+in an Extension, not a domain Skill.
+
+Each Recipe component step references exactly one UUID; internal PythonCode
+composition is allowed separately. IBS reads and pins newest activated approved
+versions, including internal includes, in BuildInstruction at task start.
+Recipes contain no version numbers. Approved versions are immutable; Q1/human
+Q2 activate authored replacements without invalidating retained originals.
+Execution/resume/child steps use the pinned selection. Current global Tool
+policy is independently checked before dispatch; binding grants no permission.
+
+Python sequences operations. Rust binds/provides Tools but does not autonomously
+run Recipe steps. Typed inputs/results remain data and Monty retains task state
+across steps and waits; unrelated tasks/attempts are isolated. Only an actual
+No-Match enters Tier 2. The one global orchestrator starts at instance boot;
+per-conversation VMs, scoped approval leases and text-substituted Python input
+patterns below are historical implementation, not target requirements. Typed
+inputs, version manifests, recursive composition and global lifecycle still
+require the documented production implementation/acceptance.
+
+
 Version: 1.1.x · Model target: Ornith-1.5-9B (Qwen3.5-base, AWQ-INT4)
 Runtime: vLLM 0.19+ with LMCache MP connector · KV block size: 1056 tokens
 Context window: 131,072 tokens · Thinking mode: enabled (`<think>…</think>`)
@@ -27,8 +56,8 @@ a structured component library. Every turn follows a deterministic pipeline:
 User message
   → intent resolution (recipe or direct)
   → recipe/skill context assembly (IBS)
-  → tool execution (Rust channel)
-  → orchestrator reasoning (Python channel, this context)
+  → Rust-channel ToolSkill preparation (no execution)
+  → Python steps call host Tools; explicit reasoning only where required
   → Sempai review (async, non-blocking for user)
   → response
 ```
@@ -156,9 +185,9 @@ routes retrieval, validation, and orchestrator presentation by class code.
 | Code | Name | Description |
 |---|---|---|
 | 0 | Tool | Rust first-party capability. Registers with `capability_id`. Never executes autonomously. |
-| 1 | Skill (Leaf) | Orchestrator-facing prose description of one tool usage pattern. |
-| 2 | DomainSkill | Narrative overview of a capability domain (e.g. "filesystem operations"). |
-| 3 | ScaffoldSkill | Procedural scaffold for multi-step task classes. |
+| 1 | Skill | One Tool usage: prose plus associated executable PythonCode. |
+| 2 | Skill classification | Existing consumer class; not a domain hierarchy. |
+| 3 | Skill classification | Existing consumer class; scaffold records use class 50. |
 | 9 | Extension | Third-party capability bundle. |
 | 10 | Orchestrator | Python orchestrator script (e.g. `basic_mode.py`). |
 | 12 | Spec | Technical specification document. System architecture, API contracts. |

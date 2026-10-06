@@ -1,5 +1,19 @@
 # brassclaw_webui_v2
 
+## Recipe architecture routing
+
+Follow [the binding Recipe authoring contract](../../recipe.md) and root AGENTS.md for
+v3 component work. Recipes instruct the orchestrator using reusable Tools,
+ToolSkills, Skills and small PythonCode components. One referenced component
+per Recipe step; internal PythonCode composition is allowed. IBS pins approved
+immutable versions in BuildInstruction at task start, including nested includes;
+Recipes reference stable UUIDs without versions. Preserve typed inputs/results
+and task state across steps and waits. Replacement versions do not alter active
+tasks; current global Tool policy still applies at every dispatch. Older scoped,
+source-substitution or fresh-step descriptions below are implementation/legacy
+notes, not permission to extend those paths as the v3 target. These requirements
+remain subject to the documented runtime implementation gaps.
+
 Reborn WebChat v2 HTTP route surface. Off by default — compile in with
 the `webui-v2-beta` Cargo feature. The descriptors and handlers in this
 crate are the route-layer; the gateway-layer (see "Host composition

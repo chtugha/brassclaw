@@ -15,6 +15,14 @@
 
 ---
 
+## Reborn v3 Recipe architecture
+
+Recipes tell the orchestrator how to fulfill tasks using Rust Tools, many
+ToolSkills, many Skills and many small reusable PythonCode components. IBS
+assembles the steps and pins component versions for each task. See
+[recipe.md](recipe.md) for the binding authoring contract and current runtime
+limitations; this describes the target, not a completed v3 cutover.
+
 ## Quick Start
 
 **Requirements:** any machine with ~8 GB RAM, 64-bit CPU, ~4 GB free disk space.

@@ -1,0 +1,45 @@
+{
+  "copied_at": "2026-10-06",
+  "copies_unmodified": false,
+  "executed": false,
+  "files": [
+    {
+      "file": "coding_mode_100k_fixed.py",
+      "source_host": "brassclaw",
+      "source_path": "/root/coding_mode_100k_fixed.py",
+      "sha256": "a1240db600b0b78c348542596257711b91733d9d44272d6a2a9597f625869975",
+      "status": "Original script, restored on brassclaw"
+    },
+    {
+      "file": "Defensive-compiler.py",
+      "source_host": "brassclaw",
+      "source_path": "/root/codex-rollback-20261006/coding_mode_100k_fixed.modified.py",
+      "status": "Evidence-preserving revision archived during rollback",
+      "working_copy_sha256": "fdbdda197a4459e9d8400e9b7391a60931db293739eea3129172816b195f1d2e",
+      "local_status": "Optimized v9 compiler with mandatory security references; validated locally, not deployed",
+      "sha256_at_copy": "a2261077a9ef786f30b8779593f471503d1ddcce357ff0b3116a3bd69d0e884b",
+      "filename_at_copy": "coding_mode_100k_fixed.modified.py"
+    },
+    {
+      "file": "coding_mode_prefix_candidate.py",
+      "source_host": "brassclaw",
+      "source_path": "/root/coding_mode_prefix_candidate.py",
+      "sha256": "ae3c5c48a05d4ffe6ab37d1aec697090eadd2346b8855fb83667662c72d5dd63",
+      "status": "Experimental candidate; not deployed"
+    },
+    {
+      "file": "brassclaw-prefix-upgrade.py",
+      "source_host": "brassclaw",
+      "source_path": "/root/brassclaw-prefix-upgrade.py",
+      "sha256": "1357a384abdf4131a07a42e06b45ba4ba6996dc75f7f9679ece81b2785c5b7e1",
+      "status": "Earlier evidence compiler revision"
+    },
+    {
+      "file": "refresh_linux_prefix.py",
+      "source_host": "brassclaw",
+      "source_path": "/root/refresh_linux_prefix.py",
+      "sha256": "539ccbb685fe1acf0236c46b3982f846f23d27dc25256f027cf4be2e8dff5093",
+      "status": "Host-specific refresh helper with absolute /root paths"
+    }
+  ]
+}

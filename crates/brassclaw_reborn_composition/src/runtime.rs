@@ -4493,6 +4493,87 @@ mod tests {
             .expect("runtime shutdown");
     }
 
+    #[cfg(feature = "skills-db")]
+    #[tokio::test]
+    async fn kohai_gateway_preserves_admitted_run_and_turn_without_identity_fallback() {
+        use brassclaw_engine::executor::kohai_port::{KohaiCallCtx, KohaiPort, KohaiPortError};
+
+        let rig = super::test_pg::pg_rig().await;
+        let tenant = "kohai-admitted-identity";
+        let requests = Arc::new(StdMutex::new(Vec::new()));
+        let gateway = Arc::new(RecordingGateway {
+            reply: "identity retained".into(),
+            requests: Arc::clone(&requests),
+        });
+        let interceptor = Arc::new(brassclaw_interceptor::PgInterceptorStore::new(
+            Arc::clone(&rig.pool),
+            tenant,
+        ));
+        let prefix = Arc::new(crate::pg_basic_prompt_store::PgBasicPromptStore::new(
+            Arc::clone(&rig.pool),
+            tenant,
+            "test-agent",
+        ));
+        let port = crate::pg_kohai_port::PgKohaiPort::new(interceptor, prefix, gateway)
+            .expect("Kohai port");
+        let run_id = brassclaw_turns::TurnRunId::new();
+        let turn_id = brassclaw_turns::TurnId::new();
+        let context = KohaiCallCtx {
+            run_id: run_id.to_string(),
+            turn_id: turn_id.to_string(),
+            iteration: 0,
+            tenant_id: tenant.into(),
+            user_id: "test-user".into(),
+            project_id: "test-project".into(),
+        };
+        let prompt = serde_json::json!({"chat_history": [], "user_query": "exact query"});
+        for iteration in 0..2 {
+            let mut call_context = context.clone();
+            call_context.iteration = iteration;
+            let answer = port
+                .complete(prompt.clone(), call_context)
+                .await
+                .expect("model call");
+            assert_eq!(answer.content, "identity retained");
+        }
+        {
+            let recorded = requests.lock().unwrap();
+            assert_eq!(recorded.len(), 2);
+            for request in recorded.iter() {
+                assert_eq!(request.run_id, run_id);
+                assert_eq!(request.turn_id, turn_id);
+            }
+        }
+        for invalid_turn in [false, true] {
+            let mut invalid = context.clone();
+            if invalid_turn {
+                invalid.turn_id = "invalid".into();
+            } else {
+                invalid.run_id = "reborn-conv-opaque".into();
+            }
+            assert!(matches!(
+                port.complete(prompt.clone(), invalid).await,
+                Err(KohaiPortError::InvalidContext { .. })
+            ));
+        }
+        assert_eq!(recorded_request_count(&requests), 2);
+        let client = rig.pool.get().await.unwrap();
+        let packets = client.query(
+            "SELECT run_id, iteration, status FROM brassclaw_forensic_packets WHERE tenant_id = $1 ORDER BY iteration",
+            &[&tenant],
+        ).await.unwrap();
+        assert_eq!(
+            packets.len(),
+            2,
+            "invalid identities must not write forensic packets"
+        );
+        for (iteration, packet) in packets.iter().enumerate() {
+            assert_eq!(packet.get::<_, String>(0), run_id.to_string());
+            assert_eq!(packet.get::<_, i32>(1), iteration as i32);
+            assert_eq!(packet.get::<_, String>(2), "complete");
+        }
+    }
+
     #[tokio::test]
     async fn cancel_run_propagates_to_subagent_children() {
         let root = tempfile::tempdir().expect("tempdir");

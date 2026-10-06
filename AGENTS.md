@@ -1,5 +1,131 @@
 # Agent Rules
 
+## Binding Recipe architecture (v3)
+
+Read both ground-truth authoring guides before creating or changing components:
+
+- [recipe.md](recipe.md): ordered workflows, variants, actual persisted IBS
+  schema, input bindings, component assembly and task version selection.
+- [skills.md](skills.md): one Tool usage with prose plus executable PythonCode,
+  recursive contracts, exact-version association approval and retry rules.
+
+For Skill/Recipe authoring, those two guides take precedence over summaries,
+archive examples and older subsystem instructions. The rules below describe
+binding v3 targets; they do not establish completed runtime/store enforcement.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including Recipe/variant/step_link/input layout,
+  nested dependencies and exact association approval references. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
+### Required authoring and startup checks
+
+1. **Define the usage and workflow separately.** A Skill is one Tool usage:
+   prose plus explicitly associated PythonCode. A Recipe orders usages and
+   pure-logic components, maps inputs/results and defines completion. A Skill
+   never hides a multi-Tool task. Creating a reusable Skill independently is
+   allowed; verify it with a small workflow without requiring a permanent Recipe.
+2. **Keep data separate from code.** Declare recursive input/result schemas,
+   including list items, object fields, allowed extra values, nullability,
+   defaults and numeric bounds. Missing and null are different. Defaults apply
+   only to missing consumer inputs, never to invalid/null values or bad outputs.
+   Recipe references bind typed data to `inputs["local_name"]`; they never paste
+   runtime values into Python source. This interface still needs runner support.
+3. **Review meaning before activation.** The author, supported Q1 audits,
+   behavioral validation and human Q2 establish that prose and code agree.
+   Parsing and matching schemas alone do not prove behavior. IBS checks approved
+   structured records; it does not interpret prose or call an LLM to approve a
+   Tier-0 task at startup.
+4. **Record approval separately from selection.** Follow skills.md's exact
+   `skill-association/1` and `skill-association-approval/1` target contracts.
+   The association references stable UUIDs. The trusted approval record identifies
+   the exact reviewed revisions/checksums and dependency combination. Individual
+   component approvals or a task manifest do not establish combination approval.
+   New combinations need their required evidence before coherent activation;
+   unchanged dependencies and old running combinations do not need reapproval
+   merely because a replacement exists. These are not Tool invocation grants.
+5. **Pin the complete workflow.** IBS selects one consistent approved catalogue
+   snapshot. Retain the Recipe revision, variant, exact `step_link`, selected
+   steps/order, input layout, all component/dependency revisions/checksums and
+   association approval identifiers with the task before execution. Matching and
+   assembly must use the same generation. Resume/child execution/retry retains
+   that selection; do not match again or read latest midway. Keep old artifacts
+   while tasks/checkpoints need them. BuildInstruction stays ephemeral; retain
+   task snapshot references through the continuation contract.
+6. **Make failure and retry exact.** Use skills.md's failure contract. Attempt
+   counts are positive integers including the initial dispatch and survive
+   waits/reclaims. Retries require explicit eligible outcomes and verified
+   read-only or durable deduplication evidence. A timeout does not prove no
+   effect occurred. Never replay a completed effect because output validation,
+   another step or reply posting failed. Cancellation, stale attempts, live Tool
+   policy and resource limits remain effective before every retry.
+7. **Report support honestly.** A Markdown design is not an activated component.
+   Inspect actual stores, validators, host adapters and the selected Monty path.
+   Missing schema, binding, approval or runtime support is implementation work,
+   not permission to invent fields/APIs or claim completed enforcement.
+
+## Binding Skill definition (v3)
+
+A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
+**both prose instructions and explicitly associated executable PythonCode**:
+the prose explains purpose, parameters, prerequisites and result/error handling;
+the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
+different kind of Skill. A broader domain or multi-tool overview belongs to an
+**Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
+ordered workflow and references reusable components by UUID.
+
+**Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
+the ToolSkill describes its IBS binding. Binding executes nothing and grants no
+permission. The Orchestrator executes the associated PythonCode, which calls
+`host.<tool>(...)`; the kernel checks the current global tool policy.
+
+**Storage is not the definition:** today Skill prose is stored in `reborn_skills`
+(classes 1–3), while executable code is stored separately in `reborn_python_code`
+(class 22). The current composer emits `SkillRef.body` and
+`ComposedStep.executable_code` separately. The target requires an explicit,
+validated UUID/revision association between the two parts; separate rows are
+permitted and do not make the Skill prose-only. A code example inside prose is
+documentation, not an implicit executable entry point. The class labels
+`skill_rusty`, `skill_monty`, `skill_llm` are existing consumer classifications,
+not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
+records sharing the table, not additional tool-usage Skill types.
+
+**Execution and validation:** deterministic Tier-0 execution uses the associated
+PythonCode without an LLM interpreting prose. Tier 1 can use the prose in its
+explicit LLM steps. Prose must never be executed as Python. ToolSkill UUIDs stay
+in `channel:"rust"`; executable PythonCode UUIDs stay in
+`channel:"orchestrator"`. Q1/Q2, isolation between unrelated tasks/attempts and the existing dependent-chain
+exception remain applicable. Monty preserves needed state within each Recipe. This documentation change does not implement a
+new database schema, association editor or runtime path.
+
+
 > **Local test/model connections:** Before remote tests or provider setup, read
 > [LOCAL_TEST_ENV.md](LOCAL_TEST_ENV.md) if present. It contains the operator's
 > SSH aliases, host roles, inference endpoint and verified prerequisites. The
@@ -35,6 +161,21 @@ Start with these deeper docs as needed:
 - `tests/e2e/CLAUDE.md`
 
 ## Architecture Mental Model
+
+**Component authoring ground truth:** [recipe.md](recipe.md) defines workflows
+and the actual persisted IBS schema; [skills.md](skills.md) defines Skills,
+recursive contracts, association approval and retries. A Skill is one Tool
+usage with prose plus explicitly associated PythonCode. A Recipe orders reusable
+usages and pure logic, binds typed inputs/results and defines completion. Use
+one component UUID per Recipe component step; internal code composition is
+allowed. Semantic consistency is reviewed before activation, not inferred by
+IBS from prose. IBS verifies exact-combination approval evidence and pins the
+Recipe, variant, step_link, input layout and dependency revisions together.
+Running/resumed tasks retain that selection. Retry counts include the initial
+dispatch; never replay completed effects. Component approval is not Tool
+permission: current global policy and technical constraints apply before every
+dispatch in every tier. These are target requirements, not runtime acceptance
+claims. Historical examples do not override the two authoring guides.
 
 BrassClaw Reborn is organized in five conceptual layers:
 
@@ -187,7 +328,7 @@ Intent-Matching System  (resolve_intent / fetch_for_turn)
      Sempai intercepts the completed turn →
      proposes new Recipe + intent examples →
      Q1 (auto audit) → Q2 (human approval) →
-     next identical request runs at Tier 0 (zero LLM)
+     next match uses approved Recipe (Tier 0 if deterministic; else Tier 1)
 ```
 
 **What this means for authoring:**
@@ -195,7 +336,7 @@ Intent-Matching System  (resolve_intent / fetch_for_turn)
 - **IBS is the compiler.** It reads the Recipe's `step_descriptions` JSONB at match time and produces the `BuildInstruction`. Ephemeral — never stored. You never call IBS directly; you author correct `step_descriptions`.
 - **Two-step tool invocation — always in this order:** `channel:"rust"` binds the ToolSkill (makes `host.<tool>` available), then `channel:"orchestrator"` PythonCode calls it (`result = host.<tool>(...)`). One does nothing without the other.
 - **No-Match path = base-prompt.** The base-prompt is compiled from the component library by Kohai. It is not hardcoded. Adding components grows what the LLM knows in Non-Matching-Mode.
-- **Sempai closes the loop.** Tier-2 turns that work well become Tier-0 recipes after Q1+Q2. The library grows with use.
+- **Sempai closes the loop.** Successful Tier-2 patterns may become approved Recipes after Q1+Q2. Only deterministic Recipes qualify for Tier 0; explicit LLM work remains Tier 1. The library grows with use.
 
 ### Component Roles — What Each Type IS
 
@@ -203,14 +344,14 @@ Intent-Matching System  (resolve_intent / fetch_for_turn)
 |-----------|-----------|----------------|
 | **Tool** (class 0) | Rust callable registered in the host namespace. Executes one operation and returns. | An autonomous runner; it only executes when the Orchestrator calls `host.<tool>(...)` |
 | **ToolSkill** (class 13) | Rust-side binding descriptor for IBS: which Tool to bind, param schema, preconditions, error policy. Lives in `reborn_tool_skills`. | Orchestrator instructions; it carries no prose for the Orchestrator, only metadata for IBS |
-| **PythonCode** (class 22) | A Python code snippet stored in the component library. The Orchestrator runs it as a step. A tool-calling snippet calls `host.<tool>(...)` exactly once; a pure-logic snippet makes zero tool calls. | An executor — the Orchestrator is the executor; the PythonCode snippet is what gets run |
-| **Skill** (class 1–3) | Orchestrator-facing **prose** describing a task pattern — loaded as LLM context in Tier-1 steps. Not executable. | A ToolSkill; Skills carry no Rust binding metadata and are never referenced in `channel:"rust"` steps |
+| **PythonCode** (class 22) | A Python code snippet stored in the component library. The Orchestrator runs it as a step. A tool-calling snippet normally calls `host.<tool>(...)` once; pure logic makes zero calls. Only the documented dependent-chain exception permits additional calls. | An executor — the Orchestrator is the executor; the PythonCode snippet is what gets run |
+| **Skill** (class 1–3) | One Orchestrator tool-usage pattern: prose instructions **plus associated executable PythonCode** (class 22). | A multi-tool domain overview (belongs to an Extension), or a Rust binding descriptor |
 | **Recipe** (class 21) | A turn template — like RNA. Carries `step_descriptions` JSONB listing component UUIDs in sequence. IBS reads it to assemble the `BuildInstruction` the Orchestrator executes. | A program; the Recipe is a template, IBS assembles the runnable structure from it |
 | **ExtensionCatalogue** (class 23) | Domain overview: `task_groups[]` pointing to recipe names | A re-documentation of individual components it owns |
 
 **ToolSkill vs Skill — do not conflate:**
 - **ToolSkill** (class 13): consumed by **IBS** to prepare a Rust Tool binding. Referenced in `channel:"rust"` steps. No prose.
-- **Skill** (class 1–3): consumed by the **Orchestrator** as LLM context. Referenced in `channel:"orchestrator"` steps. No binding metadata.
+- **Skill** (class 1–3): Orchestrator instructions plus associated PythonCode. Prose supplies explicit Tier-1 LLM context; the PythonCode supplies deterministic execution. No Rust binding metadata.
 
 **Rust never executes autonomously.** `channel: "rust"` pre-loads a ToolSkill binding into
 the execution context so the orchestrator knows which tool is available. The tool is
@@ -226,28 +367,30 @@ channel: "orchestrator"   → PythonCode calls host.<tool>(...) to ACTUALLY run 
 ```
 
 Every `rust` step MUST be immediately followed by a matching `channel: "orchestrator"`
-PythonCode step. One PythonCode snippet = exactly one `host.<tool>(...)` call.
+PythonCode step. Pure-logic PythonCode makes zero Tool calls; Tool-calling
+PythonCode normally makes one. Only the direct dependent-chain exception below
+permits multiple calls in one body; independent calls require separate steps.
 The orchestrator **never** calls Rust directly — it always goes through `host.<tool>(...)`.
 
 ### Tier Decision Hierarchy
 
 0. **Rust gate (ask this before anything else):** Does this task require a new system-level capability not provided by any existing Tool? If **no** → author a Recipe that calls existing Tools. Do not write Rust. Only if a genuinely new primitive is needed should you proceed to write a new Rust Tool, and even then it must be accompanied by a full set of components (Recipe + PythonCode snippet + ToolSkill + Leaf Skill) seeded in `builtin_bootstrap.rs`.
 1. **Tier 0 first**: Can the task be done deterministically with known inputs? → Author a Tier-0 Recipe with a PythonCode snippet the Orchestrator will run. This is the default target.
-2. **Split by variant**: Each distinct invocation pattern gets its own recipe + intent examples. Three narrowly-scoped Tier-0 recipes beat one Tier-1 recipe that asks the LLM to pick a path.
-3. **Tier 1 only when necessary**: LLM involvement ONLY for creative content, user-composed inputs, or confirmation of irreversible actions.
+2. **Split by variant**: Each variant has one predictable input layout and workflow, with verified intent examples. Compatible variants may share a Recipe. Split incompatible layouts/operations; do not require an LLM merely to select a known deterministic variant.
+3. **Tier 1 only when necessary**: Use an LLM for creative composition, input/choice evaluation requiring LLM judgment, or confirmation required by the Recipe. Deterministic input validation, branching and result handoff remain Tier 0. Shell and spawn_subagent Recipes are always Tier 1.
 4. **One leaf skill per approach**: A leaf skill describes exactly one approach to one tool. If a tool has 3 common usage patterns, author 3 leaf skills — not one monolithic skill that bundles them. A skill should never describe multiple tool calls.
 5. **10+ intent examples per recipe**: More examples = better routing precision. Cover both command-style inputs and natural language.
 
-### PythonCode Snippet Pattern (Canonical Tier-0 body)
+### PythonCode input pattern (v3 target; runtime support required)
 
 ```python
 # Channel: orchestrator | Class: 22 | No I/O, no imports except stdlib, no network.
-# IBS bakes {{vars.slotN}} values into the body text before execution — they arrive
-# as literals, not placeholders. Tools are first-class callables in the Monty namespace.
-result = host.tool_name(param="{{vars.slot0}}")
+# Target: IBS binds typed inputs separately from Python source.
+# inputs is the required target mapping, not a currently guaranteed VM symbol.
+result = host.tool_name(param=inputs["param"])
 ```
 
-**VM symbols available in every PythonCode body:**
+**Current VM symbol (target typed `inputs` support is separate):**
 
 | Symbol | Purpose |
 |--------|---------|
@@ -286,32 +429,42 @@ additional authority, and claim tokens or secrets must not enter model-visible
 state. Existing fresh-step execution is an implementation limitation to repair,
 not an authoring requirement.
 
-One PythonCode step = exactly one `host.<tool>(...)` call. Pure-logic helpers (zero tool calls) are valid. Never combine two independent tool dispatches into one PythonCode block.
+One PythonCode step makes zero Tool calls for pure logic or normally one for a
+Tool usage. The direct dependent-chain exception below remains valid. Never
+combine independent Tool dispatches into one PythonCode block, including through
+internal code includes. A leaf Skill still describes exactly one Tool usage.
 
 ### What Forces Tier 1
 
 - Content composition (write_file, apply_patch, user-composed shell commands)
 - Ambiguous intent where the LLM must choose between distinct alternatives
 - Irreversible operations benefiting from LLM confirmation
-- User-supplied strings that must be validated before tool dispatch
+- User-supplied strings whose validation requires LLM judgment. Deterministic
+  type, format, range, path and recursive-schema checks do not force Tier 1.
 - Conditional decisions that require LLM reasoning. Deterministic branching or
   passing step A's runtime result to step B is handled by Monty within the Recipe
   execution context and does not, by itself, force Tier 1.
 
-### Q1 Hard Errors (enforced on all authored components)
+### Q1 required authoring gates (verify runtime enforcement)
 
-- **Rule 1**: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). Skill bodies are orchestrator-facing prose — they are not executable and must not be placed in recipe steps.
+- **One-component rule:** every `type:"component"` Recipe step has exactly one
+  `include` UUID. Internal PythonCode includes are allowed separately; resolve
+  and pin all nested versions. Reject empty/multi-component step references.
+  Current array schemas do not themselves enforce this rule.
+
+- **Rule 1**: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). The prose part of a Skill is not a Python entry point. Reference its associated class-22 PythonCode for deterministic execution; do not insert the prose row as an executable Tier-0 step.
 - **Rule 2**: If `llm_call_required == false` AND `rust_steps` has tool bindings, then `orchestrator_steps` MUST contain ≥1 PythonCode UUID. A rust-only Tier-0 recipe is rejected.
-- **Rule 3**: One PythonCode snippet = exactly one **independent** `host.<tool>(...)` call. Multiple **independent** dispatches (tool A and tool B are separately useful, their outputs do not flow directly into each other) require separate PythonCode snippets — one per tool call.
+- **Rule 3**: A Tool-calling PythonCode snippet normally makes one `host.<tool>(...)` call; pure logic makes zero. Multiple **independent** dispatches (tool A and tool B are separately useful, their outputs do not flow directly into each other) require separate PythonCode snippets — one per tool call. Only the direct dependent-chain exception below permits additional calls in one body.
 
   **Exception — dependent sequential chain:** If tool B's input is the direct runtime output of tool A (B literally cannot run without A's result), both calls may share one PythonCode body. This is valid because they execute in a single `host.run_program` context and share local scope. The pair must form a single logical unit (e.g. sweep → store, read → transform). Example:
   ```python
-  bundle_parts = host.sweep_validated_components(user_id="{{vars.slot0}}", project_id="{{vars.slot1}}")
+  bundle_parts = host.sweep_validated_components(user_id=inputs["user_id"], project_id=inputs["project_id"])
   result = host.store_prefix_bundle(
-      user_id="{{vars.slot0}}", project_id="{{vars.slot1}}",
+      user_id=inputs["user_id"], project_id=inputs["project_id"],
       bundle=bundle_parts["bundle"], generation_ms=bundle_parts["generation_ms"]
   )
   ```
+  The `inputs` mapping in this target example requires runtime implementation.
   Two `host.*` calls, one body — valid because `bundle_parts["bundle"]` is the direct input to the store call. Do **not** use this exception to bundle unrelated tool calls for convenience.
 - **Rule 4**: A leaf skill should describe exactly one tool usage pattern. Avoid bundling multiple tool calls or approaches into one skill body.
 - **§shell-guard**: Any Recipe using `builtin.shell` is `llm_call_required: true`. **Always. No shell command is ever Tier 0**, regardless of whether the command string is fixed or user-supplied. Known-safe commands (e.g. `cargo build`) may be Tier 1 at high confidence, never Tier 0.
@@ -332,34 +485,50 @@ Each user-facing operation goes through exactly one of three tiers per turn:
 | **1** | Recipe matched, `llm_call_required: true` | ✅ Guided by recipe context | Low |
 | **2** | No recipe match (Non-Matching-Mode) | ✅ Full reasoning | Full |
 
-**Tier 2 is the seed.** The first time a user asks something new, no recipe matches. The LLM reasons through it (Tier 2). The **Sempai interceptor** watches every Tier-2 turn, evaluates the outcome, and proposes new Recipes + intent examples. Those proposals enter the **validation queue** (Q1 automated → Q2 human review). Once validated, the recipe is live — every future match for that intent pattern costs zero LLM calls.
+**Tier 2 is the seed.** The first time a user asks something new, no recipe matches. The LLM reasons through it (Tier 2). The **Sempai interceptor** watches every Tier-2 turn, evaluates the outcome, and proposes new Recipes + intent examples. Those proposals enter the **validation queue** (Q1 automated → Q2 human review). Once approved and activated, future matches use the Recipe at its declared, verified tier. A deterministic Tier-0 Recipe makes zero LLM calls; a Tier-1 Recipe retains its explicit LLM steps.
 
-**Pre-seeded extensions skip the discovery cost.** An extension authored as `source: "system"` (via `builtin_bootstrap.rs`) bootstraps directly to `validated` state. All operations are Tier 0 from day one, without waiting for the system to encounter them.
+**Pre-seeded extensions skip discovery, not tier requirements.** Trusted
+first-party bootstrap may seed validated components through its distinct
+integrity-checked system path. Merely setting `source: "system"` is not an
+approval bypass. Deterministic seeded Recipes may be Tier 0 from first use;
+seeded Recipes requiring LLM steps, shell or spawn_subagent remain Tier 1.
+Authored proposals and operator changes retain their required Q1/human-Q2 path.
 
-**The Sempai continues growing the library at runtime.** Novel combinations the author didn't anticipate — e.g. "list tasks filtered by assignee" for a task-management extension — emerge from Tier-2 turns, get proposed by the Sempai, and graduate to Tier 0 after Q1+Q2. The library compounds with use.
+**The Sempai continues growing the library at runtime.** Novel combinations the author didn't anticipate — e.g. "list tasks filtered by assignee" for a task-management extension — emerge from Tier-2 turns, get proposed by the Sempai, and become active after the required Q1/Q2 and acceptance evidence. Their behavior determines whether they are Tier 0 or Tier 1. The library compounds with use.
 
-**Step_descriptions structure (canonical — matches `builtin_stuff_v3.md`):**
-```json
-[
-  { "step_id": "step-0", "type": "component", "channel": "orchestrator",
-    "include": ["<uuid:skill-X>"], "label": "Load skill X as LLM context" },
-  { "step_id": "step-1", "type": "llm",
-    "label": "LLM reasons / composes (Tier-1 only)" },
-  { "step_id": "step-2", "type": "component", "channel": "rust",
-    "include": ["<uuid:ts-tool-Y>"], "label": "Pre-load ToolSkill binding" },
-  { "step_id": "step-3", "type": "component", "channel": "orchestrator",
-    "include": ["<uuid:pc-exec-Y>"], "label": "Execute: host.tool_y(...)" }
-]
+**Conceptual Tier-1 workflow — not persisted Recipe JSON:**
+
+```text
+Optional explicit reasoning context: one Skill prose UUID
+Explicit reasoning/composition: a supported Tier-1 LLM step
+Rust binding: one ToolSkill UUID
+Immediately following execution: one associated PythonCode UUID
+Later usages and final reply: separate steps
 ```
 
-Valid `type` values: `component` (fetch+route a component), `llm` (LLM turn — Tier-1 only), `text` (WebUI annotation, never emitted to runtime), `snippet` (rejected at Q1 — promotes to `component` after Q1+Q2).
+Do not insert that diagram into `step_descriptions`. Author the actual
+`StepDescriptionEntry` structure from [recipe.md, section 7](recipe.md#7-emit-the-actual-persisted-ibs-schema):
+entries contain `desc_idx`, `label`, `yaml_source` and `steps`; steps use
+`stepnumber`, `knowledge` (`rust` or `orchestrator`), `type` and `include`.
+Each component step has exactly one resolved UUID. Variants use a nonempty
+`step_link` to select the ordered steps. Human prose/labels do not define
+executable logic or transport input values.
+
+The inspected persisted enum accepts `component`, `text` and `snippet`.
+Author `component` for references or `text` for annotations; `snippet` is parsed
+but rejected by Q1/IBS and must become an approved referenced PythonCode
+component. **`llm` is not a supported value of this persisted enum.** A Tier-1
+Recipe must use the actual supported reasoning/runner mechanism; neither
+`llm_call_required: true` nor a label invents a runnable LLM step. Verify that
+path before claiming the Recipe works. Tier 0 contains no prose-driven or LLM
+execution; it references the Skill's class-22 code, not its prose row.
 
 **Posting output without an LLM:** use `host.post_reply(answer="...")` via `ts-host-post-reply` + `pc-host-post-reply`. This is the correct pattern for fixed-text Tier-0 responses. `builtin.echo` is diagnostic-only and must not be used in user-facing recipes.
 
 ### Extension Authoring Reference
 
-**Start here for any new capability.** Extension component stacks (Tools, ToolSkills, PythonCode, Leaf Skills, Domain Skills, Recipes, ExtensionCatalogues) are fully specified in:
-- `builtin_stuff_v3.md` — complete list of all built-in v3 capabilities, tool signatures, and ToolSkill/PythonCode templates
+**Start here for any new capability.** Extension component stacks (Tools, ToolSkills, PythonCode, Skills with associated PythonCode, Recipes, ExtensionCatalogues) are fully specified in:
+- `docs/archive/builtin_stuff_v3.md` — historical list with corrected Skill terminology of all built-in v3 capabilities, tool signatures, and ToolSkill/PythonCode templates
 - `tomedo_v3.md` — tomedo EMR integration: full reference implementation of an extension component stack
 - `docs/plans/zencoder-extension-plan.md` — **best starting point**: Zencoder REST API extension with complete annotated `step_descriptions` JSONB, intent examples, and bootstrap seeding pattern
 
@@ -378,19 +547,23 @@ When adding any new capability, read `docs/plans/zencoder-extension-plan.md` fir
 | **5** | Author new component rows in `builtin_bootstrap.rs` or extension seeder | New Postgres rows — no new Rust code |
 | **6** | Write a new Rust Tool, then do level 5 | Only when no existing Tool provides the primitive needed |
 
-**Before doing anything:** search `builtin_stuff_v3.md` and the existing component library for existing PythonCode snippets, ToolSkills, and Leaf Skills that already cover what you need. Reuse by UUID reference first.
+**Before doing anything:** search `docs/archive/builtin_stuff_v3.md` and the existing component library for existing PythonCode snippets, ToolSkills, and Leaf Skills that already cover what you need. Reuse by UUID reference first.
 
 **If you reach level 5, author components in this order** (Recipe-first — define what you want, then fill in what it needs):
 
 1. **Recipe** (class 21) — define the `RecipeVariant`: intent examples, `step_descriptions` JSONB with placeholders for component UUIDs, `variable_patterns` if needed
-2. **PythonCode snippet** (class 22) — the code snippet the Orchestrator will run at the relevant step; calls `host.<tool>(param=value)` exactly once per tool-calling snippet; assign `result = ...`
+2. **PythonCode snippet** (class 22) — the code snippet the Orchestrator will run at the relevant step; normally calls `host.<tool>(param=value)` once per Tool-calling snippet, with the documented dependent-chain exception; pure logic makes zero calls; assign `result = ...`
 3. **ToolSkill** (class 13) — binding descriptor for IBS: which Tool to bind, param schema, preconditions, error policy. Referenced by the `channel:"rust"` step in the Recipe's `step_descriptions`
-4. **Leaf Skill** (class 1) — one prose description per usage pattern, for LLM context in Tier-1 steps. Not executable — the Orchestrator reads it, does not run it
+4. **Skill** (classes 1–3; also called Leaf Skill) — complete the tool-usage unit with prose and an explicit UUID/revision association to the PythonCode from step 2. The prose guides Tier-1 reasoning; the associated PythonCode executes the usage, including at Tier 0
 5. **ExtensionCatalogue** (class 23) — update `task_groups[]` if this belongs to an existing domain
 
 Fill in the UUID references in the Recipe's `step_descriptions` as you create each component.
 
-**Verify:** intent resolves at Class 1 or 2 confidence → Q1 passes → executes at Tier 0 (zero LLM calls for a Tier-0 recipe).
+**Verify:** intent resolves to the intended variant; required Q1/human Q2 and
+exact-combination approval evidence exist; the actual runner passes relevant
+acceptance cases at the declared tier. Verify zero LLM calls for Tier 0; verify
+the explicitly required reasoning steps for Tier 1. A confidence result or Q1
+pass alone does not establish activation or behavior.
 
 ## Where to Work
 
@@ -464,10 +637,17 @@ In v3, a subagent's behaviour is defined by the **Recipe it receives** — not b
 - Do not weaken bearer-token auth, webhook auth, CORS/origin checks, body limits, rate limits, allowlists, or secret-handling guarantees.
 - Treat Docker containers and external services as untrusted.
 - Session, thread, and turn state matters. Submission parsing happens before normal chat handling.
-- Skills are selected deterministically. Tool approval and auth flows are special paths and must not be mixed into normal chat history.
+- Skills are selected deterministically. Component Q2 and external authentication
+  have explicit paths; keep secrets and claim tokens out of ordinary chat state.
+  Tool dispatch uses current global policy, not per-operation approval grants.
 - Persistent memory is the workspace system, not just transcript storage.
 
 ### Capability Lease Authority Invariants (`brassclaw_authorization`)
+
+The lease implementation below is legacy until the coordinated simplified-v3
+cutover. Preserve its existing technical integrity while it remains in use;
+do not add these invocation grants as v3 requirements. In final v3, claims and
+attempt identifiers fence execution, while current global policy governs Tools.
 
 Capability leases are authority-bearing records — the rules below are not style preferences:
 

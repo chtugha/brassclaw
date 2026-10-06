@@ -1,5 +1,15 @@
 # Development reasoning and validation policy
 
+## Recipe architecture checks
+
+For component changes, use [recipe.md](../recipe.md). Review one referenced
+component per Recipe step, internal PythonCode composition, typed bindings and
+result handoffs. Verify IBS resolves the newest approved versions consistently
+at task start and pins the complete transitive manifest in BuildInstruction.
+Retain old immutable versions for running/suspended tasks; activation does not
+invalidate them. Current global Tool policy is independent. Documentation alone
+cannot establish runtime enforcement, Q1/Q2 activation or production acceptance.
+
 This is the authoritative policy for development iteration and validation.
 Read it before changing behavior. Root and crate guides provide architecture,
 contracts and commands; their command lists are not a checklist to run after

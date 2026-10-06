@@ -39,9 +39,12 @@ use thiserror::Error;
 /// Errors raised by a [`KohaiPort`] implementation.
 #[derive(Debug, Clone, Error)]
 pub enum KohaiPortError {
-    /// No Kohai bridge is wired (`None` port) — the orchestrator falls back.
+    /// No Kohai bridge is wired (`None` port); the task fails explicitly.
     #[error("kohai bridge unavailable")]
     Unavailable,
+    /// No admitted task identity was supplied by the trusted driver.
+    #[error("invalid task context: {reason}")]
+    InvalidContext { reason: String },
     /// The `prompt` argument was missing or not a dict.
     #[error("invalid prompt: {reason}")]
     InvalidPrompt { reason: String },
@@ -51,6 +54,10 @@ pub enum KohaiPortError {
     /// The underlying provider gateway call failed.
     #[error("kohai llm call failed: {reason}")]
     LlmFailed { reason: String },
+    /// This legacy text port cannot execute a structured provider tool request.
+    /// The task-scoped model port preserves those requests for Monty dispatch.
+    #[error("kohai model requested tools unsupported by the legacy text port")]
+    UnsupportedModelOutput,
     /// A forensic-packet store failure (save capture / save response).
     #[error("interceptor store failure: {reason}")]
     StoreFailed { reason: String },
@@ -58,10 +65,12 @@ pub enum KohaiPortError {
 
 /// Turn identity carried into the Kohai flow so the composition impl can scope
 /// the forensic packet + resolve the per-scope provider prefix.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KohaiCallCtx {
-    /// Engine run identifier (thread id).
+    /// Exact admitted run identifier, never an engine Thread identifier.
     pub run_id: String,
+    /// Exact admitted turn identifier, retained across model calls.
+    pub turn_id: String,
     /// Orchestrator iteration counter for this turn.
     pub iteration: u32,
     /// Owning user id (scopes the prefix bundle).

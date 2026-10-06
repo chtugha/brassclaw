@@ -1,6 +1,8 @@
 //! Check the actual Python sequencing source with deterministic host replies.
-//! Removing the `host.` receiver is only a test binding adapter; production
-//! namespace/kernel routing is separately covered by the application's tests.
+//! The source and host receiver are unchanged; production kernel routing still
+//! requires caller-level acceptance beyond this interpreter sequencing check.
+
+use brassclaw_monty_v1_upgrade_tests::namespace::{HOST_INSTANCE_ID, host_namespace};
 
 use monty::{MontyRun, RunProgress};
 use monty_types::{
@@ -25,20 +27,19 @@ struct Case {
 }
 
 fn drive(case: Case) -> (Vec<String>, Result<(), MontyException>) {
-    let source = include_str!("../../../crates/brassclaw_engine/orchestrator/basic_mode.py")
-        .replace("host.", "");
+    let source = include_str!("../../../crates/brassclaw_engine/orchestrator/basic_mode.py");
     let code =
         format!("context = []\ngoal = ''\nactions = []\nstate = {{}}\nconfig = {{}}\n{source}");
     let run = MontyRun::new(
         code,
         "recipe-contract.py",
-        vec![],
+        vec!["host".to_owned()],
         CompileOptions::default(),
     )
     .unwrap();
     let mut progress = run
         .start(
-            vec![],
+            vec![host_namespace()],
             ResourceTracker::new(
                 ResourceLimits::default()
                     .max_feed_duration(Duration::from_secs(5))
@@ -54,6 +55,13 @@ fn drive(case: Case) -> (Vec<String>, Result<(), MontyException>) {
         let RunProgress::FunctionCall(call) = progress else {
             panic!("unexpected progress")
         };
+        assert_eq!(call.object_id, Some(HOST_INSTANCE_ID));
+        if call.function_name == "resolve_intent" {
+            let (key, value) = call.args.kwargs().next().expect("user_input keyword");
+            assert_eq!(key.to_owned(), MontyObject::string("user_input"));
+            assert_eq!(value.to_owned(), MontyObject::string("the accepted input"));
+            assert_eq!(call.args.args().len(), 0, "receiver is not an argument");
+        }
         calls.push(call.function_name.clone());
         let answer = match call.function_name.as_str() {
             "check_signals" => MontyObject::none(),
@@ -90,6 +98,23 @@ fn drive(case: Case) -> (Vec<String>, Result<(), MontyException>) {
                 ),
             ]),
             "run_program" => {
+                assert_eq!(call.args.args().len(), 2);
+                let state = call.args.args().nth(1).unwrap();
+                let fields = state.pairs().expect("Recipe state is a typed dictionary");
+                let previous = fields
+                    .iter()
+                    .find(|(key, _)| key.as_str() == Some("previous_result"))
+                    .expect("Monty owns the preceding result")
+                    .1
+                    .to_owned();
+                assert_eq!(
+                    previous,
+                    if steps % 2 == 0 {
+                        MontyObject::none()
+                    } else {
+                        MontyObject::string("answer")
+                    }
+                );
                 steps += 1;
                 object(vec![
                     ("ok", MontyObject::bool(!(case.failed_step && steps == 2))),

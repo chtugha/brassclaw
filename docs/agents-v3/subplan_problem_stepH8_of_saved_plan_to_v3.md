@@ -1,3 +1,11 @@
+> **Recipe architecture precedence (2026-10-06):** This document preserves an
+> earlier plan or implementation record. Its component granularity, input
+> substitution, fresh-step state and mutable-version descriptions are superseded
+> where they conflict with [recipe.md](../../recipe.md). One component per Recipe step
+> permits internal PythonCode composition; IBS must pin immutable versions,
+> including nested components, and preserve typed task input/result flow.
+> Do not implement obsolete examples as new requirements.
+
 # Subplan — Phase H.8: extract engine orchestrator `pub` fns + delete dormant Model A prior-knowledge path
 
 Parent plan: `saved_plan_to_v3.md` → Phase H.8 (lines ~5786–5870) + FIND-NEW-PASS12-01/02 +

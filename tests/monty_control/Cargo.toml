@@ -1,0 +1,42 @@
+[package]
+name = "brassclaw_monty_control_tests"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[workspace]
+
+[dependencies]
+brassclaw_resources = { path = "../../crates/brassclaw_resources" }
+monty = { path = "../../vendor/monty-control/crates/monty" }
+monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# Reuse the existing actual-interpreter contract cases against the extension;
+# the upstream upgrade workspace remains independently pinned to the tag.
+[lib]
+name = "brassclaw_monty_v1_upgrade_tests"
+path = "../monty_v1_upgrade/src/lib.rs"
+
+[[test]]
+name = "compatibility"
+path = "../monty_v1_upgrade/tests/compatibility.rs"
+
+[[test]]
+name = "global_lifecycle"
+path = "../monty_v1_upgrade/tests/global_lifecycle.rs"
+
+[[test]]
+name = "recipe_failure_contract"
+path = "../monty_v1_upgrade/tests/recipe_failure_contract.rs"
+
+[[test]]
+name = "recipe_state"
+path = "../monty_v1_upgrade/tests/recipe_state.rs"
+
+[[test]]
+name = "task_accounting"
+path = "../monty_v1_upgrade/tests/task_accounting.rs"

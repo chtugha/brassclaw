@@ -1,5 +1,19 @@
 # Simplified v3 implementation record
 
+## Recipe architecture target clarification — 2026-10-06
+
+[recipe.md](../../recipe.md) defines the binding authoring/input/version contract.
+Recipes instruct the orchestrator using Tools, many ToolSkills, many Skills and
+many small PythonCode components. Each Recipe component step has one reference;
+internal PythonCode composition is allowed. IBS must pin the newest activated
+approved versions and their transitive includes in BuildInstruction at task start.
+Approved versions are immutable; Q1 plus human Q2 activate authored replacements
+without invalidating prior versions or altering existing task snapshots. Typed
+inputs/results remain data, and Monty preserves each task's context. No newest
+lookup on resume; current Tool policy remains live. Schema support, the target
+inputs mapping, single-component enforcement and complete version manifests
+remain implementation work. This entry records documentation decisions only.
+
 This record distinguishes implemented changes from the binding target in
 `simplified_v3.md`. It is not a declaration that the migration is complete.
 
@@ -803,3 +817,256 @@ with the global task host under the Phase 3a Monty upgrade gate, preserve
 Monty-owned Recipe step results/namespace and route model, tool and transcript
 operations through exact task host ports. No ID coercion, synthesized Thread,
 per-chat fallback or direct LLM bypass was introduced.
+
+### 2026-10-06 — Explicit Recipe results and actual 1.0 host namespace
+
+Monty now passes a Recipe-owned input/result dictionary to each
+`host.run_program` call and records the preceding return value in that
+dictionary. Rust forwards that explicit data to the nested interpreter instead
+of replacing it with an empty dictionary. Each Recipe invocation creates its
+own context; this does not provide arbitrary local-variable persistence or the
+complete typed `inputs`/binding interface specified in `recipe.md`. Non-Match
+receives the preceding history separately from the current query, and history
+execution receives the actual answer. The seeded PythonCode bodies and global
+production host still need their corresponding repair.
+
+Tagged 1.0 checks now execute the unchanged orchestrator source with an actual
+host object, rather than removing `host.` from the source. They verify the host
+object ID and complete arguments: unlike 0.0.16, 1.0 does not include the receiver
+in positional arguments. A real REPL check retains a prompt across Recipe
+steps, preserves quotes/newlines/Unicode as data and rejects that prompt in an
+unrelated Recipe context. These checks stop at the actual interpreter host-call
+boundary; they do not establish production model dispatch or kernel enforcement.
+
+Sequential screen validation passed: 93 engine orchestrator tests, 6 Recipe
+failure-contract checks and 2 namespace/state checks. Strict all-target Clippy
+passed for the engine and isolated upgrade workspace. Logs:
+`/private/tmp/brassclaw-monty-recipe-handoff.log`,
+`/private/tmp/brassclaw-monty-v1-host-state.log` and corresponding `-lints.log`
+files. The source change also changes protected orchestrator seed content;
+existing databases require the verified repair/upgrade path, never an integrity
+bypass or replacement of operator overrides.
+
+**The original seven failures remain unresolved and their tests are unchanged.**
+No Rust-agent-loop or direct-model fallback was added. These are prerequisite
+checks, not the global-host production acceptance required by Phase 3a.
+
+### 2026-10-06 — Remove fabricated identity from the Monty model handoff
+
+`KohaiCallCtx` now carries the actual admitted turn ID as well as the run ID.
+The persistent driver installs this Rust-owned context before resuming a work
+wait. The interpreter's host-call handler consumes it instead of deriving the
+run from an engine Thread. Calls without that context fail before port dispatch.
+Multiple model calls retain the IDs while advancing their iteration; returning
+to the work wait clears the context. Installing a replacement during interrupted
+execution is rejected, rather than attributing the old execution to a new task.
+
+`PgKohaiPort` validates both IDs before prefix lookup, forensic persistence and
+gateway dispatch. It no longer creates a replacement run or a fresh turn for
+each model call. This fixes attribution in this existing model adapter; it does
+not fix the adapter's missing prompt/capability host wiring or prove claim-loss
+fencing, cancellation quiescence or the global lifecycle.
+
+Sequential screen validation passed: 95 engine orchestrator tests and a native
+PostgreSQL model-adapter regression. The latter reuses the existing recording
+gateway and real prefix/interceptor stores, verifies exact run/turn IDs across
+two calls, and verifies malformed IDs produce no gateway request or forensic
+packet. Strict all-target Clippy passed for engine/composition with
+composition/skills-db. Logs:
+`/private/tmp/brassclaw-monty-kohai-identity-{engine,pg,lints}.log`.
+The existing native boot/integrity regression also passed using the same
+already-built composition test binary, without another Cargo compilation:
+`/private/tmp/brassclaw-monty-kohai-boot.log`.
+
+The original seven message-flow tests and their assertions remain unchanged.
+They were not rerun for this downstream change: the production caller's legacy
+UUID-only Thread lookup still precedes execution. They remain unresolved until
+the thread-free task host and model/tool execution path are wired through global
+Monty under the Phase 3a upgrade gate. No Rust-loop or direct-model fallback was
+added.
+
+### 2026-10-06 — Thread-free task host and prospective global Python lifecycle
+
+`brassclaw_reborn::monty_task_host::MontyTaskHost` now owns the validated admitted
+handoff and delegates individual prompt, model, capability and transcript calls
+to that task's existing host ports. It preserves opaque conversation identity,
+the resolved profile/route and claim address without constructing an engine
+Thread. Structured model tool requests remain structured; Python decides the
+next operation. Python-supplied pre-resolved messages and raw legacy Recipe
+hints are rejected before port dispatch. Pinned Recipe/Skill context must be
+resolved behind the host boundary rather than accepted as supplied component
+bodies. The adapter checks existing cancellation observation before operations;
+this is not proof of external quiescence or durable attempt fencing.
+
+The persistent driver now retains this task host for its handoff, but still
+enters the legacy UUID-only Thread path afterwards. **The original seven tests
+remain unresolved and unchanged.** The adapter does not execute a Rust loop or
+provide a direct-model fallback. Its successful caller checks use the existing
+Reborn host fixture and gateway, including prompt grants, exact run/turn IDs,
+cross-run rejection, structured tool output, capability denial, finalized reply
+persistence and rejection after durable cancellation.
+
+`engine/orchestrator/global_mode.py` supplies prospective global Python
+sequencing with bounded async worker slots, task-local history and Recipe
+results, explicit task routing tokens, ordinary host-error isolation, and an
+explicit instance shutdown sentinel. It is not seeded, wired to boot, or an
+alternative production fallback. It requires task-owned program references and
+step IDs resolved from pinned manifests. Recipes post replies themselves and
+return finalized message refs; the root does not re-post step output. History
+inputs carry that reply ref. Task finish must verify the ref against actual
+transcript evidence and retain the host's safe diagnostics/cancellation cause.
+
+Activation still requires the full Phase 3a gate: the production global service
+and framed hosting transport, Monty dependency migration/resource disposition,
+bounded CPU/control and consumption-preserving live settings, neutral scoped
+component/binding dispatch, pinned manifest context, Recipe/state child hosting,
+No-Match/history seed repair, non-reply completion and verified exits. The new
+Python source does not prove any of those caller behaviors. Do not replace the
+protected orchestrator row or claim readiness from merely compiling this source.
+
+Validation for this slice ran sequentially in screen: 98 Reborn host/runner
+integration tests, the real Monty 1.0 global-lifecycle check, and architecture
+tests passed. Strict all-target Clippy passed for Reborn/composition with
+composition/skills-db and for the isolated Monty 1.0 workspace. Logs:
+`/private/tmp/brassclaw-monty-task-host-full.log`,
+`/private/tmp/brassclaw-monty-task-host-{lints,architecture}.log`, and
+`/private/tmp/brassclaw-monty-global-lifecycle{,-lints}.log`.
+The original seven were not rerun: this slice still reaches their known legacy
+Thread blocker. The global source's successful Recipe/finish path remains
+unverified until implemented against real component and transcript ports.
+
+
+### 2026-10-06 — Typed No-Match/history components and history binding prerequisites
+
+Fresh host seeds now load four PythonCode bodies from the component source files.
+Prompt/history formatters consume `state["inputs"]`; Kohai and memory writing
+consume `state["previous_result"]`. Every body assigns and returns `result`.
+Runtime text is passed as values rather than interpolated into executable source.
+The legacy Python orchestrator supplies this explicit nested input contract.
+These seed changes do not replace stored PythonCode bodies or operator overrides.
+
+Fresh `host-save-history` metadata now references actual formatter, memory
+ToolSkill and writer UUIDs, with one component per IBS step and a default
+`0:1-0:E` variant. The host seeder recovers the existing memory-write primitive
+before referencing it; the later full capability pass recovers the same IDs.
+Fresh system host Recipes declaring no LLM are inserted atomically with the
+existing builtin Tier-0 maturity convention. Other insert callers retain their
+original pending/seedling behavior; reseeding does not reset stored maturity,
+metadata or overrides. Existing legacy history rows still require an explicit
+revision-preserving upgrade; no automatic body or metadata rewrite was added.
+
+The legacy text Kohai port preserves final assistant content, including empty
+content, and rejects structured tool requests even when text deltas accompany
+those requests. Their actual structured output is retained in the forensic
+packet before the unsupported-output error propagates. Capitalized history
+roles retain their assistant/system meaning. Monty's structured task-host port
+remains the required production model/tool path.
+
+The original seven integration failures remain unresolved: the driver still
+enters its UUID-only engine Thread lookup before Recipe execution. These changes
+neither activate the prospective global source nor satisfy Phase 3a. Child host
+binding/dispatch, pinned revisions, full global hosting/resource/control gates,
+verified replies and the history reply-ref protocol remain required. The new
+legacy history formatter accepts typed answer text; it is not yet the global
+protocol's verified reply-ref resolver.
+
+Validation ran sequentially in screen: the native composition group passed
+(10 tests), legacy Kohai output checks passed (13 tests), and actual Monty 1.0
+Recipe failure-contract checks passed (6 tests). Strict all-target Clippy passed
+for engine/composition with composition/skills-db, then passed again for the
+completed history seeding changes. The already compiled full composition binary
+reported **705 passed, 7 failed, 0 ignored**: precisely the original seven
+message-flow failures, with their assertions unchanged. No additional failures
+were introduced. Logs: `/private/tmp/brassclaw-monty-typed-components.log`,
+`/private/tmp/brassclaw-monty-kohai-output.log`,
+`/private/tmp/brassclaw-monty-recipe-contract.log`,
+`/private/tmp/brassclaw-monty-{typed-components,history-binding}-lints.log`,
+`/private/tmp/brassclaw-monty-history-binding.log`, and
+`/private/tmp/brassclaw-monty-composition-final.log`.
+
+
+### 2026-10-06 — Attempt-scoped host-call fencing for retained Monty tasks
+
+`MontyTaskHost` now owns a Rust-only `MontyTaskFence`. A supervisor can retain
+its handle independently of a dropped runner future. Every scoped host operation
+registers before awaiting the real port, then checks cancellation/fencing before
+returning its result. A closed fence is permanent. Cancellation addresses the
+exact run/runner/lease tuple; a stale lease token cannot fence another attempt.
+Admission and call bookkeeping use short locks with no lock held across an
+external wait. Concurrent retained host calls have an explicit technical bound
+of 64, separate from token budgets; excess admission fails visibly rather than
+creating an unbounded queue.
+
+`fence_and_wait` uses an explicit, checked deadline and returns pending evidence
+when calls have not settled. Dropped call futures are retained as abandoned IDs
+and permanently close admission. They require reconciliation, even when there
+are no remaining Rust futures. Late successful values are rejected; actual host
+errors and their diagnostic references are preserved. Multiple acknowledgement
+waiters register before taking their snapshots so completion wakeups cannot be
+lost. No claim token or host-call payload is serialized into Python or receipts.
+
+This acknowledgement describes **Rust host-call state only**. It does not prove
+external provider/tool quiescence, cancel a process, persist reconciliation, or
+validate the current durable lease at dispatch. Kernel effect records remain
+authoritative. The global supervisor must retain the fence, combine it with VM
+continuation acknowledgement and durable effect/claim validation, and persist
+unresolved evidence before releasing the task. The legacy signal broker's future
+completion receipt is not upgraded into that production guarantee by this slice.
+No global boot activation or per-chat/UUID workaround was added.
+
+Focused validation passed: three real fence-state tests covering bounded waits,
+late results/original errors, abandoned calls, wrong lease identity and registered
+concurrent waiters; four existing/new Reborn host-boundary checks covering exact
+context, structured model output, prompt grants, cancellation and provider/reply
+rejection after fencing. Strict all-target Clippy passed for Reborn/composition
+with composition/skills-db. All ran sequentially in screen; logs are
+`/private/tmp/brassclaw-monty-attempt-fence{,-lints}.log`.
+These are not simulated successful Recipe executions or acceptance of the global
+production service. The original seven message-flow tests remain unresolved at
+the legacy UUID-only Thread lookup and were not rerun for this downstream change.
+Their latest full-suite result remains 705 passed, 7 failed, 0 ignored.
+
+### 2026-10-06 — Versioned Monty resumable execution-control boundary
+
+Added an isolated library extension in `vendor/monty-control`, version
+`1.0.0-brassclaw.control.1`, based on the exact v1.0.0 commit already pinned by
+the upgrade workspace. The four library crates retain upstream MIT notices;
+original file SHA-256 values are checked against the local Git checkout and
+recorded in `UPSTREAM-SHA256.json`. `CONTROL.patch` makes the extension diff
+reviewable independently of unchanged vendored source. Explicit package
+workspace paths prevent Cargo from inheriting the application workspace's
+metadata. Stable rustfmt configuration omits unsupported nightly grouping
+options rather than suppressing their warnings. Publishing is disabled.
+
+`ExecutionControl` is a trusted, nonblocking hook over cumulative active VM
+execution time. It is checked at entry, periodic resource checks and window exit,
+including completion/error windows. Its errors latch and propagate uncatchably.
+A live duration revision is read by the same `SharedMontyTaskBudget` used by Rust;
+consumption is retained through resumes/settings changes. Authority stays in an
+Arc omitted from serialization; a controlled dump requires explicit trusted
+reattachment before any resumed opcode executes. Reattachment cannot erase an
+observed terminal failure. The separate dump ABI `0xBC01` rejects upstream and
+older continuation formats; it does not authenticate dumps or replace deployment
+reconciliation.
+
+`ControlYield` retains the actual VM stack, frames, locals and exception state
+before the next opcode. Resume restores that state without injecting a synthetic
+external return value. REPL control yields also preserve the Recipe's subsequent
+feeds. Synchronous native reentry cannot serialize its Rust stack, so it keeps
+yield requests pending until the native call has returned. Native operations that
+already poll resource checks can observe cancellation; this does not claim that
+all native operations are preemptible. Compilation, graph export, global async
+CPU attribution and allocator/heap containment still require their own evidence.
+
+Sequential screen validation passed seven actual-interpreter control regressions,
+21 existing compatibility/lifecycle/Recipe-state/failure/accounting regressions
+compiled against the extension, strict all-target Clippy for the isolated caller
+workspace, and strict library Clippy for the modified interpreter/types crates.
+Logs: `/private/tmp/brassclaw-monty-control.log`,
+`/private/tmp/brassclaw-monty-control-{lints,engine-lints,compatibility,all-lints}.log`.
+These checks establish the isolated VM primitive, not Phase 3a completion.
+Production dependencies, boot readiness and the legacy driver are unchanged.
+The original seven composition failures were not rerun: their UUID-only Thread
+lookup remains unchanged, and their latest full-suite evidence remains
+705 passed, 7 failed, 0 ignored. No Rust agent-loop/raw-model fallback, ID coercion
+or synthetic Thread was introduced.

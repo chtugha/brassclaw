@@ -1,5 +1,42 @@
 # 06 — Tools System (the Rust Executioner)
 
+## Binding Recipe architecture (v3)
+
+Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
+supersedes older examples below where they conflict; it specifies the target,
+not completed runtime or database functionality.
+
+- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
+  many Skills explain one Tool usage and have associated executable PythonCode;
+  many small PythonCode components provide reusable executable building blocks.
+  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
+  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
+- Each Recipe component step references exactly one stable component UUID.
+  PythonCode may internally compose smaller PythonCode components; this is not
+  a multi-component Recipe step. Keep all independent Tool calls in separate
+  execution steps; the existing direct dependent-chain exception still applies.
+- IBS/composition reads the newest activated, approved versions at task start
+  from one consistent catalogue snapshot and pins exact UUID/version/checksum
+  references in BuildInstruction, including nested dependencies. Recipes carry
+  no version numbers. Execution, child steps, waits and resumption retain that
+  selection; do not look up latest again during the task.
+- Approved versions are immutable. Changes create new versions; authored
+  versions pass Q1 and human Q2 before activation. Replacement neither deletes
+  nor invalidates originals used by running/suspended tasks. Current global
+  Tool policy is checked independently before every dispatch.
+- Inputs and results are typed data. Use the exact input-reference grammar and
+  step-local binding convention in recipe.md. Runtime values never become
+  Python source. Monty owns each task's intermediate results; unrelated tasks
+  and attempts stay isolated, including across child execution and waits.
+- Rust-channel ToolSkill binding executes nothing and grants no permission.
+  Orchestrator-channel PythonCode calls host.<tool>(...). Only an actual
+  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+
+Current code still has plain text substitution, fresh state in nested step
+execution and incomplete immutable version manifests/binding preparation. The
+new typed inputs interface and strict single-component validation require
+implementation and production-path acceptance; do not claim these are shipped.
+
 > **Subsystem:** Tools (class 0) — the **Rust Executioner**: the capability-bound handler layer
 > that runs **only** what the Orchestrator (Monty) calls. A Tool row is the durable, DB-stored
 > definition that links an orchestrator `host.*` / `builtin.*` reference back to a registered Rust
@@ -13,6 +50,18 @@
 > `saved_plan_to_v3.md` §0.16, Steps C.2/C.3/C.4.5.
 
 ## 1. Purpose — the Executioner (muscle)
+
+### Authoring and compiling a missing primitive
+
+A Tier-1 Recipe may generate a genuinely missing Rust Tool and use an existing
+build/compiler or shell Tool to compile/test it. The compiler invocation is
+itself an orchestrator PythonCode step over an approved primitive. A new
+ToolSkill is descriptor data and normally needs no Rust compilation. Build
+success does not establish Q1/Q2 approval, registration, loading or permission.
+Activate immutable approved versions through supported paths; do not insert
+them into a running task's pinned selection implicitly. See
+[recipe.md](../../recipe.md) for the authoring stages and typed-data rules.
+
 
 BrassClaw Reborn is split into an **Orchestrator** (Monty/Python — the brain; sole sequencing
 authority) and an **Executioner** (Rust — the muscle). A **Tool** (class 0) is the Executioner's
@@ -148,8 +197,9 @@ only gate, stop, or refuse. Everything else is Orchestrator-command-driven.
 
 - **§shell-guard:** any recipe whose rust channel references `builtin.shell` **must** have
   `llm_call_required: true` — open-ended shell is never Tier 0. Known-safe commands may be Tier 1
-  at high Wilson, never Tier 0 without explicit allowlisting. The shell ToolSkill body must include
-  an explicit approval-gate description.
+  at high Wilson, never Tier 0, even if allowlisted. The ToolSkill must describe
+  current instance-wide Tool policy, sandbox and technical enforcement; do not
+  add legacy per-invocation Tool-approval leases as v3 requirements.
 - **§spawn_subagent:** the ToolSkill must document that a child cannot exceed parent scope, budget
   inheritance, and the authorization model; any recipe using it is Tier 1
   (`llm_call_required: true`).

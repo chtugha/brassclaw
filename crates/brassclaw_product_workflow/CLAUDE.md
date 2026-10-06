@@ -1,5 +1,19 @@
 # brassclaw_product_workflow
 
+## Recipe architecture routing
+
+Follow [the binding Recipe authoring contract](../../recipe.md) and root AGENTS.md for
+v3 component work. Recipes instruct the orchestrator using reusable Tools,
+ToolSkills, Skills and small PythonCode components. One referenced component
+per Recipe step; internal PythonCode composition is allowed. IBS pins approved
+immutable versions in BuildInstruction at task start, including nested includes;
+Recipes reference stable UUIDs without versions. Preserve typed inputs/results
+and task state across steps and waits. Replacement versions do not alter active
+tasks; current global Tool policy still applies at every dispatch. Older scoped,
+source-substitution or fresh-step descriptions below are implementation/legacy
+notes, not permission to extend those paths as the v3 target. These requirements
+remain subject to the documented runtime implementation gaps.
+
 Product-facing workflow facade for BrassClaw Reborn (issue #3280).
 
 ## Purpose

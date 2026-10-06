@@ -1,0 +1,57 @@
+{
+  "scope": "Local synthetic evidence corpus, real SQLite, pinned Ornith tokenizer; live source retrieval and extraction probes; no server access or deployment changes",
+  "tests_passed": 9,
+  "seconds": 5.019,
+  "tokenizer_model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+  "tokenizer_revision": "cacab98cede368fca72a795946ec26545c58bb6d",
+  "compiler_sha256": "fdbdda197a4459e9d8400e9b7391a60931db293739eea3129172816b195f1d2e",
+  "large_prefix": {
+    "text_tokens": 98914,
+    "complete_cache_blocks": 93,
+    "cards_selected": 65,
+    "cards_total": 160
+  },
+  "default_security_coverage_test": "All seven new security sources required; omission of each rejects compilation; published manifest contains every required source",
+  "live_web_probes": {
+    "seed_pages_fetched": 8,
+    "all_extracted_units_validated": true
+  },
+  "external_cache_reuse_verified": false,
+  "task_accuracy_evaluated": false,
+  "historical_v8_validation": {
+    "scope": "Local synthetic evidence corpus, real SQLite, pinned Ornith tokenizer; no server access or deployment changes",
+    "tests_passed": 8,
+    "seconds": 5.934,
+    "tokenizer_model": "cyankiwi/Ornith-1.5-9B-AWQ-INT4",
+    "tokenizer_revision": "cacab98cede368fca72a795946ec26545c58bb6d",
+    "compiler_sha256": "cfc235e60ccd17de45839222884c78afb054122f97a6377d2ec4db7b822bd8d9",
+    "large_prefix": {
+      "text_tokens": 98839,
+      "rendered_probe_tokens": 99107,
+      "shared_prefix_tokens": 98845,
+      "complete_cache_blocks": 93,
+      "template_probe_count": 18,
+      "cards_selected": 65,
+      "cards_total": 160
+    },
+    "external_cache_reuse_verified": false,
+    "task_accuracy_evaluated": false
+  },
+  "live_git_probes": [
+    {
+      "source": "owasp-wstg",
+      "revision": "41825236dfaebda3f605f47963c5640bafd1355d",
+      "eligible_markdown_files": 165,
+      "sample_path": "document/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management/01-Network_Infrastructure_Configuration.md",
+      "validated_units": 9
+    },
+    {
+      "source": "uac-docs",
+      "revision": "113f929a414be49f94b6517967c201e878cb2ca7",
+      "eligible_markdown_files": 12,
+      "sample_path": "docs/index.md",
+      "validated_units": 73
+    }
+  ],
+  "live_probe_limitations": "Seed pages and one document per Git source checked; no complete corpus rebuild or task-accuracy evaluation"
+}

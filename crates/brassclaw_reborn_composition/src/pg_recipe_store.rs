@@ -281,6 +281,17 @@ fn decode_recipe_row(row: &tokio_postgres::Row) -> Result<PgRecipe, PgRecipeStor
 impl PgRecipeStore {
     /// Insert a new recipe.  Returns the assigned UUID.
     pub(crate) async fn insert(&self, row: NewPgRecipe) -> Result<Uuid, PgRecipeStoreError> {
+        self.insert_with_builtin_tier(row, false).await
+    }
+
+    /// Seed-only insertion: initialize the declared builtin tier atomically.
+    /// Existing rows are recovered by the seeder, never updated here. A caller
+    /// cannot graduate a non-system component through this flag.
+    pub(crate) async fn insert_with_builtin_tier(
+        &self,
+        row: NewPgRecipe,
+        tier0_builtin: bool,
+    ) -> Result<Uuid, PgRecipeStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
         let db_row = client
             .query_one(
@@ -290,9 +301,11 @@ impl PgRecipeStore {
                      prior_knowledge_content, override_prompt_creation,
                      consumer_tags, intent_examples, source,
                      step_descriptions, variants, dependency_registry,
-                     validates_class_code, validation_status)
+                     validates_class_code, validation_status, tier, wilson_lower)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-                         CASE WHEN $13 = 'system' THEN 'validated' ELSE 'pending' END)
+                         CASE WHEN $13 = 'system' THEN 'validated' ELSE 'pending' END,
+                         CASE WHEN $18 AND $13 = 'system' THEN 'mature' ELSE 'seedling' END,
+                         CASE WHEN $18 AND $13 = 'system' THEN 1.0 ELSE 0.0 END)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -312,6 +325,7 @@ impl PgRecipeStore {
                     &row.variants,
                     &row.dependency_registry,
                     &row.validates_class_code,
+                    &tier0_builtin,
                 ],
             )
             .await
