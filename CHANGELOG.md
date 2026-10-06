@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(prefix / Sempai coverage)* Align the no-self-activation topic check with the clarified prohibition on marking components validated; the current-source preservation regression passes.
 - *(prefix / regression)* Verify historical Sempai policy drift explicitly and exercise selection checks against temporary current-source fixtures, preserving the original reviewed policy and deployment evidence.
 - *(orchestrator / replies)* Accept canonical `host.post_reply(answer=...)`, retained legacy `text` and the existing positional form, each as exactly one nonempty string. Reject malformed or conflicting arguments before transcript/event mutation instead of silently discarding replies; add an actual Monty host-call regression.
 - *(runtime / reply handoff)* Retain the actual finalized reply reference/content in the admitted task host, enforce exact-reference and attempt fencing for content lookup, and preserve late success for supervisor reconciliation. The unactivated global source passes the resolved answer to history as data.

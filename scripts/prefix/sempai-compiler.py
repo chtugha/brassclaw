@@ -1249,7 +1249,7 @@ REQUIRED_TOPICS = {
     "q1-human-q2": (("brassclaw",), r"sempai-authoring-reference\.md$", r"human Q2"),
     "proposal-transport": (("brassclaw",), r"packet\.rs$", r"proposed_components"),
     "validation-queue": (("brassclaw",), r"14-validation-queue\.md$", r"Q1|Q2"),
-    "no-self-activation": (("brassclaw",), r"sempai-authoring-reference\.md$", r"does.*not write|does\s+not write"),
+    "no-self-activation": (("brassclaw",), r"sempai-authoring-reference\.md$", r"does\s+not\s+(?:write|mark validated)"),
 }
 
 
