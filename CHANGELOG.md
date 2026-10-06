@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(IBS / assembly)* Add ordered structural assembly and typed-program composition that preserve cross-channel selection order, pair ToolSkill bindings with PythonCode and reject invalid component cardinality, repeated selections and conflicting host aliases. Legacy production composition remains unchanged; full recursive contracts, association approvals and immutable manifests remain required.
+- *(Monty / startup candidates)* Add a deadline-bound root work-wait handshake and a test-gated PostgreSQL exclusive-instance owner with detached connection ownership, lock-loss checks and real database acceptance. Production ownership supervision and global boot integration remain pending.
+- *(prefix / Sempai)* Add an exact-source Sempai reference compiler, authoring reference, usage instructions, preservation regression and capacity receipt. Complete mandatory evidence exceeds the requested/model capacity; no generation was published or deployed.
+- *(planning / prefix)* Add the v3 prefix upgrade plan for compiler profiles, immutable source catalogues, generation/activation workflows and WebUI integration.
 - *(prefix / evidence)* Add citation-profile verification and live Home Assistant citation/configuration validation receipts, retaining rejected answers and static-check limitations.
 - *(Monty / upgrade candidate)* Add an isolated root/child VM hosting crate with typed inputs/results, retained locals, correlated continuations, boot work-wait readiness and explicit cancellation/shutdown. Fifteen real-interpreter host tests and strict host/caller lints pass; production driver integration and the seven existing composition failures remain outstanding.
 - *(components / documentation)* Add the ToolSkill authoring guide covering IBS binding descriptors, Skill/PythonCode associations, immutable version selection, approval evidence and the distinction between binding and Tool execution.
@@ -21,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(Monty / isolated control extension)* Upgrade to `1.0.0-brassclaw.control.3` and dump ABI `0xBC03`; account graph import/export in the cumulative control clock, preserve ownership through nested conversion and exclude native sleeps. Reject incompatible or orphaned active-preparation snapshots. Isolated tests/lints pass; production cutover and remaining resource gates are outstanding.
 - *(Monty / isolated control extension)* Upgrade to `1.0.0-brassclaw.control.2` with dump ABI `0xBC02`, retained REPL scanning/compilation time and live preparation-boundary checks. Old dumps are rejected and require reconciliation before upgrade. All 47 isolated interpreter checks and strict extension/host/caller lints pass; production adoption remains pending.
 - *(prefix / compiler run modes)* Route Defensive, tomedo and Home Assistant run modes through shared verified-prefix citation validation, with optional response receipts and compiler-entry-point regression coverage. Citation provenance and lexical overlap do not prove semantic entailment.
 - *(planning / components)* Add Phase 0a implementation and acceptance requirements for exact association approvals, complete immutable component/Tool artifacts, typed recursive bindings, actual ToolSkill preparation and durable retry/effect state. Integrate these contracts into runtime, policy, migration, WebUI and production cutover gates; this is plan work, not completed enforcement.
@@ -33,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(runtime / reply handoff)* Retain the actual finalized reply reference/content in the admitted task host, enforce exact-reference and attempt fencing for content lookup, and preserve late success for supervisor reconciliation. The unactivated global source passes the resolved answer to history as data.
+- *(Monty / allocator)* Reject overflowing finite worker allocation ceilings without disarming the previous limit; use checked allocation/refund counters. A real worker allocation regression verifies the physical OOM backstop without claiming shared logical heap containment.
 - *(Monty / task accounting)* Charge synchronous typed boundary conversions to the shared child-task budget, including rejected conversions, without charging nested execution or external waits. Preserve completed-return/stdout evidence on resource failure and restore REPL compiler tables after compiler-exit cancellation before any opcode executes.
 - *(prefix / database)* V088 corrects system prefix-tool capability identities to `builtin.*` while preserving component names and UUIDs; prefix schemas use the runtime's expected keys.
 - *(boot / integrity)* Verify loaded system prompt bodies together with their checksums before initialization; required component boot failures abort startup.

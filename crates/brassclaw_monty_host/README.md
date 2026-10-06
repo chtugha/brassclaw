@@ -54,8 +54,12 @@ double count interpreter time or charge parked tasks. Monty's internal
 REPL source scanning and compilation are now charged by the versioned interpreter
 extension's preparation clock, separate from both the VM execution windows and
 these adapter intervals. Compiler-exit cancellation preserves REPL metadata and
-prevents any opcode execution. One-shot artifact/root construction, snapshot and
-internal graph export/import still need accounting. Native
+prevents any opcode execution. Interpreter graph import, call argument export and
+returned-value export now use owned preparation guards. Nested conversion does
+not debit twice; VM reentry and native waits pause the preparation clock as
+appropriate. Resource failure releases imported VM references and prevents
+publishing an exported dispatch/result. One-shot artifact/root construction,
+snapshot and remaining cleanup still need accounting. Native
 operations without interpreter polling, full logical heap attribution/adaptive
 memory, allocator/process containment, durable continuation manifests, production
 boot/inbox/ports and WebUI effective-revision acknowledgement remain Phase 3a
@@ -74,6 +78,13 @@ ports at boot, unsupported dispatch and missing/duplicate waits fail closed.
 A busy boot can control-yield without falsely becoming Ready. This handshake is
 not production facade readiness, which also requires the documented migrations,
 instance lock, integrity, resource and ownership gates.
+
+`GlobalVm::start_ready` drives that handshake before returning a root and checks
+an explicit startup deadline, including time spent constructing it. Zero or
+unrepresentable deadlines are rejected. Compiler/native work is synchronous:
+process containment is still required to interrupt it within a bounded deadline.
+`work_waits` exposes only actual worker admission continuations, sorted by worker
+ID; generic port calls are excluded.
 
 Root host arguments use the same aggregate typed adapter as child requests.
 Each call has a generation-specific continuation key mapped to its exact Monty
@@ -102,7 +113,13 @@ Shutdown/fatal cleanup does not claim external-operation quiescence.
 
 The root has its own cooperative execution-slice control and never applies one
 600-second task clock to the lifetime/shared coroutine clock of the global VM.
-Task-owned child clocks remain separate. Root CPU attribution, startup deadline
+Task-owned child clocks remain separate. Root CPU attribution, process startup
 supervision, allocator/heap containment, durable admission and port registry,
 complete pinned component manifests, product boot/shutdown wiring and production
 acceptance are still required. The application still uses the legacy driver.
+
+The candidate class-10 source now resolves a Recipe's finalized reply reference
+through the admitted task host before handing its content to the history Recipe.
+The production service must bind `resolve_reply` to the same exact attempt's
+`MontyTaskHost::published_reply_content`; accepting a `msg:` prefix alone is
+insufficient. No reply is posted again by the root.

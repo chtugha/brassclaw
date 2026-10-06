@@ -4,7 +4,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use monty::{MontyRun, RunProgress};
@@ -107,6 +107,49 @@ pub struct GlobalVm {
     stdout: String,
 }
 impl GlobalVm {
+    /// Perform the real work-wait handshake before returning a usable root.
+    /// Startup control yields are resumed until all configured workers await
+    /// work. The deadline covers compilation and execution, but synchronous
+    /// compiler/native work still requires process containment for a bounded
+    /// interruption guarantee; this method does not claim to preempt that work.
+    pub fn start_ready(
+        source: Arc<str>,
+        checksum: [u8; 32],
+        aliases: BTreeSet<String>,
+        bounds: GlobalBounds,
+        startup_timeout: Duration,
+    ) -> Result<Self, VmError> {
+        let started = Instant::now();
+        let deadline = started
+            .checked_add(startup_timeout)
+            .filter(|_| !startup_timeout.is_zero())
+            .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        let (mut vm, mut boundary) = Self::start(source, checksum, aliases, bounds)?;
+        loop {
+            // Check before publishing Ready, including if construction itself
+            // consumed the deadline. A late handshake cannot admit work.
+            if Instant::now() >= deadline {
+                vm.abandon();
+                let mut error = VmError::kind(VmFailure::StartupDeadline);
+                error.stdout = vm.take_stdout();
+                return Err(error);
+            }
+            boundary = match boundary {
+                GlobalBoundary::HostCall(call) if call.name == "await_next_task" => {
+                    vm.defer(call.continuation)?
+                }
+                GlobalBoundary::ControlYield(key) => vm.resume_control(key)?,
+                GlobalBoundary::Waiting(_) if vm.lifecycle == Lifecycle::Ready => return Ok(vm),
+                _ => {
+                    vm.abandon();
+                    let mut error = VmError::kind(VmFailure::WrongBoundary);
+                    error.stdout = vm.take_stdout();
+                    return Err(error);
+                }
+            };
+        }
+    }
+
     /// The caller obtains source/checksum from verified boot storage. Syntax and
     /// checksum checking here cannot establish bootstrap provenance or approval.
     pub fn start(
@@ -180,6 +223,21 @@ impl GlobalVm {
     /// Retained until the owner reconciles them, even after fatal VM failure.
     pub fn outstanding(&self) -> Vec<ContinuationKey> {
         self.pending.keys().copied().collect()
+    }
+    /// Current worker admission slots, never generic port-call continuations.
+    /// Sorting by worker ID gives the owner a stable transport inventory without
+    /// interpreting the private VM generation/ordinal embedded in each key.
+    pub fn work_waits(&self) -> Vec<(u32, ContinuationKey)> {
+        let mut waits: Vec<_> = self
+            .pending
+            .iter()
+            .filter_map(|(key, pending)| match pending.kind {
+                CallKind::WorkWait(worker) => Some((worker, *key)),
+                CallKind::Port => None,
+            })
+            .collect();
+        waits.sort_unstable_by_key(|(worker, _)| *worker);
+        waits
     }
     pub fn take_stdout(&mut self) -> String {
         std::mem::take(&mut self.stdout)

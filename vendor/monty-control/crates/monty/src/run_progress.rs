@@ -1070,6 +1070,27 @@ impl ConvertedExit {
 /// All `Value` → `MontyObject` and `StringId` → `String` conversions happen here,
 /// while the VM (and its heap/interns) are still accessible.
 pub(crate) fn convert_frame_exit(result: RunResult<FrameExit>, vm: &mut VM<'_>) -> ConvertedExit {
+    let window = match vm.heap.heap.tracker.boundary_window() {
+        Ok(window) => window,
+        Err(error) => {
+            if let Ok(exit) = result {
+                exit.drop_with(vm.heap);
+            }
+            return ConvertedExit::Error(error.into());
+        }
+    };
+    let converted = convert_frame_exit_inner(result, vm);
+    let check = match window {
+        Some(window) => window.finish(&vm.heap.heap.tracker),
+        None => vm.heap.heap.tracker.check_time(),
+    };
+    match check {
+        Ok(()) => converted,
+        Err(error) => ConvertedExit::Error(error.into()),
+    }
+}
+
+fn convert_frame_exit_inner(result: RunResult<FrameExit>, vm: &mut VM<'_>) -> ConvertedExit {
     // An effect still armed on arrival belongs to an OS call that was answered
     // without consuming it — an eager `resume_with_resolved_futures` never
     // takes it. It can never apply to whatever suspends next, so release it
@@ -1082,7 +1103,10 @@ pub(crate) fn convert_frame_exit(result: RunResult<FrameExit>, vm: &mut VM<'_>) 
     // position is the suspending expression for every exit but `ResolveFutures`.
     match result {
         Ok(FrameExit::ControlYield) => ConvertedExit::ControlYield,
-        Ok(FrameExit::Return(value)) => ConvertedExit::Complete(MontyObject::export(value, vm)),
+        Ok(FrameExit::Return(value)) => match MontyObject::export_checked(value, vm) {
+            Ok(object) => ConvertedExit::Complete(object),
+            Err(error) => ConvertedExit::Error(error),
+        },
         Ok(FrameExit::ExternalCall {
             function_name,
             args,

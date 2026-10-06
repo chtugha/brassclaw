@@ -6,6 +6,7 @@
 //! The instance service must retain this adapter across waits and fence the
 //! attempt before dropping it; ownership alone is not a cancellation handshake.
 
+use parking_lot::Mutex;
 use std::sync::Arc;
 
 use crate::monty_attempt_fence::{MontyHostCall, MontyTaskFence};
@@ -28,6 +29,14 @@ pub struct MontyTaskHost {
     attempt: MontyTaskAttempt,
     host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
     fence: MontyTaskFence,
+    published_reply: Mutex<Option<PublishedReply>>,
+}
+
+// Keep only the current finalized reply; durable transcript storage remains
+// authoritative after restart. Never format this private content with Debug.
+struct PublishedReply {
+    reference: LoopMessageRef,
+    content: String,
 }
 
 impl MontyTaskHost {
@@ -38,6 +47,7 @@ impl MontyTaskHost {
             attempt,
             host,
             fence: MontyTaskFence::new(attempt),
+            published_reply: Mutex::new(None),
         }
     }
 
@@ -160,7 +170,49 @@ impl MontyTaskHost {
         request: FinalizeAssistantMessage,
     ) -> Result<LoopMessageRef, AgentLoopHostError> {
         let call = self.begin_call()?;
+        let content = request.reply.content.clone();
         let result = self.host.finalize_assistant_message(request).await;
+        if let Ok(reference) = &result {
+            // Retain actual success even if the attempt was fenced while the
+            // transcript port awaited persistence. A late success is evidence
+            // for reconciliation, never permission to resume Python.
+            *self.published_reply.lock() = Some(PublishedReply {
+                reference: reference.clone(),
+                content,
+            });
+        }
         self.finish_call(call, result)
+    }
+
+    /// Task-local reply lookup for Monty's history/completion handoff. Only a
+    /// reference actually issued by this task host qualifies. The local fence
+    /// is checked as well as durable cancellation; claims are never Python data.
+    pub fn published_reply_content(
+        &self,
+        reference: &LoopMessageRef,
+    ) -> Result<String, AgentLoopHostError> {
+        let call = self.begin_call()?;
+        let result = self
+            .published_reply
+            .lock()
+            .as_ref()
+            .filter(|reply| &reply.reference == reference)
+            .map(|reply| reply.content.clone())
+            .ok_or_else(|| {
+                AgentLoopHostError::new(
+                    AgentLoopHostErrorKind::ScopeMismatch,
+                    "reply reference was not finalized by this Monty task",
+                )
+            });
+        self.finish_call(call, result)
+    }
+
+    /// Trusted supervisor evidence, including success received after fencing.
+    /// This does not validate an active lease or authorize task continuation.
+    pub fn finalized_reply_ref(&self) -> Option<LoopMessageRef> {
+        self.published_reply
+            .lock()
+            .as_ref()
+            .map(|reply| reply.reference.clone())
     }
 }

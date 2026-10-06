@@ -366,9 +366,30 @@ async fn monty_task_host_preserves_opaque_identity_prompt_authority_and_reply_sc
     let ParentLoopOutput::AssistantReply(reply) = response.output else {
         panic!("expected the gateway's assistant reply");
     };
-    task.finalize_assistant_message(FinalizeAssistantMessage { reply })
+    let reply_ref = task
+        .finalize_assistant_message(FinalizeAssistantMessage { reply })
         .await
         .unwrap();
+    assert_eq!(task.finalized_reply_ref(), Some(reply_ref.clone()));
+    assert_eq!(
+        task.published_reply_content(&reply_ref).unwrap(),
+        "model says hi"
+    );
+    let foreign = LoopMessageRef::new("msg:another-task".to_string()).unwrap();
+    assert_eq!(
+        task.published_reply_content(&foreign).unwrap_err().kind,
+        AgentLoopHostErrorKind::ScopeMismatch
+    );
+    task.fence_handle()
+        .fence_and_wait(task.attempt(), std::time::Duration::ZERO)
+        .await
+        .unwrap();
+    assert_eq!(
+        task.published_reply_content(&reply_ref).unwrap_err().kind,
+        AgentLoopHostErrorKind::Cancelled
+    );
+    // Fencing prevents task uptake but retains the real completed publication.
+    assert_eq!(task.finalized_reply_ref(), Some(reply_ref));
     let history = fixture
         .thread_service
         .list_thread_history(ThreadHistoryRequest {

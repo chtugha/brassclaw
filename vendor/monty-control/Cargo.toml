@@ -5,7 +5,7 @@ default-members = ["crates/monty"]
 
 [workspace.package]
 edition = "2024"
-version = "1.0.0-brassclaw.control.2"
+version = "1.0.0-brassclaw.control.3"
 rust-version = "1.96"
 license = "MIT"
 authors = ["Samuel Colvin <samuel@pydantic.dev>"]
@@ -41,10 +41,10 @@ strip = false
 # rejects path-only dependencies). These versions MUST be kept in lockstep with
 # `workspace.package.version` above and bumped together on each release — see
 # RELEASING.md.
-monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.2" }
-monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.2" }
-monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.2" }
-monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.2" }
+monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.3" }
+monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.3" }
+monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.3" }
+monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.3" }
 # ruff, ty and related crates
 ruff_python_parser = "0.0.14"
 ruff_python_stdlib = "0.0.14"

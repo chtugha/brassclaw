@@ -31,7 +31,7 @@
 +default-members = ["crates/monty"]
 @@ -27 +8 @@
 -version = "1.0.0"
-+version = "1.0.0-brassclaw.control.2"
++version = "1.0.0-brassclaw.control.3"
 @@ -63,9 +44,4 @@
 -monty = { path = "crates/monty", version = "1.0.0" }
 -monty-types = { path = "crates/monty-types", version = "1.0.0" }
@@ -42,15 +42,51 @@
 -monty-pool = { path = "crates/monty-pool", version = "1.0.0" }
 -monty-type-checking = { path = "crates/monty-type-checking", version = "1.0.0" }
 -monty-typeshed = { path = "crates/monty-typeshed", version = "1.0.0" }
-+monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.2" }
-+monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.2" }
-+monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.2" }
-+monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.2" }
++monty = { path = "crates/monty", version = "1.0.0-brassclaw.control.3" }
++monty-types = { path = "crates/monty-types", version = "1.0.0-brassclaw.control.3" }
++monty-alloc = { path = "crates/monty-alloc", version = "1.0.0-brassclaw.control.3" }
++monty-macros = { path = "crates/monty-macros", version = "1.0.0-brassclaw.control.3" }
 --- a/crates/monty-alloc/Cargo.toml
 +++ b/crates/monty-alloc/Cargo.toml
 @@ -1,0 +2,2 @@
 +workspace = "../.."
 +publish = false
+--- a/crates/monty-alloc/src/lib.rs
++++ b/crates/monty-alloc/src/lib.rs
+@@ -27,2 +27,2 @@
+-/// On a 32-bit target (wasm) a budget near 4 GiB saturates the arithmetic and
+-/// leaves the worker uncapped — there is no cap to express.
++/// An unrepresentable finite ceiling is rejected; it must never become an
++/// unlimited worker. Invalid settings leave the previously armed ceiling intact.
+@@ -33,0 +34,4 @@
++    let candidate = BASELINE_MEMORY.load(Ordering::Relaxed).min(live);
++    if memory_budget.is_some_and(|bytes| candidate.checked_add(bytes).is_none()) {
++        return Err("allocator memory budget is out of range");
++    }
+@@ -37 +41,6 @@
+-    let hard_limit = memory_budget.map_or(usize::MAX, |bytes| baseline.saturating_add(bytes));
++    let hard_limit = match memory_budget {
++        Some(bytes) => baseline
++            .checked_add(bytes)
++            .ok_or("allocator memory budget is out of range")?,
++        None => usize::MAX,
++    };
+@@ -105 +114,6 @@
+-    let live = LIVE_MEMORY.fetch_add(size, Ordering::Relaxed).saturating_add(size);
++    let previous = LIVE_MEMORY
++        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
++        .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocator accounting overflow")));
++    let Some(live) = previous.checked_add(size) else {
++        out_of_memory(format_args!("monty worker: allocator accounting overflow"));
++    };
+@@ -117 +131,6 @@
+-    LIVE_MEMORY.fetch_sub(size, Ordering::Relaxed);
++    if LIVE_MEMORY
++        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
++        .is_err()
++    {
++        out_of_memory(format_args!("monty worker: allocator accounting underflow"));
++    }
 --- a/crates/monty-macros/Cargo.toml
 +++ b/crates/monty-macros/Cargo.toml
 @@ -1,0 +2,2 @@
@@ -74,7 +110,7 @@
 @@ -14 +14,4 @@
 -    sync::atomic::{AtomicUsize, Ordering},
 +    sync::{
-+        Arc,
++        Arc, Mutex,
 +        atomic::{AtomicUsize, Ordering},
 +    },
 @@ -92,0 +96,2 @@
@@ -90,42 +126,78 @@
 +    control_required: bool,
 +    control_error: Cell<Option<ExecutionControlError>>,
 +    control_yield: Cell<bool>,
-@@ -283,0 +297,5 @@
+@@ -283,0 +297,3 @@
 +    /// Synchronous interpreter preparation, accounted independently of VM
 +    /// feed/turn limits but included in the trusted task-control clock.
-+    preparation_time: Cell<Duration>,
++    preparation: Arc<Mutex<PreparationAccount>>,
+@@ -316,0 +333,94 @@
++#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
++struct PreparationAccount {
++    total: Duration,
++    active: bool,
 +    #[serde(skip)]
-+    preparing: Cell<bool>,
-@@ -316,0 +335,56 @@
-+/// A trusted synchronous preparation segment. It must not wrap VM execution,
-+/// nested preparation, external I/O or child execution.
-+pub struct PreparationWindow<'a> {
-+    tracker: &'a ResourceTracker,
++    live_guard: bool,
++    #[serde(skip)]
 +    started: Option<Instant>,
++    terminal: Option<ExecutionControlError>,
 +}
-+impl PreparationWindow<'_> {
-+    /// Preserve the segment before checking cancellation/the current task budget.
-+    pub fn finish(mut self) -> Result<(), ResourceError> {
-+        self.record();
-+        self.tracker.poll_execution_control()
++impl PreparationAccount {
++    fn elapsed(&self) -> Result<Duration, ExecutionControlError> {
++        if let Some(error) = self.terminal {
++            return Err(error);
++        }
++        if self.active && !self.live_guard {
++            return Err(ExecutionControlError::AccountingUnavailable);
++        }
++        self.total
++            .checked_add(self.started.map_or(Duration::ZERO, |start| start.elapsed()))
++            .ok_or(ExecutionControlError::AccountingUnavailable)
 +    }
-+    fn record(&mut self) {
++    fn pause(&mut self) {
 +        if let Some(started) = self.started.take() {
-+            match self.tracker.preparation_time.get().checked_add(started.elapsed()) {
-+                Some(total) => self.tracker.preparation_time.set(total),
-+                None => self
-+                    .tracker
-+                    .control_error
-+                    .set(Some(ExecutionControlError::AccountingUnavailable)),
++            match self.total.checked_add(started.elapsed()) {
++                Some(total) => self.total = total,
++                None => self.terminal = Some(ExecutionControlError::AccountingUnavailable),
 +            }
-+            self.tracker.preparing.set(false);
 +        }
 +    }
 +}
-+impl Drop for PreparationWindow<'_> {
++
++/// Owned synchronous accounting segment, allowing the VM to mutate its heap.
++/// It must not wrap external I/O or child execution. Nested graph conversion
++/// uses its existing preparation/VM window instead of charging the work twice.
++pub struct PreparationWindow {
++    account: Arc<Mutex<PreparationAccount>>,
++    recorded: bool,
++}
++impl PreparationWindow {
++    /// Charge the segment before polling the exact owner, without holding a lock
++    /// across a control callback. A foreign tracker cannot consume this window.
++    pub fn finish(mut self, tracker: &ResourceTracker) -> Result<(), ResourceError> {
++        self.record();
++        if !Arc::ptr_eq(&self.account, &tracker.preparation) {
++            if let Ok(mut account) = self.account.lock() {
++                account.terminal = Some(ExecutionControlError::AccountingUnavailable);
++            }
++            return Err(ResourceError::Control(ExecutionControlError::AccountingUnavailable));
++        }
++        tracker.poll_execution_control()
++    }
++    fn record(&mut self) {
++        if !self.recorded {
++            self.recorded = true;
++            // A poisoned account remains unusable: every subsequent read/poll
++            // returns AccountingUnavailable. Destructors invoke no host callback.
++            if let Ok(mut account) = self.account.lock() {
++                account.pause();
++                account.active = false;
++                account.live_guard = false;
++            }
++        }
++    }
++}
++impl Drop for PreparationWindow {
 +    fn drop(&mut self) {
-+        // Charge unwinding but never invoke host callbacks from a destructor.
-+        // An explicit finish or the next checkpoint observes any latched error.
 +        self.record();
 +    }
 +}
@@ -153,7 +225,7 @@
 +    AccountingUnavailable,
 +}
 +
-@@ -317,0 +392,68 @@
+@@ -317,0 +428,124 @@
 +    /// Attach trusted control without resetting consumption or terminal failure.
 +    /// Reattachment after loading a controlled dump is mandatory. It does not
 +    /// clear a failure already observed while control was unavailable.
@@ -166,6 +238,10 @@
 +        if let Some(error) = self.control_error.get() {
 +            return Err(ResourceError::Control(error));
 +        }
++        let preparation = self.preparation_clock().map_err(|error| {
++            self.control_error.set(Some(error));
++            ResourceError::Control(error)
++        })?;
 +        if !self.control_required {
 +            return Ok(());
 +        }
@@ -176,7 +252,7 @@
 +            .and_then(|control| {
 +                let elapsed = self
 +                    .elapsed()
-+                    .checked_add(self.preparation_time.get())
++                    .checked_add(preparation)
 +                    .ok_or(ExecutionControlError::AccountingUnavailable)?;
 +                control.checkpoint(elapsed)
 +            });
@@ -202,43 +278,102 @@
 +    /// Begin synchronous interpreter preparation, never execution or a host wait.
 +    /// The guard charges success, error and unwinding without resetting usage.
 +    /// Finish explicitly before publishing any result to observe live control.
-+    pub fn preparation_window(&self) -> Result<PreparationWindow<'_>, ResourceError> {
-+        if self.running_since.get().is_some() || self.preparing.get() {
++    pub fn preparation_window(&self) -> Result<PreparationWindow, ResourceError> {
++        if self.running_since.get().is_some() {
 +            self.control_error
 +                .set(Some(ExecutionControlError::AccountingUnavailable));
 +            return Err(ResourceError::Control(ExecutionControlError::AccountingUnavailable));
 +        }
 +        self.poll_execution_control()?;
-+        self.preparing.set(true);
++        let mut account = self
++            .preparation
++            .lock()
++            .map_err(|_| ResourceError::Control(ExecutionControlError::AccountingUnavailable))?;
++        if account.active {
++            account.terminal = Some(ExecutionControlError::AccountingUnavailable);
++            return Err(ResourceError::Control(ExecutionControlError::AccountingUnavailable));
++        }
++        account.active = true;
++        account.live_guard = true;
++        account.started = Some(Instant::now());
 +        Ok(PreparationWindow {
-+            tracker: self,
-+            started: Some(Instant::now()),
++            account: self.preparation.clone(),
++            recorded: false,
 +        })
 +    }
 +
-+    /// Preparation telemetry excludes VM execution and remains cumulative over feeds.
-+    #[must_use]
-+    pub fn preparation_elapsed(&self) -> Duration {
-+        self.preparation_time.get()
++    /// Graph conversion already inside an active VM/preparation segment is
++    /// checked without opening another clock. No double debit on native reentry.
++    pub fn boundary_window(&self) -> Result<Option<PreparationWindow>, ResourceError> {
++        let active = self
++            .preparation
++            .lock()
++            .map_err(|_| ResourceError::Control(ExecutionControlError::AccountingUnavailable))?
++            .active;
++        if self.running_since.get().is_some() || active {
++            self.poll_execution_control()?;
++            Ok(None)
++        } else {
++            self.preparation_window().map(Some)
++        }
 +    }
 +
-@@ -329,0 +472,4 @@
++    fn preparation_clock(&self) -> Result<Duration, ExecutionControlError> {
++        let account = self
++            .preparation
++            .lock()
++            .map_err(|_| ExecutionControlError::AccountingUnavailable)?;
++        account.elapsed()
++    }
++
++    /// Cumulative preparation telemetry, including the current active segment.
++    /// Poison/overflow are explicit errors rather than fabricated zero usage.
++    pub fn preparation_elapsed(&self) -> Result<Duration, ResourceError> {
++        self.preparation_clock().map_err(ResourceError::Control)
++    }
++
++    fn pause_preparation(&self) {
++        match self.preparation.lock() {
++            Ok(mut account) => account.pause(),
++            Err(_) => self
++                .control_error
++                .set(Some(ExecutionControlError::AccountingUnavailable)),
++        }
++    }
++    fn resume_preparation(&self) {
++        match self.preparation.lock() {
++            Ok(mut account) if account.active && account.started.is_none() => account.started = Some(Instant::now()),
++            Ok(_) => {}
++            Err(_) => self
++                .control_error
++                .set(Some(ExecutionControlError::AccountingUnavailable)),
++        }
++    }
++
+@@ -329,0 +564,4 @@
 +            execution_control: None,
 +            control_required: false,
 +            control_error: Cell::new(None),
 +            control_yield: Cell::new(false),
-@@ -330,0 +477,2 @@
-+            preparation_time: Cell::new(Duration::ZERO),
-+            preparing: Cell::new(false),
-@@ -429 +577 @@
+@@ -330,0 +569 @@
++            preparation: Arc::new(Mutex::new(PreparationAccount::default())),
+@@ -429 +668 @@
 -        self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
 +        self.control_required || self.limits.max_feed_duration.is_some() || self.limits.max_turn_duration.is_some()
-@@ -492,0 +641 @@
+@@ -492,0 +732 @@
 +        self.poll_execution_control()?;
-@@ -675,0 +825,3 @@
+@@ -660,0 +901 @@
++        self.pause_preparation();
+@@ -675,0 +917,4 @@
++            self.resume_preparation();
 +            if let Err(ResourceError::Control(error)) = self.poll_execution_control() {
 +                self.control_error.set(Some(error));
 +            }
+@@ -703,0 +949 @@
++        self.pause_preparation();
+@@ -706,0 +953,2 @@
++        } else {
++            self.resume_preparation();
 --- a/crates/monty/Cargo.toml
 +++ b/crates/monty/Cargo.toml
 @@ -1,0 +2,2 @@
@@ -282,7 +417,7 @@
 -pub const DUMP_VERSION: u16 = 13;
 +// BrassClaw control ABI: never accept upstream dumps or send these dumps to
 +// upstream binaries. Deployment must reconcile old continuations first.
-+pub const DUMP_VERSION: u16 = 0xBC02;
++pub const DUMP_VERSION: u16 = 0xBC03;
 --- a/crates/monty/src/lib.rs
 +++ b/crates/monty/src/lib.rs
 @@ -52,2 +52,2 @@
@@ -293,6 +428,114 @@
 @@ -56 +56 @@
 -    run_progress::{FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
 +    run_progress::{ControlYield, FunctionCall, NameLookup, OsCall, ResolveFutures, RunProgress},
+--- a/crates/monty/src/object_bridge.rs
++++ b/crates/monty/src/object_bridge.rs
+@@ -50,0 +51,3 @@
++    /// Export at a host boundary with terminal resource enforcement.
++    fn export_checked(value: Value, vm: &mut VM<'_>) -> Result<Self, RunError>;
++
+@@ -64,0 +68,16 @@
++    fn export_checked(value: Value, vm: &mut VM<'_>) -> Result<Self, RunError> {
++        let window = match vm.heap.heap.tracker.boundary_window() {
++            Ok(window) => window,
++            Err(error) => {
++                value.drop_with(vm);
++                return Err(error.into());
++            }
++        };
++        let object = Self::export(value, vm);
++        match window {
++            Some(window) => window.finish(&vm.heap.heap.tracker)?,
++            None => vm.heap.heap.tracker.check_time()?,
++        }
++        Ok(object)
++    }
++
+@@ -66,6 +85,19 @@
+-        let (graph, root) = unstable::into_graph_parts(self);
+-        let mut values = graph.to_values(vm)?;
+-        // `None` is an immediate, so swapping it in leaves nothing to release.
+-        let root = mem::replace(&mut values[root.index()], Value::None);
+-        values.drop_with(vm);
+-        Ok(root)
++        let window = vm.heap.heap.tracker.boundary_window()?;
++        let result = (|| {
++            let (graph, root) = unstable::into_graph_parts(self);
++            let mut values = graph.to_values(vm)?;
++            let root = mem::replace(&mut values[root.index()], Value::None);
++            values.drop_with(vm);
++            Ok(root)
++        })();
++        let check = match window {
++            Some(window) => window.finish(&vm.heap.heap.tracker),
++            None => vm.heap.heap.tracker.check_time(),
++        };
++        if let Err(error) = check {
++            if let Ok(value) = result {
++                value.drop_with(vm);
++            }
++            return Err(error.into());
++        }
++        result
+@@ -86,21 +118,37 @@
+-        let nodes = self.into_nodes();
+-        // A host-defined class node imports as a type object; a `ClassInstance`
+-        // of it needs the node's data to build a `HostClass`, so keep it by id.
+-        let host_classes: AHashMap<NodeId, Box<ClassTypeNode>> = nodes
+-            .iter()
+-            .enumerate()
+-            .filter_map(|(index, node)| match node {
+-                MontyNode::ClassType(class) if class.host_defined => {
+-                    Some((NodeId(u32::try_from(index).expect("arena ids fit u32")), class.clone()))
+-                }
+-                _ => None,
+-            })
+-            .collect();
+-        let mut guard = DropGuard::new(Vec::with_capacity(nodes.len()), vm);
+-        let (values, vm) = guard.as_parts_mut();
+-        for node in nodes {
+-            let value = import_node(node, values, &host_classes, vm)?;
+-            values.push(value);
+-        }
+-        Ok(guard.into_inner())
+-    }
++        let window = vm.heap.heap.tracker.boundary_window()?;
++        let result = import_graph_values(self, vm);
++        let check = match window {
++            Some(window) => window.finish(&vm.heap.heap.tracker),
++            None => vm.heap.heap.tracker.check_time(),
++        };
++        if let Err(error) = check {
++            if let Ok(values) = result {
++                values.drop_with(vm);
++            }
++            return Err(error.into());
++        }
++        result
++    }
++}
++
++fn import_graph_values(graph: MontyGraph, vm: &mut VM<'_>) -> Result<Vec<Value>, InvalidInputError> {
++    let nodes = graph.into_nodes();
++    // A host-defined class node imports as a type object; a `ClassInstance`
++    // of it needs the node's data to build a `HostClass`, so keep it by id.
++    let host_classes: AHashMap<NodeId, Box<ClassTypeNode>> = nodes
++        .iter()
++        .enumerate()
++        .filter_map(|(index, node)| match node {
++            MontyNode::ClassType(class) if class.host_defined => {
++                Some((NodeId(u32::try_from(index).expect("arena ids fit u32")), class.clone()))
++            }
++            _ => None,
++        })
++        .collect();
++    let mut guard = DropGuard::new(Vec::with_capacity(nodes.len()), vm);
++    let (values, vm) = guard.as_parts_mut();
++    for node in nodes {
++        let value = import_node(node, values, &host_classes, vm)?;
++        values.push(value);
++    }
++    Ok(guard.into_inner())
 --- a/crates/monty/src/repl.rs
 +++ b/crates/monty/src/repl.rs
 @@ -17 +17 @@
@@ -311,7 +554,7 @@
 +    };
 +    MontyException::new(exc_type, Some(error.to_string()))
 +}
-@@ -144 +156,8 @@
+@@ -144 +156,10 @@
 -        source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold)?;
 +        let window = self
 +            .heap
@@ -319,13 +562,15 @@
 +            .preparation_window()
 +            .map_err(|error| preparation_exception(&error))?;
 +        let result = source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold);
-+        window.finish().map_err(|error| preparation_exception(&error))?;
++        window
++            .finish(&self.heap.tracker)
++            .map_err(|error| preparation_exception(&error))?;
 +        result?;
-@@ -245,3 +263,0 @@
+@@ -245,3 +265,0 @@
 -        let (input_values, names) = unstable::into_named_values_parts(inputs.into());
 -        let (input_names, input_ids): (Vec<_>, Vec<_>) = names.into_iter().unzip();
 -
-@@ -249,7 +265,32 @@
+@@ -249,7 +267,32 @@
 -        // Preserve this snippet's source (see `feed_run` for rationale).
 -        let code: Arc<str> = Arc::from(code);
 -        this.sources.insert(input_script_name.clone(), Arc::clone(&code));
@@ -355,7 +600,7 @@
 +                this.options,
 +                session,
 +            );
-+            (compiled, window.finish(), input_values, input_ids)
++            (compiled, window.finish(&this.heap.tracker), input_values, input_ids)
 +        });
 +        let (compiled, preparation, input_values, input_ids) = match preparation {
 +            Ok(prepared) => prepared,
@@ -365,7 +610,7 @@
 +                    error: preparation_exception(&error),
 +                }));
 +            }
-@@ -257,9 +298,13 @@
+@@ -257,9 +300,13 @@
 -        let mut executor = match Executor::new_repl_snippet(
 -            code,
 -            &input_script_name,
@@ -388,7 +633,7 @@
 +            }));
 +        }
 +        let mut executor = match compiled {
-@@ -335,2 +380,8 @@
+@@ -335,2 +382,8 @@
 -        source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold)?;
 -
 +        self.check_source(code)?;
@@ -399,15 +644,15 @@
 +            .tracker
 +            .preparation_window()
 +            .map_err(|error| preparation_exception(&error))?;
-@@ -340 +390,0 @@
+@@ -340 +392,0 @@
 -        let input_script_name = self.next_input_script_name();
-@@ -352 +402 @@
+@@ -352 +404 @@
 -        let mut executor = Executor::new_repl_snippet(
 +        let compiled = Executor::new_repl_snippet(
-@@ -360 +410,9 @@
+@@ -360 +412,9 @@
 -        )?;
 +        );
-+        if let Err(error) = window.finish() {
++        if let Err(error) = window.finish(&self.heap.tracker) {
 +            if let Ok(executor) = compiled {
 +                self.ensure_globals_size(executor.namespace_size());
 +                self.commit_executor(executor);
@@ -415,25 +660,29 @@
 +            return Err(preparation_exception(&error));
 +        }
 +        let mut executor = compiled?;
-@@ -487 +545,3 @@
+@@ -487 +547,7 @@
 -                                Ok(FrameExit::Return(value)) => break Ok(MontyObject::export(value, vm)),
 +                                Ok(FrameExit::Return(value)) => {
-+                                    break Ok(MontyObject::export(value, vm));
++                                    break MontyObject::export_checked(value, vm).map_err(|error| {
++                                        error.into_python_exception(vm.interns, |fname| {
++                                            self.sources.get(fname).map(|source| &**source)
++                                        })
++                                    });
 +                                }
-@@ -623,0 +684,2 @@
+@@ -623,0 +690,2 @@
 +    /// Trusted control checkpoint without an external return value.
 +    ControlYield(ReplControlYield),
-@@ -705,0 +768 @@
+@@ -705,0 +774 @@
 +            Self::ControlYield(state) => state.snapshot.into_repl(),
-@@ -720,0 +784 @@
+@@ -720,0 +790 @@
 +            Self::ControlYield(state) => state.snapshot.repl.tracker(),
-@@ -787 +851 @@
+@@ -787 +857 @@
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -862 +926 @@
+@@ -862 +932 @@
 -            result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return),
 +            Some(result.map_or_else(ExtFunctionResult::Error, ExtFunctionResult::Return)),
-@@ -1231,0 +1296,21 @@
+@@ -1231,0 +1302,21 @@
 +/// A snapshot-safe REPL control checkpoint. Trusted control remains attached
 +/// in memory; after dump/load the host must reattach it before resumption.
 +#[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -455,19 +704,19 @@
 +    }
 +}
 +
-@@ -1283 +1368 @@
+@@ -1283 +1374 @@
 -        self.run_inner(result.into(), None, print)
 +        self.run_inner(Some(result.into()), None, print)
-@@ -1290 +1375 @@
+@@ -1290 +1381 @@
 -        ext_result: ExtFunctionResult,
 +        ext_result: Option<ExtFunctionResult>,
-@@ -1313 +1398,4 @@
+@@ -1313 +1404,4 @@
 -                let vm_result = resume_with_result(&mut vm, ext_result, eager_call_id);
 +                let vm_result = match ext_result {
 +                    Some(result) => resume_with_result(&mut vm, result, eager_call_id),
 +                    None => vm.run_external(),
 +                };
-@@ -1392,0 +1481,3 @@
+@@ -1392,0 +1487,3 @@
 +        ConvertedExit::ControlYield => Ok(ReplProgress::ControlYield(ReplControlYield {
 +            snapshot: new_repl_snapshot!(),
 +        })),
@@ -477,9 +726,31 @@
 +            ResourceError::Control(_) => (ExcType::RuntimeError, false),
 --- a/crates/monty/src/run.rs
 +++ b/crates/monty/src/run.rs
-@@ -798,0 +799 @@
+@@ -789,0 +790,18 @@
++    let window = match vm.heap.heap.tracker.boundary_window() {
++        Ok(window) => window,
++        Err(error) => {
++            if let Ok(exit) = frame_exit_result {
++                exit.drop_with(vm.heap);
++            }
++            return Err(error.into());
++        }
++    };
++    let result = frame_exit_to_object_inner(frame_exit_result, vm);
++    match window {
++        Some(window) => window.finish(&vm.heap.heap.tracker)?,
++        None => vm.heap.heap.tracker.check_time()?,
++    }
++    result
++}
++
++fn frame_exit_to_object_inner(frame_exit_result: RunResult<FrameExit>, vm: &mut VM<'_>) -> RunResult<MontyObject> {
+@@ -794 +812 @@
+-        FrameExit::Return(return_value) => return Ok(MontyObject::export(return_value, vm)),
++        FrameExit::Return(return_value) => return MontyObject::export_checked(return_value, vm),
+@@ -798,0 +817 @@
 +        FrameExit::ControlYield => ExcType::not_implemented("control suspension requires iterative execution").into(),
-@@ -818 +819,3 @@
+@@ -818 +837,3 @@
 -        FrameExit::NameLookup { .. } | FrameExit::AttrLookup { .. } => unreachable!("lookups are answered above"),
 +        FrameExit::NameLookup { .. } | FrameExit::AttrLookup { .. } => {
 +            unreachable!("lookups are answered above")
@@ -542,9 +813,36 @@
 +        }
 @@ -991,0 +1023 @@
 +    ControlYield,
-@@ -1051,0 +1084 @@
+@@ -1040,0 +1073,21 @@
++    let window = match vm.heap.heap.tracker.boundary_window() {
++        Ok(window) => window,
++        Err(error) => {
++            if let Ok(exit) = result {
++                exit.drop_with(vm.heap);
++            }
++            return ConvertedExit::Error(error.into());
++        }
++    };
++    let converted = convert_frame_exit_inner(result, vm);
++    let check = match window {
++        Some(window) => window.finish(&vm.heap.heap.tracker),
++        None => vm.heap.heap.tracker.check_time(),
++    };
++    match check {
++        Ok(()) => converted,
++        Err(error) => ConvertedExit::Error(error.into()),
++    }
++}
++
++fn convert_frame_exit_inner(result: RunResult<FrameExit>, vm: &mut VM<'_>) -> ConvertedExit {
+@@ -1052 +1105,5 @@
+-        Ok(FrameExit::Return(value)) => ConvertedExit::Complete(MontyObject::export(value, vm)),
 +        Ok(FrameExit::ControlYield) => ConvertedExit::ControlYield,
-@@ -1185,0 +1219,3 @@
++        Ok(FrameExit::Return(value)) => match MontyObject::export_checked(value, vm) {
++            Ok(object) => ConvertedExit::Complete(object),
++            Err(error) => ConvertedExit::Error(error),
++        },
+@@ -1185,0 +1243,3 @@
 +        ConvertedExit::ControlYield => Ok(RunProgress::ControlYield(ControlYield {
 +            snapshot: new_snapshot!(),
 +        })),

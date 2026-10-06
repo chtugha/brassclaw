@@ -14,6 +14,7 @@ sha2 = "0.10"
 brassclaw_resources = { path = "../../crates/brassclaw_resources" }
 monty = { path = "../../vendor/monty-control/crates/monty" }
 monty-types = { path = "../../vendor/monty-control/crates/monty-types" }
+monty-alloc = { path = "../../vendor/monty-control/crates/monty-alloc", features = ["exit-code"] }
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -186,6 +186,7 @@ pub enum VmFailure {
     InvalidResult,
     InvalidHostArguments,
     ResourceLimit,
+    StartupDeadline,
     Python,
 }
 /// Full diagnostic/output evidence stays available to the trusted supervisor.

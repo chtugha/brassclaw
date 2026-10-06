@@ -159,7 +159,9 @@ impl MontyRepl {
             .preparation_window()
             .map_err(|error| preparation_exception(&error))?;
         let result = source_nesting_exception(code, &self.script_name, self.options.source_scan_threshold);
-        window.finish().map_err(|error| preparation_exception(&error))?;
+        window
+            .finish(&self.heap.tracker)
+            .map_err(|error| preparation_exception(&error))?;
         result?;
         Ok(CheckedSource(code))
     }
@@ -284,7 +286,7 @@ impl MontyRepl {
                 this.options,
                 session,
             );
-            (compiled, window.finish(), input_values, input_ids)
+            (compiled, window.finish(&this.heap.tracker), input_values, input_ids)
         });
         let (compiled, preparation, input_values, input_ids) = match preparation {
             Ok(prepared) => prepared,
@@ -408,7 +410,7 @@ impl MontyRepl {
             self.options,
             session,
         );
-        if let Err(error) = window.finish() {
+        if let Err(error) = window.finish(&self.heap.tracker) {
             if let Ok(executor) = compiled {
                 self.ensure_globals_size(executor.namespace_size());
                 self.commit_executor(executor);
@@ -543,7 +545,11 @@ impl MontyRepl {
                         loop {
                             run_result = match run_result {
                                 Ok(FrameExit::Return(value)) => {
-                                    break Ok(MontyObject::export(value, vm));
+                                    break MontyObject::export_checked(value, vm).map_err(|error| {
+                                        error.into_python_exception(vm.interns, |fname| {
+                                            self.sources.get(fname).map(|source| &**source)
+                                        })
+                                    });
                                 }
                                 // No host answers inside a host-driven call, so the
                                 // lookup is `Undefined`: `hasattr()` is False,

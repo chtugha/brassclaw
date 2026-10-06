@@ -254,6 +254,7 @@ dependencies = [
  "brassclaw_monty_host",
  "brassclaw_resources",
  "monty",
+ "monty-alloc",
  "monty-types",
  "serde_json",
  "sha2 0.10.9",
@@ -1342,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "monty"
-version = "1.0.0-brassclaw.control.2"
+version = "1.0.0-brassclaw.control.3"
 dependencies = [
  "ahash",
  "chrono",
@@ -1380,8 +1381,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "monty-alloc"
+version = "1.0.0-brassclaw.control.3"
+dependencies = [
+ "monty-types",
+]
+
+[[package]]
 name = "monty-macros"
-version = "1.0.0-brassclaw.control.2"
+version = "1.0.0-brassclaw.control.3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1390,7 +1398,7 @@ dependencies = [
 
 [[package]]
 name = "monty-types"
-version = "1.0.0-brassclaw.control.2"
+version = "1.0.0-brassclaw.control.3"
 dependencies = [
  "chrono",
  "jiff",

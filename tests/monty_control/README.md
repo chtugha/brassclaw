@@ -33,14 +33,14 @@ charged on success and syntax failure, with live control checked on entry/exit.
 Compiler-exit cancellation restores the moved REPL compiler tables and prevents
 any opcode from running. Three additional actual-interpreter cases cover that
 failure path, preparation persistence and old-ABI rejection, and a real shared
-600→30-second settings publication at compiler exit. Extension `control.2` uses
-dump ABI `0xBC02`; reconcile `0xBC01` continuations before any upgrade. Static
+600→30-second settings publication at compiler exit. Extension `control.3` uses
+dump ABI `0xBC03`; reconcile older continuations before any upgrade. Static
 feed/turn clocks and `elapsed()` remain VM-only; the control clock additionally
 includes `preparation_elapsed()`. Restore adapters must preserve both parts and
 their shared-account cursor, without debiting earlier preparation twice.
 
 Unpolled native operations, compiler response bounds, one-shot construction,
-internal graph import/export and snapshots still need separate bounded
+snapshots and remaining cleanup still need separate bounded
 accounting/containment evidence. This hook does not attribute a shared global
 coroutine clock to different tasks. Root service work and task-owned child
 execution need separate ownership clocks. Heap attribution, adaptive memory,
@@ -79,3 +79,41 @@ unchanged; this is not the seven composition tests' acceptance.
 
 After the preparation change, all 47 actual interpreter checks in this workspace
 and strict extension/host/caller lints passed in the sequential screen queue.
+
+Extension `control.3` uses dump ABI `0xBC03` and owned preparation guards for
+interpreter graph imports and exported arguments/results. Nested conversion
+uses its existing clock, VM reentry pauses preparation, and real native sleep
+pauses both clocks. Telemetry returns explicit errors on accounting failure;
+active preparation without its live guard fails closed after dump restoration.
+Imports release their VM references when the closing resource check fails, and
+exports cannot publish a dispatch/result after failure. Additional cases use
+real input/child-return cancellation and a real child's list round-trip, native
+sleep, guard unwinding/foreign ownership, and active-preparation dump rejection.
+Compilation, graph and host conversion intervals remain distinct. Response
+bounds, snapshot/cleanup and one-shot construction accounting remain open.
+
+The graph change passes 51 distinct interpreter checks: the 50-case affected
+suite plus the final 14-case control run with the added child graph regression
+and explicit rejection of both older ABIs. Strict extension, host and caller
+lints pass. Cargo ran sequentially in background screen; unchanged checks from
+the first graph queue are reused for the final test-only addition.
+
+
+The updated root startup caller passes six real-interpreter boundary tests,
+including `start_ready`'s configured-worker handshake, rejected zero deadline
+and an actual busy-boot deadline. The task root resolves its finalized reply
+reference before the history handoff. Strict host/caller lints pass. Evidence:
+`/private/tmp/brassclaw-monty-startup-handshake.log`,
+`/private/tmp/brassclaw-monty-startup-host-lints.log` and
+`/private/tmp/brassclaw-monty-startup-caller-lints.log`. Unchanged control, child
+and compatibility evidence above is reused; this still is not global production
+or the original seven composition failures' acceptance. Synchronous compiler
+and native work still require bounded process supervision.
+
+
+`allocator.rs` runs the real `allocator_probe` child process with the actual
+Monty allocator installed. It proves that an overflowing finite limit is rejected
+and the retained finite cap still ends a real native allocation with Monty's OOM
+exit code/diagnostic. Strict allocator/caller lints pass. Existing registry pins
+are preserved. This verifies the worker's physical backstop, not the production
+supervisor or shared adaptive logical heap account.

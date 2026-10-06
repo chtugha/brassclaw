@@ -24,17 +24,26 @@ static HARD_LIMIT: AtomicUsize = AtomicUsize::new(usize::MAX);
 /// calling this function. Re-apply it after every request, since a session can
 /// also arrive through a restored dump or end through a reset.
 ///
-/// On a 32-bit target (wasm) a budget near 4 GiB saturates the arithmetic and
-/// leaves the worker uncapped — there is no cap to express.
+/// An unrepresentable finite ceiling is rejected; it must never become an
+/// unlimited worker. Invalid settings leave the previously armed ceiling intact.
 pub fn set_hard_limit(memory_budget: Option<usize>) -> Result<(), &'static str> {
     let live = LIVE_MEMORY.load(Ordering::Relaxed);
     if live == 0 {
         return Err("monty-alloc is not installed as the global allocator");
     }
+    let candidate = BASELINE_MEMORY.load(Ordering::Relaxed).min(live);
+    if memory_budget.is_some_and(|bytes| candidate.checked_add(bytes).is_none()) {
+        return Err("allocator memory budget is out of range");
+    }
     // `fetch_min` both reads and lowers the baseline: the first arming, on a
     // pristine worker, sets it, and a later leaner moment can only improve it.
     let baseline = BASELINE_MEMORY.fetch_min(live, Ordering::Relaxed).min(live);
-    let hard_limit = memory_budget.map_or(usize::MAX, |bytes| baseline.saturating_add(bytes));
+    let hard_limit = match memory_budget {
+        Some(bytes) => baseline
+            .checked_add(bytes)
+            .ok_or("allocator memory budget is out of range")?,
+        None => usize::MAX,
+    };
     HARD_LIMIT.store(hard_limit, Ordering::Relaxed);
     Ok(())
 }
@@ -102,7 +111,12 @@ unsafe impl GlobalAlloc for LimitedAllocator {
 /// Adds `size` to the live total, exiting past the hard limit.
 #[inline]
 fn charge(size: usize) {
-    let live = LIVE_MEMORY.fetch_add(size, Ordering::Relaxed).saturating_add(size);
+    let previous = LIVE_MEMORY
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_add(size))
+        .unwrap_or_else(|_| out_of_memory(format_args!("monty worker: allocator accounting overflow")));
+    let Some(live) = previous.checked_add(size) else {
+        out_of_memory(format_args!("monty worker: allocator accounting overflow"));
+    };
     if live > HARD_LIMIT.load(Ordering::Relaxed) {
         out_of_memory(format_args!(
             "monty worker: allocation of {size} bytes exceeds the memory limit"
@@ -114,7 +128,12 @@ fn charge(size: usize) {
 /// be eventually right, and no other memory is published through it.
 #[inline]
 fn refund(size: usize) {
-    LIVE_MEMORY.fetch_sub(size, Ordering::Relaxed);
+    if LIVE_MEMORY
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |live| live.checked_sub(size))
+        .is_err()
+    {
+        out_of_memory(format_args!("monty worker: allocator accounting underflow"));
+    }
 }
 
 /// Reports why memory ran out and ends the process — never by panicking, whose

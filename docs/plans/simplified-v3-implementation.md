@@ -1244,3 +1244,148 @@ coroutine ownership and shared logical heap/allocator containment. Production
 boot, durable ports/continuations, selected catalogue manifests and WebUI effective
 revision acceptance still require implementation; this isolated evidence does
 not authorize activating the candidate or declaring Phase 3a complete.
+
+### 2026-10-06 — Interpreter graph import/export task accounting
+
+The isolated extension is `1.0.0-brassclaw.control.3`, dump ABI `0xBC03`.
+Preparation guards now own a bounded accounting record rather than borrowing
+the resource tracker while the interpreter mutates its heap. Graph input and
+host-return import, host-call argument export, and returned-value export debit
+the same cumulative control clock as REPL compilation. Nested conversion shares
+an existing window; native VM reentry transfers the active clock, and native
+sleep pauses both clocks. No account lock spans interpreter work or a trusted
+control callback. Poison/overflow telemetry returns an error instead of zero.
+
+Before and after conversion, resource failure prevents an exported dispatch or
+result from being published. Imported VM references are released on a closing
+failure. Owned guards record unwinding without invoking callbacks in destructors.
+Foreign completion cannot charge another tracker. An active preparation without
+its live guard is not an executable idle continuation after dump restoration;
+both earlier extension ABIs are rejected. This remains trusted-producer snapshot
+handling, not snapshot authentication or a durable production resume contract.
+
+Four added actual-interpreter/accounting cases cover input and actual child-return
+import cancellation before Python effects/handlers, native sleep exclusion plus
+unwinding/foreign ownership, active-preparation dump rejection, and a real child
+list imported/exported by its suspended parent without another compile. The
+child result remains data; no provider/Tool/durable-completion success is faked.
+
+Validation against `36507b3d` plus this graph/guard diff: 50 affected interpreter
+tests passed, followed by 14 control tests including the final added case, for
+51 distinct passing checks. Strict extension library, host library and caller
+all-target lints pass. Cargo ran sequentially in background screen. Evidence:
+`/private/tmp/brassclaw-monty-control3-suite.log`,
+`/private/tmp/brassclaw-monty-control3-extension-lints.log`,
+`/private/tmp/brassclaw-monty-control3-host-lints.log`,
+`/private/tmp/brassclaw-monty-graph-control.log` and
+`/private/tmp/brassclaw-monty-graph-caller-lints.log`. Existing source checks were
+reused after the final test-only addition; no broad production suite was rerun.
+
+Snapshot/cleanup accounting, one-shot artifact/root construction, native/compiler/
+graph response bounds, root task attribution and logical shared heap/allocator
+containment remain open. Production boot/ports/continuations, exact component
+manifests and WebUI effective-revision uptake still require implementation and
+caller acceptance. **The original seven composition failures remain unresolved
+at legacy UUID-only Thread loading.** This change neither activates global
+production hosting nor bypasses the Recipe/IBS/Monty path to make them green.
+
+
+### 2026-10-06 Ordered IBS assembly and admitted reply handoff
+
+`build_ordered_instruction` shares the existing compiler but retains the exact
+cross-channel `step_link` order. Its private selection rejects overlapping
+execution ranges, duplicate description indices, zero step numbers and empty or
+multi-component steps. `compose_typed_program` pairs a separate Rust ToolSkill
+binding with its immediately following PythonCode, without source substitution
+or a concatenated-source execution alternative. Missing/wrong-class components,
+prose execution, dangling bindings and conflicting canonical host aliases fail
+before any program is returned. This is structural assembly infrastructure;
+recursive schemas, internal include expansion, exact association approvals and
+immutable transitive version manifests still require their own enforcement.
+The legacy production caller is deliberately not switched to partial enforcement.
+
+The focused engine caller checks pass: 5 composition tests (including selected
+cross-description order, binding pairing, untouched source, rejection cases and
+`echo`/`host.echo` collisions), 48 instruction tests, and affected strict lints
+with `skills-db`. Evidence: `/private/tmp/brassclaw-typed-assembly-alias.log`,
+`/private/tmp/brassclaw-ordered-instruction.log` and
+`/private/tmp/brassclaw-typed-assembly-final-lints.log`, against HEAD `36507b3d`
+plus this working diff. No additional provider/database success was simulated.
+
+`MontyTaskHost` retains the actual finalized reply ref/content after its transcript
+port returns success. Content lookup requires that exact ref and passes the
+attempt fence; a foreign ref or fenced task cannot use it. The trusted supervisor
+can still recover the actual ref after fencing for reconciliation. This cache
+retains one current reply; durable transcript records remain authoritative after
+restart. Four existing actual task-host caller tests and affected strict lints
+pass (`/private/tmp/brassclaw-monty-reply-handoff.log` and
+`/private/tmp/brassclaw-monty-reply-handoff-lints.log`).
+
+The unactivated global class-10 source calls `host.resolve_reply(task_token,
+reply_ref)` before the history Recipe and hands over the real answer as data.
+The global service must bind this primitive to the exact admitted task host's
+lookup; neither a caller-supplied string nor a new UUID Thread establishes reply
+ownership. Complete the non-match Recipe's separate reply step and typed local
+binding contracts before exposing it through this path. Do not replay model or
+Tool effects because publication/history fails.
+
+`GlobalVm::start_ready` now performs the actual configured-worker work-wait
+handshake with an explicit startup deadline. It never returns a late Ready
+result. The deadline includes synchronous construction but does not preempt
+compiler/native work; bounded process supervision remains required. Its worker
+inventory exposes only real work waits, not generic port-call keys.
+
+The PostgreSQL exclusive-owner candidate detaches its connection from the pool
+before requesting the two-int database-instance advisory lock. Cancellation or
+abandonment closes that session instead of returning a reentrantly locked
+connection to the pool. Repeated ownership checks never reacquire the lock.
+Actual native PostgreSQL acceptance proves second-owner refusal, single-unlock
+release, abandoned-session recovery and real lock-loss detection
+(`/private/tmp/brassclaw-monty-instance-owner.log`). This candidate is test-gated
+until the global supervisor can retain ownership through VM/host-call quiescence,
+bound connection checks and fence dispatch on ownership loss. Do not acquire and
+release this guard merely around seeding or claim it is facade readiness.
+
+The original seven failures still reach the legacy UUID-only Thread loader.
+These gates are prerequisites, not passing evidence for those seven or permission
+to install a Rust agent-loop/model fallback. Production Monty upgrade/resource
+containment, full selected manifests, durable port/admission hosting and live
+settings uptake remain on the required cutover path.
+
+
+Startup caller acceptance passes all six actual root-VM boundary cases, including
+the new real handshake and busy-boot deadline. Strict host/caller lints pass
+(`/private/tmp/brassclaw-monty-startup-handshake.log`,
+`/private/tmp/brassclaw-monty-startup-host-lints.log`,
+`/private/tmp/brassclaw-monty-startup-caller-lints.log`). PostgreSQL ownership
+strict composition lints pass as well
+(`/private/tmp/brassclaw-monty-instance-owner-lints.log`). The owner remains
+isolated: connection-loss supervision and retained ownership across actual global
+shutdown must be implemented before enabling it in production startup.
+
+
+### 2026-10-06 Physical worker allocator overflow repair
+
+The unreleased Monty `control.3` extension now rejects an unrepresentable finite
+baseline-plus-budget ceiling instead of saturating it to an uncapped worker.
+Invalid replacement preserves the armed limit. Live allocation/refund accounting
+uses checked atomic arithmetic and terminates on overflow/underflow instead of
+wrapping the counter. This does not change the serialized dump ABI.
+
+An actual isolated worker installs `monty-alloc::LimitedAllocator`, arms a finite
+ceiling, rejects the overflowing replacement, then executes a real Monty native
+64-MiB string allocation. The allocator ends the process with the documented
+OOM exit code and diagnostic. The parent test verifies the actual exit/output;
+no fake memory probe or simulated successful primitive was added. Regression and
+strict allocator/caller lints pass (`/private/tmp/brassclaw-allocator-worker.log`,
+`/private/tmp/brassclaw-allocator-extension-lints.log`,
+`/private/tmp/brassclaw-allocator-caller-lints.log`). All 228 upstream file hashes
+were verified and the regenerated `CONTROL.patch` applies to the pinned upstream
+checkout. Existing registry dependency pins are retained; only the generated
+local allocator dependency is added to the isolated caller lockfile.
+
+This closes the finite-ceiling overflow defect and supplies real physical
+backstop evidence. It does not close shared logical heap attribution, adaptive
+measurement/reclamation, native/compilation response bounds or production worker
+supervision/reconciliation. The seven composition failures remain unaccepted
+until the coordinated global production cutover exercises their actual callers.

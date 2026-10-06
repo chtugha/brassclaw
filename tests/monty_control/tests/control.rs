@@ -245,13 +245,13 @@ fn repl_compilation_is_charged_on_syntax_failure_and_before_any_opcode() {
     )
     .unwrap();
     assert!(repl.has_function("original"));
-    let before_syntax = repl.tracker().preparation_elapsed();
+    let before_syntax = repl.tracker().preparation_elapsed().unwrap();
     let before_vm = repl.tracker().elapsed();
     assert!(
         repl.feed_run("def broken(:", vec![], PrintWriter::Disabled)
             .is_err()
     );
-    assert!(repl.tracker().preparation_elapsed() > before_syntax);
+    assert!(repl.tracker().preparation_elapsed().unwrap() > before_syntax);
     assert_eq!(repl.tracker().elapsed(), before_vm);
     assert!(repl.has_function("original"));
 
@@ -272,7 +272,7 @@ fn repl_compilation_is_charged_on_syntax_failure_and_before_any_opcode() {
     assert!(error.error.to_string().contains("Cancelled"));
     assert!(stdout.is_empty());
     assert_eq!(error.repl.tracker().elapsed(), before_vm);
-    assert!(error.repl.tracker().preparation_elapsed() > before_syntax);
+    assert!(error.repl.tracker().preparation_elapsed().unwrap() > before_syntax);
     assert!(error.repl.has_function("original"));
     let mut retained = error.repl;
     retained
@@ -297,13 +297,13 @@ fn preparation_clock_survives_dumps_without_resetting_or_accepting_old_abi() {
     );
     repl.feed_run("answer = 42", vec![], PrintWriter::Disabled)
         .unwrap();
-    let preparation = repl.tracker().preparation_elapsed();
+    let preparation = repl.tracker().preparation_elapsed().unwrap();
     let execution = repl.tracker().elapsed();
     let bytes = dump("preparation.py", None, SessionRef::Idle(&repl)).unwrap();
     let Session::Idle(mut loaded) = Dump::load(&bytes).unwrap().state else {
         panic!("must restore idle REPL");
     };
-    assert_eq!(loaded.tracker().preparation_elapsed(), preparation);
+    assert_eq!(loaded.tracker().preparation_elapsed().unwrap(), preparation);
     assert_eq!(loaded.tracker().elapsed(), execution);
     let reattached = Arc::new(Control::default());
     loaded
@@ -315,15 +315,17 @@ fn preparation_clock_survives_dumps_without_resetting_or_accepting_old_abi() {
             .unwrap(),
         MontyObject::int(42)
     );
-    assert!(loaded.tracker().preparation_elapsed() > preparation);
+    assert!(loaded.tracker().preparation_elapsed().unwrap() > preparation);
     assert_eq!(
         *reattached.elapsed.lock().unwrap(),
-        loaded.tracker().elapsed() + loaded.tracker().preparation_elapsed()
+        loaded.tracker().elapsed() + loaded.tracker().preparation_elapsed().unwrap()
     );
-    let mut old_abi = bytes;
-    assert_eq!(&old_abi[..6], b"MONTY\0");
-    old_abi[6..8].copy_from_slice(&0xBC01_u16.to_le_bytes());
-    assert!(Dump::load(&old_abi).is_err());
+    for previous in [0xBC01_u16, 0xBC02_u16] {
+        let mut old_abi = bytes.clone();
+        assert_eq!(&old_abi[..6], b"MONTY\0");
+        old_abi[6..8].copy_from_slice(&previous.to_le_bytes());
+        assert!(Dump::load(&old_abi).is_err());
+    }
 }
 
 #[test]
@@ -352,11 +354,159 @@ fn live_shared_task_limit_is_checked_at_compiler_exit_before_python_effects() {
         )
         .unwrap_err();
     assert!(error.error.to_string().contains("TaskComputeExceeded"));
-    assert!(error.repl.tracker().preparation_elapsed() > Duration::ZERO);
+    assert!(error.repl.tracker().preparation_elapsed().unwrap() > Duration::ZERO);
     assert_eq!(error.repl.tracker().elapsed(), Duration::ZERO);
     assert!(stdout.is_empty());
     assert_eq!(live.current(), settings(2, 30));
     assert_eq!(shared.check(), Err(MontyTaskBudgetError::ComputeExceeded));
     live.publish(2, settings(3, 600)).unwrap();
     assert_eq!(shared.check(), Err(MontyTaskBudgetError::ComputeExceeded));
+}
+
+#[test]
+fn input_and_completed_child_return_import_fail_before_python_can_catch_or_dispatch() {
+    let control = Arc::new(Control::default());
+    // Scan and compile use four checkpoints; scalar input import uses entry
+    // and exit next. Cancellation at its exit must execute no Python opcode.
+    control.cancel_after.store(6, Ordering::SeqCst);
+    let repl = MontyRepl::new("import.py", tracker(control), CompileOptions::default());
+    let mut stdout = String::new();
+    let error = repl
+        .feed_start(
+            "print('must not execute')\ndata",
+            vec![("data".into(), MontyObject::int(42))],
+            PrintWriter::CollectString(&mut stdout, None),
+        )
+        .unwrap_err();
+    assert!(error.error.to_string().contains("Cancelled"));
+    assert_eq!(error.repl.tracker().elapsed(), Duration::ZERO);
+    assert!(error.repl.tracker().preparation_elapsed().unwrap() > Duration::ZERO);
+    assert!(stdout.is_empty());
+
+    let control = Arc::new(Control::default());
+    let repl = MontyRepl::new(
+        "return.py",
+        tracker(control.clone()),
+        CompileOptions::default(),
+    );
+    let ReplProgress::FunctionCall(call) = repl.feed_start(
+        "try:\n    result = child()\n    print('after')\nexcept BaseException:\n    print('caught')",
+        vec![], PrintWriter::CollectString(&mut stdout, None),
+    ).unwrap() else { panic!("parent must suspend for the child") };
+    let RunProgress::Complete(child_result) = program("40 + 2")
+        .start(vec![], ResourceTracker::default(), PrintWriter::Disabled)
+        .unwrap()
+    else {
+        panic!("actual child must complete")
+    };
+    control
+        .cancel_after
+        .store(control.calls.load(Ordering::SeqCst) + 2, Ordering::SeqCst);
+    let error = call
+        .resume(
+            child_result.clone(),
+            PrintWriter::CollectString(&mut stdout, None),
+        )
+        .unwrap_err();
+    assert!(error.error.to_string().contains("Cancelled"));
+    assert!(stdout.is_empty());
+    assert_eq!(child_result, MontyObject::int(42));
+}
+
+#[test]
+fn owned_preparation_retains_unwinding_and_excludes_real_native_sleep() {
+    let resource = tracker(Arc::new(Control::default()));
+    let started = std::time::Instant::now();
+    let window = resource.preparation_window().unwrap();
+    assert!(resource.boundary_window().unwrap().is_none());
+    resource.sandbox_sleep(Duration::from_millis(40));
+    window.finish(&resource).unwrap();
+    let wall = started.elapsed();
+    let charged = resource.preparation_elapsed().unwrap();
+    assert!(wall >= charged + Duration::from_millis(35));
+    let before = charged;
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _window = resource.preparation_window().unwrap();
+        panic!("unwind the preparation segment");
+    }));
+    assert!(unwind.is_err());
+    assert!(resource.preparation_elapsed().unwrap() > before);
+    resource
+        .preparation_window()
+        .unwrap()
+        .finish(&resource)
+        .unwrap();
+    let foreign = ResourceTracker::default();
+    assert!(
+        resource
+            .preparation_window()
+            .unwrap()
+            .finish(&foreign)
+            .is_err()
+    );
+    assert!(resource.preparation_elapsed().is_err());
+}
+
+#[test]
+fn dumping_an_active_preparation_cannot_restore_an_idle_executable_account() {
+    let repl = MontyRepl::new(
+        "active.py",
+        ResourceTracker::default(),
+        CompileOptions::default(),
+    );
+    let window = repl.tracker().preparation_window().unwrap();
+    let bytes = dump("active.py", None, SessionRef::Idle(&repl)).unwrap();
+    window.finish(repl.tracker()).unwrap();
+    let Session::Idle(mut loaded) = Dump::load(&bytes).unwrap().state else {
+        panic!("must decode idle envelope")
+    };
+    assert!(loaded.tracker().preparation_elapsed().is_err());
+    let mut stdout = String::new();
+    assert!(
+        loaded
+            .feed_run(
+                "print('must not execute')",
+                vec![],
+                PrintWriter::CollectString(&mut stdout, None)
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("AccountingUnavailable")
+    );
+    assert!(stdout.is_empty());
+}
+
+#[test]
+fn actual_child_graph_import_and_parent_export_charge_preparation_without_another_compile() {
+    let control = Arc::new(Control::default());
+    let repl = MontyRepl::new(
+        "graphs.py",
+        tracker(control.clone()),
+        CompileOptions::default(),
+    );
+    let progress = repl
+        .feed_start("result = child()\nresult", vec![], PrintWriter::Disabled)
+        .unwrap();
+    let before = progress.tracker().preparation_elapsed().unwrap();
+    let ReplProgress::FunctionCall(call) = progress else {
+        panic!("parent must wait for the actual child")
+    };
+    let RunProgress::Complete(child_result) = program("list(range(4096))")
+        .start(vec![], ResourceTracker::default(), PrintWriter::Disabled)
+        .unwrap()
+    else {
+        panic!("child must compute the list")
+    };
+    let ReplProgress::Complete { repl, value } = call
+        .resume(child_result.clone(), PrintWriter::Disabled)
+        .unwrap()
+    else {
+        panic!("parent must return the child data")
+    };
+    assert_eq!(value, child_result);
+    assert!(repl.tracker().preparation_elapsed().unwrap() > before);
+    assert_eq!(
+        *control.elapsed.lock().unwrap(),
+        repl.tracker().elapsed() + repl.tracker().preparation_elapsed().unwrap()
+    );
 }

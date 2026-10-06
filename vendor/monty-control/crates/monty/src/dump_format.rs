@@ -51,7 +51,7 @@ const MAGIC: &[u8; 6] = b"MONTY\0";
 /// between releases is unnecessary and can lead to confusion.
 // BrassClaw control ABI: never accept upstream dumps or send these dumps to
 // upstream binaries. Deployment must reconcile old continuations first.
-pub const DUMP_VERSION: u16 = 0xBC02;
+pub const DUMP_VERSION: u16 = 0xBC03;
 
 /// Set to [`DUMP_VERSION`], the current dump version, until this crate can load older dumps.
 pub const MIN_SUPPORTED_DUMP_VERSION: u16 = DUMP_VERSION;

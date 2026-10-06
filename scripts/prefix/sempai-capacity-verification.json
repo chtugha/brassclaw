@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "profile": "sempai",
+  "date": "2026-10-06",
+  "compiler_sha256": "5e86fa6b7a9e0d8500c2ba2acbdd9922a821b294b0d69d3919ac5bbca387b28b",
+  "source_snapshot": "5e9d6170af199e3aa136ab40a9f3d4822be8e505c8b879b73cee2f9e04d5e331",
+  "source_documents": 11,
+  "evidence_units": 247,
+  "source_bytes": 542602,
+  "tokenizer_config_sha256": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+  "result": "capacity-blocked",
+  "requested_prefix_tokens": 100000,
+  "mandatory_units_estimated_tokens_before_envelope": 184990,
+  "model_max_context_tokens": 131072,
+  "checks": [
+    "actual local collection",
+    "complete exact-source evidence validation",
+    "offline tokenizer sizing"
+  ],
+  "generation_published": false,
+  "deployed": false,
+  "limitations": [
+    "No full-template/shared-token or cache proof: mandatory evidence exceeds capacity.",
+    "DB seeding and production reviewer/proposal wiring are planned, not implemented."
+  ],
+  "current_compiler_sha256": "748fdd37d2e1888c4c89430e8d5089fa3ee7eb3ce6bbc8a3a4f8e4931f767589",
+  "evidence_reuse": "Sizing precedes cache-guard and read-only preview changes; source policy, rendering and tokenizer are unchanged.",
+  "current_compiler_validation": {
+    "real_source_preservation_test": "passed",
+    "syntax_compilation": "passed",
+    "scope": "complete originals, missing-unit rejection, missing-source and mismatched-manifest preservation, foreign-cache rejection"
+  }
+}

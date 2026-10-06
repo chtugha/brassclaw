@@ -787,11 +787,29 @@ fn populate_inputs(inputs: Vec<MontyObject>, vm: &mut VM<'_>) -> Result<(), Mont
 /// would (see [`answer_unserved_lookups`]) and the remaining suspendable
 /// outcomes (external calls, futures) produce errors.
 pub(crate) fn frame_exit_to_object(frame_exit_result: RunResult<FrameExit>, vm: &mut VM<'_>) -> RunResult<MontyObject> {
+    let window = match vm.heap.heap.tracker.boundary_window() {
+        Ok(window) => window,
+        Err(error) => {
+            if let Ok(exit) = frame_exit_result {
+                exit.drop_with(vm.heap);
+            }
+            return Err(error.into());
+        }
+    };
+    let result = frame_exit_to_object_inner(frame_exit_result, vm);
+    match window {
+        Some(window) => window.finish(&vm.heap.heap.tracker)?,
+        None => vm.heap.heap.tracker.check_time()?,
+    }
+    result
+}
+
+fn frame_exit_to_object_inner(frame_exit_result: RunResult<FrameExit>, vm: &mut VM<'_>) -> RunResult<MontyObject> {
     // Suspensions this path cannot service. The error is built from a borrow
     // so one `drop_with` releases whatever the exit owns, fields added later
     // included.
     let exit = match answer_unserved_lookups(frame_exit_result, vm)? {
-        FrameExit::Return(return_value) => return Ok(MontyObject::export(return_value, vm)),
+        FrameExit::Return(return_value) => return MontyObject::export_checked(return_value, vm),
         exit => exit,
     };
     let error: RunError = match &exit {

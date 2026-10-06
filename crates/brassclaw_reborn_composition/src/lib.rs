@@ -37,6 +37,9 @@ mod component_boot;
 pub mod component_import;
 pub mod db_config;
 mod default_system_prompt;
+// Ownership candidate remains isolated until the global-hosting lifecycle gate.
+#[cfg(all(test, feature = "postgres"))]
+mod monty_instance_owner;
 #[cfg(feature = "postgres")]
 pub(crate) mod docplan_dissector;
 mod error;

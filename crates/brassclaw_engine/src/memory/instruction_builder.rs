@@ -12,6 +12,7 @@
 
 use regex::{Captures, Match, Regex};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 use crate::types::ibs::{ToolBinding, VariablePattern};
 
@@ -171,6 +172,25 @@ pub struct BuildInstruction {
     pub orchestrator_steps: Vec<IbsRecipeStep>,
 }
 
+/// V3 assembly preserves the selected cross-channel order. Private fields
+/// prevent callers from supplying an order unrelated to the compiled recipe.
+/// This is ephemeral assembly metadata, not an immutable catalogue manifest.
+#[derive(Debug, Clone)]
+pub struct OrderedBuildInstruction {
+    instruction: BuildInstruction,
+    step_order: Vec<String>,
+}
+
+impl OrderedBuildInstruction {
+    pub fn instruction(&self) -> &BuildInstruction {
+        &self.instruction
+    }
+
+    pub fn step_order(&self) -> &[String] {
+        &self.step_order
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Dependency traversal expression (§0.19) — parsed tree
 // ---------------------------------------------------------------------------
@@ -305,6 +325,10 @@ impl StepContextSpec {
 /// (the empty-include rule is a Q1 invalidation, not an IBS error).
 #[derive(Debug, Clone, thiserror::Error, PartialEq)]
 pub enum IbsError {
+    #[error("component step {step_id} must reference exactly one UUID")]
+    ComponentCardinality { step_id: String },
+    #[error("step {step_id} is selected more than once")]
+    DuplicateSelection { step_id: String },
     #[error("unpromoted snippet step {step_id}: promote to type:component after Q1+Q2")]
     UnpromotedSnippet { step_id: String },
     #[error("invalid UUID at step {step_id}: {value}")]
@@ -556,13 +580,61 @@ pub fn build_instruction(
     variable_patterns: &[VariablePattern],
     llm_call_required: bool,
 ) -> Result<BuildInstruction, IbsError> {
+    build_instruction_inner(
+        step_link,
+        step_descriptions,
+        variable_patterns,
+        llm_call_required,
+        false,
+    )
+    .map(|ordered| ordered.instruction)
+}
+
+/// Compile a v3 selection without losing Rust/Python adjacency or allowing
+/// overlapping ranges to repeat effects. Legacy callers retain their existing
+/// contract until the coordinated production cutover.
+pub fn build_ordered_instruction(
+    step_link: &str,
+    step_descriptions: &[StepDescriptionEntry],
+    variable_patterns: &[VariablePattern],
+    llm_call_required: bool,
+) -> Result<OrderedBuildInstruction, IbsError> {
+    build_instruction_inner(
+        step_link,
+        step_descriptions,
+        variable_patterns,
+        llm_call_required,
+        true,
+    )
+}
+
+fn build_instruction_inner(
+    step_link: &str,
+    step_descriptions: &[StepDescriptionEntry],
+    variable_patterns: &[VariablePattern],
+    llm_call_required: bool,
+    strict: bool,
+) -> Result<OrderedBuildInstruction, IbsError> {
     // 1. Parse step_link -> Vec<StepRange>.
     let ranges = parse_step_link(step_link)?;
 
     // 4a. Monotonic check over ALL StepDescriptionEntry provided (FIND-IBS-03).
+    let mut description_ids = HashSet::new();
     for entry in step_descriptions {
+        if strict && !description_ids.insert(entry.desc_idx) {
+            return Err(IbsError::ParseError {
+                formula: step_link.to_string(),
+                reason: "duplicate StepDescription index".to_string(),
+            });
+        }
         let mut prev: Option<u32> = None;
         for step in &entry.steps {
+            if strict && step.stepnumber == 0 {
+                return Err(IbsError::StepOrderViolation {
+                    desc_idx: entry.desc_idx,
+                    stepnumber: 0,
+                });
+            }
             if let Some(p) = prev
                 && step.stepnumber <= p
             {
@@ -612,6 +684,8 @@ pub fn build_instruction(
     // 3 + 5 + 6: emit / partition / attach dependencies.
     let mut rust_steps: Vec<IbsRecipeStep> = Vec::new();
     let mut orchestrator_steps: Vec<IbsRecipeStep> = Vec::new();
+    let mut step_order = Vec::new();
+    let mut selected = HashSet::new();
     for (entry, step) in &ordered {
         let step_id = format!("{}:{}", entry.desc_idx, step.stepnumber);
 
@@ -622,6 +696,16 @@ pub fn build_instruction(
                 return Err(IbsError::UnpromotedSnippet { step_id });
             }
             RecipeStepType::Component => {} // emit; route by knowledge below.
+        }
+
+        if strict && step.include.len() != 1 {
+            return Err(IbsError::ComponentCardinality { step_id });
+        }
+        if strict && !selected.insert(step_id.clone()) {
+            return Err(IbsError::DuplicateSelection { step_id });
+        }
+        if strict {
+            step_order.push(step_id.clone());
         }
 
         // 6. parse dependencies if present.
@@ -681,12 +765,15 @@ pub fn build_instruction(
         }
     }
 
-    Ok(BuildInstruction {
-        llm_call_required,
-        variable_patterns: variable_patterns.to_vec(),
-        basic_prompt_section_refs: Vec::new(),
-        rust_steps,
-        orchestrator_steps,
+    Ok(OrderedBuildInstruction {
+        instruction: BuildInstruction {
+            llm_call_required,
+            variable_patterns: variable_patterns.to_vec(),
+            basic_prompt_section_refs: Vec::new(),
+            rust_steps,
+            orchestrator_steps,
+        },
+        step_order,
     })
 }
 

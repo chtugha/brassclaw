@@ -48,6 +48,9 @@ pub(crate) trait MontyObjectExt: Sized {
     /// and dropping it via `drop_with`.
     fn export(value: Value, vm: &mut VM<'_>) -> Self;
 
+    /// Export at a host boundary with terminal resource enforcement.
+    fn export_checked(value: Value, vm: &mut VM<'_>) -> Result<Self, RunError>;
+
     /// Imports this value into the heap. Fails with `InvalidInputError` on
     /// output-only nodes (`Repr`, `Cycle`), on a sandbox class or instance
     /// whose sandbox object no longer exists, and on malformed input; a
@@ -62,13 +65,42 @@ impl MontyObjectExt for MontyObject {
         unstable::object_from_graph(exporter.finish(vm), root).expect("exported root is valid")
     }
 
+    fn export_checked(value: Value, vm: &mut VM<'_>) -> Result<Self, RunError> {
+        let window = match vm.heap.heap.tracker.boundary_window() {
+            Ok(window) => window,
+            Err(error) => {
+                value.drop_with(vm);
+                return Err(error.into());
+            }
+        };
+        let object = Self::export(value, vm);
+        match window {
+            Some(window) => window.finish(&vm.heap.heap.tracker)?,
+            None => vm.heap.heap.tracker.check_time()?,
+        }
+        Ok(object)
+    }
+
     fn to_value(self, vm: &mut VM<'_>) -> Result<Value, InvalidInputError> {
-        let (graph, root) = unstable::into_graph_parts(self);
-        let mut values = graph.to_values(vm)?;
-        // `None` is an immediate, so swapping it in leaves nothing to release.
-        let root = mem::replace(&mut values[root.index()], Value::None);
-        values.drop_with(vm);
-        Ok(root)
+        let window = vm.heap.heap.tracker.boundary_window()?;
+        let result = (|| {
+            let (graph, root) = unstable::into_graph_parts(self);
+            let mut values = graph.to_values(vm)?;
+            let root = mem::replace(&mut values[root.index()], Value::None);
+            values.drop_with(vm);
+            Ok(root)
+        })();
+        let check = match window {
+            Some(window) => window.finish(&vm.heap.heap.tracker),
+            None => vm.heap.heap.tracker.check_time(),
+        };
+        if let Err(error) = check {
+            if let Ok(value) = result {
+                value.drop_with(vm);
+            }
+            return Err(error.into());
+        }
+        result
     }
 }
 
@@ -83,27 +115,43 @@ pub(crate) trait MontyGraphExt {
 
 impl MontyGraphExt for MontyGraph {
     fn to_values(self, vm: &mut VM<'_>) -> Result<Vec<Value>, InvalidInputError> {
-        let nodes = self.into_nodes();
-        // A host-defined class node imports as a type object; a `ClassInstance`
-        // of it needs the node's data to build a `HostClass`, so keep it by id.
-        let host_classes: AHashMap<NodeId, Box<ClassTypeNode>> = nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(index, node)| match node {
-                MontyNode::ClassType(class) if class.host_defined => {
-                    Some((NodeId(u32::try_from(index).expect("arena ids fit u32")), class.clone()))
-                }
-                _ => None,
-            })
-            .collect();
-        let mut guard = DropGuard::new(Vec::with_capacity(nodes.len()), vm);
-        let (values, vm) = guard.as_parts_mut();
-        for node in nodes {
-            let value = import_node(node, values, &host_classes, vm)?;
-            values.push(value);
+        let window = vm.heap.heap.tracker.boundary_window()?;
+        let result = import_graph_values(self, vm);
+        let check = match window {
+            Some(window) => window.finish(&vm.heap.heap.tracker),
+            None => vm.heap.heap.tracker.check_time(),
+        };
+        if let Err(error) = check {
+            if let Ok(values) = result {
+                values.drop_with(vm);
+            }
+            return Err(error.into());
         }
-        Ok(guard.into_inner())
+        result
     }
+}
+
+fn import_graph_values(graph: MontyGraph, vm: &mut VM<'_>) -> Result<Vec<Value>, InvalidInputError> {
+    let nodes = graph.into_nodes();
+    // A host-defined class node imports as a type object; a `ClassInstance`
+    // of it needs the node's data to build a `HostClass`, so keep it by id.
+    let host_classes: AHashMap<NodeId, Box<ClassTypeNode>> = nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| match node {
+            MontyNode::ClassType(class) if class.host_defined => {
+                Some((NodeId(u32::try_from(index).expect("arena ids fit u32")), class.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    let mut guard = DropGuard::new(Vec::with_capacity(nodes.len()), vm);
+    let (values, vm) = guard.as_parts_mut();
+    for node in nodes {
+        let value = import_node(node, values, &host_classes, vm)?;
+        values.push(value);
+    }
+    Ok(guard.into_inner())
 }
 
 /// Builds the arena for one outgoing message: the final value, or every

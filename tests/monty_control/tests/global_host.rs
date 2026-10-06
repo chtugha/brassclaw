@@ -33,6 +33,7 @@ fn aliases() -> BTreeSet<String> {
         "resolve_component_by_name",
         "compose_orchestrator",
         "run_program",
+        "resolve_reply",
         "finish_task",
     ]
     .map(str::to_owned)
@@ -85,8 +86,24 @@ fn call(boundary: GlobalBoundary) -> brassclaw_monty_host::HostRequest {
 
 #[test]
 fn actual_global_root_waits_at_boot_and_only_explicit_shutdown_stops_it() {
-    let (mut vm, first) = start(SOURCE, bounds());
-    let waits = settle_boot(&mut vm, first);
+    let mut vm = GlobalVm::start_ready(
+        Arc::from(SOURCE),
+        Sha256::digest(SOURCE.as_bytes()).into(),
+        aliases(),
+        bounds(),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    assert_eq!(vm.lifecycle(), Lifecycle::Ready);
+    let inventory = vm.work_waits();
+    assert_eq!(
+        inventory
+            .iter()
+            .map(|(worker, _)| *worker)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    let waits: Vec<_> = inventory.into_iter().map(|(_, key)| key).collect();
     assert_eq!(vm.outstanding(), waits);
     let error = vm
         .resolve(waits[0], HostAnswer::Return(Value::Null))
@@ -109,6 +126,35 @@ fn actual_global_root_waits_at_boot_and_only_explicit_shutdown_stops_it() {
     ));
     assert_eq!(vm.lifecycle(), Lifecycle::Stopped);
     assert!(vm.outstanding().is_empty());
+    assert!(vm.work_waits().is_empty());
+}
+
+#[test]
+fn startup_gate_rejects_zero_deadline_and_actual_busy_boot_without_publishing_ready() {
+    let busy = "while True:\n    pass";
+    let limits = GlobalBounds {
+        values: VmBounds {
+            execution_slice: Duration::from_millis(1),
+            ..bounds().values
+        },
+        ..bounds()
+    };
+    for (deadline, failure) in [
+        (Duration::ZERO, VmFailure::InvalidBounds),
+        (Duration::from_millis(5), VmFailure::StartupDeadline),
+    ] {
+        let result = GlobalVm::start_ready(
+            Arc::from(busy),
+            Sha256::digest(busy.as_bytes()).into(),
+            aliases(),
+            limits,
+            deadline,
+        );
+        let Err(error) = result else {
+            panic!("busy boot must not become Ready")
+        };
+        assert_eq!(error.failure, failure);
+    }
 }
 
 #[test]

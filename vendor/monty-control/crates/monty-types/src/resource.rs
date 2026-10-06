@@ -12,7 +12,7 @@ use std::{
     error::Error,
     fmt,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
@@ -296,9 +296,7 @@ pub struct ResourceTracker {
     total_execution_time: Cell<Duration>,
     /// Synchronous interpreter preparation, accounted independently of VM
     /// feed/turn limits but included in the trusted task-control clock.
-    preparation_time: Cell<Duration>,
-    #[serde(skip)]
-    preparing: Cell<bool>,
+    preparation: Arc<Mutex<PreparationAccount>>,
     /// Execution time accumulated since the last [`on_feed_start`](Self::on_feed_start).
     /// Serialized like `total_execution_time`: a dump taken mid-feed resumes
     /// that feed, so its budget must survive the round trip.
@@ -332,35 +330,73 @@ impl Default for ResourceTracker {
     }
 }
 
-/// A trusted synchronous preparation segment. It must not wrap VM execution,
-/// nested preparation, external I/O or child execution.
-pub struct PreparationWindow<'a> {
-    tracker: &'a ResourceTracker,
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct PreparationAccount {
+    total: Duration,
+    active: bool,
+    #[serde(skip)]
+    live_guard: bool,
+    #[serde(skip)]
     started: Option<Instant>,
+    terminal: Option<ExecutionControlError>,
 }
-impl PreparationWindow<'_> {
-    /// Preserve the segment before checking cancellation/the current task budget.
-    pub fn finish(mut self) -> Result<(), ResourceError> {
-        self.record();
-        self.tracker.poll_execution_control()
+impl PreparationAccount {
+    fn elapsed(&self) -> Result<Duration, ExecutionControlError> {
+        if let Some(error) = self.terminal {
+            return Err(error);
+        }
+        if self.active && !self.live_guard {
+            return Err(ExecutionControlError::AccountingUnavailable);
+        }
+        self.total
+            .checked_add(self.started.map_or(Duration::ZERO, |start| start.elapsed()))
+            .ok_or(ExecutionControlError::AccountingUnavailable)
     }
-    fn record(&mut self) {
+    fn pause(&mut self) {
         if let Some(started) = self.started.take() {
-            match self.tracker.preparation_time.get().checked_add(started.elapsed()) {
-                Some(total) => self.tracker.preparation_time.set(total),
-                None => self
-                    .tracker
-                    .control_error
-                    .set(Some(ExecutionControlError::AccountingUnavailable)),
+            match self.total.checked_add(started.elapsed()) {
+                Some(total) => self.total = total,
+                None => self.terminal = Some(ExecutionControlError::AccountingUnavailable),
             }
-            self.tracker.preparing.set(false);
         }
     }
 }
-impl Drop for PreparationWindow<'_> {
+
+/// Owned synchronous accounting segment, allowing the VM to mutate its heap.
+/// It must not wrap external I/O or child execution. Nested graph conversion
+/// uses its existing preparation/VM window instead of charging the work twice.
+pub struct PreparationWindow {
+    account: Arc<Mutex<PreparationAccount>>,
+    recorded: bool,
+}
+impl PreparationWindow {
+    /// Charge the segment before polling the exact owner, without holding a lock
+    /// across a control callback. A foreign tracker cannot consume this window.
+    pub fn finish(mut self, tracker: &ResourceTracker) -> Result<(), ResourceError> {
+        self.record();
+        if !Arc::ptr_eq(&self.account, &tracker.preparation) {
+            if let Ok(mut account) = self.account.lock() {
+                account.terminal = Some(ExecutionControlError::AccountingUnavailable);
+            }
+            return Err(ResourceError::Control(ExecutionControlError::AccountingUnavailable));
+        }
+        tracker.poll_execution_control()
+    }
+    fn record(&mut self) {
+        if !self.recorded {
+            self.recorded = true;
+            // A poisoned account remains unusable: every subsequent read/poll
+            // returns AccountingUnavailable. Destructors invoke no host callback.
+            if let Ok(mut account) = self.account.lock() {
+                account.pause();
+                account.active = false;
+                account.live_guard = false;
+            }
+        }
+    }
+}
+impl Drop for PreparationWindow {
     fn drop(&mut self) {
-        // Charge unwinding but never invoke host callbacks from a destructor.
-        // An explicit finish or the next checkpoint observes any latched error.
         self.record();
     }
 }
@@ -401,6 +437,10 @@ impl ResourceTracker {
         if let Some(error) = self.control_error.get() {
             return Err(ResourceError::Control(error));
         }
+        let preparation = self.preparation_clock().map_err(|error| {
+            self.control_error.set(Some(error));
+            ResourceError::Control(error)
+        })?;
         if !self.control_required {
             return Ok(());
         }
@@ -411,7 +451,7 @@ impl ResourceTracker {
             .and_then(|control| {
                 let elapsed = self
                     .elapsed()
-                    .checked_add(self.preparation_time.get())
+                    .checked_add(preparation)
                     .ok_or(ExecutionControlError::AccountingUnavailable)?;
                 control.checkpoint(elapsed)
             });
@@ -437,24 +477,76 @@ impl ResourceTracker {
     /// Begin synchronous interpreter preparation, never execution or a host wait.
     /// The guard charges success, error and unwinding without resetting usage.
     /// Finish explicitly before publishing any result to observe live control.
-    pub fn preparation_window(&self) -> Result<PreparationWindow<'_>, ResourceError> {
-        if self.running_since.get().is_some() || self.preparing.get() {
+    pub fn preparation_window(&self) -> Result<PreparationWindow, ResourceError> {
+        if self.running_since.get().is_some() {
             self.control_error
                 .set(Some(ExecutionControlError::AccountingUnavailable));
             return Err(ResourceError::Control(ExecutionControlError::AccountingUnavailable));
         }
         self.poll_execution_control()?;
-        self.preparing.set(true);
+        let mut account = self
+            .preparation
+            .lock()
+            .map_err(|_| ResourceError::Control(ExecutionControlError::AccountingUnavailable))?;
+        if account.active {
+            account.terminal = Some(ExecutionControlError::AccountingUnavailable);
+            return Err(ResourceError::Control(ExecutionControlError::AccountingUnavailable));
+        }
+        account.active = true;
+        account.live_guard = true;
+        account.started = Some(Instant::now());
         Ok(PreparationWindow {
-            tracker: self,
-            started: Some(Instant::now()),
+            account: self.preparation.clone(),
+            recorded: false,
         })
     }
 
-    /// Preparation telemetry excludes VM execution and remains cumulative over feeds.
-    #[must_use]
-    pub fn preparation_elapsed(&self) -> Duration {
-        self.preparation_time.get()
+    /// Graph conversion already inside an active VM/preparation segment is
+    /// checked without opening another clock. No double debit on native reentry.
+    pub fn boundary_window(&self) -> Result<Option<PreparationWindow>, ResourceError> {
+        let active = self
+            .preparation
+            .lock()
+            .map_err(|_| ResourceError::Control(ExecutionControlError::AccountingUnavailable))?
+            .active;
+        if self.running_since.get().is_some() || active {
+            self.poll_execution_control()?;
+            Ok(None)
+        } else {
+            self.preparation_window().map(Some)
+        }
+    }
+
+    fn preparation_clock(&self) -> Result<Duration, ExecutionControlError> {
+        let account = self
+            .preparation
+            .lock()
+            .map_err(|_| ExecutionControlError::AccountingUnavailable)?;
+        account.elapsed()
+    }
+
+    /// Cumulative preparation telemetry, including the current active segment.
+    /// Poison/overflow are explicit errors rather than fabricated zero usage.
+    pub fn preparation_elapsed(&self) -> Result<Duration, ResourceError> {
+        self.preparation_clock().map_err(ResourceError::Control)
+    }
+
+    fn pause_preparation(&self) {
+        match self.preparation.lock() {
+            Ok(mut account) => account.pause(),
+            Err(_) => self
+                .control_error
+                .set(Some(ExecutionControlError::AccountingUnavailable)),
+        }
+    }
+    fn resume_preparation(&self) {
+        match self.preparation.lock() {
+            Ok(mut account) if account.active && account.started.is_none() => account.started = Some(Instant::now()),
+            Ok(_) => {}
+            Err(_) => self
+                .control_error
+                .set(Some(ExecutionControlError::AccountingUnavailable)),
+        }
     }
 
     /// Creates a new ResourceTracker with the given limits.
@@ -474,8 +566,7 @@ impl ResourceTracker {
             control_error: Cell::new(None),
             control_yield: Cell::new(false),
             total_execution_time: Cell::new(Duration::ZERO),
-            preparation_time: Cell::new(Duration::ZERO),
-            preparing: Cell::new(false),
+            preparation: Arc::new(Mutex::new(PreparationAccount::default())),
             feed_execution_time: Cell::new(Duration::ZERO),
             turn_execution_time: Cell::new(Duration::ZERO),
             running_since: Cell::new(None),
@@ -807,6 +898,7 @@ impl ResourceTracker {
             self.running_since.get().is_none(),
             "nested on_execution_start: VM-internal re-entry must use the raw run loop, not run_external"
         );
+        self.pause_preparation();
         self.running_since.set(Some(Instant::now()));
     }
 
@@ -822,6 +914,7 @@ impl ResourceTracker {
             ] {
                 clock.set(clock.get() + window);
             }
+            self.resume_preparation();
             if let Err(ResourceError::Control(error)) = self.poll_execution_control() {
                 self.control_error.set(Some(error));
             }
@@ -853,9 +946,12 @@ impl ResourceTracker {
     pub fn sandbox_sleep(&self, duration: Duration) {
         let was_running = self.running_since.get().is_some();
         self.on_execution_stop();
+        self.pause_preparation();
         block_for(duration);
         if was_running {
             self.on_execution_start();
+        } else {
+            self.resume_preparation();
         }
     }
 

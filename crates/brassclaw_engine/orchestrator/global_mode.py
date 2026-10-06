@@ -71,6 +71,12 @@ async def _execute_task(task):
     # The host must verify this ref against the task's real finalized message.
     if not isinstance(reply_ref, str) or not reply_ref.startswith("msg:"):
         raise RuntimeError("recipe_reply_invalid")
+    # Syntax of a ref is not proof of publication. Resolve only the finalized
+    # reply retained by this exact admitted task host. The Rust host fences the
+    # lookup before returning its content; Monty owns the history data handoff.
+    answer = await host.resolve_reply(task_token, reply_ref)
+    if not isinstance(answer, str):
+        raise RuntimeError("recipe_reply_invalid")
     history_recipe = await host.resolve_component_by_name(task_token, "host-save-history", 21)
     if not isinstance(history_recipe, dict):
         raise RuntimeError("history_persistence_failed")
@@ -81,7 +87,7 @@ async def _execute_task(task):
     if not isinstance(history_link, str) or history_link == "":
         raise RuntimeError("history_persistence_failed")
     await _execute_recipe(task_token, history_id, history_link, {
-        "user_input": user_input, "reply_ref": reply_ref
+        "user_input": user_input, "answer": answer, "reply_ref": reply_ref
     })
     return reply_ref
 

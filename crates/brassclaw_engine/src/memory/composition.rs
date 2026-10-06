@@ -5,8 +5,10 @@
 //! deterministic, machine-readable form handed to Monty by
 //! `host.compose_orchestrator`; Monty then iterates `steplist`, consults the
 //! `skills` array for exact tool usage, and runs each step's `executable_code`
-//! via `host.run_program` (per-step nested `execute_code`, fresh isolation per
-//! step — mirrors `execute_tier_zero_channel`).
+//! via `host.run_program`. The legacy caller still uses nested `execute_code`;
+//! the v3 host must retain each Recipe's execution context across these steps.
+//! `compose_typed_program` preserves cross-channel order and unchanged source;
+//! it does not yet establish schemas, immutable manifests or production wiring.
 //!
 //! Pure + DB-free: the DB-bound resolution (fetching components by UUID,
 //! resolving cdylib artifact paths) is behind the [`ComponentResolver`] trait,
@@ -19,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::memory::instruction_builder::BuildInstruction;
+use crate::memory::instruction_builder::OrderedBuildInstruction;
 use crate::types::ibs::ToolBinding;
 
 /// Class code for PythonCode components — the executable body of an
@@ -137,6 +140,161 @@ pub trait ComponentResolver {
     fn resolve(&self, id: Uuid) -> Option<ResolvedComponent>;
 }
 
+/// Fail closed before handing executable steps to Monty. This validates
+/// assembly structure, not author approval, schemas or pinned revisions.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("typed composition failed at step {step_id}: {reason}")]
+pub struct TypedCompositionError {
+    pub step_id: String,
+    pub reason: &'static str,
+}
+
+/// V3 assembly keeps selected PythonCode unchanged. Inputs are supplied by the
+/// task host as values; no variable substitution or prose execution occurs.
+/// The resolver must represent the caller's single pinned catalogue snapshot.
+/// Binding descriptors grant no authority; kernel policy applies at dispatch.
+pub fn compose_typed_program(
+    ordered: &OrderedBuildInstruction,
+    resolver: &dyn ComponentResolver,
+) -> Result<ComposedProgram, TypedCompositionError> {
+    let instruction = ordered.instruction();
+    let rust: HashMap<_, _> = instruction
+        .rust_steps
+        .iter()
+        .map(|step| (step.step_id.as_str(), step))
+        .collect();
+    let python: HashMap<_, _> = instruction
+        .orchestrator_steps
+        .iter()
+        .map(|step| (step.step_id.as_str(), step))
+        .collect();
+    let mut steplist = Vec::new();
+    let mut pending_binding = None;
+    let mut skills = Vec::new();
+    let mut seen_skills = HashSet::new();
+    let mut rust_directives = Vec::new();
+    let mut seen_tools = HashMap::new();
+    let mut callable_targets = HashMap::new();
+    for step_id in ordered.step_order() {
+        let fail = |reason| TypedCompositionError {
+            step_id: step_id.clone(),
+            reason,
+        };
+        if let Some(binding) = rust.get(step_id.as_str()) {
+            if pending_binding.is_some() || python.contains_key(step_id.as_str()) {
+                return Err(fail("binding must precede a separate PythonCode step"));
+            }
+            let Some(component_id) = binding.include.first() else {
+                return Err(fail("missing binding component"));
+            };
+            let component = resolver
+                .resolve(*component_id)
+                .ok_or_else(|| fail("binding component unavailable"))?;
+            if component.class_code != 13 || binding.tool_bindings.len() != 1 {
+                return Err(fail(
+                    "Rust step requires a ToolSkill and explicit Tool bindings",
+                ));
+            }
+            if seen_skills.insert(*component_id) {
+                skills.push(SkillRef {
+                    id: *component_id,
+                    class_code: 13,
+                    name: component.name,
+                    body: component.content,
+                });
+            }
+            for tool in &binding.tool_bindings {
+                let alias = host_callable_alias(&tool.tool_name)
+                    .ok_or_else(|| fail("invalid Tool callable"))?;
+                if let Some(target) = callable_targets.insert(alias.to_string(), tool.tool_id)
+                    && target != tool.tool_id
+                {
+                    return Err(fail("callable is bound to different Tools"));
+                }
+                let component = resolver
+                    .resolve(tool.tool_id)
+                    .ok_or_else(|| fail("Tool component unavailable"))?;
+                if component.class_code != 0 {
+                    return Err(fail("binding target must be a Tool"));
+                }
+                if let Some(name) = seen_tools.get(&tool.tool_id) {
+                    if name != alias {
+                        return Err(fail("conflicting callable for the same Tool"));
+                    }
+                } else {
+                    seen_tools.insert(tool.tool_id, alias.to_string());
+                    rust_directives.push(RustDirective {
+                        tool_id: tool.tool_id,
+                        tool_name: tool.tool_name.clone(),
+                        artifact_path: component.cdylib_artifact_path.unwrap_or_default(),
+                    });
+                }
+            }
+            pending_binding = Some(binding.tool_bindings.clone());
+            continue;
+        }
+        let step = python
+            .get(step_id.as_str())
+            .ok_or_else(|| fail("selected step missing from compiled channels"))?;
+        let Some(component_id) = step.include.first() else {
+            return Err(fail("missing PythonCode component"));
+        };
+        let component = resolver
+            .resolve(*component_id)
+            .ok_or_else(|| fail("PythonCode component unavailable"))?;
+        if component.class_code != CLASS_PYTHON_CODE || component.content.trim().is_empty() {
+            return Err(fail("execution requires nonempty PythonCode"));
+        }
+        if component.content.contains("{{vars.") {
+            return Err(fail(
+                "source interpolation is unsupported; bind typed inputs",
+            ));
+        }
+        steplist.push(ComposedStep {
+            step_id: step_id.clone(),
+            instructions: component.description,
+            executable_code: component.content,
+            tool_bindings: pending_binding.take().unwrap_or_default(),
+        });
+    }
+    if pending_binding.is_some() {
+        return Err(TypedCompositionError {
+            step_id: ordered.step_order().last().cloned().unwrap_or_default(),
+            reason: "binding has no following PythonCode step",
+        });
+    }
+    if steplist.is_empty() {
+        return Err(TypedCompositionError {
+            step_id: String::new(),
+            reason: "empty execution",
+        });
+    }
+    Ok(ComposedProgram {
+        skills,
+        steplist,
+        rust_directives,
+        variables: Vec::new(),
+        // No concatenated-source alternative: Monty executes the selected steps.
+        assembled_program: String::new(),
+        tier: if instruction.llm_call_required {
+            "tier1"
+        } else {
+            "tier0"
+        }
+        .into(),
+    })
+}
+
+fn host_callable_alias(name: &str) -> Option<&str> {
+    let alias = name.strip_prefix("host.").unwrap_or(name);
+    let mut bytes = alias.bytes();
+    (bytes
+        .next()
+        .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric()))
+    .then_some(alias)
+}
+
 /// Compose a [`BuildInstruction`] + resolver + bound variables into the
 /// predefined [`ComposedProgram`] (C.4.5.17). Pure + deterministic — the sole
 /// DB-bound input is the [`ComponentResolver`].
@@ -253,7 +411,8 @@ fn bind_variables(text: &str, variables: &[(String, String)]) -> String {
 mod tests {
     use super::*;
     use crate::memory::instruction_builder::{
-        BuildInstruction, IbsRecipeStep, RecipeStepType, StepOwner,
+        BuildInstruction, IbsRecipeStep, RecipeStepType, StepDescriptionEntry, StepOwner,
+        build_ordered_instruction,
     };
     use crate::types::ibs::{ErrorPolicy, ToolBinding};
     use std::collections::HashMap;
@@ -525,5 +684,110 @@ mod tests {
         let program = compose_program(&instruction, &resolver, &[]);
         assert_eq!(program.skills.len(), 1);
         assert_eq!(program.skills[0].id, skl);
+    }
+
+    #[test]
+    fn typed_assembly_preserves_selected_order_separate_binding_and_source() {
+        let pc = uuid("typed-python");
+        let ts = uuid("typed-toolskill");
+        let tool_id = uuid("typed-tool");
+        let body = "result = host.echo(message=inputs['message'])";
+        let mut descriptor = skill(ts, "echo-binding", "binding metadata").1;
+        descriptor.class_code = 13;
+        let resolver = FixtureResolver(
+            [
+                py(pc, "echo-usage", "Echo typed data", body),
+                (ts, descriptor),
+                tool(tool_id, "echo", ""),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        // Deliberately select SD2 before SD0. Sorting step IDs would detach
+        // the binding from its actual following execution step.
+        let descriptions: Vec<StepDescriptionEntry> = serde_json::from_value(serde_json::json!([
+            {"desc_idx": 2, "label": "bind", "yaml_source": "", "steps": [
+                {"stepnumber": 1, "knowledge": "rust", "type": "component",
+                 "goal": "bind", "content": "", "include": [ts],
+                 "tool_bindings": [{"tool_id": tool_id, "tool_name": "echo", "params": {},
+                                    "error_policy": {"policy": "fail"}}]}]},
+            {"desc_idx": 0, "label": "execute", "yaml_source": "", "steps": [
+                {"stepnumber": 1, "knowledge": "orchestrator", "type": "component",
+                 "goal": "execute", "content": "", "include": [pc]}]}
+        ]))
+        .unwrap();
+        let ordered =
+            build_ordered_instruction("2:1-2:E+0:1-0:E", &descriptions, &[], false).unwrap();
+        assert_eq!(ordered.step_order(), &["2:1", "0:1"]);
+        let composed = compose_typed_program(&ordered, &resolver).unwrap();
+        assert_eq!(composed.steplist.len(), 1);
+        assert_eq!(composed.steplist[0].step_id, "0:1");
+        assert_eq!(composed.steplist[0].executable_code, body);
+        assert_eq!(composed.steplist[0].tool_bindings[0].tool_id, tool_id);
+        assert!(composed.variables.is_empty());
+        assert!(composed.assembled_program.is_empty());
+
+        let reversed =
+            build_ordered_instruction("0:1-0:E+2:1-2:E", &descriptions, &[], false).unwrap();
+        assert_eq!(
+            compose_typed_program(&reversed, &resolver)
+                .unwrap_err()
+                .step_id,
+            "2:1"
+        );
+        assert!(
+            build_ordered_instruction("2:1-2:E+0:1-0:E+0:1-0:E", &descriptions, &[], false)
+                .is_err()
+        );
+
+        let mut missing = resolver.0.clone();
+        missing.remove(&tool_id);
+        assert_eq!(
+            compose_typed_program(&ordered, &FixtureResolver(missing))
+                .unwrap_err()
+                .reason,
+            "Tool component unavailable"
+        );
+        for (class_code, content) in [(1, "prose"), (22, ""), (22, "result = '{{vars.text}}'")] {
+            let mut invalid = resolver.0.clone();
+            let component = invalid.get_mut(&pc).unwrap();
+            component.class_code = class_code;
+            component.content = content.into();
+            assert!(compose_typed_program(&ordered, &FixtureResolver(invalid)).is_err());
+        }
+        let mut invalid = descriptions.clone();
+        invalid[1].steps[0].include.push(ts);
+        assert!(build_ordered_instruction("2:1-2:E+0:1-0:E", &invalid, &[], false).is_err());
+        invalid[1].steps[0].include.clear();
+        assert!(build_ordered_instruction("2:1-2:E+0:1-0:E", &invalid, &[], false).is_err());
+        let mut alias_collision = descriptions.clone();
+        let other_tool = uuid("other-tool");
+        let mut second_binding = alias_collision[0].steps[0].clone();
+        second_binding.tool_bindings[0].tool_id = other_tool;
+        second_binding.tool_bindings[0].tool_name = "host.echo".into();
+        alias_collision.push(StepDescriptionEntry {
+            desc_idx: 3,
+            label: "second binding".into(),
+            yaml_source: String::new(),
+            steps: vec![second_binding, alias_collision[1].steps[0].clone()]
+                .into_iter()
+                .enumerate()
+                .map(|(index, mut step)| {
+                    step.stepnumber = index as u32 + 1;
+                    step
+                })
+                .collect(),
+        });
+        let mut with_other = resolver.0.clone();
+        with_other.insert(other_tool, tool(other_tool, "other", "").1);
+        let ordered =
+            build_ordered_instruction("2:1-2:E+0:1-0:E+3:1-3:E", &alias_collision, &[], false)
+                .unwrap();
+        assert_eq!(
+            compose_typed_program(&ordered, &FixtureResolver(with_other))
+                .unwrap_err()
+                .reason,
+            "callable is bound to different Tools"
+        );
     }
 }
