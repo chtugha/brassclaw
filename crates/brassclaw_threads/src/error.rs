@@ -10,6 +10,8 @@ pub enum SessionThreadError {
     UnknownThread { thread_id: ThreadId },
     #[error("unknown message {message_id}")]
     UnknownMessage { message_id: ThreadMessageId },
+    #[error("message {message_id} is not the submitted user input for this execution")]
+    SubmittedInputMismatch { message_id: ThreadMessageId },
     #[error("thread {thread_id} already exists in a different scope")]
     ThreadScopeMismatch { thread_id: ThreadId },
     #[error("message {message_id} is not an assistant draft")]

@@ -2169,6 +2169,19 @@ pub async fn build_reborn_runtime(
         }
     }
 
+    // Shared boot prerequisites belong to the runtime, including REPL and
+    // non-WebUI entries. Failure returns before any turn worker or producer is
+    // spawned. The factory has completed migrations on this pool.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let booted_db = crate::booted_db::BootedDb::from_migrated_pool(Arc::clone(pool));
+        crate::component_boot::initialize_runtime_components(
+            &booted_db,
+            validated_identity.tenant_id.as_str(),
+        )
+        .await?;
+    }
+
     let thread_scope = ThreadScope {
         tenant_id,
         agent_id,

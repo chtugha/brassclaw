@@ -9,11 +9,12 @@ use crate::{
     AppendToolResultReferenceRequest, ContextMessages, ContextWindow, CreateSummaryArtifactRequest,
     EnsureThreadRequest, FinalizedAssistantMessageByRunRequest, LatestThreadMessageRequest,
     ListThreadsForScopeRequest, ListThreadsForScopeResponse, LoadContextMessagesRequest,
-    LoadContextWindowRequest, MessageContent, RedactMessageRequest,
-    ReplayAcceptedInboundMessageRequest, SessionThreadError, SessionThreadRecord, SummaryArtifact,
-    ThreadGoal, ThreadHistory, ThreadHistoryRequest, ThreadMessageId, ThreadMessageRange,
-    ThreadMessageRangeRequest, ThreadMessageRecord, ThreadScope, UpdateAssistantDraftRequest,
-    UpdateThreadGoalRequest, UpdateToolResultReferenceRequest,
+    LoadContextWindowRequest, MessageContent, MessageKind, MessageStatus, RedactMessageRequest,
+    ReplayAcceptedInboundMessageRequest, SessionThreadError, SessionThreadRecord,
+    SubmittedUserMessageRequest, SummaryArtifact, ThreadGoal, ThreadHistory, ThreadHistoryRequest,
+    ThreadMessageId, ThreadMessageRange, ThreadMessageRangeRequest, ThreadMessageRecord,
+    ThreadScope, UpdateAssistantDraftRequest, UpdateThreadGoalRequest,
+    UpdateToolResultReferenceRequest,
 };
 
 /// Canonical Reborn session thread and transcript boundary.
@@ -124,6 +125,39 @@ pub trait SessionThreadService: Send + Sync {
                 })
                 .collect(),
         })
+    }
+
+    /// Resolve an exact coordinator-admitted input. A missing, redacted or
+    /// differently assigned message is an error, never an empty input.
+    async fn submitted_user_message(
+        &self,
+        request: SubmittedUserMessageRequest,
+    ) -> Result<ThreadMessageRecord, SessionThreadError> {
+        let history = self
+            .list_thread_history(ThreadHistoryRequest {
+                scope: request.scope,
+                thread_id: request.thread_id.clone(),
+            })
+            .await?;
+        let message = history
+            .messages
+            .into_iter()
+            .find(|message| message.message_id == request.message_id)
+            .ok_or(SessionThreadError::UnknownMessage {
+                message_id: request.message_id,
+            })?;
+        if message.thread_id != request.thread_id
+            || message.kind != MessageKind::User
+            || message.status != MessageStatus::Submitted
+            || message.turn_id.as_deref() != Some(request.turn_id.as_str())
+            || message.turn_run_id.as_deref() != Some(request.turn_run_id.as_str())
+            || message.content.is_none()
+        {
+            return Err(SessionThreadError::SubmittedInputMismatch {
+                message_id: request.message_id,
+            });
+        }
+        Ok(message)
     }
 
     async fn latest_thread_message(

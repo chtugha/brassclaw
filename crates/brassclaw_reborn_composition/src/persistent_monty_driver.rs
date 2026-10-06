@@ -49,7 +49,7 @@
 //! ## User-input source
 //!
 //! The current turn's user input is loaded from the `SessionThreadService` via
-//! `latest_thread_message` (last finalized `User` message). The engine `Thread`
+//! `submitted_user_message` (the exact coordinator-admitted User message). The engine `Thread`
 //! returned by `PgThreadEngineStore::load_thread` carries an empty `messages`
 //! vec — it only maps metadata — so reading from `thread.messages` would always
 //! produce `""`, causing the VM to take the empty-input `FINAL(...)` path on
@@ -94,8 +94,8 @@ use brassclaw_engine::{
 };
 #[cfg(feature = "skills-db")]
 use brassclaw_threads::{
-    AppendAssistantDraftRequest, LatestThreadMessageRequest, MessageContent, MessageKind,
-    MessageStatus, SessionThreadService, ThreadScope,
+    AppendAssistantDraftRequest, MessageContent, SessionThreadService, SubmittedUserMessageRequest,
+    ThreadMessageId, ThreadScope,
 };
 #[cfg(feature = "skills-db")]
 use brassclaw_turns::{
@@ -590,42 +590,39 @@ impl MontyTurnDriverPort for PersistentMontyDriver {
                 })?;
         let mut thread = thread;
 
-        // Load the last finalized User message from the session thread service.
-        // `PgThreadEngineStore::map_record` always returns an empty `messages`
-        // vec (it only maps metadata, not transcript rows), so reading
-        // `last_user_input_string` from `thread.messages` returns `""` on every
-        // turn — causing the VM to hit the empty-input `FINAL(...)` path instead
-        // of processing the actual user message.
+        // Resolve the claimed run's input, never the latest message. A second
+        // submission can already exist by the time this worker claims the first.
         let thread_scope = thread_scope_from_turn_scope(&context.scope);
-        let user_input = match self
+        let message_id = context
+            .accepted_message_ref
+            .as_ref()
+            .and_then(|reference| reference.as_str().strip_prefix("msg:"))
+            .and_then(|id| ThreadMessageId::parse(id).ok())
+            .ok_or_else(|| AgentLoopDriverError::Failed {
+                reason_kind: "monty turn driver: missing or invalid accepted message reference"
+                    .to_string(),
+            })?;
+        if context.thread_id != context.scope.thread_id {
+            return Err(AgentLoopDriverError::Failed {
+                reason_kind: "monty turn driver: context thread mismatch".to_string(),
+            });
+        }
+        let record = self
             .session_thread_service
-            .latest_thread_message(LatestThreadMessageRequest {
+            .submitted_user_message(SubmittedUserMessageRequest {
                 scope: thread_scope,
-                thread_id: context.scope.thread_id.clone(),
-                kind: MessageKind::User,
-                // By the time the driver runs the inbound turn coordinator has
-                // transitioned the User message from Accepted → Submitted.
-                status: MessageStatus::Submitted,
+                thread_id: context.thread_id.clone(),
+                message_id,
+                turn_id: context.turn_id.to_string(),
+                turn_run_id: context.run_id.to_string(),
             })
             .await
-        {
-            Ok(Some(record)) => record.content.unwrap_or_default(),
-            Ok(None) => {
-                debug!(
-                    run_id = %context.run_id,
-                    "PersistentMontyDriver: no finalized user message found; using empty input"
-                );
-                String::new()
-            }
-            Err(error) => {
-                debug!(
-                    run_id = %context.run_id,
-                    %error,
-                    "PersistentMontyDriver: failed to load last user message; using empty input"
-                );
-                String::new()
-            }
-        };
+            .map_err(|_| AgentLoopDriverError::Failed {
+                reason_kind: "monty turn driver: admitted input lookup failed".to_string(),
+            })?;
+        let user_input = record.content.ok_or_else(|| AgentLoopDriverError::Failed {
+            reason_kind: "monty turn driver: admitted input has no content".to_string(),
+        })?;
         let max_duration_override = self.max_duration_secs.map(std::time::Duration::from_secs);
 
         // Per-turn signal channel: the broker holds the sender so the turn

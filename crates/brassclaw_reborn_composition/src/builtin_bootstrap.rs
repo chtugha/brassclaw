@@ -34,7 +34,7 @@
 //!
 //! Compiles behind the `postgres` feature (mirrors the `pg_*` stores). Built out
 //! incrementally per domain group; the insert/lookup surface is exercised by
-//! the boot wiring in `webui.rs`.
+//! the boot wiring in `component_boot.rs`.
 #![allow(dead_code)]
 #![forbid(unsafe_code)]
 
@@ -685,7 +685,7 @@ pub async fn seed_builtin_components(
     // Pass 6 — host group (Step 27 — all host.* Tools + Recipes).
     // The full Step 27 component stack is seeded by
     // `seed_builtin_host::seed_builtin_host_components`, which runs in
-    // `webui.rs` BEFORE `seed_builtin_components` is called. No duplicate
+    // `component_boot.rs` BEFORE `seed_builtin_components` is called. No duplicate
     // seeding needed here — the bootstrap pass is intentionally a no-op.
     seed_host_group_noop();
 
@@ -713,7 +713,7 @@ pub async fn seed_builtin_components(
     // ts-host-post-reply must exist before this pass runs (the auth-setup
     // recipe references it by name lookup). It is seeded by Pass 6
     // (`seed_builtin_host::seed_builtin_host_components`) which runs in
-    // `webui.rs` BEFORE `seed_builtin_components` is called, so the
+    // `component_boot.rs` BEFORE `seed_builtin_components` is called, so the
     // dependency is always satisfied.
     crate::zencoder_bootstrap::seed_zencoder_extension(stores.pool.clone(), tenant_id).await?;
 
@@ -11991,7 +11991,7 @@ async fn seed_management_group(stores: &BootstrapStores) -> Result<(), SeedBuilt
 // do NOT persist across steplist steps and a 2-step assemble-then-call recipe
 // cannot pass the assembled prompt to the call step.
 /// Pass 6 placeholder — the full Step 27 `host.*` component stack is seeded by
-/// [`crate::seed_builtin_host::seed_builtin_host_components`] in `webui.rs`
+/// [`crate::seed_builtin_host::seed_builtin_host_components`] in `component_boot.rs`
 /// BEFORE [`seed_builtin_components`] runs. This function is intentionally a
 /// synchronous no-op so the pass numbering in `seed_builtin_components` stays
 /// stable without introducing an unnecessary async await point.

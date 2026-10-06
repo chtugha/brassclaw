@@ -31,6 +31,8 @@ mod automation;
 mod available_extensions;
 mod budget;
 mod budget_events;
+#[cfg(feature = "postgres")]
+mod component_boot;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub mod component_import;
 pub mod db_config;

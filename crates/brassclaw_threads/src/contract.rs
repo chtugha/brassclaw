@@ -323,6 +323,17 @@ pub struct LatestThreadMessageRequest {
     pub status: MessageStatus,
 }
 
+/// Exact admitted input for an execution. Turn/run references are supplied by
+/// the coordinator; this read never chooses a newer message or changes status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubmittedUserMessageRequest {
+    pub scope: ThreadScope,
+    pub thread_id: ThreadId,
+    pub message_id: ThreadMessageId,
+    pub turn_id: String,
+    pub turn_run_id: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FinalizedAssistantMessageByRunRequest {
     pub scope: ThreadScope,

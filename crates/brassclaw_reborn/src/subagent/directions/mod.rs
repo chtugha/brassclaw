@@ -3,7 +3,7 @@
 //! The four direction prompts (`general`, `researcher`, `explorer`, `coder`)
 //! are seeded as class-10 `source='system'` rows in `reborn_skills` by
 //! `builtin_bootstrap::seed_orchestrator()`.  They are loaded into process
-//! memory by `init_directions()`, called from `webui.rs` after the content
+//! memory by `init_directions()`, called from `component_boot.rs` after the content
 //! integrity check passes.
 //!
 //! The public API `direction_prompt(id)` is unchanged — callers need no
@@ -47,7 +47,7 @@ pub fn direction_prompt(id: DirectionId) -> &'static str {
         DirectionId::General => DIRECTION_GENERAL.get().expect(
             "direction prompts not initialised; \
                  call brassclaw_reborn::subagent::directions::init_directions() \
-                 at boot (after run_content_integrity_check in webui.rs)",
+                 at boot (after run_content_integrity_check in component_boot.rs)",
         ),
         DirectionId::Researcher => DIRECTION_RESEARCHER
             .get()
@@ -62,7 +62,7 @@ pub fn direction_prompt(id: DirectionId) -> &'static str {
 }
 
 /// Initialise all direction prompts from DB rows loaded at boot.
-/// Called once from `webui.rs` after `run_content_integrity_check` passes.
+/// Called once from `component_boot.rs` after `run_content_integrity_check` passes.
 /// Subsequent calls after first initialisation are silently ignored.
 pub fn init_directions(general: String, researcher: String, explorer: String, coder: String) {
     let _ = DIRECTION_GENERAL.set(general);

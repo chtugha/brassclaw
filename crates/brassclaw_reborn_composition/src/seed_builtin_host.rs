@@ -1,8 +1,8 @@
 //! Phase C.2 — idempotent boot seed of the built-in `host.*` component stack
 //! (the Step 27 spec in `builtin_stuff_v3.md`).
 //!
-//! Runs on every service start (wired in `webui.rs` alongside
-//! [`crate::webui::seed_builtin_providers`]). Idempotent: a re-seed leaves
+//! Runs on every runtime start (wired in `component_boot.rs` before workers).
+//! Idempotent: a re-seed leaves
 //! existing rows untouched and only inserts what is missing.
 //!
 //! # Slices shipped in this file
@@ -274,14 +274,13 @@ pub async fn seed_builtin_host_components(
                 source: "system".into(),
                 dependency_registry: None,
             };
-            let id = stores
+            stores
                 .catalogue
                 .insert(row)
                 .await
                 .map_err(|e| SeedBuiltinHostError::Db {
                     reason: e.to_string(),
-                })?;
-            id
+                })?
         }
     };
 

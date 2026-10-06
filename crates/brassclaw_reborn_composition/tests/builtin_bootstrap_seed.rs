@@ -15,9 +15,9 @@
 //! `skills-db` (which implies `postgres`) because the seed + stores are
 //! postgres-only.
 //!
-//! This is the only automated regression check that the seed produces the
-//! correct rows — the boot path in `webui.rs` swallows seed errors as a
-//! `tracing::warn!`, so a regression would not fail the webui E2E suite.
+//! This checks the seed's complete row set and idempotency independently of
+//! runtime boot. `component_boot.rs` now propagates required seeding errors
+//! before any runtime worker starts.
 
 #![cfg(feature = "skills-db")]
 

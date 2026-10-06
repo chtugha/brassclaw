@@ -116,7 +116,7 @@ use tokio::sync::{Mutex, OnceCell};
 
 /// Process-local storage for the failure explanation system prompt.
 /// Populated by `init_failure_explanation_prompt()` during the boot sequence
-/// in `webui.rs`. Panics on first access if not initialised.
+/// in `component_boot.rs`. Panics on first access if not initialised.
 static FAILURE_EXPLANATION_PROMPT: OnceLock<String> = OnceLock::new();
 
 /// Returns the failure explanation system prompt body.
@@ -130,12 +130,12 @@ pub fn failure_explanation_system_prompt() -> &'static str {
     FAILURE_EXPLANATION_PROMPT.get().expect(
         "failure_explanation_prompt not initialised; \
              call brassclaw_loop_support::init_failure_explanation_prompt() \
-             at boot (after run_content_integrity_check in webui.rs)",
+             at boot (after run_content_integrity_check in component_boot.rs)",
     )
 }
 
 /// Initialise the failure explanation prompt from the DB row loaded at boot.
-/// Called once from `webui.rs` after `run_content_integrity_check` passes.
+/// Called once from `component_boot.rs` after `run_content_integrity_check` passes.
 /// Subsequent calls after first initialisation are silently ignored.
 pub fn init_failure_explanation_prompt(body: String) {
     let _ = FAILURE_EXPLANATION_PROMPT.set(body);

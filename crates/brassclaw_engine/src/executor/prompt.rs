@@ -76,14 +76,6 @@ After tool results are available, continue with another structured tool call or 
 Some integrations use literal UI blocks such as `[[choice_set]]...[[/choice_set]]` in final user-facing text. These are UI markup only; do not invent other bracketed control blocks, especially `[[call_tool ...]]`.
 "#;
 
-    /// Whether CodeAct (Tier 1 Python execution) is disabled by env var.
-    fn codeact_disabled() -> bool {
-        matches!(
-            std::env::var("BRASSCLAW_DISABLE_CODEACT").as_deref(),
-            Ok("true" | "1")
-        )
-    }
-
     const CODEACT_SYSTEM_PROMPT_MARKER: &str = "<!-- brassclaw:codeact-system-prompt -->\n";
     const CODEACT_LEGACY_OPENING: &str = "You are an AI assistant with a Python REPL environment.";
     const CODEACT_STRATEGY_HEADING: &str = "\n## Strategy\n";

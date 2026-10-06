@@ -5729,6 +5729,7 @@ fn map_thread_error(error: SessionThreadError) -> RebornServicesError {
             )
         }
         SessionThreadError::ThreadScopeMismatch { .. }
+        | SessionThreadError::SubmittedInputMismatch { .. }
         | SessionThreadError::IdempotentReplayActorMismatch { .. }
         | SessionThreadError::InvalidMessageTransition { .. }
         | SessionThreadError::MessageNotDraft { .. }

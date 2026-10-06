@@ -68,7 +68,7 @@ const LEGACY_TEXT_ONLY_CHECKPOINT_SCHEMA_VERSION: u64 = 1;
 
 /// Process-local storage for the compaction summarizer prompt.
 /// Populated by `init_compaction_summarizer()` during the boot sequence
-/// in `webui.rs`.  Panics on first access if not initialised.
+/// in `component_boot.rs`.  Panics on first access if not initialised.
 static COMPACTION_SUMMARIZER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 /// Returns the compaction summarizer prompt body.
@@ -82,12 +82,12 @@ pub fn compaction_summarizer_prompt() -> &'static str {
     COMPACTION_SUMMARIZER.get().expect(
         "compaction_summarizer not initialised; \
              call brassclaw_reborn::loop_driver_host::init_compaction_summarizer() \
-             at boot (after run_content_integrity_check in webui.rs)",
+             at boot (after run_content_integrity_check in component_boot.rs)",
     )
 }
 
 /// Initialise the compaction summarizer prompt from the DB row loaded at boot.
-/// Called once from `webui.rs` after `run_content_integrity_check` passes.
+/// Called once from `component_boot.rs` after `run_content_integrity_check` passes.
 /// Subsequent calls after first initialisation are silently ignored.
 pub fn init_compaction_summarizer(body: String) {
     let _ = COMPACTION_SUMMARIZER.set(body);
@@ -2400,7 +2400,7 @@ impl RebornLoopDriverHost {
 
 /// Process-local storage for the Sempai persona prompt (Part B of the
 /// 3-part audit prompt).  Populated by `init_sempai_persona()` during the
-/// boot sequence in `webui.rs`.  The operator can override the stored value
+/// boot sequence in `component_boot.rs`.  The operator can override the stored value
 /// via `POST /api/interceptor/config` in the WebUI; the boot-loaded body is
 /// the system default used when no operator override is present.
 #[cfg(feature = "root-llm-provider")]
@@ -2418,12 +2418,12 @@ pub fn sempai_persona() -> &'static str {
     SEMPAI_PERSONA.get().expect(
         "sempai_persona not initialised; \
              call brassclaw_reborn::loop_driver_host::init_sempai_persona() \
-             at boot (after run_content_integrity_check in webui.rs)",
+             at boot (after run_content_integrity_check in component_boot.rs)",
     )
 }
 
 /// Initialise the Sempai persona prompt from the DB row loaded at boot.
-/// Called once from `webui.rs` after `run_content_integrity_check` passes.
+/// Called once from `component_boot.rs` after `run_content_integrity_check` passes.
 /// Subsequent calls after first initialisation are silently ignored.
 #[cfg(feature = "root-llm-provider")]
 pub fn init_sempai_persona(body: String) {

@@ -139,7 +139,7 @@ Class **11 is unallocated** (`class_code_to_table` returns `None`) — Actions a
 
 `reborn_component_catalog` (`crates/brassclaw_pg/migrations/V084__reborn_component_catalog_view.sql`) is a read-only Postgres **VIEW** — not a table — that `UNION ALL`s the 14 prompt-bearing class tables above (excluding `reborn_tools`, class 0, which carries no prompt text) into one relation for ad hoc querying. It intentionally does not bake in per-request scope/validation filtering (tenant/user/agent/project scope, `validation_status = 'validated'`, consumer-tag checks) — callers apply their own `WHERE` clause on top, exactly as `PgSettingsListingService::list()` does per-table.
 
-**V085 migration** adds a nullable `content_checksum TEXT` column to `reborn_skills`, `reborn_tool_skills`, and `reborn_python_code`. For `source='system'` rows seeded by `builtin_bootstrap.rs`, this column holds the SHA-256 hex of the prose field (`body` or `content`). `run_content_integrity_check` (called at boot in `webui.rs`) verifies these checksums and halts the process on mismatch. Distinct from `content_hash` on `reborn_python_code` (similarity deduplication). Run `brassclaw repair` to restore corrupted system rows.
+**V085 migration** adds a nullable `content_checksum TEXT` column to `reborn_skills`, `reborn_tool_skills`, and `reborn_python_code`. For `source='system'` rows seeded by `builtin_bootstrap.rs`, this column holds the SHA-256 hex of the prose field (`body` or `content`). `run_content_integrity_check` (called during shared runtime boot in `component_boot.rs`) verifies these checksums and halts the process on mismatch. Distinct from `content_hash` on `reborn_python_code` (similarity deduplication). Run `brassclaw repair` to restore corrupted system rows.
 
 Legacy `brassclaw_memory_docs` rows are migrated into the appropriate class table at boot by `run_component_import` (`crates/brassclaw_reborn_composition/src/component_import.rs`).
 
@@ -561,7 +561,7 @@ The preamble/postamble (`codeact_preamble`, `codeact_postamble`) are also class-
 
 ### Boot Sequence (seeding + integrity)
 
-Today the seeding boot chain lives in `crates/brassclaw_reborn_composition/src/webui.rs`, within the `#[cfg(feature = "postgres")]` block, and driver construction happens separately in `runtime.rs`. The target moves these prerequisites to one shared composition boot path, used by every long-running product entry point; WebUI construction only attaches its facade. Required target order (see `simplified_v3.md` Phase 3a):
+The seeding boot chain now lives in `crates/brassclaw_reborn_composition/src/component_boot.rs`, called by `runtime.rs` after migrations and before turn workers and trigger producers. Required seed/recovery failures abort runtime construction. Every required prompt is loaded before initializing process-wide prompt stores. WebUI construction only attaches its facade and UI services. Global Monty ownership, its startup handshake and durable task continuation remain to be implemented. Required target order (see `simplified_v3.md` Phase 3a):
 
 ```
 BootedDb::from_migrated_pool(pool)   ← type-level proof migrations completed

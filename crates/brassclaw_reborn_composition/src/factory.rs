@@ -1050,31 +1050,21 @@ async fn build_local_dev(
         } else {
             None
         };
-    let prefix_bundle_backends = if let Some(pool) = pg_pool.as_ref() {
-        #[cfg(feature = "postgres")]
-        {
-            Some((
-                Arc::new(
-                    crate::pg_prefix_bundle_backends::PgSweepValidatedComponentsBackend::new(
-                        Arc::clone(pool),
-                    ),
-                )
-                    as Arc<dyn brassclaw_host_runtime::SweepValidatedComponentsBackend>,
-                Arc::new(
-                    crate::pg_prefix_bundle_backends::PgStorePrefixBundleBackend::new(Arc::clone(
-                        pool,
-                    )),
-                ) as Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>,
-            ))
-        }
-        #[cfg(not(feature = "postgres"))]
-        {
-            let _ = pool;
-            None
-        }
-    } else {
-        None
-    };
+    #[cfg(feature = "postgres")]
+    let prefix_bundle_backends = pg_pool.as_ref().map(|pool| {
+        (
+            Arc::new(
+                crate::pg_prefix_bundle_backends::PgSweepValidatedComponentsBackend::new(
+                    Arc::clone(pool),
+                ),
+            ) as Arc<dyn brassclaw_host_runtime::SweepValidatedComponentsBackend>,
+            Arc::new(
+                crate::pg_prefix_bundle_backends::PgStorePrefixBundleBackend::new(Arc::clone(pool)),
+            ) as Arc<dyn brassclaw_host_runtime::StorePrefixBundleBackend>,
+        )
+    });
+    #[cfg(not(feature = "postgres"))]
+    let prefix_bundle_backends = None;
     let mut first_party_registry = builtin_first_party_registry_with_trigger_create_hook(
         Arc::clone(&store_graph.trigger_repository),
         trigger_create_hook,

@@ -12,8 +12,8 @@
 //! (column `content`), `reborn_python_code` (column `content`).
 //!
 //! The check is a hard boot error — if any mismatch is found the process
-//! returns [`ContentIntegrityError::Corrupted`] and the `RebornWebuiBundle`
-//! is not returned to the caller. `brassclaw repair` can restore only the
+//! returns [`ContentIntegrityError::Corrupted`] before runtime workers start.
+//! `brassclaw repair` can restore only the
 //! explicitly compiled-in prompt seeds and asks before replacing differing
 //! content. Other mismatches require operator review; their expected content
 //! is not available as a compiled-in seed.
@@ -188,7 +188,7 @@ pub async fn run_content_integrity_check(
 // ---------------------------------------------------------------------------
 
 /// Perform the two-way check for one row and push any mismatch into `out`.
-fn check_row(
+pub(crate) fn check_row(
     table: &'static str,
     name: &str,
     prose: &str,
