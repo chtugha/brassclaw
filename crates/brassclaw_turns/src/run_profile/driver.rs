@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use thiserror::Error;
 
 use crate::{LoopExit, RunProfileVersion, TurnCheckpointId, TurnId, TurnRunId};
@@ -103,32 +104,71 @@ pub trait AgentLoopDriver: Send + Sync {
     ) -> Result<LoopExit, AgentLoopDriverError>;
 }
 
-/// Cross-turn-persistent Monty (Python Orchestrator) turn driver port (C.6
-/// slice 4b).
+/// Owned handoff of one claimed task to Monty. The host retains the exact opaque
+/// conversation and accepted-message identities and the neutral host ports.
+/// Ownership permits a service to retain them across waits without borrowing the
+/// runner's stack or manufacturing a UUID engine Thread.
 ///
-/// The Reborn turn runner holds an `Arc<dyn MontyTurnDriverPort>` and calls
-/// [`MontyTurnDriverPort::drive_turn`] directly for every Monty turn, bypassing
-/// the `driver_registry` / canonical stage pipeline (C.6 slice 5 retires that
-/// pipeline). The composition-side implementation owns the conversation-keyed
-/// Monty session registry plus the engine dependencies needed to load the
-/// Thread, build or resume a parked Monty session, and drive it to a yield.
-///
-/// Unlike [`AgentLoopDriver`], there is no `resume` split: cross-turn
-/// persistence is handled by parking the live Monty VM in the registry between
-/// turns, so every turn is a uniform `drive_turn`. The returned [`LoopExit`] is
-/// applied through the same trusted applier as an `AgentLoopDriver` exit.
-#[async_trait]
-pub trait MontyTurnDriverPort: Send + Sync {
-    /// Drive one turn of the persistent Monty orchestrator for the conversation
-    /// identified by the run context's scope. On a fresh conversation a session
-    /// is built; on a subsequent turn the parked session is resumed with the
-    /// new turn's input.
-    async fn drive_turn(
-        &self,
+/// This is Rust-only transport: it is deliberately neither serializable nor
+/// debug-printable. Claim tokens and host authority must not enter Python/model
+/// payloads. The hosting adapter constructs the separate, validated VM values.
+pub struct MontyTaskHandoff {
+    request: AgentLoopDriverRunRequest,
+    attempt: super::MontyTaskAttempt,
+    host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
+}
+
+impl MontyTaskHandoff {
+    pub fn new(
         request: AgentLoopDriverRunRequest,
         attempt: super::MontyTaskAttempt,
-        host: &(dyn AgentLoopDriverHost + Send + Sync),
-    ) -> Result<LoopExit, AgentLoopDriverError>;
+        host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
+    ) -> Result<Self, AgentLoopDriverError> {
+        let context = host.run_context();
+        if request.run_id != context.run_id
+            || request.turn_id != context.turn_id
+            || request.resolved_run_profile != context.resolved_run_profile
+            || attempt.run_id != context.run_id
+            || context.thread_id != context.scope.thread_id
+        {
+            return Err(AgentLoopDriverError::InvalidRequest {
+                reason: "Monty request, claim and host context do not identify the same task"
+                    .to_owned(),
+            });
+        }
+        Ok(Self {
+            request,
+            attempt,
+            host,
+        })
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        AgentLoopDriverRunRequest,
+        super::MontyTaskAttempt,
+        Arc<dyn AgentLoopDriverHost + Send + Sync>,
+    ) {
+        (self.request, self.attempt, self.host)
+    }
+}
+
+/// Handoff port to the instance-wide Monty orchestrator. The runner owns claims,
+/// heartbeats and exit application; Python/Recipes own task sequencing. An owned
+/// handoff must retain task identity and host access across waits, and must never
+/// imply a new global VM for a conversation or a turn.
+///
+/// The current composition adapter still uses a conversation-keyed registry;
+/// that implementation gap remains until the Phase 3a hosting cutover. Changing
+/// the ownership contract alone does not establish global startup/readiness.
+#[async_trait]
+pub trait MontyTurnDriverPort: Send + Sync {
+    /// Transfer one claimed task and await its exit. The service may retain the
+    /// host independently of this waiting future. Dropping the future is not a
+    /// cancellation acknowledgement; use addressed `stop_attempt`.
+    async fn drive_turn(&self, handoff: MontyTaskHandoff)
+    -> Result<LoopExit, AgentLoopDriverError>;
 
     /// Stop one claimed attempt. A completed/missing attempt is an idempotent
     /// no-op; another claim of the same run must never receive this signal.

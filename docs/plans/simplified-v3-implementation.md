@@ -757,3 +757,49 @@ Global hosting, Monty-owned Recipe state continuity, exact task handoff and
 neutral prompt/model/capability/transcript wiring still need their implementation
 and production-caller acceptance; Phase 3a and its Monty upgrade gate remain
 incomplete. Do not mark any of the seven failures resolved from compiler tests.
+
+
+### 2026-10-06 — Owned Monty task handoff and opaque input preflight
+
+The turn-runner handoff now transfers an owned `Arc` host together with the
+request and actual claim attempt. `MontyTaskHandoff` rejects mismatched request,
+run, turn, resolved profile or context/scope conversation before dispatch. It
+is deliberately not serializable or debug-printable; lease tokens remain in
+Rust authority/transport. All five existing test adapters were updated to the
+owned contract. This permits later global hosting to retain ports across waits;
+it does not itself create a global service or establish cancellation quiescence.
+
+The production driver now resolves the exact durable admitted input before
+consulting the legacy engine store. The new thread-free reader keeps opaque
+conversation IDs, asks the transcript boundary for complete eligible prior
+history, and preserves pending admission as a retryable condition. A native
+PostgreSQL regression uses an opaque `reborn-conv-...` ID, 142 real messages,
+redaction and a newer message after the admitted input. It verifies 139 eligible
+predecessors without truncation, pending admission, wrong-run rejection and
+missing-reference rejection. The returned history is retained in the input
+contract; the legacy executor still cannot consume it through neutral task ports.
+
+The broader caller checks exposed a preexisting host-test boot omission: the
+canonical compaction prompt was never initialized. Existing host/product
+fixtures now initialize the actual canonical seed through the same initializer
+used at production boot. Production readiness remains strict. The first compile
+also exposed the distinction between `Arc<dyn Host>` and conversion from the
+factory's `Box<dyn Host + Send + Sync>`; the owned type now preserves the exact
+factory trait-object type. Strict all-target lint caught and removed imports
+retired by the trait change. No diagnostic was suppressed.
+
+Sequential screen checks passed: Turns/Reborn libraries (83 + 236), native
+history/handoff regression (1), host integration (95), inbound integration
+(14), shared product harness (5), and architecture checks (29). Logs are
+`/private/tmp/brassclaw-monty-owned-handoff-{runner,history,host-v2,ingress-v2,harness,architecture}.log`.
+Strict all-target Clippy passed for Turns, Reborn, composition and product
+workflow with composition/skills-db in
+`/private/tmp/brassclaw-monty-owned-handoff-lints-v3.log`.
+
+**The seven original composition message-flow failures are not resolved.**
+The full composition suite was not rerun: source review still shows its UUID-only
+engine Thread requirement before execution. Next work must replace that executor
+with the global task host under the Phase 3a Monty upgrade gate, preserve
+Monty-owned Recipe step results/namespace and route model, tool and transcript
+operations through exact task host ports. No ID coercion, synthesized Thread,
+per-chat fallback or direct LLM bypass was introduced.

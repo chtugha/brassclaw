@@ -130,6 +130,12 @@ fn turn_state_store_dyn(store: &Arc<InMemoryTurnStateStore>) -> Arc<dyn TurnStat
 }
 
 fn test_safety_context() -> InstructionSafetyContext {
+    // These host fixtures bypass composition boot; initialize its required
+    // prompt from the exact canonical seed rather than weakening host readiness.
+    brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+        include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md")
+            .to_owned(),
+    );
     InstructionSafetyContext::new("policy:test", "test safety context")
         .expect("test safety context")
 }
@@ -6079,15 +6085,14 @@ impl WrappingMontyDriver {
 impl MontyTurnDriverPort for WrappingMontyDriver {
     async fn drive_turn(
         &self,
-        request: AgentLoopDriverRunRequest,
-        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
-        host: &(dyn AgentLoopDriverHost + Send + Sync),
+        handoff: brassclaw_turns::run_profile::MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        let (request, _, host) = handoff.into_parts();
         let call = self
             .call_count
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if call == 0 {
-            self.driver.run(request, host).await
+            self.driver.run(request, host.as_ref()).await
         } else {
             self.driver
                 .resume(
@@ -6097,7 +6102,7 @@ impl MontyTurnDriverPort for WrappingMontyDriver {
                         checkpoint_id: brassclaw_turns::TurnCheckpointId::new(),
                         resolved_run_profile: request.resolved_run_profile,
                     },
-                    host,
+                    host.as_ref(),
                 )
                 .await
         }
@@ -6359,6 +6364,10 @@ struct HostFixture {
 
 impl HostFixture {
     async fn new(thread_name: &str, user_content: &str) -> Self {
+        brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+            include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md")
+                .to_owned(),
+        );
         Self::new_with_submission_state(thread_name, user_content, true).await
     }
 

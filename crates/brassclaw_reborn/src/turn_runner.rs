@@ -526,16 +526,18 @@ impl TurnRunnerWorker {
             run_id: claimed.state.run_id,
             resolved_run_profile: claimed.resolved_run_profile.clone(),
         };
+        let handoff = brassclaw_turns::run_profile::MontyTaskHandoff::new(
+            request,
+            brassclaw_turns::run_profile::MontyTaskAttempt {
+                run_id: claimed.state.run_id,
+                runner_id: claimed.runner_id,
+                lease_token: claimed.lease_token,
+            },
+            Arc::from(host),
+        )
+        .map_err(DriverInvocationError::DriverError)?;
         monty
-            .drive_turn(
-                request,
-                brassclaw_turns::run_profile::MontyTaskAttempt {
-                    run_id: claimed.state.run_id,
-                    runner_id: claimed.runner_id,
-                    lease_token: claimed.lease_token,
-                },
-                host.as_ref(),
-            )
+            .drive_turn(handoff)
             .await
             .map_err(DriverInvocationError::DriverError)
     }

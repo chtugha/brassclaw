@@ -102,6 +102,8 @@ mod fetch_cached_content;
 pub mod mcp_server_service;
 #[cfg(feature = "migrate-from-libsql")]
 pub mod migration;
+#[cfg(feature = "skills-db")]
+mod monty_task_input;
 pub(crate) mod orchestrator_lookup_impl;
 /// Phase V: Orchestrator MCP Server — exposes orchestrator Skills as MCP tools.
 pub mod orchestrator_mcp_server;

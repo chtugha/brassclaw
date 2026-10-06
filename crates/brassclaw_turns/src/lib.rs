@@ -81,7 +81,7 @@ pub use run_profile::{
     CheckpointSchemaId, ConcurrencyClass, ContextProfileId, EmptyMemoryPromptContextService,
     InMemoryRunProfileRegistry, InMemoryRunProfileResolver, LoopCheckpointKind,
     LoopCheckpointStateRef, LoopDriverId, MemoryPromptContextRequest, MemoryPromptContextService,
-    ModelProfileId, MontyTurnDriverPort, PrivilegedRunProfileDimension,
+    ModelProfileId, MontyTaskHandoff, MontyTurnDriverPort, PrivilegedRunProfileDimension,
     RedactedRunProfileProvenance, RedactedRunProfileSource, ResolvedRunProfile,
     ResourceBudgetPolicy, ResourceBudgetTier, RunClassId, RunProfileFingerprint,
     RunProfileRegistryError, RunProfileRequestAuthority, RunProfileResolutionError,

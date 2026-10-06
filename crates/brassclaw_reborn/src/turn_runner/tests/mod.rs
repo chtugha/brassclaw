@@ -387,10 +387,9 @@ impl MockMontyDriver {
 impl MontyTurnDriverPort for MockMontyDriver {
     async fn drive_turn(
         &self,
-        request: AgentLoopDriverRunRequest,
-        attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
-        _host: &(dyn AgentLoopDriverHost + Send + Sync),
+        handoff: brassclaw_turns::run_profile::MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        let (request, attempt, _) = handoff.into_parts();
         self.drive_requests.lock().expect("lock").push(request);
         self.drive_attempts.lock().expect("lock").push(attempt);
         if !self.drive_delay.is_zero() {
@@ -416,10 +415,9 @@ struct PanickingMontyDriver;
 impl MontyTurnDriverPort for PanickingMontyDriver {
     async fn drive_turn(
         &self,
-        _request: AgentLoopDriverRunRequest,
-        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
-        _host: &(dyn AgentLoopDriverHost + Send + Sync),
+        handoff: brassclaw_turns::run_profile::MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        let _ = handoff;
         panic!("simulated Monty driver panic")
     }
     async fn stop_attempt(

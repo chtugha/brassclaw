@@ -2,12 +2,13 @@
 
 use std::sync::Arc;
 
-use brassclaw_host_api::{AgentId, TenantId};
+use brassclaw_host_api::{AgentId, TenantId, ThreadId};
 use brassclaw_threads::{
     AcceptInboundMessageRequest, EnsureThreadRequest, LoadContextMessagesRequest, MessageContent,
     PgSessionThreadService, RedactMessageRequest, SessionThreadError, SessionThreadService,
     SubmittedUserMessageRequest, ThreadScope,
 };
+use brassclaw_turns::{TurnId, TurnRunId};
 
 #[tokio::test]
 async fn native_submitted_history_is_complete_filtered_and_scope_checked() {
@@ -23,13 +24,15 @@ async fn native_submitted_history_is_complete_filtered_and_scope_checked() {
     let thread = service
         .ensure_thread(EnsureThreadRequest {
             scope: scope.clone(),
-            thread_id: None,
+            thread_id: Some(ThreadId::new("reborn-conv-history-opaque").unwrap()),
             created_by_actor_id: "operator".into(),
             title: None,
             metadata_json: None,
         })
         .await
         .unwrap();
+    let turn_id = TurnId::new();
+    let run_id = TurnRunId::new();
     let mut ids = Vec::new();
     for index in 0..142 {
         let accepted = service
@@ -48,13 +51,36 @@ async fn native_submitted_history_is_complete_filtered_and_scope_checked() {
     }
     // Index 140 is the exact input; 141 is a newer message and must not leak
     // into its context. The redacted predecessor must not consume the limit.
+    #[cfg(feature = "skills-db")]
+    let (monty_scope, message_ref) = (
+        brassclaw_turns::TurnScope::new_with_owner(
+            scope.tenant_id.clone(),
+            Some(scope.agent_id.clone()),
+            scope.project_id.clone(),
+            thread.thread_id.clone(),
+            scope.owner_user_id.clone(),
+        ),
+        brassclaw_turns::AcceptedMessageRef::new(format!("msg:{}", ids[140])).unwrap(),
+    );
+    #[cfg(feature = "skills-db")]
+    assert!(matches!(
+        crate::monty_task_input::load_monty_task_input(
+            &service,
+            &monty_scope,
+            Some(&message_ref),
+            turn_id,
+            run_id,
+        )
+        .await,
+        Err(brassclaw_turns::AgentLoopDriverError::InputAdmissionPending)
+    ));
     service
         .mark_message_submitted(
             &scope,
             &thread.thread_id,
             ids[140],
-            "turn-history".into(),
-            "run-history".into(),
+            turn_id.to_string(),
+            run_id.to_string(),
         )
         .await
         .unwrap();
@@ -71,8 +97,8 @@ async fn native_submitted_history_is_complete_filtered_and_scope_checked() {
         scope: scope.clone(),
         thread_id: thread.thread_id.clone(),
         message_id: ids[140],
-        turn_id: "turn-history".into(),
-        turn_run_id: "run-history".into(),
+        turn_id: turn_id.to_string(),
+        turn_run_id: run_id.to_string(),
     };
     let complete = service
         .submitted_turn_input(request.clone(), None)
@@ -83,6 +109,42 @@ async fn native_submitted_history_is_complete_filtered_and_scope_checked() {
     for (index, message) in complete.prior_context.messages.iter().enumerate() {
         assert_eq!(message.message_id, Some(ids[index]));
         assert_eq!(message.content, format!("message-{index}"));
+    }
+    #[cfg(feature = "skills-db")]
+    {
+        let input = crate::monty_task_input::load_monty_task_input(
+            &service,
+            &monty_scope,
+            Some(&message_ref),
+            turn_id,
+            run_id,
+        )
+        .await
+        .unwrap();
+        assert_eq!(input, complete);
+        assert!(
+            crate::monty_task_input::load_monty_task_input(
+                &service,
+                &monty_scope,
+                Some(&message_ref),
+                turn_id,
+                TurnRunId::new(),
+            )
+            .await
+            .is_err(),
+            "another run must not receive this admitted input"
+        );
+        assert!(matches!(
+            crate::monty_task_input::load_monty_task_input(
+                &service,
+                &monty_scope,
+                None,
+                turn_id,
+                run_id,
+            )
+            .await,
+            Err(brassclaw_turns::AgentLoopDriverError::InvalidRequest { .. })
+        ));
     }
     let bounded = service
         .submitted_turn_input(request, Some(2))

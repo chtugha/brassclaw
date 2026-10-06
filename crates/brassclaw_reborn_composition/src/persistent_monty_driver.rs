@@ -93,16 +93,13 @@ use brassclaw_engine::{
     },
 };
 #[cfg(feature = "skills-db")]
-use brassclaw_threads::{
-    AppendAssistantDraftRequest, MessageContent, SessionThreadService, SubmittedUserMessageRequest,
-    ThreadMessageId, ThreadScope,
-};
+use brassclaw_threads::{AppendAssistantDraftRequest, MessageContent, SessionThreadService};
 #[cfg(feature = "skills-db")]
 use brassclaw_turns::{
     LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, TurnRunId, TurnScope,
     run_profile::{
-        AgentLoopDriverError, AgentLoopDriverHost, AgentLoopDriverRunRequest, LoopRunContext,
-        MontyTaskAttempt, MontyTurnDriverPort,
+        AgentLoopDriverError, LoopRunContext, MontyTaskAttempt, MontyTaskHandoff,
+        MontyTurnDriverPort,
     },
 };
 
@@ -574,7 +571,7 @@ impl PersistentMontyDriver {
             return Ok(());
         };
 
-        let thread_scope = thread_scope_from_turn_scope(&context.scope);
+        let thread_scope = crate::monty_task_input::thread_scope_from_turn_scope(&context.scope);
         let thread_id = context.scope.thread_id.clone();
         let run_id_str = context.run_id.to_string();
 
@@ -641,90 +638,40 @@ fn completed_exit_id(run_id: &TurnRunId) -> Result<LoopExitId, AgentLoopDriverEr
     })
 }
 
-/// Build a [`ThreadScope`] from a [`TurnScope`] for use with
-/// [`SessionThreadService`] calls. `agent_id` falls back to `"default"` when
-/// the `TurnScope` does not carry an explicit agent (tenant-level turns).
-/// `owner_user_id` is extracted from the explicit thread owner when present.
-#[cfg(feature = "skills-db")]
-fn thread_scope_from_turn_scope(scope: &TurnScope) -> ThreadScope {
-    ThreadScope {
-        tenant_id: scope.tenant_id.clone(),
-        agent_id: scope
-            .agent_id
-            .clone()
-            .unwrap_or_else(|| brassclaw_host_api::AgentId::from_trusted("default".to_string())),
-        project_id: scope.project_id.clone(),
-        owner_user_id: scope.explicit_owner_user_id().cloned(),
-    }
-}
-
 #[cfg(feature = "skills-db")]
 #[async_trait]
 impl MontyTurnDriverPort for PersistentMontyDriver {
     async fn drive_turn(
         &self,
-        request: AgentLoopDriverRunRequest,
-        attempt: MontyTaskAttempt,
-        host: &(dyn AgentLoopDriverHost + Send + Sync),
+        handoff: MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        let (_, attempt, host) = handoff.into_parts();
         let context = host.run_context();
-        if request.run_id != context.run_id
-            || request.turn_id != context.turn_id
-            || request.resolved_run_profile != context.resolved_run_profile
-            || attempt.run_id != context.run_id
-        {
-            return Err(AgentLoopDriverError::InvalidRequest {
-                reason: "Monty request, claim and host context do not identify the same run"
-                    .to_owned(),
-            });
-        }
 
-        let thread =
+        // Read the exact admitted input before touching the legacy engine store.
+        // This input/history handoff does not require a UUID conversation.
+        let input = crate::monty_task_input::load_monty_task_input(
+            self.session_thread_service.as_ref(),
+            &context.scope,
+            context.accepted_message_ref.as_ref(),
+            context.turn_id,
+            context.run_id,
+        )
+        .await?;
+        // The legacy executor still needs an engine Thread. The global hosting
+        // cutover must consume input.prior_context directly through task ports.
+        let mut thread =
             self.load_thread(context)
                 .await
                 .ok_or_else(|| AgentLoopDriverError::Failed {
                     reason_kind: "monty turn driver: thread not found".to_string(),
                 })?;
-        let mut thread = thread;
-
-        // Resolve the claimed run's input, never the latest message. A second
-        // submission can already exist by the time this worker claims the first.
-        let thread_scope = thread_scope_from_turn_scope(&context.scope);
-        let message_id = context
-            .accepted_message_ref
-            .as_ref()
-            .and_then(|reference| reference.as_str().strip_prefix("msg:"))
-            .and_then(|id| ThreadMessageId::parse(id).ok())
+        let user_input = input
+            .message
+            .content
             .ok_or_else(|| AgentLoopDriverError::Failed {
-                reason_kind: "monty turn driver: missing or invalid accepted message reference"
-                    .to_string(),
+                reason_kind: "monty turn driver: admitted input has no content".to_string(),
             })?;
-        if context.thread_id != context.scope.thread_id {
-            return Err(AgentLoopDriverError::Failed {
-                reason_kind: "monty turn driver: context thread mismatch".to_string(),
-            });
-        }
-        let record = self
-            .session_thread_service
-            .submitted_user_message(SubmittedUserMessageRequest {
-                scope: thread_scope,
-                thread_id: context.thread_id.clone(),
-                message_id,
-                turn_id: context.turn_id.to_string(),
-                turn_run_id: context.run_id.to_string(),
-            })
-            .await
-            .map_err(|error| match error {
-                brassclaw_threads::SessionThreadError::SubmittedInputPending { .. } => {
-                    AgentLoopDriverError::InputAdmissionPending
-                }
-                _ => AgentLoopDriverError::Failed {
-                    reason_kind: "monty turn driver: admitted input lookup failed".to_string(),
-                },
-            })?;
-        let user_input = record.content.ok_or_else(|| AgentLoopDriverError::Failed {
-            reason_kind: "monty turn driver: admitted input has no content".to_string(),
-        })?;
         let max_duration_override = self.max_duration_secs.map(std::time::Duration::from_secs);
 
         // Per-turn signal channel: the broker holds the sender so the turn

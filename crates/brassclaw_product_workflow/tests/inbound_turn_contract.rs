@@ -41,19 +41,18 @@ use brassclaw_threads::{
     ThreadScope,
 };
 use brassclaw_turns::{
-    AgentLoopDriverError, AgentLoopDriverRunRequest, CancelRunRequest, CancelRunResponse,
-    DefaultTurnCoordinator, EventCursor, GetRunStateRequest, IdempotencyKey,
-    InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore, InMemoryTurnStateStore,
-    LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, LoopResultRef, ResumeTurnRequest,
-    ResumeTurnResponse, RunProfileId, RunProfileVersion, SanitizedCancelReason, SubmitTurnRequest,
-    SubmitTurnResponse, ThreadBusy, TurnActor, TurnCoordinator, TurnError, TurnId, TurnRunId,
-    TurnRunState, TurnRunWake, TurnScope, TurnStateStore, TurnStatus,
+    AgentLoopDriverError, CancelRunRequest, CancelRunResponse, DefaultTurnCoordinator, EventCursor,
+    GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore,
+    InMemoryTurnStateStore, LoopCompleted, LoopCompletionKind, LoopExit, LoopExitId, LoopResultRef,
+    ResumeTurnRequest, ResumeTurnResponse, RunProfileId, RunProfileVersion, SanitizedCancelReason,
+    SubmitTurnRequest, SubmitTurnResponse, ThreadBusy, TurnActor, TurnCoordinator, TurnError,
+    TurnId, TurnRunId, TurnRunState, TurnRunWake, TurnScope, TurnStateStore, TurnStatus,
     run_profile::{
-        AgentLoopDriverHost, AgentLoopHostError, FinalizeAssistantMessage,
-        InMemoryLoopHostMilestoneSink, InstructionSafetyContext, LoopCancelReasonKind,
-        LoopCapabilityPort, LoopInputAckToken, LoopInputCursorToken, LoopModelRequest,
-        LoopPromptBundleRequest, LoopRunContext, MontyTurnDriverPort, NoOpBudgetAccountant,
-        NoOpPolicyGuard, ParentLoopOutput, PromptMode, VisibleCapabilityRequest,
+        AgentLoopHostError, FinalizeAssistantMessage, InMemoryLoopHostMilestoneSink,
+        InstructionSafetyContext, LoopCancelReasonKind, LoopCapabilityPort, LoopInputAckToken,
+        LoopInputCursorToken, LoopModelRequest, LoopPromptBundleRequest, LoopRunContext,
+        MontyTurnDriverPort, NoOpBudgetAccountant, NoOpPolicyGuard, ParentLoopOutput, PromptMode,
+        VisibleCapabilityRequest,
     },
 };
 use chrono::Utc;
@@ -315,10 +314,9 @@ struct ReplyMontyDriver {
 impl MontyTurnDriverPort for ReplyMontyDriver {
     async fn drive_turn(
         &self,
-        _request: AgentLoopDriverRunRequest,
-        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
-        host: &(dyn AgentLoopDriverHost + Send + Sync),
+        handoff: brassclaw_turns::run_profile::MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        let (_, _, host) = handoff.into_parts();
         let surface = host
             .visible_capabilities(VisibleCapabilityRequest)
             .await
@@ -481,6 +479,12 @@ fn turn_state_store_dyn(store: &Arc<InMemoryTurnStateStore>) -> Arc<dyn TurnStat
 }
 
 fn test_safety_context() -> InstructionSafetyContext {
+    // These host fixtures bypass composition boot; initialize its required
+    // prompt from the exact canonical seed rather than weakening host readiness.
+    brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+        include_str!("../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md")
+            .to_owned(),
+    );
     InstructionSafetyContext::new("policy:test", "test safety context")
         .expect("test safety context")
 }

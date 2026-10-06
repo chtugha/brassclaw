@@ -53,12 +53,12 @@ use brassclaw_threads::{
 };
 use brassclaw_trust::EffectiveTrustClass;
 use brassclaw_turns::{
-    AgentLoopDriver, AgentLoopDriverError, AgentLoopDriverRunRequest, CancelRunRequest,
-    GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore,
-    InMemoryTurnStateStore, LoopExit, LoopResultRef, SanitizedCancelReason, TurnActor,
-    TurnCoordinator, TurnRunId, TurnRunState, TurnRunWake, TurnScope, TurnStateStore, TurnStatus,
+    AgentLoopDriver, AgentLoopDriverError, CancelRunRequest, GetRunStateRequest, IdempotencyKey,
+    InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore, InMemoryTurnStateStore, LoopExit,
+    LoopResultRef, SanitizedCancelReason, TurnActor, TurnCoordinator, TurnRunId, TurnRunState,
+    TurnRunWake, TurnScope, TurnStateStore, TurnStatus,
     run_profile::{
-        AgentLoopDriverHost, AgentLoopHostError, CapabilityBatchInvocation, CapabilityBatchOutcome,
+        AgentLoopHostError, CapabilityBatchInvocation, CapabilityBatchOutcome,
         CapabilityCallCandidate, CapabilityDescriptorView, CapabilityInputRef,
         CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage, CapabilitySurfaceVersion,
         ConcurrencyHint, InMemoryLoopHostMilestoneSink, InstructionSafetyContext,
@@ -940,14 +940,13 @@ impl WrappingMontyDriver {
 impl MontyTurnDriverPort for WrappingMontyDriver {
     async fn drive_turn(
         &self,
-        request: AgentLoopDriverRunRequest,
-        _attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
-        host: &(dyn AgentLoopDriverHost + Send + Sync),
+        handoff: brassclaw_turns::run_profile::MontyTaskHandoff,
     ) -> Result<LoopExit, AgentLoopDriverError> {
+        let (request, _, host) = handoff.into_parts();
         use std::sync::atomic::Ordering;
         let call = self.call_count.fetch_add(1, Ordering::SeqCst);
         if call == 0 {
-            self.driver.run(request, host).await
+            self.driver.run(request, host.as_ref()).await
         } else {
             self.driver
                 .resume(
@@ -957,7 +956,7 @@ impl MontyTurnDriverPort for WrappingMontyDriver {
                         checkpoint_id: brassclaw_turns::TurnCheckpointId::new(),
                         resolved_run_profile: request.resolved_run_profile,
                     },
-                    host,
+                    host.as_ref(),
                 )
                 .await
         }
@@ -1109,6 +1108,12 @@ fn user_message_envelope(event_suffix: &str, text: &str) -> ProductInboundEnvelo
 }
 
 fn test_safety_context() -> InstructionSafetyContext {
+    // These host fixtures bypass composition boot; initialize its required
+    // prompt from the exact canonical seed rather than weakening host readiness.
+    brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+        include_str!("../../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md")
+            .to_owned(),
+    );
     InstructionSafetyContext::new("policy:test", "test safety context")
         .expect("test safety context")
 }
