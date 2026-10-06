@@ -2595,6 +2595,13 @@ pub async fn build_reborn_runtime(
                 crate::retrieval_lookup_impl::PgRetrievalLookup::new(Arc::new(
                     brassclaw_engine::memory::PostgresSource::new(Arc::clone(pool)),
                 ))
+                .with_token_settings(Arc::new(
+                    crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+                        Arc::clone(pool),
+                        validated_identity.tenant_id.as_str(),
+                        validated_identity.agent_id.as_str(),
+                    ),
+                ))
                 .with_skill_activation_observer(Arc::clone(&skill_activation_observer_arc)),
             ) as Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>
         });
@@ -2631,13 +2638,15 @@ pub async fn build_reborn_runtime(
         // Clone the builder so both PgOrchestratorLookup and PersistentMontyDriver
         // can hold a reference (Arc::clone — no deep copy).
         let executor_builder_for_lookup = Arc::clone(&tier_zero_executor_builder);
-        Some(
-            Arc::new(crate::orchestrator_lookup_impl::PgOrchestratorLookup::new(
+        Some(Arc::new(
+            crate::orchestrator_lookup_impl::PgOrchestratorLookup::new(
                 Arc::new(runtime),
                 thread_store,
                 executor_builder_for_lookup,
-            )) as Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>,
+            )
+            .with_retrieval_lookup(retrieval_lookup.clone()),
         )
+            as Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>)
     };
     #[cfg(not(feature = "skills-db"))]
     let orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>> =

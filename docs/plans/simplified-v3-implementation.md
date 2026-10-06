@@ -578,3 +578,26 @@ bounded resumable CPU control, durable shared WebUI acknowledgement, supported
 allocation/heap migration, native No-Match/history Instructions, provider DB-only
 cutover, safe component revisions and backup/restore remain unfinished. No
 runtime prerequisite, user data or existing operator setting was deleted.
+
+### Complete eligible history and live retrieval token settings (2026-10-06)
+
+`submitted_turn_input` applies a requested history suffix only after eligibility
+filtering. `None` returns complete eligible history before the exact admitted
+input; redacted/draft records cannot consume the suffix. PostgreSQL exact context
+lookup verifies the entire thread scope and preserves requested ordering with a
+linear index. The native PostgreSQL caller test covers 139 eligible messages,
+a redacted suffix, a newer input, a bounded suffix and cross-agent rejection.
+
+Retrieval and prior-knowledge APIs now accept `Option<usize>`: `None` explicitly
+means no token ceiling. The fixed 4,096 ceiling was removed from Recipe and
+orchestrator adapters. Production adapters read the existing scoped settings
+store per call; disabling, enabling and disabling again is verified through
+actual PostgreSQL settings and retrieval. Settings/source failures propagate;
+they do not silently become empty or unlimited retrieval. Exact Recipe programs
+are not truncated. This does not complete the instance-wide settings migration,
+shared runtime acknowledgement, task accounting, or global history/prompt wiring.
+
+Sequential screen verification passed: all-target thread/agent-loop/engine tests,
+composition native PostgreSQL tests, affected all-target strict Clippy and all
+architecture tests. No simultaneous Cargo executions or warning suppression.
+The previously recorded eight composition integration failures remain open.

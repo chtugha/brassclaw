@@ -132,7 +132,7 @@ async fn python_code_retrieved_via_fetch_for_consumer() {
     // class-22 arm must surface this row for the `02:orchestrator` consumer.
     let source = PostgresSource::new(Arc::new(rig.pool.clone()));
     let items = source
-        .fetch_for_consumer(&scope, "", 10_000, "02:orchestrator")
+        .fetch_for_consumer(&scope, "", Some(10_000), "02:orchestrator")
         .await
         .expect("fetch_for_consumer");
 

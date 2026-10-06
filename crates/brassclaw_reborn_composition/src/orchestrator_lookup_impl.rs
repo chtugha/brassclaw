@@ -60,12 +60,6 @@ use crate::runtime::TierZeroEffectExecutorBuilder;
 /// there); the orchestrator channel IS class 02, so the value is identical.
 const ORCHESTRATOR_SENDER_CLASS_CODE: &str = "02";
 
-/// Token budget for Tier-1 prior-knowledge assembly. Mirrors
-/// `brassclaw_agent_loop::executor::recipe::RETRIEVAL_TOKEN_BUDGET` (private
-/// there): the assembled prior-knowledge block gets the same headroom the
-/// retrieval stage grants a fresh `fetch_for_turn`.
-const PRIOR_KNOWLEDGE_TOKEN_BUDGET: usize = 4096;
-
 /// Production [`OrchestratorLookup`] backed by the engine Tier-0 channel.
 ///
 /// Holds three long-lived deps constructed once at runtime wiring time:
@@ -85,6 +79,7 @@ pub(crate) struct PgOrchestratorLookup {
     runtime: Arc<TierZeroOrchestrator>,
     thread_store: Arc<dyn Store>,
     executor_builder: Arc<TierZeroEffectExecutorBuilder>,
+    retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
 }
 
 #[cfg(feature = "skills-db")]
@@ -98,7 +93,16 @@ impl PgOrchestratorLookup {
             runtime,
             thread_store,
             executor_builder,
+            retrieval_lookup: None,
         }
+    }
+
+    pub(crate) fn with_retrieval_lookup(
+        mut self,
+        lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
+    ) -> Self {
+        self.retrieval_lookup = lookup;
+        self
     }
 
     /// Load the live engine [`Thread`] for `context.thread_id`, mapping the
@@ -130,6 +134,16 @@ impl OrchestratorLookup for PgOrchestratorLookup {
         recipe_hint: Option<&serde_json::Value>,
     ) -> Option<PriorKnowledgeBundle> {
         let thread = self.load_thread(context).await?;
+        let token_budget = match &self.retrieval_lookup {
+            Some(lookup) => match lookup.token_budget(context).await {
+                Ok(budget) => budget,
+                Err(error) => {
+                    tracing::debug!(%error, "prior-knowledge token settings unavailable");
+                    return None;
+                }
+            },
+            None => None,
+        };
         // Tier-1 `recipe_hint` is `Some` (RecipeStage stashed the
         // orchestrator-channel items) → the engine `Some`-branch assembles them
         // with NO second `fetch_for_turn` and NO LLM call. `goal` is both the
@@ -139,7 +153,7 @@ impl OrchestratorLookup for PgOrchestratorLookup {
             .assemble_prior_knowledge(
                 &thread,
                 &thread.goal,
-                PRIOR_KNOWLEDGE_TOKEN_BUDGET,
+                token_budget,
                 ORCHESTRATOR_SENDER_CLASS_CODE,
                 recipe_hint.cloned(),
             )

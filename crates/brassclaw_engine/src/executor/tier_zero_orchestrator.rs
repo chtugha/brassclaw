@@ -107,7 +107,7 @@ impl TierZeroOrchestrator {
         &self,
         thread: &Thread,
         goal: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         sender_class: &str,
         recipe_hint: Option<serde_json::Value>,
     ) -> Result<PkrAssemblyResult, EngineError> {

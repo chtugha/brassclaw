@@ -45,10 +45,6 @@ use crate::state::LoopExecutionState;
 
 use super::{AgentLoopExecutorError, ExecutorStage, StageContext};
 
-/// Token budget forwarded to `RetrievalLookup::fetch_for_turn` (v3 Phase E.0).
-/// Placeholder constant — Phase E refines this from the run-profile budget.
-const RETRIEVAL_TOKEN_BUDGET: usize = 4096;
-
 /// `sender_class_code` for the orchestrator channel (class 02) — the calling
 /// component that drives intent-driven retrieval in the recipe stage.
 const RECIPE_SENDER_CLASS_CODE: &str = "02";
@@ -122,11 +118,20 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
         // preserve Tier-2 routing only for a successful No-Match result.
         let mut tier0_eligible = false;
         let mut llm_call_required = true;
+        let token_budget = lookup
+            .token_budget(ctx.host.run_context())
+            .await
+            .map_err(|error| {
+                debug!(%error, "recipe stage: token settings unavailable");
+                AgentLoopExecutorError::PlannerContract {
+                    detail: "Recipe token settings unavailable",
+                }
+            })?;
         match lookup
             .fetch_for_turn(
                 ctx.host.run_context(),
                 user_text,
-                RETRIEVAL_TOKEN_BUDGET,
+                token_budget,
                 RECIPE_SENDER_CLASS_CODE,
             )
             .await

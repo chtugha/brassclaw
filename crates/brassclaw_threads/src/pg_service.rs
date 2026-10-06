@@ -762,10 +762,28 @@ impl SessionThreadService for PgSessionThreadService {
         request: LoadContextMessagesRequest,
     ) -> Result<ContextMessages, SessionThreadError> {
         let (snapshot, _) = self.read_snapshot(&request.thread_id).await?;
-        let messages = snapshot
+        let thread = snapshot
+            .record
+            .as_ref()
+            .ok_or_else(|| SessionThreadError::UnknownThread {
+                thread_id: request.thread_id.clone(),
+            })?;
+        if thread.scope != request.scope {
+            return Err(SessionThreadError::UnknownThread {
+                thread_id: request.thread_id,
+            });
+        }
+        // Full eligible history may contain thousands of IDs. Index once,
+        // preserving request order like the filesystem and in-memory stores.
+        let by_id: std::collections::HashMap<_, _> = snapshot
             .messages
             .iter()
-            .filter(|m| request.message_ids.contains(&m.message_id))
+            .map(|message| (message.message_id, message))
+            .collect();
+        let messages = request
+            .message_ids
+            .iter()
+            .filter_map(|id| by_id.get(id).copied())
             .filter_map(context_message_from_record)
             .collect();
         Ok(ContextMessages {

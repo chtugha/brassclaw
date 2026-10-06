@@ -199,18 +199,14 @@ pub trait SessionThreadService: Send + Sync {
             .await?;
         let mut records = prior.messages;
         records.sort_by_key(|record| record.sequence);
-        let mut message_ids: Vec<_> = records
+        let message_ids: Vec<_> = records
             .into_iter()
             .filter(|record| {
                 record.sequence < message.sequence
                     && record.kind != MessageKind::CapabilityDisplayPreview
             })
-            .rev()
             .map(|record| record.message_id)
             .collect();
-        if let Some(limit) = max_history_messages {
-            message_ids.truncate(limit);
-        }
         let mut prior_context = self
             .load_context_messages(LoadContextMessagesRequest {
                 scope: request.scope,
@@ -224,6 +220,12 @@ pub trait SessionThreadService: Send + Sync {
         prior_context
             .messages
             .retain(|record| record.sequence < message.sequence);
+        // Visibility owns eligibility. Redacted/draft/deleted records must
+        // not consume the caller's requested history window.
+        if let Some(limit) = max_history_messages {
+            let discard = prior_context.messages.len().saturating_sub(limit);
+            prior_context.messages.drain(..discard);
+        }
         Ok(SubmittedTurnInput {
             message,
             prior_context,

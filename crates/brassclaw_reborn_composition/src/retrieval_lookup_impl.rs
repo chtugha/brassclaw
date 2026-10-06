@@ -50,6 +50,7 @@ pub(crate) struct PgRetrievalLookup {
     /// which recipe/component was activated. Wired from composition runtime
     /// via `with_skill_activation_observer`.
     observer: Option<Arc<dyn SkillActivationObserver>>,
+    token_settings: Option<Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>>,
 }
 
 #[cfg(feature = "skills-db")]
@@ -58,7 +59,16 @@ impl PgRetrievalLookup {
         Self {
             source,
             observer: None,
+            token_settings: None,
         }
+    }
+
+    pub(crate) fn with_token_settings(
+        mut self,
+        settings: Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>,
+    ) -> Self {
+        self.token_settings = Some(settings);
+        self
     }
 
     pub(crate) fn with_skill_activation_observer(
@@ -73,11 +83,39 @@ impl PgRetrievalLookup {
 #[cfg(feature = "skills-db")]
 #[async_trait]
 impl RetrievalLookup for PgRetrievalLookup {
+    async fn token_budget(
+        &self,
+        context: &LoopRunContext,
+    ) -> Result<Option<usize>, RetrievalLookupError> {
+        let Some(store) = &self.token_settings else {
+            return Ok(None);
+        };
+        let user_id = context
+            .actor
+            .as_ref()
+            .map(|actor| actor.user_id.as_str())
+            .or_else(|| context.scope.explicit_owner_user_id().map(|id| id.as_str()))
+            .unwrap_or(brassclaw_host_api::SYSTEM_RESERVED_ID);
+        let project_id = context
+            .scope
+            .project_id
+            .as_ref()
+            .map(|id| id.as_str())
+            .unwrap_or("default");
+        let settings = store
+            .get(user_id, project_id)
+            .await
+            .map_err(|error| RetrievalLookupError::Backend(error.to_string()))?;
+        Ok(settings
+            .token_budgets_enabled
+            .then_some(settings.prior_knowledge_token_budget as usize))
+    }
+
     async fn fetch_for_turn(
         &self,
         context: &LoopRunContext,
         query: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         sender_class_code: &str,
     ) -> Result<Option<RetrievalTurnResult>, RetrievalLookupError> {
         use brassclaw_engine::memory::{FetchForTurnResult, RetrievalSource, RetrievalSourceError};
@@ -648,6 +686,95 @@ mod tests {
     // Use a private native PostgreSQL instance; initialization failures fail the test.
     // -------------------------------------------------------------------------
 
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[tokio::test]
+    async fn native_retrieval_token_settings_are_live_and_disabled_reads_are_complete() {
+        use brassclaw_product_workflow::{MontyVmSettingsStore, UpdateMontyVmSettingsRequest};
+
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let pool = Arc::clone(&rig.pool);
+        let context = lookup_context("budget-user", "budget-agent", "budget-project").await;
+        let scope = super::build_component_scope(&context);
+        let settings = Arc::new(crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            Arc::clone(&pool),
+            scope.tenant_id.clone(),
+            scope.agent_id.clone(),
+        ));
+        let lookup = PgRetrievalLookup::new(Arc::new(PostgresSource::new(Arc::clone(&pool))))
+            .with_token_settings(settings.clone());
+        let client = pool.get().await.expect("database connection");
+        let content = format!("result = '{}'", "x".repeat(20_000));
+        for index in 0..3 {
+            let name = format!("budget-component-{index}");
+            client
+                .execute(
+                    "INSERT INTO reborn_python_code \
+                     (tenant_id, user_id, agent_id, project_id, name, content, \
+                      consumer_tags, source, validation_status) \
+                     VALUES ($1,$2,$3,$4,$5,$6,ARRAY['02'],'system','validated')",
+                    &[
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                        &name,
+                        &content,
+                    ],
+                )
+                .await
+                .expect("persist real PythonCode components");
+        }
+        for (enabled, expected_count) in [(false, 3), (true, 1), (false, 3)] {
+            let update: UpdateMontyVmSettingsRequest = serde_json::from_value(serde_json::json!({
+                "token_budgets_enabled": enabled,
+                "prior_knowledge_token_budget": 4096
+            }))
+            .unwrap();
+            settings
+                .upsert(&scope.user_id, &scope.project_id, &update)
+                .await
+                .expect("persist live token settings");
+            let budget = lookup
+                .token_budget(&context)
+                .await
+                .expect("read token settings");
+            assert_eq!(budget, enabled.then_some(4096));
+            let result = lookup
+                .fetch_for_turn(
+                    &context,
+                    "no recipe intent matches this request",
+                    budget,
+                    "02",
+                )
+                .await
+                .expect("native retrieval")
+                .expect("eligible components");
+            let items = result
+                .orchestrator_items
+                .as_array()
+                .expect("component array");
+            assert_eq!(items.len(), expected_count);
+            assert!(items.iter().all(|item| {
+                item.get("effective_content")
+                    .and_then(|value| value.as_str())
+                    == Some(content.as_str())
+            }));
+        }
+        // A settings-read failure must not silently switch to unbudgeted work.
+        client
+            .batch_execute(
+                "ALTER TABLE reborn_monty_vm_settings RENAME TO unavailable_monty_settings",
+            )
+            .await
+            .expect("isolate settings failure in the private test database");
+        assert!(lookup.token_budget(&context).await.is_err());
+        drop(client);
+        drop(lookup);
+        drop(settings);
+        drop(pool);
+        drop(rig);
+    }
+
     /// A unique sentence-class query (≥5 whitespace tokens, no terminal
     /// punctuation) so `classify_query` → `Sentence` and `match_order = [3,2,1]`;
     /// the seeded `input_class = Sentence` is therefore in the `ANY($6)` set.
@@ -751,7 +878,7 @@ mod tests {
         let context = lookup_context(&user, &agent, &project).await;
         let lookup = PgRetrievalLookup::new(Arc::new(PostgresSource::new(Arc::clone(&pool))));
         let result = lookup
-            .fetch_for_turn(&context, &query, 4096, "02")
+            .fetch_for_turn(&context, &query, Some(4096), "02")
             .await
             .expect("fetch_for_turn")
             .expect("expected Components, got soft-miss None");
@@ -821,7 +948,7 @@ mod tests {
         let context = lookup_context(&user, &agent, &project).await;
         let lookup = PgRetrievalLookup::new(Arc::new(PostgresSource::new(Arc::clone(&pool))));
         let result = lookup
-            .fetch_for_turn(&context, &query, 4096, "02")
+            .fetch_for_turn(&context, &query, Some(4096), "02")
             .await
             .expect("fetch_for_turn")
             .expect("expected Disambiguation, got soft-miss None");
@@ -857,7 +984,7 @@ mod tests {
         let context = lookup_context(&user, &agent, &project).await;
         let lookup = PgRetrievalLookup::new(Arc::new(PostgresSource::new(Arc::clone(&pool))));
         let result = lookup
-            .fetch_for_turn(&context, &query, 4096, "02")
+            .fetch_for_turn(&context, &query, Some(4096), "02")
             .await
             .expect("fetch_for_turn");
         assert!(

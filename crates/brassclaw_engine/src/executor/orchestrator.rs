@@ -1794,7 +1794,7 @@ pub struct TierZeroChannelResult {
 pub async fn assemble_prior_knowledge_with_hint(
     thread: &Thread,
     goal: &str,
-    token_budget: usize,
+    token_budget: Option<usize>,
     sender_class_code: &str,
     retrieval_source: Option<&Arc<dyn RetrievalSource>>,
     recipe_hint: Option<serde_json::Value>,
@@ -1827,7 +1827,9 @@ pub async fn assemble_prior_knowledge_with_hint(
         Ok(fetch) => Ok(assemble_pkr_from_fetch(fetch)),
         Err(e) => {
             debug!("assemble_prior_knowledge_with_hint: fetch_for_turn failed: {e}");
-            Ok(empty_pkr_assembly_result())
+            Err(EngineError::Store {
+                reason: e.to_string(),
+            })
         }
     }
 }
@@ -5954,7 +5956,7 @@ FINAL(batch_error_count)
             &self,
             _scope: &ComponentScope,
             _query: &str,
-            _token_budget: usize,
+            _token_budget: Option<usize>,
             _consumer_tag: &str,
         ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
             Ok(Vec::new())
@@ -5964,7 +5966,7 @@ FINAL(batch_error_count)
             &self,
             scope: &ComponentScope,
             _query: &str,
-            _token_budget: usize,
+            _token_budget: Option<usize>,
             _sender_class_code: &str,
         ) -> Result<FetchForTurnResult, RetrievalSourceError> {
             *self.captured_scope.lock().unwrap() = Some(scope.clone());
@@ -6013,7 +6015,7 @@ FINAL(batch_error_count)
         assemble_prior_knowledge_with_hint(
             thread,
             &thread.goal,
-            TEST_TOKEN_ALLOC_2K as usize,
+            Some(TEST_TOKEN_ALLOC_2K as usize),
             "02",
             Some(&src),
             None,
@@ -6345,7 +6347,7 @@ FINAL(batch_error_count)
             &self,
             _scope: &ComponentScope,
             _query: &str,
-            _token_budget: usize,
+            _token_budget: Option<usize>,
             _consumer_tag: &str,
         ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
             Err(RetrievalSourceError::Db(
@@ -6357,7 +6359,7 @@ FINAL(batch_error_count)
             &self,
             _scope: &ComponentScope,
             _query: &str,
-            _token_budget: usize,
+            _token_budget: Option<usize>,
             _sender_class_code: &str,
         ) -> Result<FetchForTurnResult, RetrievalSourceError> {
             Err(RetrievalSourceError::Db(
@@ -6390,7 +6392,7 @@ FINAL(batch_error_count)
         let result = assemble_prior_knowledge_with_hint(
             &thread,
             &thread.goal,
-            TEST_TOKEN_ALLOC_2K as usize,
+            Some(TEST_TOKEN_ALLOC_2K as usize),
             "02",
             None,
             Some(hint),
@@ -6468,12 +6470,10 @@ FINAL(batch_error_count)
         assert!(tier0.tier_zero, "llm_call_required=false ⇒ tier_zero=true");
     }
 
-    /// Phase H8.5 gap #3 — the None-branch degrade: with no `retrieval_source`
-    /// OR a failing source, `assemble_prior_knowledge_with_hint` returns the
-    /// empty `PkrAssemblyResult` (no prior knowledge, no routing signals) so the
-    /// Tier-1 turn proceeds without a prior-knowledge prepend.
+    /// Legacy hosts may omit retrieval. A configured source failing is a
+    /// technical error, never an empty successful prior-knowledge result.
     #[tokio::test]
-    async fn phase_h8_5_no_source_or_failing_source_degrades_to_empty_pkr() {
+    async fn phase_h8_5_optional_source_absence_is_distinct_from_source_failure() {
         let thread = phase_f7_thread("anything");
         let empty = empty_pkr_assembly_result();
 
@@ -6481,7 +6481,7 @@ FINAL(batch_error_count)
         let no_src = assemble_prior_knowledge_with_hint(
             &thread,
             &thread.goal,
-            TEST_TOKEN_ALLOC_2K as usize,
+            Some(TEST_TOKEN_ALLOC_2K as usize),
             "02",
             None,
             None,
@@ -6490,28 +6490,25 @@ FINAL(batch_error_count)
         .expect("None-branch with no source must succeed (degrade)");
         assert_eq!(no_src, empty, "no-source must degrade to the empty PKR");
 
-        // Failing retrieval_source ⇒ degrade (fetch_for_turn Err is swallowed).
+        // A failed configured retrieval_source stops composition.
         let failing: Arc<dyn RetrievalSource> = Arc::new(FailingRetrievalSource);
         let bad_src = assemble_prior_knowledge_with_hint(
             &thread,
             &thread.goal,
-            TEST_TOKEN_ALLOC_2K as usize,
+            Some(TEST_TOKEN_ALLOC_2K as usize),
             "02",
             Some(&failing),
             None,
         )
         .await
-        .expect("fetch_for_turn Err must degrade, not propagate");
-        assert_eq!(
-            bad_src, empty,
-            "failing source must degrade to the empty PKR"
-        );
+        .expect_err("fetch_for_turn errors must propagate");
+        assert!(matches!(bad_src, EngineError::Store { .. }));
     }
 
     /// Phase H8.5 gap #4 — the `recipe_hint` Some-branch assembles the stashed
     /// orchestrator items WITHOUT re-fetching. Passing a `FailingRetrievalSource`
     /// proves the Some-branch short-circuits before `fetch_for_turn`: any
-    /// re-fetch would error and degrade to empty, but the result carries the
+    /// re-fetch would fail, but the result carries the
     /// stashed items' prose + identity set.
     #[tokio::test]
     async fn phase_h8_5_recipe_hint_some_branch_assembles_stashed_items_without_refetch() {
@@ -6526,7 +6523,7 @@ FINAL(batch_error_count)
         let result = assemble_prior_knowledge_with_hint(
             &thread,
             &thread.goal,
-            TEST_TOKEN_ALLOC_2K as usize,
+            Some(TEST_TOKEN_ALLOC_2K as usize),
             "02",
             Some(&src),
             Some(hint),

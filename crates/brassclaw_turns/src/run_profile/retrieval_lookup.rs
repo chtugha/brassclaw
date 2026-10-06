@@ -108,6 +108,16 @@ impl std::error::Error for RetrievalLookupError {}
 /// `Err(_)` on a hard backend failure.
 #[async_trait]
 pub trait RetrievalLookup: Send + Sync {
+    /// Read the current host-owned token policy. Absence is explicitly
+    /// unbudgeted, not a sentinel integer or a compiled retrieval ceiling.
+    /// Database/settings failures remain errors, never an unbudgeted fallback.
+    async fn token_budget(
+        &self,
+        _context: &LoopRunContext,
+    ) -> Result<Option<usize>, RetrievalLookupError> {
+        Ok(None)
+    }
+
     /// Intent-driven retrieval for a live turn (v3 plan §H4 / §6.7).
     ///
     /// `sender_class_code` is the numeric class-code prefix of the calling
@@ -115,11 +125,13 @@ pub trait RetrievalLookup: Send + Sync {
     /// delegates to `PostgresSource::fetch_for_turn`, which runs
     /// `resolve_intent` and either fetches the specific component by ID,
     /// surfaces disambiguation candidates, or falls back to the keyword path.
+    /// `None` includes the complete eligible result; `Some` is an explicitly
+    /// enabled token ceiling. Provider context limits are enforced elsewhere.
     async fn fetch_for_turn(
         &self,
         context: &LoopRunContext,
         query: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         sender_class_code: &str,
     ) -> Result<Option<RetrievalTurnResult>, RetrievalLookupError>;
 }
@@ -179,7 +191,7 @@ mod tests {
             &self,
             _context: &LoopRunContext,
             _query: &str,
-            _token_budget: usize,
+            _token_budget: Option<usize>,
             _sender_class_code: &str,
         ) -> Result<Option<RetrievalTurnResult>, RetrievalLookupError> {
             Ok(Some(RetrievalTurnResult {

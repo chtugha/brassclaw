@@ -2850,14 +2850,15 @@ async fn recipe_stage_fires_fetch_for_turn_and_stashes_result() {
         expected.rust_items.as_array().cloned().unwrap_or_default()
     );
 
-    // (a) fetch_for_turn called once with the raw user text + "02" + 4096,
+    // (a) fetch_for_turn called once with the raw user text + "02" and no
+    // artificial token ceiling when the host has not enabled budgeting,
     // forwarding the host's live run_context (captured verbatim, not
     // synthesised — AGENTS.md: mocks must capture every arg).
     let recorded = calls.lock().expect("lock").clone();
     assert_eq!(recorded.len(), 1, "fetch_for_turn called exactly once");
     assert_eq!(recorded[0].query, user_text);
     assert_eq!(recorded[0].sender_class_code, "02");
-    assert_eq!(recorded[0].token_budget, 4096);
+    assert_eq!(recorded[0].token_budget, None);
     assert_eq!(recorded[0].context.scope, host.run_context().scope);
 }
 

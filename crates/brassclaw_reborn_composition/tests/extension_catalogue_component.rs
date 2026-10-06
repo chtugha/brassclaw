@@ -150,7 +150,7 @@ async fn extension_catalogue_retrieved_via_fetch_for_consumer() {
     // with `overview_doc` as `effective_content`.
     let source = PostgresSource::new(Arc::new(rig.pool.clone()));
     let items = source
-        .fetch_for_consumer(&scope, "", 10_000, "02:orchestrator")
+        .fetch_for_consumer(&scope, "", Some(10_000), "02:orchestrator")
         .await
         .expect("fetch_for_consumer");
 

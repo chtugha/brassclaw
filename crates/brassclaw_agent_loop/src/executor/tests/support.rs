@@ -1285,7 +1285,7 @@ pub(super) fn test_run_context() -> LoopRunContext {
 pub(super) struct RetrievedCall {
     pub(super) context: LoopRunContext,
     pub(super) query: String,
-    pub(super) token_budget: usize,
+    pub(super) token_budget: Option<usize>,
     pub(super) sender_class_code: String,
 }
 
@@ -1338,7 +1338,7 @@ impl RetrievalLookup for StubRetrievalLookup {
         &self,
         context: &LoopRunContext,
         query: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         sender_class_code: &str,
     ) -> Result<Option<RetrievalTurnResult>, RetrievalLookupError> {
         self.calls.lock().expect("lock").push(RetrievedCall {

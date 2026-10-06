@@ -34,7 +34,7 @@ use tokio_postgres::types::ToSql;
 use uuid::Uuid;
 
 const SENDER: &str = "02:orchestrator";
-const TOKEN_BUDGET: usize = 8000;
+const TOKEN_BUDGET: Option<usize> = Some(8000);
 
 struct PgRig {
     // Held for the test's lifetime so the container stays up.

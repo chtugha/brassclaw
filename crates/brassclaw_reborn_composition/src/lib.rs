@@ -47,6 +47,8 @@ mod extension_lifecycle_command;
 mod factory;
 mod google_oauth;
 mod gsuite;
+#[cfg(all(test, feature = "postgres"))]
+mod history_contract_tests;
 mod hooks;
 mod input;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]

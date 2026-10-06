@@ -9,8 +9,8 @@
 //!
 //! # Token budget
 //!
-//! Components are accumulated in `(class_code ASC, prompt_uid ASC)` order until
-//! `token_budget` is exhausted (estimated at `TOKENS_PER_BYTE` tokens per byte).
+//! Components are accumulated in `(class_code ASC, prompt_uid ASC)` order.
+//! `None` has no artificial ceiling; `Some` caps estimated tokens.
 //! The entire budget is honoured — partial rows are not split.
 
 #[cfg(feature = "skills-db")]
@@ -189,7 +189,7 @@ pub enum FetchForTurnResult {
 /// Trait for prior-knowledge component retrieval.
 ///
 /// Both backends return components in `(class_code ASC, prompt_uid ASC)` order,
-/// capped at `token_budget` tokens.
+/// subject only to an explicitly supplied token budget (`None` is unbudgeted).
 #[async_trait]
 pub trait RetrievalSource: Send + Sync {
     /// Fetch validated components for the given scope, query, and consumer tag.
@@ -198,13 +198,14 @@ pub trait RetrievalSource: Send + Sync {
     /// (e.g. `"02"` for the orchestrator). The DB backend requires it in the row's
     /// `consumer_tags[]`; the RAM backend ignores it and returns all matching docs.
     ///
-    /// Returns at most enough components to fill `token_budget` estimated tokens,
-    /// ordered by `(class_code ASC, prompt_uid ASC)`.
+    /// `None` includes all eligible components, without an artificial token
+    /// ceiling. `Some` caps estimated tokens. Ordering is deterministic:
+    /// `(class_code ASC, prompt_uid ASC)`.
     async fn fetch_for_consumer(
         &self,
         scope: &ComponentScope,
         query: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         consumer_tag: &str,
     ) -> Result<Vec<ComponentItem>, RetrievalSourceError>;
 
@@ -221,7 +222,7 @@ pub trait RetrievalSource: Send + Sync {
         &self,
         scope: &ComponentScope,
         query: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         sender_class_code: &str,
     ) -> Result<FetchForTurnResult, RetrievalSourceError> {
         let items = self
@@ -291,7 +292,7 @@ impl RetrievalSource for PostgresSource {
         &self,
         scope: &ComponentScope,
         _query: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         consumer_tag: &str,
     ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
         use tokio_postgres::types::ToSql;
@@ -552,10 +553,12 @@ impl RetrievalSource for PostgresSource {
             let override_prompt_creation: bool = row.get(6);
 
             let cost = estimate_tokens(effective_content.len());
-            if tokens_used + cost > token_budget && !items.is_empty() {
+            if token_budget.is_some_and(|budget| tokens_used.saturating_add(cost) > budget)
+                && !items.is_empty()
+            {
                 break;
             }
-            tokens_used += cost;
+            tokens_used = tokens_used.saturating_add(cost);
 
             let id = id_str
                 .parse::<uuid::Uuid>()
@@ -595,7 +598,7 @@ impl RetrievalSource for PostgresSource {
         &self,
         scope: &ComponentScope,
         query: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         sender_class_code: &str,
     ) -> Result<FetchForTurnResult, RetrievalSourceError> {
         use crate::memory::intent_system::{IntentResolution, IntentScope, resolve_intent};
@@ -760,7 +763,7 @@ impl PostgresSource {
         step_link: String,
         matched_template: &str,
         query: &str,
-        token_budget: usize,
+        token_budget: Option<usize>,
         sender_class_code: &str,
     ) -> Result<FetchForTurnResult, RetrievalSourceError> {
         use crate::memory::instruction_builder::{
