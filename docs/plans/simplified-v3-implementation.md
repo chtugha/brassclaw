@@ -601,3 +601,23 @@ Sequential screen verification passed: all-target thread/agent-loop/engine tests
 composition native PostgreSQL tests, affected all-target strict Clippy and all
 architecture tests. No simultaneous Cargo executions or warning suppression.
 The previously recorded eight composition integration failures remain open.
+
+### Revision-checked Monty settings persistence (2026-10-06)
+
+V091 preserves every existing settings value and adds a nonnegative desired
+revision. GET returns that revision (zero for an absent row). Durable writes
+require `expected_revision`; missing revisions are invalid and stale revisions
+map to HTTP 409. Creation, field-wise patch and revision advance are atomic.
+Rejected first-write claims roll back the provisional default row. Responses
+return their own committed generation rather than re-reading a later edit.
+Checked numeric conversions reject overflow and invalid values before mutation.
+The WebUI sends its loaded revision and now sends/edits the token-budget switch.
+This desired revision is explicitly not a runtime uptake acknowledgement; the
+legacy scoped settings store and global Rust/Monty acknowledgement remain work.
+
+The actual native PostgreSQL concurrent-first-write test passed, including
+stale retry, preserving the winning patch, scope isolation, invalid boundaries
+and absent-row rollback. All five native composition tests, 72 product unit
+tests, four Monty WebUI handler contracts and affected strict all-target Clippy
+passed sequentially in screen. JavaScript syntax checks passed. Existing mock
+HTTP contracts do not prove production runtime status, restart or live uptake.

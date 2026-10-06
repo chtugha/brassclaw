@@ -726,6 +726,7 @@ mod tests {
         }
         for (enabled, expected_count) in [(false, 3), (true, 1), (false, 3)] {
             let update: UpdateMontyVmSettingsRequest = serde_json::from_value(serde_json::json!({
+                "expected_revision": settings.get("budget-user", "budget-project").await.unwrap().revision,
                 "token_budgets_enabled": enabled,
                 "prior_knowledge_token_budget": 4096
             }))

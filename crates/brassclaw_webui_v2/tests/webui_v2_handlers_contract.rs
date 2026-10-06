@@ -849,6 +849,7 @@ impl RebornServicesApi for StubServices {
     ) -> Result<MontyVmSettingsResponse, RebornServicesError> {
         Ok(MontyVmSettingsResponse {
             settings: MontyVmSettings {
+                revision: 0,
                 max_duration_secs: 300,
                 max_allocations: None,
                 max_memory_bytes: None,
@@ -869,6 +870,7 @@ impl RebornServicesApi for StubServices {
     ) -> Result<MontyVmSettingsResponse, RebornServicesError> {
         Ok(MontyVmSettingsResponse {
             settings: MontyVmSettings {
+                revision: 0,
                 max_duration_secs: 300,
                 max_allocations: None,
                 max_memory_bytes: None,

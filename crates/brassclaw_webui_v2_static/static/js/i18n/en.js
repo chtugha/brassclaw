@@ -1213,6 +1213,7 @@ registerPack("en", {
   "montyVm.rollbackThreshold": "Failure rollback threshold",
   "montyVm.rollbackThresholdDesc": "Consecutive failures before automatic rollback.",
   "montyVm.tokenBudget": "Prior knowledge token budget",
+  "montyVm.tokenBudgetsEnabled": "Enable token budgets",
   "montyVm.tokenBudgetDesc": "Token budget allocated to injected prior knowledge context.",
   "montyVm.q4RetentionDays": "Q4 retention (days)",
   "montyVm.q4RetentionDaysDesc": "How long Q4 forensic snapshots are retained.",

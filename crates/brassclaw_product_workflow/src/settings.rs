@@ -159,6 +159,9 @@ pub struct SettingsComponentGraph {
 /// (gated: only `Validated` orchestrators are accepted).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontyVmSettings {
+    /// Durable desired settings revision; zero denotes an absent row.
+    /// This is not evidence of runtime uptake.
+    pub revision: u64,
     /// Maximum active VM compute time per task in seconds (default: 600).
     pub max_duration_secs: u64,
     /// Maximum cumulative allocations attributable to one task.
@@ -177,7 +180,7 @@ pub struct MontyVmSettings {
     pub active_orchestrator_id: Option<String>,
     /// Global kill switch for all token budgets (§0.21 / Phase O).
     /// When `false`, every token-budget check in the system is bypassed —
-    /// the VM runs as if every cap is `usize::MAX`.  Time and USD limits
+    /// retrieval uses explicit unlimited budgets. Time and USD limits
     /// remain enforced regardless.  Defaults to `false`.
     #[serde(default = "default_false")]
     pub token_budgets_enabled: bool,
@@ -186,6 +189,8 @@ pub struct MontyVmSettings {
 /// Request body for `PUT /api/settings/monty-vm`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMontyVmSettingsRequest {
+    /// Compare-and-set revision from GET. Required by durable stores.
+    pub expected_revision: Option<u64>,
     pub max_duration_secs: Option<u64>,
     pub max_allocations: Option<u64>,
     pub max_memory_bytes: Option<u64>,
@@ -288,6 +293,8 @@ pub enum MontyVmSettingsError {
     Invalid(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("Monty settings revision conflict")]
+    RevisionConflict,
 }
 
 /// Persistence port for `reborn_monty_vm_settings`.
@@ -321,6 +328,7 @@ fn default_false() -> bool {
 /// Compiled-in defaults, used when no DB row exists or in DB-less mode.
 pub fn default_monty_vm_settings() -> MontyVmSettings {
     MontyVmSettings {
+        revision: 0,
         max_duration_secs: 600,
         max_allocations: Some(5_000_000),
         max_memory_bytes: Some(128 * 1024 * 1024),

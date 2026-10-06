@@ -588,3 +588,4 @@ registerPack("de", {
   "prefix.regenerate": "Neu generieren",
   "prefix.regenerating": "Generiere neu…",
 });
+  "montyVm.tokenBudgetsEnabled": "Tokenbudgets aktivieren",

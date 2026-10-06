@@ -5973,6 +5973,9 @@ fn generated_thread_id(
 
 fn map_monty_vm_error(error: crate::settings::MontyVmSettingsError) -> RebornServicesError {
     match error {
+        crate::settings::MontyVmSettingsError::RevisionConflict => {
+            RebornServicesError::from_status(RebornServicesErrorCode::Conflict, 409, false)
+        }
         crate::settings::MontyVmSettingsError::Invalid(reason) => {
             tracing::debug!("monty_vm_settings: invalid request: {reason}");
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)

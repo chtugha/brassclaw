@@ -100,6 +100,8 @@ export function MontyVmTab({ searchQuery = "" }) {
     setSavedOk(false);
     try {
       const updated = await updateMontyVmSettings({
+        expected_revision: settings.revision,
+        token_budgets_enabled: settings.token_budgets_enabled,
         max_duration_secs: settings.max_duration_secs,
         failure_rollback_threshold: settings.failure_rollback_threshold,
         prior_knowledge_token_budget: settings.prior_knowledge_token_budget,
@@ -269,6 +271,18 @@ function SettingsForm({ settings, onChange, onSave, isSaving, savedOk, t }) {
       </h3>
       ${field("max_duration_secs", t("montyVm.maxDuration"), t("montyVm.maxDurationDesc"))}
       ${field("failure_rollback_threshold", t("montyVm.rollbackThreshold"), t("montyVm.rollbackThresholdDesc"))}
+      <label className="flex items-center gap-3 py-3 border-t border-[var(--v2-panel-border)]">
+        <input
+          type="checkbox"
+          checked=${settings.token_budgets_enabled === true}
+          disabled=${isSaving}
+          onChange=${(event) => {
+            const enabled = event.target.checked;
+            onChange((previous) => ({ ...previous, token_budgets_enabled: enabled }));
+          }}
+        />
+        <span className="text-sm text-[var(--v2-text-strong)]">${t("montyVm.tokenBudgetsEnabled")}</span>
+      </label>
       ${field("prior_knowledge_token_budget", t("montyVm.tokenBudget"), t("montyVm.tokenBudgetDesc"))}
       ${field("q4_retention_days", t("montyVm.q4RetentionDays"), t("montyVm.q4RetentionDaysDesc"))}
       ${field("forensic_packet_retention_days", t("montyVm.forensicRetentionDays"), t("montyVm.forensicRetentionDaysDesc"))}
