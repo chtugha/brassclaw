@@ -342,6 +342,25 @@ mod tests {
             "SELECT count(*) FROM reborn_monty_vm_settings WHERE tenant_id=$1 AND user_id=$2",
             &[&"settings-cas", &"invalid-operator"],
         ).await.unwrap().get::<_, i64>(0), 0);
+        // A legacy/unversioned writer must not mutate settings while leaving
+        // the revision unchanged: that would defeat the API's CAS protection.
+        for query in [
+            "UPDATE reborn_monty_vm_settings SET max_duration_secs=1200 WHERE tenant_id=$1 AND user_id=$2",
+            "UPDATE reborn_monty_vm_settings SET revision=revision-1 WHERE tenant_id=$1 AND user_id=$2",
+            "UPDATE reborn_monty_vm_settings SET revision=revision+2 WHERE tenant_id=$1 AND user_id=$2",
+        ] {
+            let error = client
+                .execute(query, &[&"settings-cas", &"operator"])
+                .await
+                .unwrap_err();
+            assert_eq!(
+                error.code(),
+                Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+            );
+        }
+        let preserved = store.get("operator", "project").await.unwrap();
+        assert_eq!(preserved.revision, 2);
+        assert_eq!(preserved.max_duration_secs, 900);
         // A stale first-write claim must not leave a default row behind.
         let patch = serde_json::from_value(serde_json::json!({"expected_revision": 1})).unwrap();
         assert!(matches!(

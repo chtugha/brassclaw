@@ -647,3 +647,33 @@ and all-target strict upgrade-workspace Clippy passed on Rust 1.96.0. This prove
 clock recovery with the REPL API, not production task attribution, resumable CPU
 quanta, active native-operation control, global boot or live WebUI uptake. A
 failed Recipe must still end; its mutated REPL must not be continued or replayed.
+
+### Database writer cutover and current integration result (2026-10-06)
+
+V092 rejects settings updates unless they advance the stored revision by exactly
+one. This prevents legacy/unversioned SQL writers from changing values without
+invalidating the WebUI's expected revision. Stop older writer binaries before
+applying this migration; their writes now fail explicitly. A binary rollback
+requires its compatible database state, not merely switching executables. The
+native PostgreSQL test verifies rejection of unchanged, regressed and skipped
+revisions while preserving both the accepted values and current revision.
+No historical migration or stored operator value was rewritten.
+
+The full current composition library run completed: **699 passed, eight failed,
+zero ignored**. The eight failures are the previously identified runtime
+system-prompt, model/tool/workspace, WebUI message/approval and yolo integration
+cases. The legacy driver still depends on an engine UUID Thread, and canonical
+No-Match/history programs still need the task-context/global-host cutover.
+These tests were neither suppressed nor rewritten to accept failure. The full
+run predates V092; the five actual native PostgreSQL tests and strict composition
+all-target Clippy were re-run for that migration and its guard regression.
+
+Remaining consumer risks include startup copies/scopes for model budgeting,
+legacy message-count context ceilings, and the token switch disabling the whole
+USD accountant instead of only token enforcement. The retrieval changes prove
+complete eligible retrieval at its callers, not removal of all remaining task,
+history and monetary-policy defects. Global production Monty hosting, allocator
+integration/adaptive measurement, fair CPU control, claim-fenced effects/replies,
+shared effective WebUI revisions and immutable component revision/override
+management remain unimplemented. The REPL final-clock proof closes one upgrade
+prerequisite; it does not authorize skipping the remaining Phase 3a gate.
