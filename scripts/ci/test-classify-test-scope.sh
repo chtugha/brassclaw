@@ -233,3 +233,28 @@ assert_scope_no_trailing_newline \
 has_core_code=true
 has_legacy_tests=false
 has_reborn_tests=true"
+
+assert_scope \
+  "standalone legacy Monty baseline runs upgrade gate" \
+  "tests/monty_legacy_baseline/tests/latency_baseline.rs" \
+  "docs_only=false
+has_core_code=true
+has_legacy_tests=false
+has_reborn_tests=true"
+
+assert_scope \
+  "engine changes run Reborn and the Monty upgrade gate" \
+  "crates/brassclaw_engine/orchestrator/basic_mode.py" \
+  "docs_only=false
+has_core_code=true
+has_legacy_tests=false
+has_reborn_tests=true"
+
+assert_scope \
+  "standalone Monty upgrade tests run Reborn gate" \
+  "tests/monty_v1_upgrade/Cargo.lock
+tests/monty_v1_upgrade/tests/compatibility.rs" \
+  "docs_only=false
+has_core_code=true
+has_legacy_tests=false
+has_reborn_tests=true"

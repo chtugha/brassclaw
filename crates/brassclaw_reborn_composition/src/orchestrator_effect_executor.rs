@@ -99,7 +99,7 @@ impl TierZeroExecutionContextFactory {
     /// carries a `user_id` (it is a `String`, not an `Option`), so an invalid
     /// value is corruption rather than a missing user — mapping it to a
     /// fallback user would misattribute the action, so [`EngineError::Effect`]
-    /// is returned instead and `execute_tier_zero_channel` degrades to Tier 2.
+    /// is returned instead and `execute_tier_zero_channel` fails without a Tier-2 replay.
     /// `tenant_id` / `agent_id` / `extension_id` / `grants` come from the
     /// per-run config held at construction. Mirrors
     /// `local_dev_visible_capability_request` (`runtime/local_dev.rs:732`):
@@ -161,7 +161,7 @@ impl TierZeroExecutionContextFactory {
 pub(crate) trait TierZeroActionResolver: Send + Sync {
     /// Resolve an engine `action_name` to a host [`CapabilityId`].
     ///
-    /// Returns [`EngineError::Effect`] (→ Tier-2 degrade) on any invalid
+    /// Returns [`EngineError::Effect`] (→ selected Recipe failure) on any invalid
     /// name, mirroring the factory's fail-closed projection: an action name
     /// that is not a valid `<extension>.<capability>[.<sub>...]` id is
     /// malformed input, not a recoverable capability miss.
@@ -248,7 +248,7 @@ impl ProductionEffectExecutor {
     /// resolves the action name to a [`CapabilityId`], builds a production
     /// [`ExecutionContext`], dispatches via `HostRuntime::invoke_capability`,
     /// and maps the outcome per Q-H12-2-GATE = A (interim non-resumable:
-    /// gate outcomes → `Err(EngineError::Effect)` → Tier-2 degrade).
+    /// gate outcomes → `Err(EngineError::Effect)` → selected Recipe failure).
     pub(crate) async fn dispatch_action(
         &self,
         action_name: &str,
@@ -339,7 +339,7 @@ impl ProductionEffectExecutor {
     /// together with an engine [`ThreadExecutionContext`] and fetch the
     /// host-filtered [`VisibleCapabilitySurface`]. Shared by `available_actions`
     /// and `available_capabilities`. Errors map to [`EngineError::Effect`] so
-    /// the Tier-0 channel degrades to Tier 2 rather than rendering a partial
+    /// the Tier-0 channel fails without a Tier-2 replay rather than rendering a partial
     /// inventory.
     async fn visible_capability_surface(
         &self,
@@ -434,7 +434,7 @@ fn capability_status(access: VisibleCapabilityAccess) -> CapabilityStatus {
 
 /// Validate the engine-supplied lease without consuming it (the engine already
 /// consumed one use via `find_and_consume`). Any mismatch is fail-closed →
-/// [`EngineError::Effect`] so the Tier-0 channel degrades to Tier 2 rather than
+/// [`EngineError::Effect`] so the Tier-0 channel fails without a Tier-2 replay rather than
 /// dispatching under a stale/wrong-scope lease.
 fn validate_lease(
     lease: &CapabilityLease,
@@ -478,7 +478,7 @@ fn tier_zero_trust_decision() -> TrustDecision {
 /// Map a host-runtime infrastructure error to a categorical safe summary.
 /// Mirrors `automation.rs::map_host_runtime_error`: the raw `reason` is
 /// discarded (it may echo host-internal detail) and a fixed safe string is
-/// surfaced — the Tier-0 channel degrades to Tier 2 on this error.
+/// surfaced — the Tier-0 channel fails without a Tier-2 replay on this error.
 fn map_host_runtime_error(error: HostRuntimeError) -> EngineError {
     match error {
         HostRuntimeError::InvalidRequest { .. } => EngineError::Effect {
@@ -549,18 +549,18 @@ fn map_capability_outcome(
             is_error: true,
             duration,
         }),
-        // Q-H12-2-GATE = A: interim non-resumable. Gate outcomes degrade the
-        // Tier-0 channel to Tier 2 (the LLM path owns full gate handling)
+        // This interim channel cannot retain a gate continuation. Report the
+        // failure; invoking Tier 2 could repeat already completed effects.
         // rather than emitting `EngineError::GatePaused`, which the inline
         // retry wrapper would try to resume — not supported for Tier 0 yet.
         RuntimeCapabilityOutcome::ApprovalRequired(_) => Err(EngineError::Effect {
-            reason: "tier-zero action requires approval; degrading to tier-2".into(),
+            reason: "tier-zero action requires approval; selected Recipe stopped".into(),
         }),
         RuntimeCapabilityOutcome::AuthRequired(_) => Err(EngineError::Effect {
-            reason: "tier-zero action requires authentication; degrading to tier-2".into(),
+            reason: "tier-zero action requires authentication; selected Recipe stopped".into(),
         }),
         RuntimeCapabilityOutcome::ResourceBlocked(_) => Err(EngineError::Effect {
-            reason: "tier-zero action blocked by resource limits; degrading to tier-2".into(),
+            reason: "tier-zero action blocked by resource limits; selected Recipe stopped".into(),
         }),
         RuntimeCapabilityOutcome::Unknown(_) => Err(EngineError::Effect {
             reason: "tier-zero capability unknown to the host runtime".into(),
@@ -650,7 +650,7 @@ mod tests {
         // always carries a user_id (String, not Option), so an invalid value
         // is corruption — the factory must NOT misattribute the action to a
         // fallback user; it returns EngineError::Effect so the Tier-0 channel
-        // degrades to Tier 2.
+        // fails without a Tier-2 replay.
         let err = factory.build(&engine_ctx("alice/bob")).unwrap_err();
         assert!(matches!(err, EngineError::Effect { .. }));
     }

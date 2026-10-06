@@ -79,12 +79,10 @@ pub struct TierZeroReply {
 /// `block_on()` inside a running Tokio runtime (deadlock risk on single-threaded
 /// or work-stealing executors). Mirrors [`crate::run_profile::RetrievalLookup`].
 ///
-/// Returns `None` (not `Err`) when there is nothing to assemble or no Tier-0
-/// channel to run — the caller degrades to Tier 2 (Tier-0) or skips the
-/// prior-knowledge prepend (Tier-1). Hard engine failures are logged inside the
-/// composition impl and surfaced as `None` so a recipe-channel failure never
-/// aborts the turn (degrade-gracefully, mirroring the engine
-/// `RecipeTierZeroFailed` → Tier-2 degradation).
+/// `run_tier_zero` returns `None` when its bridge/execution is unavailable or
+/// failed. Its caller must fail the selected Recipe; `None` is never No-Match
+/// or permission to invoke Tier 2. Successful empty output remains `Some`.
+/// `run_step_zero` retains its separate optional prior-knowledge contract.
 ///
 /// The composition layer is the sole implementor (it depends on both
 /// `brassclaw_engine` and the agent-loop stack). Production hosts hold an
@@ -109,7 +107,8 @@ pub trait OrchestratorLookup: Send + Sync {
     /// Consumes the stashed `recipe_hint` (orchestrator_items) +
     /// `recipe_rust_context` and returns the reply text for
     /// `AssistantReplyStage`. `None` when no orchestrator bridge is wired or the
-    /// channel produced no reply — `RecipeStage` then falls back to Tier 2.
+    /// execution failed. The selected Recipe fails without a Tier-2 replay.
+    /// Successful execution may return an empty reply inside `Some`.
     async fn run_tier_zero(
         &self,
         context: &LoopRunContext,

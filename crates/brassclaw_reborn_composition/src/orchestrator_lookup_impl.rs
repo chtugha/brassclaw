@@ -18,15 +18,14 @@
 //!   [`TierZeroChannelResult`] → [`TierZeroReply`] for `AssistantReplyStage`.
 //!
 //! Both methods return `None` (not `Err`) on a thread-load miss or any engine
-//! error — degrade-gracefully so a recipe-channel failure never aborts the
-//! turn, mirroring the engine `RecipeTierZeroFailed` → Tier-2 degradation and
-//! the [`PgRetrievalLookup`] error mapping.
+//! error. Tier-0 callers fail the selected Recipe without replaying effects;
+//! errors must never be interpreted as No-Match or a Tier-2 fallback.
 //!
 //! Gated behind the composition `skills-db` feature: the held
 //! [`TierZeroEffectExecutorBuilder`] only exists under `skills-db`, so the
 //! type + its trait impl are `#[cfg(feature = "skills-db")]`. Under the default
 //! feature set the host's `orchestrator_lookup` slot stays `None` →
-//! `NoOrchestrator` → Tier-2 degrade. The pure mapping helpers compile under
+//! `NoOrchestrator` → selected Tier-0 Recipe failure. The pure mapping helpers compile under
 //! both configs (they touch only always-available engine types) and are covered
 //! by unit tests that run under both; `#![allow(dead_code)]` covers the
 //! unused-under-default window, mirroring `orchestrator_effect_executor.rs` /
@@ -105,7 +104,7 @@ impl PgOrchestratorLookup {
     /// Load the live engine [`Thread`] for `context.thread_id`, mapping the
     /// turns `brassclaw_host_api::ThreadId` → engine `ThreadId(pub Uuid)`.
     /// Returns `None` on a parse failure, a store miss, or a store error —
-    /// every miss shape degrades gracefully (the caller skips the channel).
+    /// Tier-0 callers treat every miss as an execution failure.
     async fn load_thread(&self, context: &LoopRunContext) -> Option<Thread> {
         let uuid = Uuid::parse_str(context.thread_id.as_str()).ok()?;
         match self.thread_store.load_thread(EngineThreadId(uuid)).await {
@@ -170,7 +169,7 @@ impl OrchestratorLookup for PgOrchestratorLookup {
             Err(error) => {
                 tracing::debug!(
                     %error,
-                    "PgOrchestratorLookup::run_tier_zero build_for_run failed; degrading to None"
+                    "PgOrchestratorLookup::run_tier_zero build_for_run failed; selected Recipe cannot execute"
                 );
                 return None;
             }
@@ -184,7 +183,7 @@ impl OrchestratorLookup for PgOrchestratorLookup {
             Err(error) => {
                 tracing::debug!(
                     %error,
-                    "PgOrchestratorLookup::run_tier_zero channel failed; degrading to None"
+                    "PgOrchestratorLookup::run_tier_zero channel failed; selected Recipe stopped"
                 );
                 return None;
             }

@@ -14,6 +14,11 @@ use crate::types::thread::{ThreadId, ThreadState};
 /// gateway debug mode rather than leaked into the user's reply.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum OrchestratorFailureKind {
+    /// Sanitized, fixed task-contract stage. Completed effects must not be
+    /// replayed through a second Recipe or direct LLM path after this failure.
+    #[error("{prefix}: {stage}")]
+    TaskContract { prefix: String, stage: &'static str },
+
     #[error(
         "{prefix}: time budget exhausted after {limit_secs}s (simplify the task, or in DB-less mode set BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS to raise the limit)"
     )]

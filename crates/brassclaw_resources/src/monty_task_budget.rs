@@ -52,6 +52,8 @@ pub enum MontyTaskBudgetError {
     ComputeExceeded,
     #[error("Monty task accounting unavailable")]
     AccountingUnavailable,
+    #[error("Monty execution clock regressed")]
+    ClockRegressed,
 }
 
 /// Publish capability is held by trusted composition, never sent to Python.
@@ -158,11 +160,60 @@ pub struct MontyTaskBudgetSnapshot {
     pub usage: MontyTaskUsage,
 }
 
+/// Hosting-owned cursor over one interpreter's cumulative execution clock.
+///
+/// Attach at an explicit task/execution ownership boundary, supplying the
+/// current clock as the baseline. Prior service work or another task's work is
+/// not charged. Keep the same cursor over resumes and feed/turn limit changes;
+/// attach a separate cursor for each nested interpreter to the same task budget.
+/// The supplied clock must exclude external waits and nested execution, otherwise
+/// its caller would double count. This cursor cannot attribute a clock shared by
+/// concurrently executing tasks, measure a VM, or recover its final clock.
+///
+/// Deliberately not Clone: an execution owner must not duplicate its cursor and
+/// debit the same segment twice. Do not also record these segments directly.
+#[derive(Debug)]
+pub struct MontyTaskClock {
+    budget: SharedMontyTaskBudget,
+    observed: Duration,
+}
+
+impl MontyTaskClock {
+    pub fn checkpoint(
+        &mut self,
+        cumulative: Duration,
+    ) -> Result<MontyTaskBudgetSnapshot, MontyTaskBudgetError> {
+        let Some(delta) = cumulative.checked_sub(self.observed) else {
+            let mut account = self
+                .budget
+                .account
+                .lock()
+                .map_err(|_| MontyTaskBudgetError::AccountingUnavailable)?;
+            let error = account
+                .terminal
+                .get_or_insert(MontyTaskBudgetError::ClockRegressed);
+            return Err(error.clone());
+        };
+        self.budget.record_compute_time(delta)?;
+        self.observed = cumulative;
+        self.budget.check()
+    }
+}
+
 impl SharedMontyTaskBudget {
     pub fn new(settings: LiveMontyTaskSettings) -> Self {
         Self {
             settings,
             account: Arc::new(Mutex::new(TaskAccount::default())),
+        }
+    }
+
+    /// One cursor per owned interpreter execution, not per feed or checkpoint.
+    /// Creating a cursor neither clears task usage nor charges its baseline.
+    pub fn execution_clock(&self, baseline: Duration) -> MontyTaskClock {
+        MontyTaskClock {
+            budget: self.clone(),
+            observed: baseline,
         }
     }
 
@@ -300,5 +351,45 @@ mod tests {
         live.publish(1, settings(2, 3600)).unwrap();
         assert_eq!(rust.check(), Err(MontyTaskBudgetError::AccountingOverflow));
         assert_eq!(vm.check(), Err(MontyTaskBudgetError::AccountingOverflow));
+    }
+
+    #[test]
+    fn cumulative_checkpoints_and_nested_clocks_preserve_task_consumption() {
+        let live = LiveMontyTaskSettings::new(settings(1, 600)).unwrap();
+        let task = SharedMontyTaskBudget::new(live.clone());
+        let mut root = task.execution_clock(Duration::from_secs(100));
+        root.checkpoint(Duration::from_secs(110)).unwrap();
+        root.checkpoint(Duration::from_secs(110)).unwrap();
+        let mut nested = task.execution_clock(Duration::ZERO);
+        nested.checkpoint(Duration::from_secs(15)).unwrap();
+        live.publish(1, settings(2, 30)).unwrap();
+        let snapshot = root.checkpoint(Duration::from_secs(114)).unwrap();
+        assert_eq!(snapshot.settings.revision, 2);
+        assert_eq!(snapshot.usage.compute_time, Duration::from_secs(29));
+        assert_eq!(
+            nested.checkpoint(Duration::from_secs(17)),
+            Err(MontyTaskBudgetError::ComputeExceeded)
+        );
+        live.publish(2, settings(3, 600)).unwrap();
+        assert_eq!(task.check(), Err(MontyTaskBudgetError::ComputeExceeded));
+    }
+
+    #[test]
+    fn resetting_an_execution_clock_fails_the_shared_task_closed() {
+        let live = LiveMontyTaskSettings::new(settings(1, 600)).unwrap();
+        let task = SharedMontyTaskBudget::new(live.clone());
+        let mut clock = task.execution_clock(Duration::ZERO);
+        clock.checkpoint(Duration::from_secs(20)).unwrap();
+        assert_eq!(
+            clock.checkpoint(Duration::ZERO),
+            Err(MontyTaskBudgetError::ClockRegressed)
+        );
+        live.publish(1, settings(2, 120)).unwrap();
+        assert_eq!(task.check(), Err(MontyTaskBudgetError::ClockRegressed));
+        let mut replacement = task.execution_clock(Duration::ZERO);
+        assert_eq!(
+            replacement.checkpoint(Duration::from_secs(1)),
+            Err(MontyTaskBudgetError::ClockRegressed)
+        );
     }
 }

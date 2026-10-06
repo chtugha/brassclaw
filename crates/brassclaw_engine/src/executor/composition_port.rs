@@ -33,7 +33,7 @@
 //! is a Step C.5/C.6 concern and is deferred — the directives are CARRIED in the
 //! returned program so the driver/loader can apply them once that wiring lands.
 //! Until the composition impl is wired, the engine passes `None` and every
-//! handler degrades gracefully (no_match / Null / empty list /
+//! handler reports unavailability (error / Null / empty list /
 //! `{ok:false, error:"composition_unavailable"}`).
 //!
 //! # Feature gate
@@ -43,7 +43,8 @@
 //! always-available engine types). Only the `PgCompositionPort` IMPL is
 //! `skills-db`-gated (the engine free fns it delegates to are gated). The
 //! handlers therefore shed their `#[cfg]` wrappers and compile under both
-//! configs, degrading to null/no_match when the port is `None`.
+//! configs. Intent resolution reports an error when the port is `None`;
+//! missing infrastructure is never a genuine No-Match.
 
 use thiserror::Error;
 
@@ -55,8 +56,8 @@ use crate::types::thread::Thread;
 /// Errors raised by a [`ComponentPort`] implementation.
 #[derive(Debug, Clone, Error)]
 pub enum ComponentPortError {
-    /// No component bridge is wired (`None` port) — the orchestrator falls
-    /// back to Non-Matching-Mode / the LLM path / an empty skill list.
+    /// No component bridge is wired. Intent resolution must report a technical
+    /// error; this is not evidence of No-Match and must not start an LLM path.
     #[error("component bridge unavailable")]
     Unavailable,
     /// The recipe (class 21) row for `component_id` was not found in scope.

@@ -130,10 +130,9 @@ impl DefaultExecutorPipeline {
                                 )
                                 .await?;
                         }
-                        TierZeroStep::Degrade { state: degraded } => *degraded,
                         TierZeroStep::FailClosed => {
                             return Err(AgentLoopExecutorError::PlannerContract {
-                                detail: "trusted internal Tier-0 execution failed",
+                                detail: "selected Tier-0 Recipe execution failed",
                             });
                         }
                     },

@@ -69,7 +69,7 @@ is_reborn_test_path() {
     docs/reborn/*|scripts/reborn-e2e-rust.sh|scripts/ci/run-reborn-root-partition.sh|tests/reborn_*|tests/support/reborn/*|tests/e2e/scenarios/test_reborn_*)
       return 0
       ;;
-    crates/brassclaw_architecture/*)
+    crates/brassclaw_architecture/*|crates/brassclaw_engine/*|tests/monty_v1_upgrade/*|tests/monty_legacy_baseline/*)
       return 0
       ;;
     crates/brassclaw_reborn/*|crates/brassclaw_reborn_*/*)

@@ -25,3 +25,9 @@ The calculator does not establish allocator-backed Monty heap isolation.
 The shared task account does not establish interpreter preemption, measurement
 or WebUI runtime acknowledgement. Record non-overlapping active segments once
 through the hosting owner; checking copied counters in two consumers is invalid.
+`MontyTaskClock` debits differences in an owned interpreter's cumulative clock
+exactly once per cursor. Preserve the cursor across resumes and limit changes;
+each nested interpreter has a separate cursor attached to the same task account.
+A regression is terminal, never a reset. A baseline excludes earlier execution.
+Hosting must still prove final/error clock recovery and task attribution; do not
+feed a global multi-task execution clock into an individual task account.

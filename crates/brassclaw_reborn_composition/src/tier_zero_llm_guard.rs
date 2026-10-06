@@ -4,11 +4,11 @@
 //! (`execute_tier_zero_channel` only reaches the LLM through this backend).
 //! If a recipe wrongly reaches for the LLM, [`TierZeroLlmGuard::complete`]
 //! returns [`EngineError::InvalidInput`], which `execute_tier_zero_channel`
-//! maps to a `TierZeroStep::Degrade` → Tier-2 fallback (per H.11). The guard
+//! reports as a failed selected Recipe, without invoking Tier 2. The guard
 //! therefore surfaces mis-compiled recipes loudly instead of silently
 //! executing an unintended model call. If a future Tier-0 recipe genuinely
-//! needs an LLM, replace this with a model-gateway adapter (out of H.12
-//! scope) — do not silently allow calls here.
+//! needs an LLM, author it as Tier 1 with its declared LLM step; keep this
+//! deterministic channel guarded.
 //!
 //! `dead_code` is allowed module-wide: the guard is only **constructed** under
 //! the `skills-db` feature (H.12.4 wiring), so under the default feature set

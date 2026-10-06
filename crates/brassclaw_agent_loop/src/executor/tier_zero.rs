@@ -8,12 +8,12 @@
 //! channel with NO LLM (`run_tier_zero`), then either hands the reply text to
 //! [`AssistantReplyStage`](super::assistant_reply::AssistantReplyStage) (the
 //! `canonical.rs` caller emits it directly, skipping `PromptStage`/
-//! `ModelStage`) or degrades to the Tier-2 LLM path when no bridge is wired or
-//! the channel produced no reply.
+//! `ModelStage`) or fails when the execution bridge is unavailable. A selected
+//! Recipe never falls through to Tier 2 after an execution failure.
 //!
 //! v3 architecture (re-think): the Python orchestrator is the SOLE execution
 //! authority — tools are invoked inside the Monty sandbox via
-//! `__execute_action__`, never directly from Rust by an LLM (no classical
+//! `host.<tool>(...)`, never directly from Rust by an LLM (no classical
 //! MCP). Tier-0 recipes bake the tool calls into their PythonCode, so this
 //! stage only needs the stashed `recipe_hint` + `recipe_rust_context`; no
 //! `instruction` or Rust-channel executor fn is involved.
@@ -45,10 +45,7 @@ pub(super) enum TierZeroStep {
         #[allow(dead_code)]
         matched_component_ids: Vec<String>,
     },
-    /// No orchestrator bridge is wired or the channel produced no reply —
-    /// degrade to the Tier-2 LLM path.
-    Degrade { state: Box<LoopExecutionState> },
-    /// Trusted internal turns must never fall through to Tier 2.
+    /// A selected Recipe cannot execute; no turn may fall through to Tier 2.
     FailClosed,
 }
 
@@ -74,15 +71,9 @@ impl ExecutorStage<TierZeroInput> for TierZeroExecutionStage {
                 iteration = state.iteration,
                 has_bridge = ctx.host.orchestrator_lookup().is_some(),
                 "tier-zero stage: no orchestrator bridge or no stashed \
-                 recipe_hint — degrading to Tier 2"
+                 recipe_hint — failing the selected Recipe"
             );
-            return Ok(if ctx.host.run_context().trusted_internal_turn {
-                TierZeroStep::FailClosed
-            } else {
-                TierZeroStep::Degrade {
-                    state: Box::new(state),
-                }
-            });
+            return Ok(TierZeroStep::FailClosed);
         };
 
         let recipe_rust_context =
@@ -112,15 +103,9 @@ impl ExecutorStage<TierZeroInput> for TierZeroExecutionStage {
                 debug!(
                     iteration = state.iteration,
                     "tier-zero stage: orchestrator channel returned no reply — \
-                     degrading to Tier 2"
+                     failing the selected Recipe"
                 );
-                Ok(if ctx.host.run_context().trusted_internal_turn {
-                    TierZeroStep::FailClosed
-                } else {
-                    TierZeroStep::Degrade {
-                        state: Box::new(state),
-                    }
-                })
+                Ok(TierZeroStep::FailClosed)
             }
         }
     }

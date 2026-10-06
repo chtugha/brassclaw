@@ -1,0 +1,14 @@
+[package]
+name = "brassclaw_monty_legacy_baseline"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[workspace]
+
+[dev-dependencies]
+monty = { git = "https://github.com/pydantic/monty.git", tag = "v0.0.16" }
+
+[lints.rust]
+unsafe_code = "forbid"

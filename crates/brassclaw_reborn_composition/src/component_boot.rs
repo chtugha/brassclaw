@@ -148,8 +148,6 @@ async fn load_required_prompt(
 mod tests {
     use std::sync::Arc;
 
-    use brassclaw_embedded_postgres::{EmbeddedPostgresConfig, ManagedPostgres};
-
     use super::*;
 
     #[tokio::test]
@@ -206,26 +204,10 @@ mod tests {
     /// Database failures must fail this test rather than silently skip it.
     #[tokio::test]
     async fn native_database_boot_is_idempotent_and_rejects_changed_prompt() {
-        let directory = tempfile::tempdir().expect("isolated PostgreSQL directory");
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("reserve test port");
-        let port = listener.local_addr().expect("test port").port();
-        drop(listener);
-        let config = EmbeddedPostgresConfig {
-            port,
-            data_dir: directory.path().join("data"),
-            bin_cache_dir: directory.path().join("bin"),
-            database: "component_boot".to_owned(),
-            superuser: "brassclaw".to_owned(),
-        };
-        let url = config.connection_url();
-        // ManagedPostgres drops before its temporary directory, including when
-        // an assertion panics; its owner stops only this isolated server.
-        let postgres = ManagedPostgres::start(config)
-            .await
-            .expect("start isolated PostgreSQL");
-        let pool = Arc::new(brassclaw_pg::pool::build_pool(&url).expect("test pool"));
+        // Reuse the native database fixture: composition tests do not own
+        // listeners or duplicate PostgreSQL startup/cleanup conventions.
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let pool = Arc::clone(&rig.pool);
         let booted = crate::booted_db::run_migrations_and_return_booted_db(pool.clone())
             .await
             .expect("schema migrations");
@@ -264,6 +246,6 @@ mod tests {
         drop(booted);
         pool.close();
         drop(pool);
-        postgres.shutdown().await.expect("stop test PostgreSQL");
+        drop(rig); // supervised shutdown precedes temporary-directory removal
     }
 }

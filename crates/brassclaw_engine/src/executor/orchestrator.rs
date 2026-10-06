@@ -246,7 +246,43 @@ fn classify_orchestrator_failure(prefix: &str, err_msg: &str) -> OrchestratorFai
     let has_python_traceback =
         lower.contains("traceback (most recent call last)") || lower.contains("traceback:");
 
-    let kind = if hit_time_limit {
+    let task_stage = [
+        ("intent_resolution_failed", "intent resolution failed"),
+        (
+            "intent_disambiguation_required",
+            "intent is ambiguous; an explicit selection is required",
+        ),
+        ("recipe_composition_failed", "recipe composition failed"),
+        (
+            "recipe_execution_failed",
+            "recipe execution failed; completed effects were not retried",
+        ),
+        (
+            "non_match_instruction_unavailable",
+            "No-Match instruction is unavailable",
+        ),
+        (
+            "non_match_instruction_failed",
+            "No-Match instruction failed",
+        ),
+        (
+            "history_persistence_failed",
+            "history persistence failed; completed effects were not retried",
+        ),
+    ]
+    .into_iter()
+    .find_map(|(marker, stage)| {
+        err_msg
+            .trim_end()
+            .ends_with(&format!("RuntimeError: {marker}"))
+            .then_some(stage)
+    });
+    let kind = if let Some(stage) = task_stage {
+        OrchestratorFailureKind::TaskContract {
+            prefix: prefix.to_string(),
+            stage,
+        }
+    } else if hit_time_limit {
         OrchestratorFailureKind::TimeLimit {
             prefix: prefix.to_string(),
             limit_secs: orchestrator_max_duration().as_secs(),
@@ -1527,9 +1563,8 @@ async fn handle_kohai_complete(
 ///   `{"status":"disambiguation","candidates":[..]}`
 ///   `{"status":"no_match"}`
 ///   `{"status":"error","error":..}`
-/// No bridge (`None` port, e.g. non-skills-db config / unit-test path) →
-/// `no_match` (semantically correct — the run falls through to Non-Matching-Mode
-/// / the LLM path). Scope is built from the thread's real identity
+/// An unavailable bridge or malformed input is a technical error, never
+/// evidence of No-Match. Scope is built from the thread's real identity
 /// (`thread.tenant_id` / `thread.agent_id` — F.1/F.3), mirroring
 /// `handle_fetch_component`.
 async fn handle_resolve_intent(
@@ -1544,13 +1579,15 @@ async fn handle_resolve_intent(
         Some(s) => s,
         None => {
             return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-                "status": "no_match",
+                "status": "error",
                 "error": "missing user_input",
             })));
         }
     };
     let Some(port) = component_port else {
-        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"status":"no_match"})));
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "status":"error", "error":"composition_unavailable"
+        })));
     };
     let scope = ComponentScope {
         tenant_id: _thread.tenant_id.clone(),
@@ -1720,8 +1757,8 @@ pub struct PkrAssemblyResult {
 /// `matched_component_ids` carries the orchestrator-channel UUIDs for Wilson
 /// scoring (`record_recipe_outcome`). A channel parse failure, a
 /// non-PythonCode step, or any step failure (incl. an approval-gate pause)
-/// degrades to an empty result so the caller falls back to Tier 2 — matching
-/// the Python `{outcome:"error"}` → Tier-2 degradation.
+/// fails explicitly. A selected Recipe is never replayed through Tier 2 after
+/// a failure, including when earlier steps already produced effects.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TierZeroChannelResult {
     /// The reply text to emit as the assistant reply (Tier-0, no LLM call).
@@ -1945,9 +1982,7 @@ pub struct OrchestratorChannelStep {
 /// Returns `Ok(vec![])` for an empty input. Returns
 /// [`EngineError::InvalidInput`] on a block whose first line is not a
 /// `## [Label: name]` heading or is missing the `: ` separator;
-/// [`execute_tier_zero_channel`] converts this to an empty
-/// [`TierZeroChannelResult`] degrade (mirroring the Python `outcome:"error"`
-/// → Tier-2 degradation).
+/// [`execute_tier_zero_channel`] propagates the error without executing steps.
 pub fn parse_orchestrator_channel_steps(
     content: &str,
 ) -> Result<Vec<OrchestratorChannelStep>, EngineError> {
@@ -1999,11 +2034,10 @@ pub fn parse_orchestrator_channel_steps(
 /// Flow (mirrors the Python reference):
 /// 1. Parse `orchestrator_content` into steps via
 ///    [`parse_orchestrator_channel_steps`]. A parse failure (malformed heading
-///    / missing `: ` separator) → empty [`TierZeroChannelResult`] degrade
-///    (Python `outcome:"error"`).
+///    / missing `: ` separator) fails before executing any step.
 /// 2. Only `kind == "PythonCode"` steps are executable at Tier 0 (FIND-P9-02
 ///    Q1: Tier-0 recipes are PythonCode-only; Skill bodies are LLM prose).
-///    Any non-PythonCode step, or an empty step list, → empty degrade.
+///    Any non-PythonCode step, or an empty step list, is an explicit error.
 /// 3. Each PythonCode step runs via [`execute_code`] with a FRESH
 ///    [`ThreadExecutionContext`] per step and `persisted_state = {}`
 ///    (ISOLATION INVARIANT: no variables are shared between steps; each step
@@ -2011,10 +2045,8 @@ pub fn parse_orchestrator_channel_steps(
 ///    §0.20.3 — there is NO runtime `vars` dict). `capability_policies = &[]`.
 /// 4. A step fails when [`execute_code`] returns `Err` OR its result has
 ///    `failure.is_some()` (internal error) OR `need_approval.is_some()` (a
-///    tool call paused on an approval gate — per Q-H4 the channel signal is
-///    binary success/error, so a gate pause degrades to empty; the Tier-2 LLM
-///    path owns full gate handling, so the user's request still proceeds). On
-///    first failure → empty degrade.
+///    tool call paused on an unsupported approval gate). Execution stops at
+///    the first failure. The caller must not invoke Tier 2 or repeat effects.
 /// 5. All-success → reply text from the LAST step (Q-H4 / Q-H5result):
 ///    `final_answer` (from `FINAL("...")`) → else `return_value` stringified
 ///    → else captured `stdout` → else `""`.
@@ -2052,27 +2084,22 @@ pub async fn execute_tier_zero_channel(
     llm: &Arc<dyn LlmBackend>,
     event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
 ) -> Result<TierZeroChannelResult, EngineError> {
-    let steps = match parse_orchestrator_channel_steps(orchestrator_content) {
-        Ok(s) => s,
-        Err(e) => {
-            debug!("execute_tier_zero_channel: parse failed: {e}");
-            return Ok(empty_tier_zero_channel_result());
-        }
-    };
+    let steps = parse_orchestrator_channel_steps(orchestrator_content)?;
     if steps.is_empty() {
-        debug!("execute_tier_zero_channel: no orchestrator channel steps to execute");
-        return Ok(empty_tier_zero_channel_result());
+        return Err(EngineError::InvalidInput {
+            reason: "Tier-0 Recipe has no executable steps".into(),
+        });
+    }
+    // Validate the complete channel before any effect, including a bad later
+    // component: prose cannot become executable after earlier steps ran.
+    if steps.iter().any(|step| step.kind != "PythonCode") {
+        return Err(EngineError::InvalidInput {
+            reason: "Tier-0 Recipe contains a non-PythonCode step".into(),
+        });
     }
 
     let mut last_result: Option<crate::executor::scripting::CodeExecutionResult> = None;
     for step in &steps {
-        if step.kind != "PythonCode" {
-            debug!(
-                "execute_tier_zero_channel: tier-0 channel step is not PythonCode: {}",
-                step.kind
-            );
-            return Ok(empty_tier_zero_channel_result());
-        }
         let exec_ctx =
             thread_execution_context(thread, StepId::new(), None, gate_controller.clone());
         let fresh_state = serde_json::json!({});
@@ -2102,26 +2129,32 @@ pub async fn execute_tier_zero_channel(
                 }
                 if result.failure.is_some() {
                     debug!(
-                        "execute_tier_zero_channel: step '{}' failed; degrading to Tier 2",
+                        "execute_tier_zero_channel: step '{}' failed; stopping the Recipe",
                         step.name
                     );
-                    return Ok(empty_tier_zero_channel_result());
+                    return Err(EngineError::InvalidInput {
+                        reason:
+                            "Tier-0 Recipe execution failed; completed effects were not retried"
+                                .into(),
+                    });
                 }
                 if result.need_approval.is_some() {
                     debug!(
-                        "execute_tier_zero_channel: step '{}' paused on approval gate; degrading to Tier 2",
+                        "execute_tier_zero_channel: step '{}' paused on unsupported approval gate; stopping the Recipe",
                         step.name
                     );
-                    return Ok(empty_tier_zero_channel_result());
+                    return Err(EngineError::InvalidInput {
+                        reason: "Tier-0 Recipe suspended on an unsupported approval gate".into(),
+                    });
                 }
                 last_result = Some(result);
             }
             Err(e) => {
                 debug!(
-                    "execute_tier_zero_channel: step '{}' raised: {e}; degrading to Tier 2",
+                    "execute_tier_zero_channel: step '{}' raised: {e}; stopping the Recipe",
                     step.name
                 );
-                return Ok(empty_tier_zero_channel_result());
+                return Err(e);
             }
         }
     }
@@ -2158,19 +2191,6 @@ fn extract_tier_zero_reply_text(
         return result.stdout.clone();
     }
     String::new()
-}
-
-/// Empty / degrade-graceful [`TierZeroChannelResult`] — no reply text, no
-/// matched ids. Returned on parse failure, empty step list, a non-PythonCode
-/// step, or the first step failure / approval-gate pause; the composition
-/// `OrchestratorLookup::run_tier_zero` (H.12) surfaces this as `None` so
-/// `RecipeStage` falls back to Tier 2 (a Tier-0 failure degrades to a normal
-/// LLM call so the user still gets a reply).
-fn empty_tier_zero_channel_result() -> TierZeroChannelResult {
-    TierZeroChannelResult {
-        formatted_output: String::new(),
-        matched_component_ids: Vec::new(),
-    }
 }
 
 /// Handle `__check_budget__()`.
@@ -3297,11 +3317,13 @@ mod tests {
     /// Returns a canned [`ComposedProgram`] (or an injected `Err`).
     struct MockComponentPort {
         result: Mutex<Option<Result<ComposedProgram, ComponentPortError>>>,
+        intent_result: Result<IntentResolution, ComponentPortError>,
     }
 
     impl MockComponentPort {
         fn ok() -> Self {
             Self {
+                intent_result: Ok(IntentResolution::NoMatch),
                 result: Mutex::new(Some(Ok(ComposedProgram {
                     skills: vec![SkillRef {
                         id: uuid::Uuid::nil(),
@@ -3328,6 +3350,7 @@ mod tests {
         }
         fn failing(err: ComponentPortError) -> Self {
             Self {
+                intent_result: Err(err.clone()),
                 result: Mutex::new(Some(Err(err))),
             }
         }
@@ -3340,7 +3363,7 @@ mod tests {
             _user_input: &str,
         ) -> Pin<Box<dyn Future<Output = Result<IntentResolution, ComponentPortError>> + Send + '_>>
         {
-            Box::pin(async { Err(ComponentPortError::Unavailable) })
+            Box::pin(async { self.intent_result.clone() })
         }
 
         fn fetch_component(
@@ -3882,6 +3905,70 @@ mod tests {
         thread
     }
 
+    struct ForbiddenTierZeroLlm;
+
+    #[async_trait]
+    impl LlmBackend for ForbiddenTierZeroLlm {
+        async fn complete(
+            &self,
+            _: &[ThreadMessage],
+            _: &[crate::types::capability::ActionDef],
+            _: &crate::traits::llm::LlmCallConfig,
+        ) -> Result<crate::traits::llm::LlmOutput, EngineError> {
+            panic!("a deterministic Recipe must never call the LLM")
+        }
+
+        fn model_name(&self) -> &str {
+            "forbidden-tier-zero-model"
+        }
+    }
+
+    #[tokio::test]
+    async fn selected_tier_zero_channel_reports_invalid_and_failed_steps_as_errors() {
+        let thread = session_fresh_thread();
+        let (effects, leases, policy, gate) = session_host_deps();
+        let llm: Arc<dyn LlmBackend> = Arc::new(ForbiddenTierZeroLlm);
+        for code in [
+            "",
+            "invalid heading",
+            "## [PythonCode: first]\nresult = 7\nresult\n\n## [Skill: prose]\nnot executable",
+            "## [PythonCode: first]\nresult = 7\nresult\n\n## [PythonCode: failure]\nraise RuntimeError('step failed')\n\n## [PythonCode: forbidden]\nforbidden_after_failure()",
+        ] {
+            let result = execute_tier_zero_channel(
+                &thread,
+                code,
+                &serde_json::json!([]),
+                &effects,
+                &leases,
+                &policy,
+                &gate,
+                &llm,
+                None,
+            )
+            .await;
+            assert!(
+                result.is_err(),
+                "invalid/failed Recipe must remain an error"
+            );
+        }
+        // A successful Recipe may deliberately have no user-facing text;
+        // that is still success, never a reason to invoke Tier 2.
+        let empty_reply = execute_tier_zero_channel(
+            &thread,
+            "## [PythonCode: no-output]\nresult = None\nresult",
+            &serde_json::json!([]),
+            &effects,
+            &leases,
+            &policy,
+            &gate,
+            &llm,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(empty_reply.formatted_output.is_empty());
+    }
+
     #[tokio::test]
     async fn monty_session_drives_final_only_to_complete() {
         let (effects, leases, policy, gate) = session_host_deps();
@@ -4384,12 +4471,10 @@ mod tests {
         assert!(arr.is_empty(), "no-port path must return an empty list");
     }
 
-    /// `handle_resolve_intent` thin-calls `ComponentPort::resolve_intent`; with
-    /// no port wired (`None`) it degrades to `{"status":"no_match"}` (the
-    /// orchestrator's Non-Matching-Mode trigger), and a missing `user_input`
-    /// arg degrades to `{"status":"no_match","error":"missing user_input"}`.
+    /// Only a successful matcher can return No-Match. Missing input and an
+    /// unavailable bridge must not spend LLM tokens through a fallback path.
     #[tokio::test]
-    async fn handle_resolve_intent_no_port_returns_no_match() {
+    async fn handle_resolve_intent_missing_input_and_port_return_error() {
         let thread = phase_f7_thread("deploy now");
 
         // Missing user_input arg.
@@ -4398,7 +4483,7 @@ mod tests {
             panic!("handle_resolve_intent did not return a value");
         };
         let json = monty_to_json(&obj);
-        assert_eq!(json["status"], serde_json::json!("no_match"));
+        assert_eq!(json["status"], serde_json::json!("error"));
         assert_eq!(json["error"], serde_json::json!("missing user_input"));
 
         // Present user_input, no port.
@@ -4408,7 +4493,113 @@ mod tests {
             panic!("handle_resolve_intent did not return a value");
         };
         let json = monty_to_json(&obj);
-        assert_eq!(json["status"], serde_json::json!("no_match"));
+        assert_eq!(json["status"], serde_json::json!("error"));
+        assert_eq!(json["error"], serde_json::json!("composition_unavailable"));
+    }
+
+    #[tokio::test]
+    async fn handle_resolve_intent_only_successful_matcher_returns_no_match() {
+        let thread = phase_f7_thread("input");
+        let args = vec![MontyObject::String("input".into())];
+        for (port, status) in [
+            (MockComponentPort::ok(), "no_match"),
+            (
+                MockComponentPort::failing(ComponentPortError::Unavailable),
+                "error",
+            ),
+        ] {
+            let port: Arc<dyn ComponentPort> = Arc::new(port);
+            let ExtFunctionResult::Return(value) =
+                handle_resolve_intent(&args, &[], &thread, Some(&port)).await
+            else {
+                panic!("expected structured matching result");
+            };
+            assert_eq!(monty_to_json(&value)["status"], status);
+        }
+    }
+
+    #[test]
+    fn task_contract_failures_have_safe_distinct_stages() {
+        for marker in [
+            "intent_resolution_failed",
+            "intent_disambiguation_required",
+            "recipe_composition_failed",
+            "recipe_execution_failed",
+            "non_match_instruction_unavailable",
+            "non_match_instruction_failed",
+            "history_persistence_failed",
+        ] {
+            let raw = format!("Traceback (most recent call last):\nRuntimeError: {marker}");
+            let failure = classify_orchestrator_failure("orchestrator", &raw);
+            assert!(matches!(
+                failure.kind,
+                OrchestratorFailureKind::TaskContract { .. }
+            ));
+            assert!(!failure.user_message().contains("Traceback"));
+            assert_eq!(failure.debug_detail(), raw);
+        }
+        let arbitrary = classify_orchestrator_failure(
+            "orchestrator",
+            "RuntimeError: unrelated secret recipe_execution_failed",
+        );
+        assert!(matches!(
+            arbitrary.kind,
+            OrchestratorFailureKind::Other { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn default_orchestrator_matching_failure_does_not_start_no_match_path() {
+        let (effects, leases, policy, gate) = session_host_deps();
+        let mut thread = session_fresh_thread();
+        let (_tx, mut signals) = tokio::sync::mpsc::channel::<ThreadSignal>(8);
+        let mut session =
+            MontySession::new(BASIC_MODE_PY, &thread, &serde_json::json!({}), None).unwrap();
+        let port: Arc<dyn ComponentPort> =
+            Arc::new(MockComponentPort::failing(ComponentPortError::Unavailable));
+        session
+            .drive_to_yield(
+                &mut thread,
+                &effects,
+                &leases,
+                &policy,
+                &mut signals,
+                None,
+                None,
+                &gate,
+                None,
+                Some(&port),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        let result = session
+            .drive_to_yield(
+                &mut thread,
+                &effects,
+                &leases,
+                &policy,
+                &mut signals,
+                None,
+                None,
+                &gate,
+                None,
+                Some(&port),
+                None,
+                Some(MontyObject::String("accepted input".into())),
+            )
+            .await;
+        let Err(EngineError::Orchestrator(failure)) = result else {
+            panic!("expected task failure")
+        };
+        assert!(matches!(
+            failure.kind,
+            OrchestratorFailureKind::TaskContract {
+                stage: "intent resolution failed",
+                ..
+            }
+        ));
     }
 
     /// No-op effect executor — only consulted for

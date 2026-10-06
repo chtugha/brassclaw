@@ -1,0 +1,19 @@
+[package]
+name = "brassclaw_monty_v1_upgrade_tests"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+# Isolated upgrade gate: the application remains on its compatible interpreter
+# until all Phase 3a acceptance criteria have been met.
+[workspace]
+
+[dependencies]
+brassclaw_resources = { path = "../../crates/brassclaw_resources" }
+monty = { git = "https://github.com/pydantic/monty.git", tag = "v1.0.0" }
+monty-types = { git = "https://github.com/pydantic/monty.git", tag = "v1.0.0" }
+monty-alloc = { git = "https://github.com/pydantic/monty.git", tag = "v1.0.0", features = ["exit-code"] }
+
+[lints.rust]
+unsafe_code = "forbid"

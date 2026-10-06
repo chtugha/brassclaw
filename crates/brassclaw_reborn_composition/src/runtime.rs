@@ -4936,6 +4936,19 @@ mod tests {
                 }) {
                     break stream;
                 }
+                let state = runtime_turn_coordinator
+                    .get_run_state(GetRunStateRequest {
+                        scope: caller.turn_scope(created.thread.thread_id.clone()),
+                        run_id,
+                    })
+                    .await
+                    .expect("submitted webui run state");
+                assert!(
+                    !state.status.is_terminal() || state.status == TurnStatus::Completed,
+                    "webui run ended before its completed projection: status={:?}, category={:?}",
+                    state.status,
+                    state.failure.as_ref().map(|failure| failure.category())
+                );
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         })

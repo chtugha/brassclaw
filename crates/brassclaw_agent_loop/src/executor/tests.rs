@@ -2970,44 +2970,54 @@ async fn recipe_stage_soft_miss_leaves_no_stashed_result() {
 }
 
 #[tokio::test]
-async fn recipe_stage_soft_fails_on_retrieval_error() {
+async fn recipe_matching_error_never_reaches_model_or_prompt() {
     let stub = StubRetrievalLookup::failing(RetrievalLookupError::Backend(
         "testcontainer unavailable".to_string(),
     ));
     let calls = stub.calls();
-    let host =
-        MockHost::new(Vec::new()).with_retrieval_lookup(Arc::new(stub) as Arc<dyn RetrievalLookup>);
-    let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
-    let ctx = StageContext {
-        planner: family.planner(),
-        host: &host,
-    };
-
+    let host = MockHost::new(vec![reply_response()])
+        .with_retrieval_lookup(Arc::new(stub) as Arc<dyn RetrievalLookup>);
     let mut state = LoopExecutionState::initial_for_run(host.run_context());
     state.last_user_text = Some("any query".to_string());
+    let result = CanonicalAgentLoopExecutor
+        .execute_family(&crate::families::default(), &host, state)
+        .await;
+    assert!(matches!(
+        result,
+        Err(AgentLoopExecutorError::PlannerContract {
+            detail: "Recipe matching failed"
+        })
+    ));
+    assert_eq!(calls.lock().expect("lock").len(), 1);
+    assert!(host.model_requests().is_empty());
+    assert!(host.prompt_requests().is_empty());
+}
 
-    let step = RecipeStage
-        .process(ctx, RecipeInput { state })
-        .await
-        .expect("recipe stage must soft-fail, not error");
-
-    let boxed = match step {
-        RecipeStep::Continue { state } => state,
-        RecipeStep::TierZero { .. } => panic!("expected Continue (Tier 2), got TierZero"),
+#[tokio::test]
+async fn ambiguous_recipe_intent_requires_selection_without_a_model_call() {
+    let candidates = RetrievalTurnResult {
+        tier0_eligible: false,
+        llm_call_required: true,
+        orchestrator_items: serde_json::json!([{ "id": "candidate-a" }, { "id": "candidate-b" }]),
+        rust_items: serde_json::json!([]),
+        routing_meta: serde_json::json!({ "variant": "disambiguation", "count": 2 }),
+        instruction: serde_json::Value::Null,
     };
-    assert!(
-        boxed.recipe_hint.is_none(),
-        "Err → soft-fail, nothing stashed (Tier-2)"
-    );
-    assert!(
-        boxed.recipe_rust_context.is_empty(),
-        "Err → soft-fail, no rust context stashed (Tier-2)"
-    );
-    assert_eq!(
-        calls.lock().expect("lock").len(),
-        1,
-        "fetch_for_turn called"
-    );
+    let host = MockHost::new(vec![reply_response()])
+        .with_retrieval_lookup(Arc::new(StubRetrievalLookup::returning(candidates)));
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.last_user_text = Some("an ambiguous request".into());
+    let result = CanonicalAgentLoopExecutor
+        .execute_family(&crate::families::default(), &host, state)
+        .await;
+    assert!(matches!(
+        result,
+        Err(AgentLoopExecutorError::PlannerContract {
+            detail: "Recipe intent selection required"
+        })
+    ));
+    assert!(host.model_requests().is_empty());
+    assert!(host.prompt_requests().is_empty());
 }
 
 // =========================================================================
@@ -3015,8 +3025,8 @@ async fn recipe_stage_soft_fails_on_retrieval_error() {
 // (plan subplan_problem_stepH_of_saved_plan_to_v3.md §H.13). Tests verify:
 //   1. RecipeStage returns TierZero when tier0_eligible && !llm_call_required.
 //   2. TierZeroExecutionStage calls the bridge with all three args + produces Reply.
-//   3. TierZeroExecutionStage degrades when no bridge is wired.
-//   4. TierZeroExecutionStage degrades when the bridge returns None.
+//   3. TierZeroExecutionStage fails closed when no bridge is wired.
+//   4. TierZeroExecutionStage fails closed when the bridge returns None.
 // All tests run without Postgres (stub lookups only).
 // =========================================================================
 
@@ -3101,7 +3111,7 @@ async fn tier_zero_stage_calls_bridge_and_produces_reply() {
             matched_component_ids,
             ..
         } => (reply, matched_component_ids),
-        super::TierZeroStep::Degrade { .. } => panic!("expected Reply, got Degrade"),
+        super::TierZeroStep::FailClosed => panic!("expected Reply, got FailClosed"),
     };
     assert_eq!(reply.content, expected_reply);
     assert_eq!(got_matched, matched);
@@ -3126,8 +3136,8 @@ async fn tier_zero_stage_calls_bridge_and_produces_reply() {
 }
 
 #[tokio::test]
-async fn tier_zero_stage_degrades_when_no_bridge_wired() {
-    // No orchestrator_lookup installed — stage must degrade to Tier 2.
+async fn tier_zero_stage_fails_closed_when_no_bridge_wired() {
+    // No execution bridge: a selected Recipe must fail instead of invoking Tier 2.
     let host = MockHost::new(Vec::new()); // no with_orchestrator_lookup
     let family = family_with_compaction_strategy(DefaultCompactionStrategy::default());
     let ctx = StageContext {
@@ -3144,15 +3154,15 @@ async fn tier_zero_stage_degrades_when_no_bridge_wired() {
         .expect("tier-zero stage must not error");
 
     match step {
-        super::TierZeroStep::Degrade { .. } => {}
+        super::TierZeroStep::FailClosed => {}
         super::TierZeroStep::Reply { .. } => {
-            panic!("expected Degrade (no bridge wired), got Reply")
+            panic!("expected FailClosed (no bridge wired), got Reply")
         }
     }
 }
 
 #[tokio::test]
-async fn tier_zero_stage_degrades_when_bridge_returns_none() {
+async fn tier_zero_stage_fails_closed_when_bridge_returns_none() {
     // Bridge is wired but returns None (channel error / no reply).
     let stub = StubOrchestratorLookup::returning_none();
     let calls = stub.calls();
@@ -3173,16 +3183,47 @@ async fn tier_zero_stage_degrades_when_bridge_returns_none() {
         .expect("tier-zero stage must not error");
 
     match step {
-        super::TierZeroStep::Degrade { .. } => {}
+        super::TierZeroStep::FailClosed => {}
         super::TierZeroStep::Reply { .. } => {
-            panic!("expected Degrade (bridge returned None), got Reply")
+            panic!("expected FailClosed (bridge returned None), got Reply")
         }
     }
-    // Bridge was still called once — the degrade is from the None return, not
+    // Bridge was still called once — the failure is from the None return, not
     // from the bridge being absent.
     assert_eq!(
         calls.lock().expect("lock").len(),
         1,
         "run_tier_zero called even when it returns None"
     );
+}
+
+#[tokio::test]
+async fn failed_selected_tier_zero_recipe_never_reaches_model_or_prompt() {
+    let selected = RetrievalTurnResult {
+        tier0_eligible: true,
+        llm_call_required: false,
+        orchestrator_items: serde_json::json!([{ "id": "22-selected" }]),
+        rust_items: serde_json::json!([]),
+        routing_meta: serde_json::json!({ "variant": "split_result" }),
+        instruction: serde_json::Value::Null,
+    };
+    let bridge = StubOrchestratorLookup::returning_none();
+    let calls = bridge.calls();
+    let host = MockHost::new(vec![reply_response()])
+        .with_retrieval_lookup(Arc::new(StubRetrievalLookup::returning(selected)))
+        .with_orchestrator_lookup(Arc::new(bridge));
+    let mut state = LoopExecutionState::initial_for_run(host.run_context());
+    state.last_user_text = Some("run the selected Recipe".into());
+    let result = CanonicalAgentLoopExecutor
+        .execute_family(&crate::families::default(), &host, state)
+        .await;
+    assert!(matches!(
+        result,
+        Err(AgentLoopExecutorError::PlannerContract {
+            detail: "selected Tier-0 Recipe execution failed"
+        })
+    ));
+    assert_eq!(calls.lock().unwrap().len(), 1);
+    assert!(host.model_requests().is_empty());
+    assert!(host.prompt_requests().is_empty());
 }

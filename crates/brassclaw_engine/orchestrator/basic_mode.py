@@ -28,16 +28,18 @@
 #                         consultation (exact tool-usage narrative); per-step
 #                         code is concrete (variable substitution is server-side
 #                         in compose_orchestrator).
-#      - "disambiguation" / "no_match" / "error"
-#                       → resolve the `host-non-match-llm-answer` recipe
-#                         (compose + run); ultimate fallback → direct
-#                         `host.kohai_complete` (Monty assembles the prompt from
-#                         `history` and hands it to Kohai, which swaps the prefix
-#                         placeholder for the provider prefix and calls the
-#                         provider LLM).
+#      - "no_match"     → resolve and execute the Tier-2 Instruction/Recipe.
+#      - "disambiguation" → explicit selection required; no LLM replay.
+#      - "error" / malformed status → fail this task.
+#      Composition/execution failures never switch paths or call the LLM directly.
 #   5. `host.post_reply(text=answer)`; resolve + run the `host-save-history`
-#      recipe (best-effort); append the Assistant answer to `history`.
+#      recipe; persistence failure remains visible; append the Assistant answer
+#      to `history` after successful persistence.
 #   6. Loop back to step 1 (park at the next `host.await_next_turn()`).
+#
+# Task-contract exceptions propagate to the driver and remain failures. Global
+# hosting must isolate these inside task continuations during the Phase 3a cutover;
+# this legacy per-chat loop is not proof of global failure isolation.
 #
 # `FINAL(...)` is only reached on stop/empty-input termination; the happy path
 # loops forever, parked between turns. The non-persistent `execute_orchestrator`
@@ -102,75 +104,40 @@ def _run_steplist(program):
 
 
 def _compose_and_run(component_id, step_link, user_input):
-    """compose_orchestrator + run_steplist. Returns the answer string, or None
-    when composition or any step fails (caller falls back)."""
+    """Execute the selected Recipe once. A failed step never restarts as Tier 2."""
+    if component_id == "" or step_link == "":
+        raise RuntimeError("recipe_composition_failed")
     composed = host.compose_orchestrator(component_id, step_link, user_input)
     if not composed.get("ok"):
-        return None
+        raise RuntimeError("recipe_composition_failed")
     program = composed.get("program")
     if program is None:
-        return None
+        raise RuntimeError("recipe_composition_failed")
     ran = _run_steplist(program)
-    if ran.get("ok"):
-        return ran.get("answer", "")
-    return None
+    if not ran.get("ok"):
+        raise RuntimeError("recipe_execution_failed")
+    return ran.get("answer", "")
 
 
 def _non_match_answer(context, user_input):
-    """Non-Matching-Mode (Tier 2). Try the host-non-match-llm-answer recipe
-    first; on any failure, fall back to a direct host.kohai_complete call
-    (Monty assembles the prompt; Kohai swaps the prefix placeholder + calls the
-    provider LLM). The ultimate fallback injects the host-assemble-prior-knowledge
-    no-prefix fallback bundle (K4) as `prior_knowledge` so the LLM has minimal
-    system context + the Orchestrator MCP Server catalogue (Phase V)."""
+    """Only genuine No-Match executes the Tier-2 Instruction/Recipe.
+    Missing or failed instructions are errors, never direct LLM fallbacks."""
     recipe = host.resolve_component_by_name("host-non-match-llm-answer", 21)
-    if recipe is not None:
-        recipe_id = recipe.get("id", "")
-        if recipe_id != "":
-            answer = _compose_and_run(recipe_id, "default", user_input)
-            if answer is not None and answer != "":
-                return answer
-    # Ultimate fallback: direct Kohai-mediated LLM call. Inject the K4
-    # no-prefix fallback prior-knowledge bundle (host-assemble-prior-knowledge)
-    # so the LLM gets minimal system context + the MCP catalogue. The recipe's
-    # seeded variant step_link is "0:1-0:E" (run every step); "default" is not
-    # a variant key, so the canonical run-every-step link is used explicitly.
-    prior_knowledge = ""
-    apk = host.resolve_component_by_name("host-assemble-prior-knowledge", 21)
-    if apk is not None:
-        apk_id = apk.get("id", "")
-        if apk_id != "":
-            bundle = _compose_and_run(apk_id, "0:1-0:E", user_input)
-            if bundle is not None and bundle != "":
-                prior_knowledge = bundle
-    prompt = {
-        "chat_history": _chat_history(context),
-        "user_query": user_input,
-        "prior_knowledge": prior_knowledge,
-        "prefix_placeholder": "{{prefix}}",
-    }
-    kohai = host.kohai_complete(prompt=prompt)
-    if kohai.get("ok"):
-        return kohai.get("answer", "")
-    return ""
+    if recipe is None or recipe.get("id", "") == "":
+        raise RuntimeError("non_match_instruction_unavailable")
+    answer = _compose_and_run(recipe.get("id"), "0:1-0:E", user_input)
+    if answer == "":
+        raise RuntimeError("non_match_instruction_failed")
+    return answer
 
 
 def _save_history(user_input, answer):
-    """Resolve + compose + run the host-save-history recipe (best-effort:
-    silently skip when the recipe is absent or composition fails)."""
+    """Persist through the history Recipe; failures remain visible.
+    The caller has already posted its reply: never replay completed effects."""
     recipe = host.resolve_component_by_name("host-save-history", 21)
-    if recipe is None:
-        return
-    recipe_id = recipe.get("id", "")
-    if recipe_id == "":
-        return
-    composed = host.compose_orchestrator(recipe_id, "default", user_input)
-    if not composed.get("ok"):
-        return
-    program = composed.get("program")
-    if program is None:
-        return
-    _run_steplist(program)
+    if recipe is None or recipe.get("id", "") == "":
+        raise RuntimeError("history_persistence_failed")
+    _compose_and_run(recipe.get("id"), "0:1-0:E", user_input)
 
 
 def _seed_history(context):
@@ -223,22 +190,21 @@ def main(context, goal, actions, state, config):
 
         # 3. Resolve intent + dispatch.
         intent = host.resolve_intent(user_input=user_input)
-        status = intent.get("status", "no_match")
+        status = intent.get("status", "error")
 
         answer = ""
         if status == "match":
             component_id = intent.get("component_id", "")
             step_link = intent.get("step_link", "")
-            match_answer = _compose_and_run(component_id, step_link, user_input)
-            if match_answer is not None:
-                answer = match_answer
-            else:
-                answer = _non_match_answer(history, user_input)
-        else:
-            # disambiguation / no_match / error → Non-Matching-Mode.
+            answer = _compose_and_run(component_id, step_link, user_input)
+        elif status == "no_match":
             answer = _non_match_answer(history, user_input)
+        elif status == "disambiguation":
+            raise RuntimeError("intent_disambiguation_required")
+        else:
+            raise RuntimeError("intent_resolution_failed")
 
-        # 4. Post the reply + save history (best-effort).
+        # 4. Post the reply + save history. Never replay if persistence fails.
         if answer != "":
             host.post_reply(text=answer)
         _save_history(user_input, answer)

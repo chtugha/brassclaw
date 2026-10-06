@@ -482,3 +482,99 @@ and strict all-target Clippy for engine/resources. All passed with no ignored
 cases or lint suppression. NVMe space was checked before each Cargo command.
 The seven prior composition failures and the global service, 1.0 migration,
 provider cutover and WebUI acknowledgement remain open, explicitly unverified.
+
+
+### Upgrade evidence and Recipe failure contract (2026-10-06)
+
+The production dependencies remain on 0.0.16 until the complete Phase 3a gate
+passes. `tests/monty_v1_upgrade` is an independent, locked workspace for the
+actual tagged 1.0.0 interpreter/types/allocator. Its tests cover graph arguments,
+bound function values, dependent tool results, fresh snippet state, repeated
+work waits in one VM, async A→B→A, host error/abort, capped stdout, cumulative
+execution timing, and the actual orchestrator source with deterministic host
+replies. Only the separate allocator probe executable installs `monty-alloc`.
+Soft memory exhaustion returns an error; hard exhaustion exits that child with
+code 65, after which another child runs successfully. Containment deadlines reap
+children. This proves isolated allocator enforcement, not heap attribution or a
+production long-lived hosting transport.
+
+`MontyTaskClock` now attaches a hosting-owned cursor to the shared task account.
+It debits cumulative-clock differences once per cursor, retains consumption over
+settings/feed changes and nested interpreter executions, and fails the shared
+task permanently on clock regression. Baselines exclude earlier execution.
+The actual 1.0 root/nested clock test verifies the account and both readers:
+parked waits add nothing, duplicate checkpoints add nothing, nested execution
+adds its own elapsed time, and changing the feed limit cannot clear consumption.
+This uses explicit final host checkpoints. Upstream completion/error clock
+recovery, attribution between concurrent tasks, active-loop live updates and
+resumable CPU scheduling are still missing; these tests are not production
+WebUI-uptake or global-failure-isolation acceptance.
+
+The actual `basic_mode.py` now separates genuine No-Match, ambiguity and
+technical errors. A selected Recipe executes once; composition/step failure
+never switches to Tier 2 or calls Kohai directly. Missing/failed No-Match
+instructions fail explicitly. History persistence failure is visible after the
+reply; it never retries completed effects. Fixed error markers map to sanitized
+stage failures while raw tracebacks stay in debug detail. The legacy Tier-0
+engine/loop bridge is also corrected: invalid/failed channels return
+errors, the entire channel is validated before effects, and missing/failed
+execution fails the selected Recipe without entering PromptStage/ModelStage.
+Successful empty output is still success.
+
+The No-Match/history **seed Recipes remain incomplete**: they assume cross-step
+state despite fresh `{}` isolation, and their nested canonical host bindings
+are not implemented. Removing the hidden direct-LLM fallback exposes this gap;
+it does not repair those Recipes. Protected source checksum changes require the
+verified repair/upgrade path on existing databases, with overrides preserved.
+Do not bypass integrity checks or count mock sequencing as native execution.
+
+The upgrade CI job runs the locked new and legacy workspaces and strict Clippy
+on Rust 1.96. Benchmark workspaces are separate because old/new optional PyO3
+dependencies conflict on Cargo's `links=python` uniqueness. Both use one helper,
+10 warmups and 200 samples of compile/start plus 1,500 integer additions. Local
+Rust 1.98.1 debug measurements: old p50/p95 510,625/857,750 ns, new
+525,000/758,542 ns (+2.8%/-11.6%). This microbenchmark excludes kernel/IPC/DB/LLM
+and does not certify end-to-end §5.1 performance or product speedup.
+
+Initial batch evidence: 530 engine unit tests, 19 standalone 1.0 checks, 38
+resource tests, native PostgreSQL boot/integrity regression, and affected strict
+Clippy passed; no ignored tests or warning suppression. The earlier full
+composition run passed 691 and failed eight. The WebUI facade test now checks
+terminal state instead of concealing failure as a projection timeout; its focused
+run confirms `Failed` / sanitized `driver_failed`. Source tracing identifies the
+legacy driver dependence on a bare UUID engine Thread, whereas product
+conversation IDs use `reborn-conv-...`; global exact task-context handoff must
+replace that dependence. Do not strip prefixes, invent engine threads or add a
+per-chat fallback to make these tests pass. The other seven runtime/model/gate
+failures remain open. Subsequent failure-contract and minimum-toolchain results
+will be recorded separately; earlier passing checks do not certify later edits.
+
+
+Final evidence for this batch: 531 engine unit tests; 359 agent-loop unit/
+integration tests; 47 composition orchestrator-adapter tests; 93 resource unit/
+integration tests; 19 tagged 1.0 checks; the legacy benchmark; the native boot/
+integrity regression; and all 29 architecture checks passed. Both isolated
+Monty workspaces passed tests and strict Clippy on the installed Rust 1.96.0
+minimum toolchain. Affected engine/loop/turns/composition/resources strict
+all-target Clippy passed. The staged Monty CI selection changes passed their
+25 shell cases and workflow/roll-up parsing. All Cargo commands ran sequentially
+in screen with disk checks; no ignored cases or lint suppression were added.
+
+The first architecture run exposed the boot test's duplicate socket reservation
+inside composition. It was corrected by reusing the existing isolated native
+PostgreSQL fixture and its supervised cleanup, rather than exempting the file
+from the boundary scan. Native boot and the complete boundary suite then passed.
+The legacy loop's retrieval backend errors and ambiguity now stop before prompt/
+model requests as well; canonical caller tests enforce both. Ambiguity is an
+explicit selection-required failure until the operator selection workflow is
+implemented. Optional legacy hosts without a retrieval bridge and the Tier-1
+optional prior-knowledge path still require the complete global cutover; these
+checks do not certify a DB-only Recipe path for every old framework host.
+
+The earlier full-composition 691-pass/eight-failure result remains an unresolved
+integration baseline, not a passing full suite or evidence for later concurrent
+changes. Production Monty 1.0 adoption, global Ready/inbox/lease/supervision,
+bounded resumable CPU control, durable shared WebUI acknowledgement, supported
+allocation/heap migration, native No-Match/history Instructions, provider DB-only
+cutover, safe component revisions and backup/restore remain unfinished. No
+runtime prerequisite, user data or existing operator setting was deleted.

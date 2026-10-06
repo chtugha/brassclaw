@@ -32,8 +32,8 @@
 //! (Tier-2 fall-through) at H.9; retrieval is a producer-only side effect at
 //! this phase. The routing booleans (`tier0_eligible`/`llm_call_required`) are
 //! branched on inline by the H.10 consumer dispatch and are NOT stashed.
-//! Retrieval errors are soft-failed (debug-logged, the stash left empty) — a
-//! retrieval failure must never break a turn.
+//! Retrieval errors stop the turn. Only a successful No-Match result may
+//! select Tier 2; a backend failure never creates a new LLM execution path.
 //!
 //! **SEC-02 (plan §H5):** the stash is cleared at the START of every
 //! `RecipeStage::process` so a turn resumed from a checkpoint never replays a
@@ -119,7 +119,7 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
         // H.10 (plan §H5): capture the routing booleans from a successful
         // retrieval so the consumer dispatch below can branch on them.
         // Defaults (`tier0_eligible = false`, `llm_call_required = true`)
-        // preserve the Tier-2 fall-through for soft-miss / error paths.
+        // preserve Tier-2 routing only for a successful No-Match result.
         let mut tier0_eligible = false;
         let mut llm_call_required = true;
         match lookup
@@ -132,6 +132,18 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
             .await
         {
             Ok(Some(result)) => {
+                if result
+                    .routing_meta
+                    .get("variant")
+                    .and_then(|value| value.as_str())
+                    == Some("disambiguation")
+                {
+                    // Choice belongs to the operator-facing selection path;
+                    // an LLM must not silently choose and execute a candidate.
+                    return Err(AgentLoopExecutorError::PlannerContract {
+                        detail: "Recipe intent selection required",
+                    });
+                }
                 debug!(
                     iteration = state.iteration,
                     tier0_eligible = result.tier0_eligible,
@@ -166,27 +178,27 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
                 // SEC-02 clear already ran at the top; stash stays empty.
             }
             Err(error) => {
-                // Soft-fail: a retrieval backend failure must never break a
-                // turn. Stash stays empty (SEC-02 clear already ran) and the
-                // stage falls through to Tier 2.
+                // A technical failure is not No-Match. Do not spend tokens
+                // or perform effects through another path after this failure.
                 debug!(
                     iteration = state.iteration,
                     error = %error,
-                    "recipe stage: retrieval lookup errored — soft-failing to \
-                     LLM (Tier 2)"
+                    "recipe stage: retrieval lookup failed; stopping this turn"
                 );
+                return Err(AgentLoopExecutorError::PlannerContract {
+                    detail: "Recipe matching failed",
+                });
             }
         }
 
         // H.10 consumer dispatch. `tier0_eligible && !llm_call_required` →
         // Tier 0 (deterministic orchestrator-channel execution, no LLM). All
         // other cases → Continue: Tier 1 (`llm_call_required` with a stashed
-        // `recipe_hint` for `run_step_zero`) or Tier 2 (no match / soft-miss /
-        // error — empty stash).
+        // `recipe_hint` for `run_step_zero`) or Tier 2 (No-Match, empty stash).
         //
         // v3 architecture (re-think): the Python orchestrator is the SOLE
         // execution authority — tools are invoked inside the Monty sandbox via
-        // `__execute_action__`, never directly from Rust by an LLM (no
+        // `host.<tool>(...)`, never directly from Rust by an LLM (no
         // classical MCP). Tier-0 recipes bake the tool calls into their
         // PythonCode, so `run_tier_zero` only needs the stashed `recipe_hint`
         // + `recipe_rust_context`; no `instruction` carrying or Rust-channel

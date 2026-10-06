@@ -47,6 +47,29 @@ env:
   BRASSCLAW_DISABLE_OS_KEYCHAIN: "1"
 
 jobs:
+  monty-upgrade-gate:
+    name: Monty 1.0 API and allocator isolation
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.96.0"
+          components: clippy
+      - name: Test the tagged API and isolated allocator
+        run: cargo test --manifest-path tests/monty_v1_upgrade/Cargo.toml --locked --all-targets -- --test-threads=1 --nocapture
+      - name: Measure the compatible legacy interpreter
+        run: cargo test --manifest-path tests/monty_legacy_baseline/Cargo.toml --locked --all-targets -- --test-threads=1 --nocapture
+      - name: Check the upgrade harness
+        run: cargo clippy --manifest-path tests/monty_v1_upgrade/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Check the legacy benchmark
+        run: cargo clippy --manifest-path tests/monty_legacy_baseline/Cargo.toml --locked --all-targets -- -D warnings
+
   changes:
     name: Detect Reborn test scope
     runs-on: ubuntu-latest
@@ -475,6 +498,7 @@ jobs:
     if: always()
     needs:
       - changes
+      - monty-upgrade-gate
       - boundary-tests
       - package-matrix
       - matrix-config
@@ -515,6 +539,7 @@ jobs:
             exit 0
           fi
 
+          require_success "monty-upgrade-gate" "${{ needs.monty-upgrade-gate.result }}"
           require_success "boundary-tests" "${{ needs.boundary-tests.result }}"
           require_success "package-matrix" "${{ needs.package-matrix.result }}"
           require_success "crate-tests" "${{ needs.crate-tests.result }}"
