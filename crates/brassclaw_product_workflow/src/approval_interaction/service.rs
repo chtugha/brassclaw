@@ -272,6 +272,15 @@ impl ApprovalInteractionService for DefaultApprovalInteractionService {
         &self,
         request: ListPendingApprovalsRequest,
     ) -> Result<ListPendingApprovalsResponse, ProductWorkflowError> {
+        if request
+            .scope
+            .explicit_owner_user_id()
+            .is_some_and(|owner| owner != &request.actor.user_id)
+        {
+            return Err(approval_rejected(
+                ApprovalInteractionRejectionKind::CrossScopeDenied,
+            ));
+        }
         let scope = ApprovalInteractionScope::from_turn(&request.scope, &request.actor);
         let mut approvals = self
             .read_model

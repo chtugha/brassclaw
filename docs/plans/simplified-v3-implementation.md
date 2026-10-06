@@ -677,3 +677,41 @@ integration/adaptive measurement, fair CPU control, claim-fenced effects/replies
 shared effective WebUI revisions and immutable component revision/override
 management remain unimplemented. The REPL final-clock proof closes one upgrade
 prerequisite; it does not authorize skipping the remaining Phase 3a gate.
+
+
+### Durable approval composition failure (2026-10-06)
+
+One of the eight composition failures is resolved. Approval interactions now
+use the same scoped run-state reader as external-auth interactions, including
+the PostgreSQL-backed reader. The empty PostgreSQL approval locator is removed.
+Approval interaction scope preserves the full task-selection key, including
+explicit thread ownership; reconstructing an actor-fallback scope previously
+made parked WebUI runs disappear from listing. A mismatched actor cannot list
+an explicitly owned task's approvals. These legacy selection fields do not
+create new instance-wide tool policy or replace the pending policy cutover.
+
+The existing native integration fixture now uses the durable approval and lease
+stores selected by the runtime and starts its real capability invocation before
+saving the approval, satisfying the database foreign key. It additionally
+checks durable pending listing and actor rejection. Its original redacted audit
+and SpawnProcess lease assertions remain intact. This fixes the fixture's
+unused in-memory store writes without substituting a mock or changing its
+successful-resolution expectation.
+
+Sequential background screen validation passed the native regression, all
+25 approval interaction contract tests and strict affected-package all-target
+Clippy (composition with skills-db, product workflow). The full composition
+library run now reports **700 passed, seven failed, zero ignored**. Log:
+`/private/tmp/brassclaw-composition-after-approval.log`.
+
+The seven remaining message-path failures are still unresolved. Independent
+source review confirms no correct alternate production driver exists: opaque
+product conversation IDs encounter a UUID-only engine Thread lookup before
+admitted input resolution. Repair also requires canonical No-Match/history
+Recipe variants and isolated-step data flow, nested host availability, and
+prompt/model/capability/transcript operations through the neutral host ports
+with actual run/turn identity. The current Kohai path bypasses those ports.
+Their correct repair belongs to the global task-host cutover and its binding
+Monty upgrade gate; this approval change does not complete that work. No IDs
+were reformatted, engine Threads synthesized, legacy Rust loop restored, LLM
+fallback introduced, or remaining failure expectations weakened.

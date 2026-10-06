@@ -89,6 +89,16 @@ pub struct ApprovalInteractionScope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<brassclaw_host_api::ProjectId>,
     pub thread_id: brassclaw_host_api::ThreadId,
+    /// Preserve the task-selection key; this is not an approval grant.
+    #[serde(default, skip_serializing_if = "interaction_owner_is_actor_fallback")]
+    pub thread_owner: brassclaw_turns::scope::TurnThreadOwner,
+}
+
+fn interaction_owner_is_actor_fallback(owner: &brassclaw_turns::scope::TurnThreadOwner) -> bool {
+    matches!(
+        owner,
+        brassclaw_turns::scope::TurnThreadOwner::ActorFallback
+    )
 }
 
 impl ApprovalInteractionScope {
@@ -103,6 +113,17 @@ impl ApprovalInteractionScope {
             agent_id: scope.agent_id.clone(),
             project_id: scope.project_id.clone(),
             thread_id: scope.thread_id.clone(),
+            thread_owner: scope.thread_owner.clone(),
+        }
+    }
+
+    pub fn turn_scope(&self) -> TurnScope {
+        TurnScope {
+            tenant_id: self.tenant_id.clone(),
+            agent_id: self.agent_id.clone(),
+            project_id: self.project_id.clone(),
+            thread_id: self.thread_id.clone(),
+            thread_owner: self.thread_owner.clone(),
         }
     }
 }
@@ -182,6 +203,7 @@ impl ApprovalGateRecord {
             thread_id: resource_scope.thread_id.clone().ok_or_else(|| {
                 approval_rejected(ApprovalInteractionRejectionKind::CrossScopeDenied)
             })?,
+            thread_owner: brassclaw_turns::scope::TurnThreadOwner::ActorFallback,
         };
         let expected_gate = approval_gate_ref(request.id)?;
         if gate_ref != expected_gate {
@@ -197,6 +219,14 @@ impl ApprovalGateRecord {
             request,
             status,
         })
+    }
+
+    pub(crate) fn with_thread_owner(
+        mut self,
+        owner: brassclaw_turns::scope::TurnThreadOwner,
+    ) -> Self {
+        self.scope.thread_owner = owner;
+        self
     }
 
     pub fn scope(&self) -> &ApprovalInteractionScope {

@@ -98,13 +98,16 @@ impl ApprovalInteractionReadModel for RunStateApprovalInteractionReadModel {
             if !same_interaction_owner(&approval.scope, &owner_scope) {
                 continue;
             }
-            gates.push(ApprovalGateRecord::with_status(
-                approval.scope,
-                run.run_id,
-                run.gate_ref,
-                approval.request,
-                approval.status,
-            )?);
+            gates.push(
+                ApprovalGateRecord::with_status(
+                    approval.scope,
+                    run.run_id,
+                    run.gate_ref,
+                    approval.request,
+                    approval.status,
+                )?
+                .with_thread_owner(scope.thread_owner.clone()),
+            );
         }
         Ok(gates)
     }
@@ -141,13 +144,16 @@ impl ApprovalInteractionReadModel for RunStateApprovalInteractionReadModel {
                 run_id
             }
         };
-        Ok(Some(ApprovalGateRecord::with_status(
-            approval.scope,
-            run_id,
-            approval_gate_ref(request_id)?,
-            approval.request,
-            approval.status,
-        )?))
+        Ok(Some(
+            ApprovalGateRecord::with_status(
+                approval.scope,
+                run_id,
+                approval_gate_ref(request_id)?,
+                approval.request,
+                approval.status,
+            )?
+            .with_thread_owner(scope.thread_owner.clone()),
+        ))
     }
 }
 

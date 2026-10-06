@@ -461,63 +461,38 @@ impl TriggerTurnSnapshotSource for EmptyTriggerTurnSnapshotSource {
     }
 }
 
-struct LocalDevApprovalTurnRunLocator {
-    turn_state: Arc<LocalDevTurnStateStore>,
+/// Uses the same scoped durable/local state reader as auth interactions.
+/// An approval record alone cannot identify a parked run.
+struct RuntimeApprovalTurnRunLocator {
+    turn_state: Arc<dyn run_state_read_source::RunStateReadSource>,
 }
 
-impl LocalDevApprovalTurnRunLocator {
-    fn new(turn_state: Arc<LocalDevTurnStateStore>) -> Self {
-        Self { turn_state }
-    }
-
+impl RuntimeApprovalTurnRunLocator {
     async fn snapshot(
         &self,
+        scope: &TurnScope,
     ) -> Result<TurnPersistenceSnapshot, brassclaw_product_workflow::ProductWorkflowError> {
-        Ok(self.turn_state.persistence_snapshot())
-    }
-}
-
-/// No-op approval turn run locator for the pure-postgres path.
-///
-/// On the PG path, approval records are visible through PgRunStateStore
-/// (not through an in-process snapshot).  This locator returns an empty
-/// list; the `RunStateApprovalInteractionReadModel` falls through to the
-/// PG-backed approval_requests store to fetch pending gates.
-struct EmptyApprovalTurnRunLocator;
-
-#[async_trait::async_trait]
-impl ApprovalTurnRunLocator for EmptyApprovalTurnRunLocator {
-    async fn blocked_approval_runs(
-        &self,
-        _scope: &ApprovalInteractionScope,
-    ) -> Result<Vec<ApprovalBlockedTurnRun>, brassclaw_product_workflow::ProductWorkflowError> {
-        Ok(Vec::new())
-    }
-
-    async fn approval_run_for_gate(
-        &self,
-        _scope: &ApprovalInteractionScope,
-        _gate_ref: &brassclaw_turns::GateRef,
-    ) -> Result<Option<brassclaw_turns::TurnRunId>, brassclaw_product_workflow::ProductWorkflowError>
-    {
-        Ok(None)
+        self.turn_state
+            .snapshot_for_scope(scope)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "approval run state read failed");
+                brassclaw_product_workflow::ProductWorkflowError::Transient {
+                    reason: "approval run state unavailable".to_owned(),
+                }
+            })
     }
 }
 
 #[async_trait::async_trait]
-impl ApprovalTurnRunLocator for LocalDevApprovalTurnRunLocator {
+impl ApprovalTurnRunLocator for RuntimeApprovalTurnRunLocator {
     async fn blocked_approval_runs(
         &self,
         scope: &ApprovalInteractionScope,
     ) -> Result<Vec<ApprovalBlockedTurnRun>, brassclaw_product_workflow::ProductWorkflowError> {
-        let turn_scope = TurnScope::new(
-            scope.tenant_id.clone(),
-            scope.agent_id.clone(),
-            scope.project_id.clone(),
-            scope.thread_id.clone(),
-        );
+        let turn_scope = scope.turn_scope();
         let actor = TurnActor::new(scope.user_id.clone());
-        let snapshot = self.snapshot().await?;
+        let snapshot = self.snapshot(&turn_scope).await?;
         let mut runs = snapshot
             .runs
             .iter()
@@ -543,14 +518,9 @@ impl ApprovalTurnRunLocator for LocalDevApprovalTurnRunLocator {
         scope: &ApprovalInteractionScope,
         gate_ref: &brassclaw_turns::GateRef,
     ) -> Result<Option<TurnRunId>, brassclaw_product_workflow::ProductWorkflowError> {
-        let turn_scope = TurnScope::new(
-            scope.tenant_id.clone(),
-            scope.agent_id.clone(),
-            scope.project_id.clone(),
-            scope.thread_id.clone(),
-        );
+        let turn_scope = scope.turn_scope();
         let actor = TurnActor::new(scope.user_id.clone());
-        let snapshot = self.snapshot().await?;
+        let snapshot = self.snapshot(&turn_scope).await?;
         let active = snapshot
             .runs
             .iter()
@@ -1869,10 +1839,9 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "postgres"))]
     let system_prompt_path = local_runtime.default_system_prompt_path.clone();
 
-    // Typed arc for LocalDevTurnStateStore — needed by build_webui_auth_interaction_service
-    // and LocalDevApprovalTurnRunLocator on the pure local-dev path.  When the hybrid path
-    // has upgraded to PG stores (pg_stores.is_some()), use None so the PG-compatible no-op
-    // locators are picked instead (EmptyApprovalTurnRunLocator / EmptyTriggerTurnSnapshotSource).
+    // Keep the typed local store only when durable stores were not selected.
+    // Auth and approval interactions use the scoped reader selected below;
+    // trigger snapshots currently still require the typed local store.
     let local_dev_turn_state: Option<Arc<crate::factory::LocalDevTurnStateStore>> = {
         #[cfg(feature = "postgres")]
         {
@@ -2991,19 +2960,14 @@ pub async fn build_reborn_runtime(
                 .map(|store| store as Arc<dyn run_state_read_source::RunStateReadSource>)
         }
     };
-    // The approval run locator needs the typed LocalDevTurnStateStore on the
-    // local-dev path.  On the pure-PG path, the locator is built using
-    // `LocalDevApprovalTurnRunLocator` is not suitable — we use an
-    // `EmptyApprovalTurnRunLocator` since approvals on the pure-PG path go
-    // through the PG run-state directly.
-    let approval_turn_runs: Arc<dyn brassclaw_product_workflow::ApprovalTurnRunLocator> =
-        if let Some(ld_turn_state) = &local_dev_turn_state {
-            Arc::new(LocalDevApprovalTurnRunLocator::new(Arc::clone(
-                ld_turn_state,
-            )))
-        } else {
-            Arc::new(EmptyApprovalTurnRunLocator)
-        };
+    let approval_turn_runs: Arc<dyn ApprovalTurnRunLocator> =
+        Arc::new(RuntimeApprovalTurnRunLocator {
+            turn_state: interaction_turn_state.clone().ok_or_else(|| {
+                RebornRuntimeError::InvalidArgument {
+                    reason: "approval run state reader unavailable".to_owned(),
+                }
+            })?,
+        });
     let approval_read_model = Arc::new(RunStateApprovalInteractionReadModel::new(
         Arc::clone(&substrate_approval_requests),
         approval_turn_runs,
@@ -5447,11 +5411,16 @@ mod tests {
         let run_id = match submitted {
             SubmitTurnResponse::Accepted { run_id, .. } => run_id,
         };
-        let local_runtime = runtime
-            .services
-            .local_runtime
-            .as_ref()
-            .expect("local runtime services");
+        // The runtime selected durable stores. The legacy local substrate is
+        // not the approval store consumed by the WebUI facade.
+        let approvals = brassclaw_approvals::pg_store::PgApprovalRequestStore::new(
+            Arc::clone(&rig.pool),
+            runtime.thread_scope.tenant_id.as_str(),
+        );
+        let capability_leases = brassclaw_authorization::PgCapabilityLeaseStore::new(
+            Arc::clone(&rig.pool),
+            runtime.thread_scope.tenant_id.as_str(),
+        );
         let runner_id = TurnRunnerId::new();
         let lease_token = TurnLeaseToken::new();
         let turn_state = brassclaw_turns::PgTurnStateStore::new(
@@ -5513,11 +5482,53 @@ mod tests {
             )
             .expect("fingerprint"),
         );
-        local_runtime
-            .approval_requests
+        // Match the host invocation lifecycle: approvals reference an existing
+        // capability invocation, independently of the conversation turn run.
+        let invocations = brassclaw_run_state::pg_store::PgRunStateStore::new(
+            Arc::clone(&rig.pool),
+            runtime.thread_scope.tenant_id.as_str(),
+        );
+        brassclaw_run_state::RunStateStore::start(
+            &invocations,
+            brassclaw_run_state::RunStart {
+                invocation_id: resource_scope.invocation_id,
+                capability_id: capability.clone(),
+                scope: resource_scope.clone(),
+            },
+        )
+        .await
+        .expect("start durable capability invocation");
+        approvals
             .save_pending(resource_scope.clone(), approval)
             .await
             .expect("save approval");
+
+        let pending = runtime
+            .approval_interaction_service
+            .list_pending(brassclaw_product_workflow::ListPendingApprovalsRequest {
+                scope: scope.clone(),
+                actor: actor.clone(),
+            })
+            .await
+            .expect("durable pending approvals");
+        assert_eq!(pending.approvals.len(), 1);
+        assert_eq!(pending.approvals[0].run_id, run_id);
+        assert_eq!(pending.approvals[0].gate_ref, gate_ref);
+        let wrong_actor = runtime
+            .approval_interaction_service
+            .list_pending(brassclaw_product_workflow::ListPendingApprovalsRequest {
+                scope: scope.clone(),
+                actor: TurnActor::new(UserId::new("another-owner").unwrap()),
+            })
+            .await
+            .expect_err("a different actor must not list an explicitly owned task's approvals");
+        assert!(matches!(
+            wrong_actor,
+            brassclaw_product_workflow::ProductWorkflowError::ApprovalInteractionRejected {
+                kind:
+                    brassclaw_product_workflow::ApprovalInteractionRejectionKind::CrossScopeDenied,
+            }
+        ));
 
         bundle
             .api
@@ -5545,10 +5556,7 @@ mod tests {
                 "approval audit leaked {forbidden}: {serialized}"
             );
         }
-        let leases = local_runtime
-            .capability_leases
-            .leases_for_scope(&resource_scope)
-            .await;
+        let leases = capability_leases.leases_for_scope(&resource_scope).await;
         assert_eq!(leases.len(), 1);
         assert!(
             leases[0]
