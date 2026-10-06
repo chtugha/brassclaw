@@ -226,7 +226,9 @@ impl PgCompositionPort {
 
         // 3. StepDescriptions — the `steps` JSONB IS the step_descriptions.
         let step_descs: Vec<StepDescriptionEntry> =
-            serde_json::from_str(&steps_text).unwrap_or_default();
+            serde_json::from_str(&steps_text).map_err(|_| ComponentPortError::Failure {
+                reason: "invalid action step descriptions".to_string(),
+            })?;
 
         // 4. Synthetic all-steps step_link. An empty steps array → empty
         //    ComposedProgram (no-op action — caller receives ok:true, no steps).
@@ -369,7 +371,10 @@ impl PgCompositionPort {
         let llm_call_required = !tier0_eligible;
 
         // 3. Matched variant (§7.3).
-        let variants: Vec<RecipeVariant> = serde_json::from_str(&variants_text).unwrap_or_default();
+        let variants: Vec<RecipeVariant> =
+            serde_json::from_str(&variants_text).map_err(|_| ComponentPortError::Failure {
+                reason: "invalid recipe variants".to_string(),
+            })?;
         let Some(matched) = match_variant(&variants, step_link) else {
             return Err(ComponentPortError::NoVariantMatch {
                 step_link: step_link.to_string(),
@@ -380,8 +385,10 @@ impl PgCompositionPort {
         let _ = (recipe_name, variant_label);
 
         // 4. StepDescriptions.
-        let step_descs: Vec<StepDescriptionEntry> =
-            serde_json::from_str(&step_descriptions_text).unwrap_or_default();
+        let step_descs: Vec<StepDescriptionEntry> = serde_json::from_str(&step_descriptions_text)
+            .map_err(|_| ComponentPortError::Failure {
+            reason: "invalid recipe step descriptions".to_string(),
+        })?;
 
         // 5. IBS compile (§0.4, §0.7). A compile failure is a hard composition
         //    error (not the soft-fail the retrieval path takes) — the
@@ -644,6 +651,62 @@ mod tests {
     use super::*;
     use brassclaw_engine::memory::ComponentItem;
     use uuid::Uuid;
+
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[tokio::test]
+    async fn native_composition_reports_malformed_recipe_data_as_a_contract_failure() {
+        let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+        let pool = Arc::clone(&rig.pool);
+        let booted = crate::booted_db::run_migrations_and_return_booted_db(pool.clone())
+            .await
+            .expect("schema migrations");
+        let tenant = "composition-contract-test";
+        crate::component_boot::initialize_runtime_components(&booted, tenant)
+            .await
+            .expect("native component boot");
+        let scope = ComponentScope {
+            tenant_id: tenant.to_string(),
+            user_id: brassclaw_host_api::SYSTEM_RESERVED_ID.to_string(),
+            agent_id: "default".to_string(),
+            project_id: "system".to_string(),
+        };
+        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let component = port
+            .resolve_component_by_name(&scope, "host-non-match-llm-answer", 21)
+            .await
+            .expect("native component lookup")
+            .expect("seeded no-match recipe");
+        let client = pool.get().await.expect("database connection");
+        let valid_variants = r#"[{"variant_key":"default","step_link":"0:1-0:E"}]"#;
+        for (variants, descriptions, expected) in [
+            ("{}", "[]", "invalid recipe variants"),
+            (valid_variants, "{}", "invalid recipe step descriptions"),
+        ] {
+            let updated = client
+                .execute(
+                    "UPDATE reborn_recipes SET variants = $2::text::jsonb, \
+                     step_descriptions = $3::text::jsonb WHERE id = $1",
+                    &[&component.id, &variants, &descriptions],
+                )
+                .await
+                .expect("persist malformed component data");
+            assert_eq!(updated, 1);
+            let error = port
+                .compose(&scope, component.id, "0:1-0:E", "accepted input")
+                .await
+                .expect_err("malformed data must not become an empty program or missing match");
+            assert!(matches!(
+                error,
+                ComponentPortError::Failure { reason } if reason == expected
+            ));
+        }
+        drop(client);
+        drop(port);
+        drop(booted);
+        pool.close();
+        drop(pool);
+        drop(rig);
+    }
 
     fn variant(step_link: Option<&str>, key: &str) -> RecipeVariantUngated {
         RecipeVariantUngated {

@@ -83,7 +83,19 @@ def _run_steplist(program):
     """Iterate program.steplist, running each step's executable_code via
     host.run_program. Returns {ok, answer}: ok=False on the first failed step
     (answer = last good step's text); ok=True with the last step's text."""
-    steplist = program.get("steplist", [])
+    # Validate the complete executable plan before the first effect. A missing
+    # or malformed later step must not leave a partially executed recipe.
+    if not isinstance(program, dict):
+        return {"ok": False, "answer": ""}
+    steplist = program.get("steplist")
+    if not isinstance(steplist, list) or len(steplist) == 0:
+        return {"ok": False, "answer": ""}
+    for step in steplist:
+        if not isinstance(step, dict):
+            return {"ok": False, "answer": ""}
+        code = step.get("executable_code")
+        if not isinstance(code, str) or code.strip() == "":
+            return {"ok": False, "answer": ""}
     # program.skills is carried for consultation (exact tool usage). Per-step
     # executable_code is already concrete (compose_orchestrator baked in the
     # {{vars}} substitution + tool calls), so v0 runs it as-is.
@@ -92,7 +104,7 @@ def _run_steplist(program):
     for step in steplist:
         code = step.get("executable_code", "")
         result = host.run_program(code)
-        if not result.get("ok"):
+        if not isinstance(result, dict) or result.get("ok") is not True:
             return {"ok": False, "answer": last_answer}
         rv = result.get("return_value")
         if rv is None:

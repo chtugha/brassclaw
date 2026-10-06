@@ -4180,6 +4180,45 @@ mod tests {
     }
 
     // ── Python helper unit tests via Monty ──────────────────────
+
+    #[test]
+    fn malformed_recipe_program_is_rejected_before_any_host_call() {
+        let helpers_end = BASIC_MODE_PY
+            .find("\ndef main(")
+            .expect("orchestrator must have its main entry point");
+        let helpers = &BASIC_MODE_PY[..helpers_end];
+        // The first executable step would require a host call. Every case
+        // must complete directly instead, including a malformed later step.
+        for program in [
+            "None",
+            "[]",
+            "{}",
+            "{'steplist': []}",
+            "{'steplist': 'invalid'}",
+            "{'steplist': [None]}",
+            "{'steplist': [{}]}",
+            "{'steplist': [{'executable_code': 1}]}",
+            "{'steplist': [{'executable_code': ' \\n\\t'}]}",
+            "{'steplist': [{'executable_code': 'host.effect()'}, {}]}",
+        ] {
+            let code = format!("{helpers}\n_run_steplist({program})['ok']");
+            let runner = MontyRun::new(code, "recipe-preflight.py", vec![])
+                .expect("production helpers must compile");
+            let tracker =
+                LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
+            let progress = runner
+                .start(vec![], tracker, PrintWriter::Disabled)
+                .expect("malformed programs must return a failed result");
+            match progress {
+                RunProgress::Complete(value) => assert_eq!(
+                    value,
+                    MontyObject::Bool(false),
+                    "malformed program was accepted: {program}"
+                ),
+                _ => panic!("malformed program reached a host boundary: {program}"),
+            }
+        }
+    }
     //
     // Extracts the helper functions from the default orchestrator and
     // evaluates `signals_tool_intent(text)` directly, mirroring the V1
