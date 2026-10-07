@@ -32,3 +32,19 @@ Caller coverage uses the real builtin JSON Tool, live stable-UUID policy and
 captured declarations after registry removal. Native Monty caller cases use the
 same facade for actual IBS-selected child executions, journaled Tool results
 and constrained validation evidence. They do not fabricate catalogue activation.
+
+`MontyTaskHost::reply_capability` adapts the existing `host.post_reply` primitive
+for registration behind that kernel. It retains the exact admitted host and
+checks the requested data address and typed answer before transcript dispatch.
+Run/attempt freshness, cancellation and publication stay with the host. The
+adapter creates no capability declaration, policy rule or component approval;
+the catalogue/registration owner must provide those independently. A retained
+handler cannot publish again after its host is fenced.
+
+The actual global Match-path fixture composes separate reply and history
+Recipes from immutable drafts. Monty passes the published reply reference into
+the history workflow as typed data. Both Tools use retained kernel handles;
+history writes use the native PostgreSQL root filesystem. A live history-Tool
+block after publication records failure without replaying the reply or entering
+Tier 2. This establishes constrained whole-task behavior, not approved bootstrap,
+Tool artifact/ABI attestation or ordinary runtime cutover.

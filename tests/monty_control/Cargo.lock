@@ -666,10 +666,12 @@ dependencies = [
  "blake3",
  "brassclaw_host_api",
  "brassclaw_safety",
+ "deadpool-postgres",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-postgres",
  "tracing",
 ]
 

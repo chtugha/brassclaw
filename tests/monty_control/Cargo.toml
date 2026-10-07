@@ -33,7 +33,7 @@ brassclaw_resources = { path = "../../crates/brassclaw_resources" }
 brassclaw_skills = { path = "../../crates/brassclaw_skills", features = ["db-store"] }
 brassclaw_authorization = { path = "../../crates/brassclaw_authorization" }
 brassclaw_extensions = { path = "../../crates/brassclaw_extensions" }
-brassclaw_filesystem = { path = "../../crates/brassclaw_filesystem" }
+brassclaw_filesystem = { path = "../../crates/brassclaw_filesystem", features = ["postgres"] }
 brassclaw_host_runtime = { path = "../../crates/brassclaw_host_runtime" }
 brassclaw_engine = { path = "../../crates/brassclaw_engine", features = ["skills-db"] }
 brassclaw_processes = { path = "../../crates/brassclaw_processes" }

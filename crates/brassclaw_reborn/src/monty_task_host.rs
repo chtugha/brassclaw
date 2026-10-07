@@ -22,6 +22,10 @@ use brassclaw_turns::{
     },
 };
 
+/// Existing reply primitive's explicit dispatch identity. Its Python callable
+/// remains host.post_reply; registration/selection must bind them explicitly.
+pub const POST_REPLY_CAPABILITY_ID: &str = "host.post_reply";
+
 /// Rust-owned task host. Never serialize this object or its claim identity into
 /// Python. The hosting service addresses it using its own task routing token.
 pub struct MontyTaskHost {

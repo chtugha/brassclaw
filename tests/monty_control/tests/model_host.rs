@@ -65,6 +65,8 @@ mod monty_instance_owner;
 mod monty_task_input;
 #[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 pub(crate) mod native_pg;
+#[path = "support/reply_workflows.rs"]
+mod reply_workflows;
 #[path = "support/task_catalogue.rs"]
 mod task_catalogue;
 // Existing owner cases continue to use the actual native PostgreSQL fixture.
@@ -206,6 +208,7 @@ struct AdmittedPorts {
 
 struct NativeTaskPortsFactory {
     last_host: Mutex<Option<Arc<MontyTaskHost>>>,
+    last_receipt: Mutex<Option<Arc<brassclaw_monty_host::service::TaskReceipt>>>,
     settlement_hold: Mutex<Option<Arc<ProviderHold>>>,
     inner: global_task_factory::OwnedGlobalTaskFactory,
 }
@@ -238,13 +241,26 @@ impl NativeTaskPortsFactory {
         ownership: global_monty_owner::GlobalOwnerCheck,
         draft: Option<Arc<brassclaw_engine::memory::retained_tools::RetainedToolProgram>>,
     ) -> Self {
+        Self::with_catalogue(
+            pool.clone(),
+            ownership,
+            Arc::new(DraftCatalogueProvider { pool, draft }),
+        )
+    }
+
+    fn with_catalogue(
+        pool: Arc<PgPool>,
+        ownership: global_monty_owner::GlobalOwnerCheck,
+        catalogue: Arc<dyn global_task_factory::MontyCatalogueProvider>,
+    ) -> Self {
         Self {
             last_host: Mutex::new(None),
+            last_receipt: Mutex::new(None),
             settlement_hold: Mutex::new(None),
             inner: global_task_factory::OwnedGlobalTaskFactory::new(
                 pool.clone(),
                 ownership,
-                Arc::new(DraftCatalogueProvider { pool, draft }),
+                catalogue,
                 8,
             )
             .unwrap(),
@@ -267,6 +283,7 @@ impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
         host: Arc<MontyTaskHost>,
         receipt: Arc<brassclaw_monty_host::service::TaskReceipt>,
     ) -> Result<(), brassclaw_turns::run_profile::AgentLoopDriverError> {
+        *self.last_receipt.lock().unwrap() = Some(receipt.clone());
         let hold = self.settlement_hold.lock().unwrap().take();
         if let Some(hold) = hold {
             assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));

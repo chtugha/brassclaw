@@ -27,6 +27,7 @@ pub mod loop_exit_applier;
 pub mod milestone_events;
 pub mod model_routes;
 pub mod monty_attempt_fence;
+mod monty_reply_capability;
 pub mod monty_task_host;
 mod monty_task_ports;
 pub mod planned_driver;

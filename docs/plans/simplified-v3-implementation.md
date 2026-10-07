@@ -2986,3 +2986,33 @@ and completion sequence in `...-native-final.log`. Isolated all-target strict
 lint passed in `...-lints.log`, manifest `tests/monty_control/Cargo.toml`, Rust 1.98.
 Checks ran serially in screen. Ordinary catalogue/root/resource/continuation
 wiring and the original seven composition failures remain open.
+
+### Real reply and history Tools on the global Match path (2026-10-08)
+
+Added a task-bound first-party adapter for the existing transcript reply
+primitive. It checks the exact data address and typed input, then uses the
+admitted host's fenced publication path. It executes no workflow and creates no
+declaration, approval or permission. The constrained native fixture now runs
+two IBS-composed immutable draft workflows on the actual global worker: reply
+publication followed by history formatting/writing. Their actual kernel
+handlers retain live stable-UUID policy; memory uses the PostgreSQL filesystem
+with its required read/write/list/delete mount permissions.
+
+Both native cases passed: successful reply/history completion with hostile-looking
+typed text, and a live history block after publication preserving that reply
+without model/Tool replay. Assertions cover the actual transcript, persisted
+history, service receipt, task settlement, single-attempt invocation records,
+fenced retained reply handler and clean worker/instance-owner shutdown. Isolated
+and Reborn all-target strict lint passed without warnings. Checks ran serially
+in screen on Rust 1.98 with the documented low-debug profiles and disk checks;
+manifest `tests/monty_control/Cargo.toml`, PostgreSQL filesystem feature enabled.
+Logs: `/private/tmp/brassclaw-recipe-reply-history-native.log`,
+`...-lints.log` and `/private/tmp/brassclaw-recipe-reply-reborn-lints.log`.
+
+Earlier fixture failures exposed missing standalone prompt initialization,
+incorrect Python newline escaping, unsuitable local filesystem metadata support,
+missing delete permission and a completed-receipt ownership assertion; these
+were corrected using actual interfaces, without relaxing kernel checks or
+fabricating results. This does not approve/activate the drafts, certify the
+protected root or wire the ordinary runtime. The original seven failures remain
+open while that runtime still constructs the legacy driver.
