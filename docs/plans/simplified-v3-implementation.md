@@ -3016,3 +3016,36 @@ were corrected using actual interfaces, without relaxing kernel checks or
 fabricating results. This does not approve/activate the drafts, certify the
 protected root or wire the ordinary runtime. The original seven failures remain
 open while that runtime still constructs the legacy driver.
+
+### Verify selected workflow completion and retain task execution (2026-10-08)
+
+The retained child runner now verifies each requested occurrence against its
+supported flat stop-only order before child allocation or Tool intent. It exposes
+the actual confirmed prefix separately from a failed/in-flight feed. The global
+candidate refuses a root completion claim if any selected workflow is skipped,
+uncomposed or incomplete, even when the reply was already published.
+
+Settlement retains the actual service accounting and selected-workflow progress
+before database acknowledgement. The bounded report is stored atomically with
+the original admission outcome and reused after uncertain commit acknowledgement.
+It contains selection checksums and step identities, not runtime payloads, claims
+or transport handles. It explicitly supplies no semantic approval or activation.
+See [the task-factory contract](../reborn/contracts/global-monty-task-factory.md).
+
+Nineteen distinct actual native worker/kernel/PostgreSQL cases passed across the
+focused runs: 13 existing model/factory/recovery cases, three reply/history cases
+and three retained-child cases. The new negative draft root publishes the real
+reply and runs the history formatter but skips the selected write; the actual
+service rejects its completion claim, retains reconciliation evidence and leaves
+admission unsettled without inventing a receipt or replaying effects. Existing
+cancellation/unknown-commit recovery and successful publication checks remain.
+An initial post-settlement test assertion incorrectly expected active reply access
+after fencing; it was replaced by that actual invalid-root caller regression.
+
+Isolated all-target strict lint passed without warnings. Rust 1.98, low-debug
+profiles, manifest `tests/monty_control/Cargo.toml`; checks ran serially in screen
+with required disk checks/cleanups. Logs: `/private/tmp/brassclaw-task-completion-native.log`
+(14 passing cases and the initial failed assertion), `...-reply-final.log`,
+`...-children.log` and `...-lints.log`. This operational completion report is not
+the missing whole-workflow semantic/approval producer, protected-root trust or
+ordinary global factory wiring. The original seven failures remain unresolved.

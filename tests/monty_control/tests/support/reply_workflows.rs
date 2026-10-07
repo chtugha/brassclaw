@@ -349,14 +349,19 @@ impl RetainedToolPort for Tools {
 
 #[tokio::test]
 async fn global_match_posts_reply_and_runs_history_without_model_replay() {
-    whole_match(false).await;
+    whole_match(false, false).await;
 }
 #[tokio::test]
 async fn live_history_policy_block_preserves_published_reply_without_replay() {
-    whole_match(true).await;
+    whole_match(true, false).await;
 }
 
-async fn whole_match(block_history: bool) {
+#[tokio::test]
+async fn global_root_cannot_complete_after_skipping_selected_history() {
+    whole_match(false, true).await;
+}
+
+async fn whole_match(block_history: bool, skip_history: bool) {
     // Each filtered case must initialize its actual host prerequisite instead
     // of depending on another test having populated the process-wide prompt.
     brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
@@ -390,7 +395,17 @@ async fn whole_match(block_history: bool) {
     filesystem.run_migrations().await.unwrap();
     let provider = Arc::new(RecordingProvider::default());
     let prefix = Arc::new(SelectedPrefix("actual draft validation prefix".into()));
-    let boot = support::boot(SOURCE);
+    // Explicit negative validation source: it claims completion after the real
+    // reply/formatter but skips the selected memory feed. It is never approved
+    // or supplied to ordinary startup. The real service must reject its claim.
+    let marker = "            step_id = node[\"step_id\"]\n            # Opaque";
+    assert_eq!(SOURCE.matches(marker).count(), 1);
+    let source = if skip_history {
+        SOURCE.replacen(marker, "            step_id = node[\"step_id\"]\n            if step_id == \"0:3\":\n                return {\"returned\": True, \"value\": None}\n            # Opaque", 1)
+    } else {
+        SOURCE.to_owned()
+    };
+    let boot = support::boot(&source);
     let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
@@ -464,6 +479,62 @@ async fn whole_match(block_history: bool) {
     assert_eq!(transcript.messages.len(), 2);
     assert_eq!(transcript.messages[1].content.as_deref(), Some(answer));
     assert!(provider.requests.lock().unwrap().is_empty());
+    if skip_history {
+        assert!(matches!(
+            result,
+            Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_service_reconciliation_required"
+        ));
+        assert!(
+            factory.last_receipt.lock().unwrap().is_none(),
+            "no successful task receipt may be manufactured"
+        );
+        assert!(driver.take_settlement(attempt).is_err());
+        assert!(factory.inner.take_failed_settlement(attempt).is_err());
+        let client = database.pool.get().await.unwrap();
+        let admission = client
+            .query_one(
+                "SELECT phase,outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+                &[&attempt.run_id.as_uuid()],
+            )
+            .await
+            .unwrap();
+        assert_eq!(admission.get::<_, &str>(0), "started");
+        assert!(admission.get::<_, Option<Value>>(1).is_none());
+        assert_eq!(client.query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1 AND phase='answered'", &[&attempt.run_id.as_uuid()]).await.unwrap().get::<_, i64>(0), 1);
+        assert_eq!(
+            client
+                .query_one("SELECT count(*) FROM root_filesystem_entries", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            0
+        );
+        drop(client);
+        owner.request_shutdown();
+        let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+            .await
+            .unwrap()
+            .unwrap();
+        let service = exit.service.unwrap();
+        assert_eq!(
+            service.failure,
+            Some(brassclaw_monty_host::service::ServiceFailure::InvalidPortResult)
+        );
+        assert_eq!(
+            service.tasks.len(),
+            1,
+            "retain actual task/port evidence for reconciliation"
+        );
+        assert!(service.tasks[0].reported_outcome.is_none());
+        assert_eq!(host.finalized_reply_ref(), Some(reference));
+        match exit.ownership {
+            global_monty_owner::OwnershipSettlement::ReleaseAttempt(result) => result.unwrap(),
+            global_monty_owner::OwnershipSettlement::Quarantined(_) => {
+                panic!("actual worker containment and reaping required")
+            }
+        }
+        return;
+    }
     // Normal acknowledged completion releases the driver's reservation; the
     // observer retained the actual service receipt supplied to settlement.
     let receipt = factory.last_receipt.lock().unwrap().clone().unwrap();
@@ -487,17 +558,29 @@ async fn whole_match(block_history: bool) {
         .await
         .unwrap();
     assert_eq!(audit.get::<_, &str>(0), "settled");
-    let outcome: Value = audit.get(1);
-    if block_history {
-        assert_eq!(
-            outcome,
+    let report = super::assert_settlement_outcome(
+        audit.get(1),
+        if block_history {
             json!({"status":"failed","reason_kind":"recipe_execution_failed"})
-        );
+        } else {
+            json!({"status":"completed","reply_ref":reference.as_str()})
+        },
+    );
+    assert_eq!(report["recipes"].as_array().unwrap().len(), 2);
+    assert_eq!(report["recipes"][0]["completed_steps"], json!(["0:2"]));
+    assert_eq!(report["recipes"][0]["complete"], true);
+    assert_eq!(report["all_selected_recipes_complete"], !block_history);
+    if block_history {
+        assert_eq!(report["recipes"][1]["completed_steps"], json!(["0:1"]));
+        assert_eq!(report["recipes"][1]["failed_step"], "0:3");
+        assert_eq!(report["recipes"][1]["complete"], false);
     } else {
         assert_eq!(
-            outcome,
-            json!({"status":"completed","reply_ref":reference.as_str()})
+            report["recipes"][1]["completed_steps"],
+            json!(["0:1", "0:3"])
         );
+        assert!(report["recipes"][1]["failed_step"].is_null());
+        assert_eq!(report["recipes"][1]["complete"], true);
     }
     let rows = client.query("SELECT phase, attempt_count, answer_bytes FROM brassclaw_monty_tool_invocations WHERE run_id=$1 ORDER BY step_id",
         &[&attempt.run_id.as_uuid()]).await.unwrap();

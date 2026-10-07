@@ -253,8 +253,32 @@ fn validate_outcome(value: &Value) -> Result<(), AgentLoopDriverError> {
     let object = value
         .as_object()
         .ok_or_else(|| failed("monty_admission_outcome_invalid"))?;
+    let fields = if let Some(execution) = object.get("execution") {
+        brassclaw_skills::value_contract::validate_data_bounds(
+            execution,
+            brassclaw_skills::component_revision::REVISION_LIMITS,
+        )
+        .map_err(|_| failed("monty_admission_outcome_invalid"))?;
+        if execution.get("format").and_then(Value::as_str) != Some("monty-task-execution/1")
+            || execution.get("semantic_approval") != Some(&Value::Bool(false))
+            || execution.get("catalogue_activation") != Some(&Value::Bool(false))
+            || execution.get("root_completed").and_then(Value::as_bool)
+                != Some(object.get("status").and_then(Value::as_str) == Some("completed"))
+            || execution
+                .get("recipes")
+                .and_then(Value::as_array)
+                .is_none_or(|recipes| recipes.len() > 8)
+            || (object.get("status").and_then(Value::as_str) == Some("completed")
+                && execution.get("all_selected_recipes_complete") != Some(&Value::Bool(true)))
+        {
+            return Err(failed("monty_admission_outcome_invalid"));
+        }
+        3
+    } else {
+        2
+    };
     match object.get("status").and_then(Value::as_str) {
-        Some("completed") if object.len() == 2 => {
+        Some("completed") if object.len() == fields => {
             let reference = object
                 .get("reply_ref")
                 .and_then(Value::as_str)
@@ -262,7 +286,7 @@ fn validate_outcome(value: &Value) -> Result<(), AgentLoopDriverError> {
             brassclaw_turns::LoopMessageRef::new(reference)
                 .map_err(|_| failed("monty_admission_outcome_invalid"))?;
         }
-        Some("failed") if object.len() == 2 => {
+        Some("failed") if object.len() == fields => {
             let reason = object
                 .get("reason_kind")
                 .and_then(Value::as_str)

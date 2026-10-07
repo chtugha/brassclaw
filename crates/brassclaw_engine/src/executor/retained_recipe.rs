@@ -455,6 +455,46 @@ impl RetainedRecipeExecution {
         self.transport_failure.as_ref()
     }
 
+    /// Confirmed successful prefix of the supported flat, stop-only workflow.
+    /// A begun failed/in-flight feed is not a completed step. This inexpensive
+    /// lifecycle evidence is independent of behavioral value fingerprinting.
+    pub fn completed_step_ids(&self) -> impl Iterator<Item = &str> {
+        let count = self
+            .started
+            .len()
+            .saturating_sub(usize::from(self.phase != Phase::Idle));
+        self.program
+            .program()
+            .steplist
+            .iter()
+            .take(count)
+            .map(|step| step.step_id.as_str())
+    }
+
+    /// Only actual settled feeds can complete the selected workflow. Neither a
+    /// published reply nor release of a child establishes this condition.
+    pub fn is_complete(&self) -> bool {
+        self.phase == Phase::Idle
+            && !self.program.program().steplist.is_empty()
+            && self.started.len() == self.program.program().steplist.len()
+    }
+
+    pub fn pending_step_id(&self) -> Option<&str> {
+        (self.phase == Phase::Running).then(|| {
+            self.program.program().steplist[self.started.len() - 1]
+                .step_id
+                .as_str()
+        })
+    }
+
+    pub fn failed_step_id(&self) -> Option<&str> {
+        (self.phase == Phase::Failed).then(|| {
+            self.program.program().steplist[self.started.len() - 1]
+                .step_id
+                .as_str()
+        })
+    }
+
     async fn exchange(
         &mut self,
         transport: &TransportClient,
@@ -516,6 +556,21 @@ impl RetainedRecipeExecution {
         if self.phase != Phase::Idle || self.started.contains(step_id) {
             return Err(RetainedExecutionError::Invalid(
                 "execution is fenced or step already began",
+            ));
+        }
+        // IBS currently accepts only this exact flat stop-only flow. Check its
+        // requested occurrence before any child allocation or Tool intent. Rust
+        // verifies Monty's request; it never selects or executes the next step.
+        if self
+            .program
+            .program()
+            .steplist
+            .get(self.started.len())
+            .map(|step| step.step_id.as_str())
+            != Some(step_id)
+        {
+            return Err(RetainedExecutionError::Invalid(
+                "step is not the next retained occurrence",
             ));
         }
         let selected = self.program.clone();

@@ -13,7 +13,7 @@ use brassclaw_engine::executor::{
 };
 use brassclaw_monty_host::{
     process::TaskHandle,
-    service::{PortFailure, TaskOutcome, TaskPorts},
+    service::{PortFailure, TaskOutcome, TaskPorts, TaskReceipt},
     transport_actor::TransportClient,
 };
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
@@ -62,6 +62,7 @@ struct State {
     task: Option<TaskHandle>,
     intent_started: bool,
     recipes: BTreeMap<Uuid, Arc<Selection>>,
+    selection_order: Vec<Uuid>,
 }
 
 /// Private supervisor-owned state retains failed executions and their original
@@ -99,6 +100,103 @@ impl GlobalRecipePorts {
     fn check_fence(&self) -> Result<(), PortFailure> {
         if self.fenced.load(std::sync::atomic::Ordering::Acquire) {
             return Err(failure("task_cancelled"));
+        }
+        Ok(())
+    }
+
+    /// Actual task/child lifecycle observations after service quiescence. No
+    /// raw values, claims, transport handles, approval or success-write input.
+    /// The factory retains these exact bytes before durable acknowledgement.
+    pub(crate) async fn settlement_report(
+        &self,
+        receipt: &TaskReceipt,
+    ) -> Result<Value, PortFailure> {
+        let (task, recipes) = {
+            let state = self.state.lock().await;
+            (
+                state.task,
+                state
+                    .selection_order
+                    .iter()
+                    .map(|id| state.recipes[id].clone())
+                    .collect::<Vec<_>>(),
+            )
+        };
+        if task.is_some_and(|task| {
+            receipt
+                .accounting
+                .as_ref()
+                .is_none_or(|account| account.task != task)
+        }) {
+            return Err(failure("task_accounting_failed"));
+        }
+        let mut progress = Vec::new();
+        let mut complete = true;
+        for selection in recipes {
+            let selected = selection
+                .selected
+                .inspected
+                .program()
+                .inputs()
+                .instruction()
+                .retained_selection()
+                .map_err(|_| failure("recipe_composition_failed"))?;
+            let execution = selection.execution.lock().await;
+            let finished = execution
+                .as_ref()
+                .is_some_and(RetainedRecipeExecution::is_complete);
+            complete &= finished;
+            let checksum: String = selected
+                .checksum()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            progress.push(json!({
+                "recipe_id":selection.selected.inspected.program().inputs().instruction().recipe().uuid,
+                "selection_checksum":checksum,
+                "composed":execution.is_some(), "complete":finished,
+                "completed_steps":execution.as_ref().map(|execution| execution.completed_step_ids().collect::<Vec<_>>()).unwrap_or_default(),
+                "pending_step":execution.as_ref().and_then(RetainedRecipeExecution::pending_step_id),
+                "failed_step":execution.as_ref().and_then(RetainedRecipeExecution::failed_step_id),
+            }));
+        }
+        let completed = matches!(receipt.outcome, TaskOutcome::Completed { .. });
+        if completed
+            && (!complete
+                || task.is_none()
+                || receipt.accounting.as_ref().is_none_or(|account| {
+                    account.compute_time.is_none() || account.failure.is_some()
+                }))
+        {
+            return Err(failure("task_completion_invalid"));
+        }
+        let account = receipt.accounting.as_ref().map(|account| {
+            json!({
+                "effective_revision":account.effective_revision,
+                "compute_time":account.compute_time, "failure":account.failure,
+            })
+        });
+        Ok(
+            json!({"format":"monty-task-execution/1", "root_completed":completed,
+            "all_selected_recipes_complete":complete, "recipes":progress,
+            "accounting":account, "withheld_root_answers":receipt.withheld.len(),
+            "withheld_host_answers":self.host.has_withheld_results(),
+            "semantic_approval":false,"catalogue_activation":false}),
+        )
+    }
+
+    async fn check_recipe_completion(&self) -> Result<(), PortFailure> {
+        let selections: Vec<_> = self.state.lock().await.recipes.values().cloned().collect();
+        for selection in selections {
+            if !selection
+                .execution
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(RetainedRecipeExecution::is_complete)
+            {
+                return Err(failure("recipe_execution_incomplete"));
+            }
         }
         Ok(())
     }
@@ -357,6 +455,7 @@ fn retain(state: &mut State, selected: SelectedMontyRecipe) -> Result<(Uuid, Str
             execution: Mutex::new(None),
         }),
     );
+    state.selection_order.push(id);
     Ok((id, link))
 }
 fn failure(reason: &str) -> PortFailure {
@@ -386,6 +485,7 @@ impl TaskPorts for GlobalRecipePorts {
         async move {
             if let TaskOutcome::Completed { reply_ref } = &outcome {
                 self.check_fence()?;
+                self.check_recipe_completion().await?;
                 let reference = serde_json::from_value(Value::String(reply_ref.clone()))
                     .map_err(|_| failure("recipe_reply_invalid"))?;
                 self.host

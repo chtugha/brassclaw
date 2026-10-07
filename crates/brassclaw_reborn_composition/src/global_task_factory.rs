@@ -17,7 +17,7 @@ use brassclaw_turns::{
     LoopMessageRef,
     run_profile::{AgentLoopDriverError, MontyTaskAttempt},
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{
     global_monty_driver::GlobalTaskPortsFactory,
@@ -45,6 +45,7 @@ struct RetainedTask {
     admission: Arc<PgMontyAdmission>,
     ports: Option<Arc<GlobalRecipePorts>>,
     receipt: Option<Arc<TaskReceipt>>,
+    execution_report: Option<Value>,
     settled: bool,
 }
 
@@ -178,6 +179,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                     admission: admission.clone(),
                     ports: None,
                     receipt: None,
+                    execution_report: None,
                     settled: false,
                 },
             );
@@ -212,7 +214,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         host: Arc<MontyTaskHost>,
         receipt: Arc<TaskReceipt>,
     ) -> Result<(), AgentLoopDriverError> {
-        let outcome = match &receipt.outcome {
+        let mut outcome = match &receipt.outcome {
             TaskOutcome::Completed { reply_ref } => {
                 let reference = LoopMessageRef::new(reply_ref.clone())
                     .map_err(|_| failed("monty_reply_reference_invalid"))?;
@@ -232,7 +234,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 json!({"status":"failed", "reason_kind":reason_kind})
             }
         };
-        let admission = {
+        let (admission, ports, retained_report) = {
             let mut tasks = self.tasks()?;
             let task = tasks
                 .get_mut(&host.attempt())
@@ -247,8 +249,41 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 return Err(failed("monty_task_settlement_conflict"));
             }
             task.receipt = Some(receipt.clone());
-            task.admission.clone()
+            (
+                task.admission.clone(),
+                task.ports
+                    .clone()
+                    .ok_or_else(|| failed("monty_task_registry_failed"))?,
+                task.execution_report.clone(),
+            )
         };
+        let report = match retained_report {
+            Some(report) => report,
+            None => {
+                let report = ports
+                    .settlement_report(&receipt)
+                    .await
+                    .map_err(|_| failed("monty_task_execution_evidence_invalid"))?;
+                let mut tasks = self.tasks()?;
+                let task = tasks
+                    .get_mut(&host.attempt())
+                    .ok_or_else(|| failed("monty_task_registry_failed"))?;
+                if !Arc::ptr_eq(&task.admission, &admission)
+                    || task
+                        .execution_report
+                        .as_ref()
+                        .is_some_and(|previous| previous != &report)
+                {
+                    return Err(failed("monty_task_settlement_conflict"));
+                }
+                task.execution_report = Some(report.clone());
+                report
+            }
+        };
+        // Keep the original report across unknown commit acknowledgement. The
+        // same transaction records outcome and child completion together; audit
+        // recovery never rereads latest, restores dispatch or repeats an effect.
+        outcome["execution"] = report;
         admission.settle(outcome).await?;
         let mut tasks = self.tasks()?;
         if let Some(task) = tasks.get_mut(&host.attempt()) {

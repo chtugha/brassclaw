@@ -81,6 +81,25 @@ mod pg_monty_admission;
 mod support;
 const SOURCE: &str = include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py");
 
+fn assert_settlement_outcome(mut actual: Value, expected: Value) -> Value {
+    let report = actual
+        .as_object_mut()
+        .unwrap()
+        .remove("execution")
+        .expect("actual quiescent execution report");
+    assert_eq!(actual, expected);
+    assert_eq!(report["format"], "monty-task-execution/1");
+    assert_eq!(report["semantic_approval"], false);
+    assert_eq!(report["catalogue_activation"], false);
+    assert_eq!(report["root_completed"], actual["status"] == "completed");
+    if actual["status"] == "completed" {
+        assert_eq!(report["all_selected_recipes_complete"], true);
+        assert!(report["accounting"]["compute_time"].is_object());
+        assert!(report["accounting"]["failure"].is_null());
+    }
+    report
+}
+
 #[derive(Default)]
 struct RecordingProvider {
     requests: Mutex<Vec<HostManagedModelRequest>>,
@@ -1072,9 +1091,9 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
             .await
             .unwrap();
         assert_eq!(admission.get::<_, String>(0), "settled");
-        assert_eq!(
+        assert_settlement_outcome(
             admission.get::<_, Value>(1),
-            json!({"status":"completed", "reply_ref":exit.reply_message_refs[0].as_str()})
+            json!({"status":"completed", "reply_ref":exit.reply_message_refs[0].as_str()}),
         );
         let duplicate = pg_monty_admission::PgMontyAdmission::reserve(
             database.pool.clone(),
@@ -2160,9 +2179,9 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
         .await
         .unwrap()
         .get(0);
-    assert_eq!(
+    assert_settlement_outcome(
         outcome,
-        json!({"status":"failed", "reason_kind":"task_cancelled"})
+        json!({"status":"failed", "reason_kind":"task_cancelled"}),
     );
     assert_eq!(provider.requests.lock().unwrap().len(), 1);
     let history = threads
@@ -2323,9 +2342,9 @@ async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
         .await
         .unwrap()
         .get(0);
-    assert_eq!(
+    assert_settlement_outcome(
         outcome,
-        json!({"status":"completed", "reply_ref":reference.as_str()})
+        json!({"status":"completed", "reply_ref":reference.as_str()}),
     );
     let history = threads
         .list_thread_history(ThreadHistoryRequest {

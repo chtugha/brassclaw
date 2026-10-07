@@ -69,6 +69,28 @@ driver/Recipe completion lookup remains fenced, and withheld results still
 require reconciliation. A stop after actual root completion records that original
 Completed outcome rather than inventing cancellation or replaying the reply.
 
+Completion also requires every selected Recipe to have completed its supported
+flat stop-only workflow. The child executor checks each requested occurrence
+against the retained order before allocation or Tool intent; it does not select
+the next step. A failed/in-flight feed is excluded from the confirmed successful
+prefix. Uncomposed, skipped or failed selected workflows cannot be certified by
+a published reply. An invalid root completion claim is a protocol failure with
+real service/task evidence retained for reconciliation, never a successful receipt.
+
+After actual service quiescence, the factory retains a bounded execution report
+before database acknowledgement. The report includes selected Recipe checksums,
+confirmed step prefixes, pending/failed step identities and actual task compute
+accounting. It records no raw inputs/results, claim secrets or transport handles.
+The admission transaction stores it with the original outcome; an uncertain commit
+reuses the retained report and outcome without replaying execution. Legacy fixture
+settlements without a root service receipt do not receive such a report.
+
+This operational report is separate from `WorkflowReview` expectations and their
+observed value fingerprints. It sets semantic approval and catalogue activation
+to false; neither a complete execution nor a failed negative case supplies Q2,
+protected-root trust or association-combination approval. Empty selected-Recipe
+lists on genuine No-Match are distinct from skipped selected workflows.
+
 The ordinary factory still needs the real approved-catalogue and protected-root
 owners, retained implementation identity, shared live resource wiring and durable
 continuation/recovery supervision. The original seven composition failures

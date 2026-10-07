@@ -297,6 +297,22 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
         let mut execution =
             RetainedRecipeExecution::new_for_behavioral_validation(task, inspected).unwrap();
         assert!(execution.observations().is_empty());
+        assert!(!execution.is_complete());
+        // Reject an out-of-order requested feed before allocating a child or
+        // recording an invocation; the original first occurrence remains usable.
+        assert!(
+            execution
+                .run_step(
+                    &transport,
+                    &prepared.program().steplist[1].step_id,
+                    &json!({}),
+                    Some(&port)
+                )
+                .await
+                .is_err()
+        );
+        assert!(execution.completed_step_ids().next().is_none());
+        assert!(execution.observations().is_empty());
         for step in &prepared.program().steplist {
             let Some(ProcessBoundary::HostCall {
                 key,
@@ -422,6 +438,10 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
                 Some(typed_value_checksum(&value).unwrap())
             );
             assert_eq!(value, data);
+            assert_eq!(
+                execution.completed_step_ids().last(),
+                Some(step.step_id.as_str())
+            );
             let resolved = exchange(
                 &transport,
                 WorkerCommand::Resolve {
