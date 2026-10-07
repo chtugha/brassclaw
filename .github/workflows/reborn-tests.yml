@@ -115,6 +115,8 @@ jobs:
         run: |
           cargo build -p brassclaw_monty_host --bin monty_worker --locked
           cargo test -p brassclaw_engine --locked --features skills-db --test retained_instruction --test retained_inputs --test retained_tools -- --test-threads=1 --nocapture
+      - name: Test actual native PostgreSQL intent selection and choice
+        run: cargo test -p brassclaw_reborn_composition --locked --features skills-db --test intent_step_link -- --test-threads=1 --nocapture
       - name: Test stable Tool identities through the real kernel
         run: |
           cargo test -p brassclaw_authorization --locked --lib stable_tool_policy::tests::

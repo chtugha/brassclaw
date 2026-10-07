@@ -1,30 +1,6 @@
-//! Phase D — `step_link` column on `reborn_intent_inputs` (§0.6 / §0.8).
-//!
-//! Integration tests for `resolve_intent` + `seed_intent_input` +
-//! `record_disambiguation_choice` against a real Postgres-16 schema with the
-//! V054 `step_link` column. The `engine` crate has no testcontainers dev-dep,
-//! so these DB-backed intent tests live in the composition `tests/` tier
-//! (established Phase B/C pattern) and mirror `extension_catalogue_component`.
-//!
-//! Verifies the five Phase D behaviours (plan §'Phase D — Tests'):
-//! - T1: class-21 Recipe intent seeded WITH `step_link` →
-//!   `Match { step_link: Some("1:1-1:3") }`
-//! - T2: non-Recipe intent seeded WITHOUT `step_link` →
-//!   `Match { step_link: None }` (legacy path unchanged)
-//! - T3: class-16 Action intent →
-//!   `Match { component_class_code: 16, step_link: None }`
-//!   (HI.1: component_name removed from IntentResolution::Match — class-16
-//!   routes through fetch_component_by_id at fetch_for_turn time, no JOIN needed)
-//! - T4: class-21 Recipe intent (no Action row) →
-//!   `Match { component_class_code: 21, step_link: None }`
-//! - T5: `record_disambiguation_choice` →
-//!   `Match { step_link: None }` (FINDING A)
-//!
-//! Each test starts an isolated Postgres-16 testcontainer, runs the full
-//! migration set (V000–V054, so `step_link` exists), and returns early (pass)
-//! when docker/testcontainers is unavailable. Gated to `skills-db` because
-//! `resolve_intent` / `seed_intent_input` / `record_disambiguation_choice` are
-//! skills-db-only.
+//! Real native PostgreSQL intent selection, disambiguation and scoring.
+//! Fixtures test the legacy scoped lookup, not an activated v3 catalogue.
+//! Initialization errors fail the tests; no unavailable-container success path.
 
 #![cfg(feature = "skills-db")]
 
@@ -34,63 +10,8 @@ use brassclaw_engine::memory::intent_system::{
 };
 use uuid::Uuid;
 
-struct PgRig {
-    // Held for the test's lifetime so the container stays up.
-    _container: testcontainers_modules::testcontainers::ContainerAsync<
-        testcontainers_modules::postgres::Postgres,
-    >,
-    pool: deadpool_postgres::Pool,
-}
-
-/// Start an isolated Postgres-16 testcontainer, build a pool, and run every
-/// migration (V000–V054, so `reborn_intent_inputs.step_link` exists). Returns
-/// `None` (skip) when docker is unavailable.
-async fn pg_rig_or_skip() -> Option<PgRig> {
-    use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
-
-    let image = testcontainers_modules::postgres::Postgres::default()
-        .with_db_name("brassclaw_test")
-        .with_user("postgres")
-        .with_password("postgres")
-        .with_tag("16-alpine");
-    let container = match image.start().await {
-        Ok(c) => c,
-        Err(error) => {
-            eprintln!(
-                "skipping intent_step_link tests: docker/testcontainers unavailable ({error})"
-            );
-            return None;
-        }
-    };
-    let host = match container.get_host().await {
-        Ok(h) => h,
-        Err(error) => {
-            eprintln!("skipping intent_step_link tests: no host ({error})");
-            return None;
-        }
-    };
-    let port = match container.get_host_port_ipv4(5432).await {
-        Ok(p) => p,
-        Err(error) => {
-            eprintln!("skipping intent_step_link tests: no port ({error})");
-            return None;
-        }
-    };
-    let url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
-    let cfg: tokio_postgres::Config = url.parse().expect("testcontainer url parses");
-    let manager = deadpool_postgres::Manager::new(cfg, tokio_postgres::NoTls);
-    let pool = deadpool_postgres::Pool::builder(manager)
-        .max_size(4)
-        .build()
-        .expect("Postgres pool must build");
-    brassclaw_pg::migrations::run_migrations(&pool)
-        .await
-        .expect("migrations must apply");
-    Some(PgRig {
-        _container: container,
-        pool,
-    })
-}
+#[path = "../../brassclaw_reborn/tests/common/native_pg.rs"]
+mod native_pg;
 
 /// A fresh, isolated scope per test (unique tenant) so parallel tests never
 /// collide on `reborn_intent_inputs` / `reborn_actions` rows or the per-scope
@@ -179,10 +100,7 @@ async fn fetch_intent_row_id(
 
 #[tokio::test]
 async fn t1_recipe_intent_with_step_link_returns_some_and_empty_name() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
+    let rig = native_pg::NativePostgres::start().await;
     let scope = unique_scope();
     let query = unique_sentence_query();
     let component_id = Uuid::new_v4();
@@ -221,10 +139,7 @@ async fn t1_recipe_intent_with_step_link_returns_some_and_empty_name() {
 
 #[tokio::test]
 async fn t2_intent_without_step_link_returns_none_and_empty_name() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
+    let rig = native_pg::NativePostgres::start().await;
     let scope = unique_scope();
     let query = unique_sentence_query();
     let component_id = Uuid::new_v4();
@@ -265,10 +180,7 @@ async fn t2_intent_without_step_link_returns_none_and_empty_name() {
 
 #[tokio::test]
 async fn t3_class16_action_intent_resolves_component_id() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
+    let rig = native_pg::NativePostgres::start().await;
     let scope = unique_scope();
     let query = unique_sentence_query();
 
@@ -311,10 +223,7 @@ async fn t3_class16_action_intent_resolves_component_id() {
 
 #[tokio::test]
 async fn t4_class21_recipe_intent_without_action_row_has_empty_name() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
+    let rig = native_pg::NativePostgres::start().await;
     let scope = unique_scope();
     let query = unique_sentence_query();
     let component_id = Uuid::new_v4();
@@ -350,23 +259,17 @@ async fn t4_class21_recipe_intent_without_action_row_has_empty_name() {
 }
 
 // ---------------------------------------------------------------------------
-// T5 — record_disambiguation_choice → step_link: None (HI.1: no component_name)
+// T5 — choice retains the actual template and selected step link
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn t5_record_disambiguation_choice_returns_none_step_link_and_empty_name() {
-    let rig = match pg_rig_or_skip().await {
-        Some(r) => r,
-        None => return,
-    };
+async fn t5_disambiguation_choice_retains_actual_template_and_workflow() {
+    let rig = native_pg::NativePostgres::start().await;
     let scope = unique_scope();
-    let query = unique_sentence_query();
+    let query = "reply with %".to_owned();
     let component_id = Uuid::new_v4();
 
-    // Seed a Recipe intent (carrying a step_link) so the row exists; the
-    // disambiguation click confirms component_id only and must NOT echo the
-    // stored step_link — FINDING A mandates step_link: None (caller re-fetches
-    // the recipe row).
+    // A choice keeps the actual selected template and workflow for IBS.
     seed_intent_input(
         &rig.pool,
         &scope,
@@ -387,12 +290,329 @@ async fn t5_record_disambiguation_choice_returns_none_step_link_and_empty_name()
             component_id: cid,
             component_class_code,
             step_link,
-            ..
+            input_text,
+            is_template,
         }) => {
             assert_eq!(cid, component_id);
             assert_eq!(component_class_code, 21);
-            assert_eq!(step_link, None);
+            assert_eq!(step_link.as_deref(), Some("1:1-1:3"));
+            assert_eq!(input_text, query);
+            assert!(is_template);
         }
         other => panic!("expected Match, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn disambiguation_rejects_wrong_scope_identity_and_absent_rows_without_scoring() {
+    use brassclaw_engine::memory::intent_system::IntentSystemError;
+    let rig = native_pg::NativePostgres::start().await;
+    let scope = unique_scope();
+    let component = Uuid::new_v4();
+    seed_intent_input(
+        &rig.pool,
+        &scope,
+        "selected",
+        InputClass::Word,
+        component,
+        21,
+        IntentSource::Seeded,
+        Some("0:1-0:E"),
+    )
+    .await
+    .unwrap();
+    let row = fetch_intent_row_id(&rig.pool, &scope, "selected", component).await;
+    let mut bad_scopes = Vec::new();
+    for field in 0..4 {
+        let mut wrong = scope.clone();
+        match field {
+            0 => wrong.tenant_id.push_str("-wrong"),
+            1 => wrong.user_id.push_str("-wrong"),
+            2 => wrong.agent_id.push_str("-wrong"),
+            _ => wrong.project_id.push_str("-wrong"),
+        }
+        bad_scopes.push(wrong);
+    }
+    for wrong in bad_scopes {
+        assert!(matches!(
+            record_disambiguation_choice(&rig.pool, &wrong, row, component, 21).await,
+            Err(IntentSystemError::InvalidChoice)
+        ));
+    }
+    for (id, target, class) in [
+        (row, Uuid::new_v4(), 21),
+        (row, component, 22),
+        (Uuid::new_v4(), component, 21),
+    ] {
+        assert!(matches!(
+            record_disambiguation_choice(&rig.pool, &scope, id, target, class).await,
+            Err(IntentSystemError::InvalidChoice)
+        ));
+    }
+    assert_eq!(score(&rig.pool, row).await, 1);
+    record_disambiguation_choice(&rig.pool, &scope, row, component, 21)
+        .await
+        .unwrap();
+    assert_eq!(score(&rig.pool, row).await, 2);
+}
+
+async fn score(pool: &brassclaw_pg::PgPool, row: Uuid) -> i32 {
+    pool.get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT score FROM reborn_intent_inputs WHERE id=$1",
+            &[&row],
+        )
+        .await
+        .unwrap()
+        .get(0)
+}
+
+#[tokio::test]
+async fn score_buckets_use_distinct_tuple_keys_and_preserve_exhausted_choices() {
+    let rig = native_pg::NativePostgres::start().await;
+    let unique = Uuid::new_v4().to_string();
+    let first = IntentScope {
+        tenant_id: format!("{unique}/b"),
+        user_id: "c".into(),
+        agent_id: "a".into(),
+        project_id: "p".into(),
+    };
+    let second = IntentScope {
+        tenant_id: unique,
+        user_id: "b/c".into(),
+        agent_id: "a".into(),
+        project_id: "p".into(),
+    };
+    let mut rows = Vec::new();
+    for scope in [&first, &second] {
+        let component = Uuid::new_v4();
+        seed_intent_input(
+            &rig.pool,
+            scope,
+            "selected",
+            InputClass::Word,
+            component,
+            21,
+            IntentSource::Seeded,
+            Some("0:1-0:E"),
+        )
+        .await
+        .unwrap();
+        rows.push((
+            fetch_intent_row_id(&rig.pool, scope, "selected", component).await,
+            component,
+        ));
+    }
+    for _ in 0..51 {
+        let result = record_disambiguation_choice(&rig.pool, &first, rows[0].0, rows[0].1, 21)
+            .await
+            .unwrap();
+        assert!(
+            matches!(result, IntentResolution::Match { step_link: Some(ref link), .. }
+            if link == "0:1-0:E")
+        );
+    }
+    assert_eq!(score(&rig.pool, rows[0].0).await, 51);
+    record_disambiguation_choice(&rig.pool, &second, rows[1].0, rows[1].1, 21)
+        .await
+        .unwrap();
+    assert_eq!(score(&rig.pool, rows[1].0).await, 2);
+}
+
+#[tokio::test]
+async fn duplicate_templates_and_score_gaps_do_not_hide_other_workflows() {
+    let rig = native_pg::NativePostgres::start().await;
+    let scope = unique_scope();
+    let recipe = Uuid::new_v4();
+    let low = Uuid::new_v4();
+    let query = format!("route{}end", "a".repeat(80));
+    // More than the previous raw LIMIT 30, all for one workflow.
+    for n in 0..40 {
+        let template = format!("route{}%end", "a".repeat(n));
+        seed_intent_input(
+            &rig.pool,
+            &scope,
+            &template,
+            InputClass::Word,
+            recipe,
+            21,
+            IntentSource::Seeded,
+            Some("0:1-0:E"),
+        )
+        .await
+        .unwrap();
+    }
+    seed_intent_input(
+        &rig.pool,
+        &scope,
+        "route%end",
+        InputClass::Partial,
+        low,
+        21,
+        IntentSource::Seeded,
+        Some("2:1-2:E"),
+    )
+    .await
+    .unwrap();
+    seed_intent_input(
+        &rig.pool,
+        &scope,
+        "route%end",
+        InputClass::Sentence,
+        recipe,
+        21,
+        IntentSource::Seeded,
+        Some("1:1-1:E"),
+    )
+    .await
+    .unwrap();
+    let client = rig.pool.get().await.unwrap();
+    client
+        .execute(
+            "UPDATE reborn_intent_inputs SET score = CASE WHEN component_id=$1 THEN 7 ELSE 10 END
+        WHERE tenant_id=$2",
+            &[&low, &scope.tenant_id],
+        )
+        .await
+        .unwrap();
+    let result = resolve_intent(&rig.pool, &scope, &query).await.unwrap();
+    let IntentResolution::Disambiguation { candidates } = result else {
+        panic!("distinct workflows must remain ambiguous: {result:?}");
+    };
+    assert_eq!(candidates.len(), 2);
+    assert!(candidates.iter().all(|c| c.component_id == recipe));
+    assert_eq!(candidates[0].step_link.as_deref(), Some("0:1-0:E"));
+    assert_eq!(candidates[1].step_link.as_deref(), Some("1:1-1:E"));
+    assert_ne!(candidates[0].row_id, candidates[1].row_id);
+}
+
+#[tokio::test]
+async fn template_anchors_treat_underscore_backslash_and_escape_char_as_literals() {
+    let rig = native_pg::NativePostgres::start().await;
+    let scope = unique_scope();
+    let recipe = Uuid::new_v4();
+    for (template, valid, invalid) in [
+        (r"read_a\%", r"read_a\value", r"readXa\value"),
+        (r"%_done!\", r"value_done!\", r"valueXdone!\"),
+        ("read!%_done", "read!value_done", "read!valueXdone"),
+    ] {
+        seed_intent_input(
+            &rig.pool,
+            &scope,
+            template,
+            InputClass::Word,
+            recipe,
+            21,
+            IntentSource::Seeded,
+            Some("0:1-0:E"),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            resolve_intent(&rig.pool, &scope, invalid).await.unwrap(),
+            IntentResolution::NoMatch
+        ));
+        assert!(matches!(
+            resolve_intent(&rig.pool, &scope, valid).await.unwrap(),
+            IntentResolution::Match { .. }
+        ));
+    }
+}
+
+#[tokio::test]
+async fn caller_owned_snapshot_keeps_matching_stable_across_actual_reseeding() {
+    use brassclaw_engine::memory::intent_system::{
+        IntentSystemError, resolve_intent_in_transaction,
+    };
+    let rig = native_pg::NativePostgres::start().await;
+    let scope = unique_scope();
+    let recipe = Uuid::new_v4();
+    seed_intent_input(
+        &rig.pool,
+        &scope,
+        "selected",
+        InputClass::Word,
+        recipe,
+        21,
+        IntentSource::Seeded,
+        Some("0:1-0:E"),
+    )
+    .await
+    .unwrap();
+    let row = fetch_intent_row_id(&rig.pool, &scope, "selected", recipe).await;
+    let mut client = rig.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let before = resolve_intent_in_transaction(&tx, &scope, "selected")
+        .await
+        .unwrap();
+    assert!(
+        matches!(before, IntentResolution::Match { step_link: Some(ref link), .. }
+        if link == "0:1-0:E")
+    );
+    // A different real connection commits replacement intent metadata while
+    // this caller still holds its matching/approval/IBS database view.
+    seed_intent_input(
+        &rig.pool,
+        &scope,
+        "selected",
+        InputClass::Word,
+        recipe,
+        21,
+        IntentSource::Seeded,
+        Some("1:1-1:E"),
+    )
+    .await
+    .unwrap();
+    let still = resolve_intent_in_transaction(&tx, &scope, "selected")
+        .await
+        .unwrap();
+    assert!(
+        matches!(still, IntentResolution::Match { step_link: Some(ref link), .. }
+        if link == "0:1-0:E")
+    );
+    assert!(matches!(
+        resolve_intent_in_transaction(&tx, &scope, "absent")
+            .await
+            .unwrap(),
+        IntentResolution::NoMatch
+    ));
+    tx.commit().await.unwrap();
+    assert_eq!(
+        score(&rig.pool, row).await,
+        1,
+        "snapshot preparation does not write telemetry"
+    );
+    let tx = client.transaction().await.unwrap();
+    assert!(matches!(
+        resolve_intent_in_transaction(&tx, &scope, "selected").await,
+        Err(IntentSystemError::SnapshotIsolation)
+    ));
+    tx.rollback().await.unwrap();
+    let after = resolve_intent(&rig.pool, &scope, "selected").await.unwrap();
+    assert!(
+        matches!(after, IntentResolution::Match { step_link: Some(ref link), .. }
+        if link == "1:1-1:E")
+    );
+    assert_eq!(
+        score(&rig.pool, row).await,
+        2,
+        "ordinary resolution retains scoring"
+    );
+    drop(client);
+    rig.pool.close();
+    assert!(
+        matches!(
+            resolve_intent(&rig.pool, &scope, "absent").await,
+            Err(IntentSystemError::Db(_))
+        ),
+        "lookup failure cannot authorize Tier 2 as No-Match"
+    );
 }

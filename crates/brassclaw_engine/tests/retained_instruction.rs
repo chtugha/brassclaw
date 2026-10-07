@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use brassclaw_engine::memory::retained_instruction::{
-    RetainedInstructionError, WorkflowClass, compile_retained_recipe,
+    RetainedInstructionError, WorkflowClass, compile_matched_retained_recipe,
+    compile_retained_recipe,
 };
 use brassclaw_skills::{
     component_revision::ComponentRevisionDraft, revision_store::PgComponentRevisionStore,
@@ -230,4 +231,181 @@ async fn retained_recipe_rejects_ambiguity_prose_execution_and_unsupported_workf
             .unwrap(),
     );
     assert!(compile_retained_recipe(old, recipe, "selected", WorkflowClass::Deterministic).is_ok());
+}
+
+#[tokio::test]
+async fn actual_matching_and_ibs_share_one_view_and_reject_variant_identity_loss() {
+    use brassclaw_engine::memory::intent_system::{
+        InputClass, IntentResolution, IntentScope, IntentSource, resolve_intent_in_transaction,
+        seed_intent_input,
+    };
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let scope = IntentScope {
+        tenant_id: "retained-match".into(),
+        user_id: "operator".into(),
+        agent_id: "agent".into(),
+        project_id: "project".into(),
+    };
+    let (recipe, first, second) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    let first_ref = store
+        .stage(
+            &draft(
+                first,
+                22,
+                json!({"content":"result = inputs['value']"}),
+                &[],
+            ),
+            0,
+        )
+        .await
+        .unwrap();
+    let second_ref = store
+        .stage(
+            &draft(
+                second,
+                22,
+                json!({"content":"result = inputs['previous']"}),
+                &[],
+            ),
+            0,
+        )
+        .await
+        .unwrap();
+    let old_document = recipe_document(first, second, "2:1-2:E+0:1-0:E");
+    let old = store
+        .stage(
+            &draft(recipe, 21, old_document.clone(), &[first, second]),
+            0,
+        )
+        .await
+        .unwrap();
+    seed_intent_input(
+        &rig.pool,
+        &scope,
+        "ordered input",
+        InputClass::Partial,
+        recipe,
+        21,
+        IntentSource::Seeded,
+        Some("2:1-2:E+0:1-0:E"),
+    )
+    .await
+    .unwrap();
+    let mut client = rig.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let matched = resolve_intent_in_transaction(&tx, &scope, "ordered input")
+        .await
+        .unwrap();
+    let newer = store
+        .stage(
+            &draft(
+                recipe,
+                21,
+                recipe_document(first, second, "0:1-0:E+2:1-2:E"),
+                &[first, second],
+            ),
+            1,
+        )
+        .await
+        .unwrap();
+    seed_intent_input(
+        &rig.pool,
+        &scope,
+        "ordered input",
+        InputClass::Partial,
+        recipe,
+        21,
+        IntentSource::Seeded,
+        Some("0:1-0:E+2:1-2:E"),
+    )
+    .await
+    .unwrap();
+    let snapshot = Arc::new(
+        PgComponentRevisionStore::read_exact_in_transaction(
+            &tx,
+            &[recipe],
+            &[old, first_ref, second_ref],
+        )
+        .await
+        .unwrap(),
+    );
+    let instruction =
+        compile_matched_retained_recipe(snapshot.clone(), &matched, WorkflowClass::Deterministic)
+            .unwrap();
+    assert_eq!(instruction.recipe(), old);
+    assert_eq!(instruction.variant().variant_key, "selected");
+    assert_eq!(instruction.ordered().step_order(), ["2:1", "0:1"]);
+    tx.commit().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let next_match = resolve_intent_in_transaction(&tx, &scope, "ordered input")
+        .await
+        .unwrap();
+    let next = Arc::new(
+        PgComponentRevisionStore::read_exact_in_transaction(
+            &tx,
+            &[recipe],
+            &[newer, first_ref, second_ref],
+        )
+        .await
+        .unwrap(),
+    );
+    let next_instruction =
+        compile_matched_retained_recipe(next.clone(), &next_match, WorkflowClass::RequiresModel)
+            .unwrap();
+    assert_eq!(next_instruction.recipe(), newer);
+    assert_eq!(next_instruction.ordered().step_order(), ["0:1", "2:1"]);
+    assert!(next_instruction.ordered().instruction().llm_call_required);
+    assert!(
+        compile_matched_retained_recipe(next, &matched, WorkflowClass::Deterministic).is_err(),
+        "matching and assembly from different views must not silently select a variant"
+    );
+    let absent = resolve_intent_in_transaction(&tx, &scope, "absent")
+        .await
+        .unwrap();
+    assert!(matches!(absent, IntentResolution::NoMatch));
+    assert!(
+        compile_matched_retained_recipe(snapshot.clone(), &absent, WorkflowClass::Deterministic)
+            .is_err()
+    );
+    tx.commit().await.unwrap();
+    // Same link with a different embedded variant/layout remains ambiguous.
+    // A duplicate variant key is already independently rejected by strict IBS.
+    let mut ambiguous = old_document;
+    let mut other = ambiguous["variants"][0].clone();
+    other["variant_key"] = json!("other-layout");
+    other["variable_patterns"][0]["name"] = json!("different_value");
+    ambiguous["variants"].as_array_mut().unwrap().push(other);
+    let ambiguous_ref = store
+        .stage(&draft(recipe, 21, ambiguous, &[first, second]), 2)
+        .await
+        .unwrap();
+    let ambiguous_snapshot = Arc::new(
+        store
+            .read_exact(&[recipe], &[ambiguous_ref, first_ref, second_ref])
+            .await
+            .unwrap(),
+    );
+    assert!(matches!(
+        compile_matched_retained_recipe(ambiguous_snapshot, &matched, WorkflowClass::Deterministic),
+        Err(RetainedInstructionError::Invalid(
+            "matched intent identifies multiple retained Recipe variants"
+        ))
+    ));
+    assert!(
+        compile_matched_retained_recipe(snapshot, &matched, WorkflowClass::Deterministic).is_ok(),
+        "later conflicting revisions cannot invalidate old exact selection"
+    );
 }

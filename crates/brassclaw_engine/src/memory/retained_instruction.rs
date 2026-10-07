@@ -14,6 +14,7 @@ use uuid::Uuid;
 use super::instruction_builder::{
     IbsError, OrderedBuildInstruction, StepDescriptionEntry, StepOwner, build_ordered_instruction,
 };
+use super::intent_system::IntentResolution;
 use crate::types::recipe::RecipeVariant;
 
 /// Supplied by reviewed workflow classification, not inferred from mutable
@@ -70,6 +71,64 @@ fn fields(value: &Value, allowed: &[&str]) -> Result<(), RetainedInstructionErro
         return Err(invalid("unsupported workflow field"));
     }
     Ok(())
+}
+
+/// Link a real matcher result to exactly one variant inside the already pinned
+/// Recipe revision. Legacy matching rows have no variant key; the exact intent
+/// expression and step link must identify it uniquely. Never choose the first
+/// equal link, read latest, or treat ambiguity/missing metadata as No-Match.
+/// Matching, revision and approval reads still belong to one catalogue view;
+/// this compiler cannot establish that the caller used that view or approval.
+pub fn compile_matched_retained_recipe(
+    snapshot: Arc<RetainedComponentSnapshot>,
+    matched: &IntentResolution,
+    class: WorkflowClass,
+) -> Result<RetainedRecipeInstruction, RetainedInstructionError> {
+    let IntentResolution::Match {
+        component_id,
+        component_class_code: 21,
+        step_link: Some(link),
+        input_text,
+        is_template,
+    } = matched
+    else {
+        return Err(invalid("matched Recipe workflow identity required"));
+    };
+    if link.trim().is_empty() || input_text.is_empty() || *is_template != input_text.contains('%') {
+        return Err(invalid("matched Recipe intent metadata is inconsistent"));
+    }
+    let retained = snapshot
+        .revisions()
+        .get(component_id)
+        .filter(|recipe| recipe.reference().class_code == 21)
+        .ok_or_else(|| invalid("matched Recipe revision missing"))?;
+    let variants = retained
+        .draft()
+        .document()
+        .get("variants")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("Recipe variants required"))?;
+    let mut selected = None;
+    for raw in variants {
+        let variant: RecipeVariant =
+            serde_json::from_value(raw.clone()).map_err(|_| invalid("malformed Recipe variant"))?;
+        if variant.step_link.as_ref() == Some(link)
+            && variant
+                .intent_examples
+                .iter()
+                .any(|text| text == input_text)
+        {
+            if selected.is_some() {
+                return Err(invalid(
+                    "matched intent identifies multiple retained Recipe variants",
+                ));
+            }
+            selected = Some(variant.variant_key);
+        }
+    }
+    let selected = selected
+        .ok_or_else(|| invalid("matched intent does not belong to retained Recipe revision"))?;
+    compile_retained_recipe(snapshot, *component_id, &selected, class)
 }
 
 pub fn compile_retained_recipe(

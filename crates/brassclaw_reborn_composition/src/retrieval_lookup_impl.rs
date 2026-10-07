@@ -549,6 +549,7 @@ mod tests {
                 input_class: 3,
                 score: 1,
                 class_label: "action".to_string(),
+                step_link: None,
             },
             IntentCandidate {
                 row_id: Uuid::nil(),
@@ -557,6 +558,7 @@ mod tests {
                 input_class: 3,
                 score: 1,
                 class_label: "action".to_string(),
+                step_link: None,
             },
         ];
         let result =

@@ -1704,6 +1704,8 @@ async fn handle_resolve_intent(
                 .into_iter()
                 .map(|c| {
                     serde_json::json!({
+                        "row_id": c.row_id.to_string(),
+                        "step_link": c.step_link,
                         "component_id": c.component_id.to_string(),
                         "component_class_code": c.component_class_code,
                         "score": c.score,
@@ -1985,6 +1987,8 @@ fn assemble_pkr_from_fetch(
                 .iter()
                 .map(|c| {
                     serde_json::json!({
+                        "row_id": c.row_id.to_string(),
+                        "step_link": c.step_link,
                         "component_id": c.component_id.to_string(),
                         "component_class_code": c.component_class_code,
                         "class_label": c.class_label,
@@ -6549,6 +6553,7 @@ FINAL(batch_error_count)
                 input_class: 0,
                 score: 5,
                 class_label: "skill_rusty".to_string(),
+                step_link: None,
             },
             IntentCandidate {
                 row_id: uuid::Uuid::from_u128(102),
@@ -6557,6 +6562,7 @@ FINAL(batch_error_count)
                 input_class: 0,
                 score: 5,
                 class_label: "recipe".to_string(),
+                step_link: None,
             },
         ];
         let fetch = FetchForTurnResult::Disambiguation(candidates);

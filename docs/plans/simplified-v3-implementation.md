@@ -2474,3 +2474,35 @@ legacy per-scope driver. Continue with trusted record producers, coherent active
 catalogue selection and the full ordinary task factory, then complete the
 resource/durable-lifecycle gates and wire startup/shutdown before rerunning all
 seven. These prerequisites and draft callers do not resolve the original seven.
+
+
+### 2026-10-07 — Preserve real intent/workflow selection through IBS
+
+Fixed the legacy choice caller's cross-scope score update and caller-supplied
+component identity. Choices retain their actual template and step link after a
+locked identity check and commit. Scope score buckets use exact tuple keys,
+reclaim expired entries and bound process metadata without limiting task/token
+consumption. Template `_`, backslash and SQL escape text remain literal. SQL
+ranks distinct component/class/link workflows before its candidate limit;
+matching template duplicates and an intervening low-score class no longer hide
+another eligible workflow. Host/PKR candidate mappings preserve row/link IDs.
+
+Added caller-owned repeatable-read/serializable matching and a retained match
+adapter into actual IBS. The adapter requires exactly one embedded Recipe
+variant for the exact intent expression/link. It rejects identity loss,
+ambiguity and mismatched old/new selection instead of choosing a variant or
+falling back. Actual PostgreSQL replacement commits demonstrate that matching
+and retained assembly preserve the old view together; later tasks use the new
+view. These fixtures use draft revisions, not activated/approved components.
+
+Evidence: `/private/tmp/brassclaw-monty-match-ibs-native.log` (3 actual PG/IBS
+cases), `...-match-snapshot-native.log` (10 actual PG matching/choice cases),
+`...-match-engine-lints.log` (strict Engine all-targets, skills-db) and
+`...-match-composition-lints.log` (strict affected Composition library/test).
+All passed with Rust 1.98; checks ran serially in background screen. Native
+fixture initialization failures now fail the former Docker-skip intent tests.
+The CI gate includes that actual native target. No original-seven assertion
+changed; those seven runtime failures remain unresolved pending ordinary global
+owner/approved-catalogue/dispatch-resource wiring. Immutable active generation,
+trusted review producers, actual artifacts and durable invocation/reconciliation
+remain prerequisites; these selection APIs do not establish them.

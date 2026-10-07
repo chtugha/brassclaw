@@ -113,7 +113,7 @@ One row per `(scope, input_text, input_class, component_id)`:
 - `InputClass` (`i16`): `Word=1`, `Partial=2`, `Sentence=3`, `KeywordFallback=4` (class 4 is
   created by the retrieval keyword-fallback only — never by the classifier).
 - `IntentScope { tenant_id, user_id, agent_id, project_id }` (feature-gated).
-- `IntentCandidate { row_id, component_id, component_class_code, input_class, score, class_label }`.
+- `IntentCandidate { row_id, component_id, component_class_code, input_class, score, class_label, step_link }`.
 - `IntentResolution` (serde `tag="type"`): `Match { component_id, component_class_code,
   step_link: Option<String>, component_name: String }` | `Disambiguation { candidates:
   Vec<IntentCandidate> }` | `NoMatch`. (The legacy `DbLessFallback` variant was removed in
@@ -150,14 +150,24 @@ One row per `(scope, input_text, input_class, component_id)`:
    reborn_actions a ON … WHERE <scope> AND input_text = $q AND input_class = ANY($order)
    ORDER BY CASE input_class … END, score DESC LIMIT 30`.
    - Empty → `NoMatch`.
-   - Deduplicate by `component_id` (keep highest-score). Stop when `top_score - score >
-     DISAMBIGUATION_SPREAD` (2).
+   - Current lookup ranks by exact text, class preference, descending score and
+     row UUID. Deduplicate by `(component_id, component_class_code, step_link)`
+     before the candidate limit; separate workflows of one Recipe remain
+     ambiguous. Apply `top_score - score <= DISAMBIGUATION_SPREAD` (2) to every
+     distinct workflow, including later class groups after a low-score row.
+     Return at most three eligible workflows. Template `%` is the only wildcard;
+     `_`, backslash and the SQL escape character are literal text. This legacy
+     selection is not yet an immutable active-catalogue generation.
    - One candidate → `Match { component_id, component_class_code, step_link (rows[0].col 5),
      component_name (rows[0].col 6) }` and atomically increment its score. Multiple →
      `Disambiguation(candidates)` (≤3).
 4. **Score increment** (PERF-03, atomic): `UPDATE … SET score = LEAST(score + 1, 100)
    RETURNING score` — no SELECT-then-UPDATE race. Rate-limited in-process (SEC-05): ≤50
-   increments per scope per hour (token bucket keyed by the 4-part scope).
+   increments per scope per hour (bucket keyed by the exact 4-part tuple).
+   Both the update and the exhausted-bucket read filter the full scope. The
+   process cache retains at most 4096 live scope buckets and reclaims expired
+   entries on new-scope admission. Exhaustion skips score telemetry and preserves
+   the actual match; it never grants a Tool or limits task/token consumption.
 5. **Host contract** (`handle_resolve_intent` → Monty): `host.resolve_intent(user_input)`
    returns JSON —
    `match`: `{status:"match", component_id, component_class_code, step_link, component_name}`;
@@ -166,13 +176,14 @@ One row per `(scope, input_text, input_class, component_id)`:
    error}`. No pool / non-`skills-db` build → `{status:"no_match"}`. Monty dispatches: `match`
    (with `step_link`) → `host.compose_orchestrator`; `disambiguation` → surface; `no_match` →
    Non-Matching-Mode.
-6. **Disambiguation choice** (`record_disambiguation_choice`): Monty surfaces a
-   `role:"disambiguation"` message with clickable candidates; the user's selection sends
-   `{disambiguation_choice: component_id}`, which records the choice (atomic score increment on
-   the chosen row) and returns a `Match` with `step_link: None` (FINDING A — the caller
-   re-fetches the recipe row for its `step_link`; the full IBS path runs on the next turn when
-   the user's text matches the intent directly) so future identical queries trend toward an
-   unambiguous `Match`.
+6. **Disambiguation choice** (`record_disambiguation_choice`): validate the exact
+   row UUID, component UUID/class and all four existing scope fields against the
+   stored row. Keep that row locked through scoring and commit, then return its
+   actual `step_link`, `input_text` and `is_template`. Missing/mismatched choices
+   fail before scoring. Candidates expose `row_id` and `step_link`; a component
+   UUID alone cannot select among workflows. No re-fetch of latest is authorized
+   by this result. Retained v3 selection/resumption still requires the complete
+   approved generation and snapshot contract.
 7. **Seeding** (`seed_intent_input`): `INSERT … ON CONFLICT DO UPDATE` (idempotent). Called
    from `retrieval_lookup_impl.rs` (auto-seeding on component validation) +
    `pg_intent_inputs_store.rs` (the WebUI intent-input store). Carries `step_link` for Recipe
@@ -239,7 +250,7 @@ security-scoped LEFT JOIN: a unique high-score row → `Match(component_id, clas
 step_link, component_name)` (a recipe when class 21; `step_link` drives variant-aware
 composition via `host.compose_orchestrator`); several rows within a 2-point spread →
 `Disambiguation(≤3 candidates)` surfaced to the user, whose choice is recorded and scored (and
-returns a `Match` with `step_link: None` — the caller re-fetches); nothing → `NoMatch` →
+returns the actual selected template and `step_link` after validating the stored row); nothing → `NoMatch` →
 keyword UNION ALL fallback / Non-Matching-Mode. Monty calls `host.resolve_intent(user_input)`
 and dispatches on the JSON status. Scores are atomic (`LEAST(score+1,100)`), capped at 100,
 rate-limited to 50/scope/hour; `learned_llm` rows are flagged for review. Auto-seeding runs on

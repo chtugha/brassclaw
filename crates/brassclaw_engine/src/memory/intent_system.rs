@@ -63,7 +63,7 @@ use uuid::Uuid;
 
 /// Per-scope increment state tracked in a process-local token bucket.
 ///
-/// Bucket key is the 4-part scope string (`tenant/user/agent/project`) so
+/// Bucket key is the exact 4-part scope tuple so
 /// the limit applies to the whole scope, not just a single row (spec §6.1
 /// SEC-05: "50 increments per scope per hour").
 #[cfg(feature = "skills-db")]
@@ -74,22 +74,16 @@ struct IncrementBucket {
     window_start: Instant,
 }
 
-/// Build the string key for a scope. Cheap: one heap alloc per call.
-#[cfg(feature = "skills-db")]
-fn scope_bucket_key(scope: &IntentScope) -> String {
-    format!(
-        "{}/{}/{}/{}",
-        scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id
-    )
-}
-
 /// Global in-process token-bucket map (scope_key → bucket).
 ///
 /// `Option` wrapper means `None` = uninitialised; `HashMap::new()` is created
-/// on first use via `get_or_insert_with`.  Entries whose window has expired
-/// are evicted on the next access for that scope to prevent unbounded growth.
+/// on first use via `get_or_insert_with`. New scopes reclaim all expired
+/// entries. Capacity exhaustion skips scoring; it does not reject a match.
 #[cfg(feature = "skills-db")]
-static SCORE_RATE_BUCKETS: Mutex<Option<HashMap<String, IncrementBucket>>> = Mutex::new(None);
+static SCORE_RATE_BUCKETS: Mutex<Option<HashMap<IntentScope, IncrementBucket>>> = Mutex::new(None);
+
+#[cfg(feature = "skills-db")]
+const MAX_SCORE_RATE_SCOPES: usize = 4096;
 
 // ---------------------------------------------------------------------------
 // Public types — always compiled
@@ -158,6 +152,10 @@ pub struct IntentCandidate {
     pub score: i32,
     /// Short human-readable label for disambiguation UX.
     pub class_label: String,
+    /// Preserve distinct workflows of one Recipe in disambiguation. The row ID
+    /// identifies the choice; a step link alone is not an immutable variant ID.
+    #[serde(default)]
+    pub step_link: Option<String>,
 }
 
 /// Result of an intent resolution call.
@@ -309,6 +307,10 @@ pub enum IntentSystemError {
     Db(String),
     #[error("intent: invalid input class {0}")]
     InvalidClass(i16),
+    #[error("intent choice does not identify a matching row in this scope")]
+    InvalidChoice,
+    #[error("intent selection requires repeatable-read or serializable isolation")]
+    SnapshotIsolation,
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +319,7 @@ pub enum IntentSystemError {
 
 /// Scope for intent-system queries — must match the `reborn_skills` scope tuple.
 #[cfg(feature = "skills-db")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IntentScope {
     pub tenant_id: String,
     pub user_id: String,
@@ -337,66 +339,93 @@ pub async fn resolve_intent(
     scope: &IntentScope,
     query: &str,
 ) -> Result<IntentResolution, IntentSystemError> {
-    use tokio_postgres::types::ToSql;
-    use tracing::debug;
-
-    let query_class = classify_query(query);
-    let order = match_order(query_class);
-    // Vec<i16> implements ToSql for `= ANY($n)` in tokio_postgres.
-    let order_vec: Vec<i16> = order.to_vec();
-
-    // PERF-02: single query with CASE WHEN ordering.
-    // The query scans rows for the exact input_text across all three preferred
-    // classes, ordered by preference position, then score DESC.
     let client = pool
         .get()
         .await
         .map_err(|e| IntentSystemError::Db(e.to_string()))?;
+    let (resolution, selected) = lookup_intent(&**client, scope, query).await?;
+    if let Some(row_id) = selected {
+        increment_score(&**client, scope, row_id).await?;
+    }
+    Ok(resolution)
+}
+
+/// Read matching from the caller's coherent catalogue view. This prepares only
+/// selection: it does not commit, increment scores, approve components, dispatch
+/// Tools or replace errors with No-Match. Mutable legacy intent rows do not yet
+/// establish an activated generation; the caller must pin the exact Recipe,
+/// embedded variant/layout, dependencies and review evidence in this same view.
+#[cfg(feature = "skills-db")]
+pub async fn resolve_intent_in_transaction(
+    tx: &tokio_postgres::Transaction<'_>,
+    scope: &IntentScope,
+    query: &str,
+) -> Result<IntentResolution, IntentSystemError> {
+    let coherent: bool = tx
+        .query_one(
+            "SELECT current_setting('transaction_isolation') IN ('repeatable read','serializable')",
+            &[],
+        )
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?
+        .get(0);
+    if !coherent {
+        return Err(IntentSystemError::SnapshotIsolation);
+    }
+    Ok(lookup_intent(tx, scope, query).await?.0)
+}
+
+#[cfg(feature = "skills-db")]
+async fn lookup_intent<C: tokio_postgres::GenericClient>(
+    client: &C,
+    scope: &IntentScope,
+    query: &str,
+) -> Result<(IntentResolution, Option<Uuid>), IntentSystemError> {
+    use tokio_postgres::types::ToSql;
+    use tracing::debug;
+    let query_class = classify_query(query);
+    let order = match_order(query_class);
+    let order_vec: Vec<i16> = order.to_vec();
 
     let rows = client
         .query(
-            // Phase D (FIND-P10-01/P10-05): append `step_link` (index 5) and
-            // `component_name` (index 6) AFTER the original 5 columns so every
-            // existing row.get(0..4) site is unaffected. The reborn_actions
-            // LEFT JOIN (for component_name / ActionShortCircuit) was removed in
-            // HI.1 — actions now route through compose_action_program.
-            "SELECT ii.id, ii.component_id, ii.component_class_code,
-                    ii.input_class, ii.score,
-                    ii.step_link,
-                    ii.input_text,
-                    ii.is_template
-             FROM reborn_intent_inputs ii
-             WHERE ii.tenant_id   = $1
-               AND ii.user_id     = $2
-               AND ii.agent_id    = $3
-               AND ii.project_id  = $4
-               AND ii.input_class = ANY($6)
-               AND (
-                 ii.input_text = $5
-                 OR (
-                     ii.is_template = true
-                     AND ii.template_prefix != ''
-                     AND $5 LIKE (ii.template_prefix || '%')
-                     AND $5 LIKE ii.input_text
+            // Limit distinct workflows only after ranking and spread filtering.
+            // Limiting raw template rows can hide an equally eligible Recipe.
+            "WITH matching AS (
+               SELECT ii.*,
+                 CASE WHEN ii.input_text = $5 THEN 0 ELSE 1 END AS text_rank,
+                 CASE ii.input_class WHEN $7 THEN 0 WHEN $8 THEN 1
+                   WHEN $9 THEN 2 ELSE 3 END AS class_rank
+               FROM reborn_intent_inputs ii
+               WHERE ii.tenant_id = $1 AND ii.user_id = $2
+                 AND ii.agent_id = $3 AND ii.project_id = $4
+                 AND ii.input_class = ANY($6)
+                 AND (
+                   ii.input_text = $5
+                   OR (ii.is_template = true AND ii.template_prefix != ''
+                       AND left($5, length(ii.template_prefix)) = ii.template_prefix
+                       AND $5 LIKE replace(replace(ii.input_text, '!', '!!'), '_', '!_') ESCAPE '!')
+                   OR (ii.is_template = true AND ii.template_prefix = ''
+                       AND ii.template_suffix != ''
+                       AND right($5, length(ii.template_suffix)) = ii.template_suffix
+                       AND $5 LIKE replace(replace(ii.input_text, '!', '!!'), '_', '!_') ESCAPE '!')
                  )
-                 OR (
-                     ii.is_template = true
-                     AND ii.template_prefix = ''
-                     AND ii.template_suffix != ''
-                     AND reverse($5) LIKE (reverse(ii.template_suffix) || '%')
-                     AND $5 LIKE ii.input_text
-                 )
-               )
-             ORDER BY
-               CASE WHEN ii.input_text = $5 THEN 0 ELSE 1 END,
-               CASE ii.input_class
-                 WHEN $7 THEN 0
-                 WHEN $8 THEN 1
-                 WHEN $9 THEN 2
-                 ELSE 3
-               END,
-               ii.score DESC
-             LIMIT 30",
+             ), ranked AS (
+               SELECT matching.*, row_number() OVER (
+                 PARTITION BY component_id, component_class_code, step_link
+                 ORDER BY text_rank, class_rank, score DESC, id
+               ) AS workflow_rank FROM matching
+             ), distinct_workflows AS (
+               SELECT ranked.*, first_value(score) OVER (
+                 ORDER BY text_rank, class_rank, score DESC, id
+               ) AS top_score FROM ranked WHERE workflow_rank = 1
+             )
+             SELECT id, component_id, component_class_code, input_class, score,
+                    step_link, input_text, is_template
+             FROM distinct_workflows
+             WHERE top_score - score <= $10
+             ORDER BY text_rank, class_rank, score DESC, id
+             LIMIT $11",
             &[
                 &scope.tenant_id as &(dyn ToSql + Sync),
                 &scope.user_id,
@@ -407,6 +436,8 @@ pub async fn resolve_intent(
                 &order[0],
                 &order[1],
                 &order[2],
+                &DISAMBIGUATION_SPREAD,
+                &(MAX_DISAMBIGUATION_CANDIDATES as i64),
             ],
         )
         .await
@@ -414,37 +445,27 @@ pub async fn resolve_intent(
 
     if rows.is_empty() {
         debug!(query = %query, class = %query_class, "intent: no match");
-        return Ok(IntentResolution::NoMatch);
+        return Ok((IntentResolution::NoMatch, None));
     }
 
-    let top_score: i32 = rows[0].get::<_, i32>(4);
-    // Deduplicate by component_id, keeping the first (highest-score) occurrence.
-    let mut seen_components = std::collections::HashSet::<Uuid>::new();
-    let mut candidates: Vec<IntentCandidate> = Vec::new();
-
-    for row in &rows {
-        let score: i32 = row.get(4);
-        if top_score - score > DISAMBIGUATION_SPREAD {
-            break;
-        }
-        let component_id: Uuid = row.get(1);
-        if seen_components.insert(component_id) {
-            let component_class_code: i32 = row.get(2);
-            candidates.push(IntentCandidate {
+    let candidates: Vec<IntentCandidate> = rows
+        .iter()
+        .map(|row| {
+            let component_class_code = row.get(2);
+            IntentCandidate {
                 row_id: row.get(0),
-                component_id,
+                component_id: row.get(1),
                 component_class_code,
-                input_class: row.get::<_, i16>(3),
-                score,
+                input_class: row.get(3),
+                score: row.get(4),
                 class_label: class_label(component_class_code),
-            });
-        }
-    }
+                step_link: row.get(5),
+            }
+        })
+        .collect();
 
     if candidates.len() == 1 {
         let c = &candidates[0];
-        // Atomic score increment (PERF-03); capped at SCORE_CAP (SEC-05).
-        increment_score(&client, scope, c.row_id).await?;
         debug!(
             component_id = %c.component_id,
             score = c.score,
@@ -454,13 +475,16 @@ pub async fn resolve_intent(
         // top row (FIND-P10-01). `c` corresponds to rows[0] (highest score,
         // first dedup-inserted). Phase M.3 adds input_text/is_template so the
         // caller can run `extract_template_slots` on template matches (§0.17.1).
-        return Ok(IntentResolution::Match {
-            component_id: c.component_id,
-            component_class_code: c.component_class_code,
-            step_link: rows[0].get::<_, Option<String>>(5),
-            input_text: rows[0].get::<_, String>(6),
-            is_template: rows[0].get::<_, bool>(7),
-        });
+        return Ok((
+            IntentResolution::Match {
+                component_id: c.component_id,
+                component_class_code: c.component_class_code,
+                step_link: rows[0].get::<_, Option<String>>(5),
+                input_text: rows[0].get::<_, String>(6),
+                is_template: rows[0].get::<_, bool>(7),
+            },
+            Some(c.row_id),
+        ));
     }
 
     // Multiple candidates within spread → disambiguation (Q11).
@@ -469,12 +493,7 @@ pub async fn resolve_intent(
         query = %query,
         "intent: disambiguation required"
     );
-    Ok(IntentResolution::Disambiguation {
-        candidates: candidates
-            .into_iter()
-            .take(MAX_DISAMBIGUATION_CANDIDATES)
-            .collect(),
-    })
+    Ok((IntentResolution::Disambiguation { candidates }, None))
 }
 
 /// Record the user's disambiguation choice: atomically increment the chosen
@@ -488,30 +507,51 @@ pub async fn record_disambiguation_choice(
     component_class_code: i32,
 ) -> Result<IntentResolution, IntentSystemError> {
     use tracing::debug;
-    let client = pool
+    let mut client = pool
         .get()
         .await
         .map_err(|e| IntentSystemError::Db(e.to_string()))?;
-    increment_score(&client, scope, row_id).await?;
-    debug!(
-        row_id = %row_id,
-        component_id = %component_id,
-        "intent: disambiguation choice recorded"
-    );
-    // FINDING A: a disambiguation click confirms component_id only — the caller
-    // re-fetches the recipe row for its step_link, so step_link: None instructs
-    // the legacy fetch_component_by_id path (acceptable post-disambiguation; the
-    // full IBS path runs on the next turn when the user's text matches the
-    // input_text: "" + is_template: false — the caller re-fetches the actual
-    // intent row on the next turn, so no template extraction runs on a
-    // disambiguation choice (Phase M.3).
-    Ok(IntentResolution::Match {
-        component_id,
-        component_class_code,
-        step_link: None,
-        input_text: String::new(),
-        is_template: false,
-    })
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?;
+    // Hold the selected row against reseeding/deletion through the score write.
+    // Caller-provided IDs never substitute for the actual selected workflow.
+    let row = tx
+        .query_opt(
+            "SELECT component_id, component_class_code, step_link, input_text, is_template
+         FROM reborn_intent_inputs
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3
+           AND agent_id = $4 AND project_id = $5
+           AND component_id = $6 AND component_class_code = $7
+         FOR UPDATE",
+            &[
+                &row_id,
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                &component_id,
+                &component_class_code,
+            ],
+        )
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?
+        .ok_or(IntentSystemError::InvalidChoice)?;
+    increment_score(&*tx, scope, row_id).await?;
+    let result = IntentResolution::Match {
+        component_id: row.get(0),
+        component_class_code: row.get(1),
+        step_link: row.get(2),
+        input_text: row.get(3),
+        is_template: row.get(4),
+    };
+    tx.commit()
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?;
+    debug!(row_id = %row_id, component_id = %component_id,
+        "intent: disambiguation choice recorded");
+    Ok(result)
 }
 
 /// Seed (or update) an intent input row, typically called on component validation
@@ -634,45 +674,45 @@ pub async fn purge_component_inputs(
 ///
 /// Rate-limited to `SCORE_RATE_LIMIT_PER_HOUR` increments **per scope** per
 /// hour (spec §6.1 SEC-05 token-bucket, in-process).  The bucket key is the
-/// 4-part scope string so that the limit applies across all rows within a
+/// exact 4-part tuple so that the limit applies across all rows within a
 /// tenant/user/agent/project tuple, not just a single row.
 ///
 /// Returns the updated score.  If the rate limit is exhausted for this
 /// window, the DB update is skipped and the current score is returned.
 #[cfg(feature = "skills-db")]
-async fn increment_score(
-    client: &brassclaw_pg::PgClient,
+async fn increment_score<C: tokio_postgres::GenericClient>(
+    client: &C,
     scope: &IntentScope,
     row_id: Uuid,
 ) -> Result<i32, IntentSystemError> {
-    // Rate-limit check (SEC-05). Bucket key = scope (not row_id) so the
-    // limit caps total increments for the entire scope per hour.
-    // Expired entries are evicted on next access to prevent unbounded growth.
-    let key = scope_bucket_key(scope);
+    // This bounds only score telemetry, never task execution or token use.
     let allow = {
         let mut guard = SCORE_RATE_BUCKETS
             .lock()
             .map_err(|_| IntentSystemError::Db("rate-bucket lock poisoned".into()))?;
         let map = guard.get_or_insert_with(HashMap::new);
         let now = Instant::now();
-        // Check if the current entry exists and whether its window has expired.
-        let expired = map
-            .get(&key)
-            .map(|b| b.window_start.elapsed() >= Duration::from_secs(3600))
-            .unwrap_or(false);
-        if expired {
-            // Evict the stale entry; the `entry()` call below will insert fresh.
-            map.remove(&key);
+        let window = Duration::from_secs(3600);
+        if !map.contains_key(scope) {
+            map.retain(|_, bucket| now.duration_since(bucket.window_start) < window);
         }
-        let bucket = map.entry(key).or_insert(IncrementBucket {
-            count: 0,
-            window_start: now,
-        });
-        if bucket.count < SCORE_RATE_LIMIT_PER_HOUR {
-            bucket.count += 1;
-            true
-        } else {
+        if !map.contains_key(scope) && map.len() >= MAX_SCORE_RATE_SCOPES {
             false
+        } else {
+            let bucket = map.entry(scope.clone()).or_insert(IncrementBucket {
+                count: 0,
+                window_start: now,
+            });
+            if now.duration_since(bucket.window_start) >= window {
+                bucket.count = 0;
+                bucket.window_start = now;
+            }
+            if bucket.count < SCORE_RATE_LIMIT_PER_HOUR {
+                bucket.count += 1;
+                true
+            } else {
+                false
+            }
         }
     };
 
@@ -682,8 +722,15 @@ async fn increment_score(
         debug!(row_id = %row_id, "intent: score increment skipped (SEC-05 rate limit)");
         let row = client
             .query_one(
-                "SELECT score FROM reborn_intent_inputs WHERE id = $1",
-                &[&row_id],
+                "SELECT score FROM reborn_intent_inputs WHERE id = $1
+                 AND tenant_id = $2 AND user_id = $3 AND agent_id = $4 AND project_id = $5",
+                &[
+                    &row_id,
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                ],
             )
             .await
             .map_err(|e| IntentSystemError::Db(e.to_string()))?;
@@ -695,9 +742,17 @@ async fn increment_score(
             "UPDATE reborn_intent_inputs
              SET score      = LEAST(score + 1, $1),
                  updated_at = now()
-             WHERE id = $2
+             WHERE id = $2 AND tenant_id = $3 AND user_id = $4
+               AND agent_id = $5 AND project_id = $6
              RETURNING score",
-            &[&SCORE_CAP, &row_id],
+            &[
+                &SCORE_CAP,
+                &row_id,
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+            ],
         )
         .await
         .map_err(|e| IntentSystemError::Db(e.to_string()))?;

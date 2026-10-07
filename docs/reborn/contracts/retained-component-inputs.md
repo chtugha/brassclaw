@@ -197,3 +197,27 @@ separate lifecycle work. The mapping is trusted registration data, not evidence
 that two differently named primitives implement the same approved operation.
 The ordinary production policy/store cutover and artifact/ABI verification still
 need their acceptance; this source does not certify that cutover.
+
+
+## Matching and IBS in one database view
+
+`resolve_intent_in_transaction` reads intent matching in its caller's
+repeatable-read/serializable transaction, without committing or mutating score
+telemetry. Ordinary `resolve_intent` still increments the selected row. SQL and
+snapshot failures remain errors, never No-Match. This lookup does not establish
+an activated v3 catalogue or migrate legacy intent rows to approved generations.
+
+`compile_matched_retained_recipe` links that exact match to one embedded variant
+in the retained Recipe revision using its exact intent expression and step link.
+Absent/mismatched metadata, non-Recipe results and multiple compatible-looking
+variants are explicit errors. A shared link does not identify an input layout;
+the compiler must not choose the first variant or reread latest. It retains the
+existing variant, link, selected order and revision graph through actual IBS.
+Approval, activation and actual implementation checks remain separate gates.
+
+Legacy disambiguation now verifies the stored row UUID, component UUID/class and
+scope under a row lock, commits scoring, and returns the actual template/link.
+Ranking limits distinct workflows after deduplication/spread filtering, so many
+matching templates cannot hide a different workflow. Candidates carry row/link
+identity through the host/PKR JSON mapping. None of this authorizes a resume to
+rematch an already selected v3 task.
