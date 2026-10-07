@@ -2729,3 +2729,20 @@ remains unsupported; a stored includes column alone does not implement it.
 The original seven composition failures remain unresolved; ordinary runtime
 still constructs PersistentMontyDriver. These prerequisite cases do not certify
 the production global cutover or full v3 plan.
+
+### 2026-10-07 — Accept actual empty leaf-code include metadata
+
+Both retained preparation paths previously rejected every document carrying an
+`includes` field, including the persisted V069 default `[]`. They now share one
+leaf check that accepts an absent or explicitly empty array and a null dependency
+registry. A malformed include value, nonempty include list, declared dependency
+or non-null registry still fails explicitly before execution. This is schema
+compatibility for leaf code; it does not implement recursive code assembly or
+permit dropping nested dependencies. Exact source and typed data stay separate.
+
+The real PostgreSQL/IBS tests use the actual empty-list/null defaults for pure
+logic and Tool-calling code. Five cases passed, including actual global/child
+result handoff, invalid output fencing, rejected malformed/nonempty replacements
+and retained originals. Engine skills-db strict all-target lint passed. Evidence:
+`/private/tmp/brassclaw-monty-leaf-includes-{native,lints}.log`, Rust 1.98, serial
+Cargo in screen. The ordinary global cutover and original seven remain open.

@@ -44,7 +44,7 @@ fn draft(id: Uuid, class: i32, document: Value, dependencies: &[Uuid]) -> Compon
     .unwrap()
 }
 fn code(text: &str, input: &str) -> Value {
-    json!({"content":text,"input_contract":{
+    json!({"content":text,"includes":[],"dependency_registry":null,"input_contract":{
         (input):{"type":"string","required":true,"checks":[]}},"result_contract":{
         "type":"object","allow_extra_fields":false,"fields":{
             "text":{"type":"string","required":true}}}})
@@ -536,6 +536,32 @@ async fn malformed_or_missing_retained_binding_metadata_fails_before_execution()
             .await
             .is_err()
     );
+    // Real stored leaf defaults are accepted, but malformed/nonempty include
+    // metadata cannot be mistaken for a leaf and discarded during assembly.
+    for (previous, (includes, reason)) in (2..).zip([
+        (json!(null), "PythonCode includes must be an array"),
+        (json!({}), "PythonCode includes must be an array"),
+        (json!("[]"), "PythonCode includes must be an array"),
+        (
+            json!([Uuid::new_v4()]),
+            "nested PythonCode requires explicit retained assembly",
+        ),
+    ]) {
+        let mut document = code("result = {'text': inputs['text']}", "text");
+        document["includes"] = includes;
+        let replacement = store
+            .stage(&draft(first, 22, document, &[]), previous)
+            .await
+            .unwrap();
+        assert!(matches!(
+            prepare(&store, root, &[root_ref, replacement, second_ref]).await,
+            Err(RetainedInputError::Invalid(actual)) if actual == reason
+        ));
+    }
+    // Exact original selection remains executable after rejected replacements.
+    prepare(&store, root, &[root_ref, first_ref, second_ref])
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

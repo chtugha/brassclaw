@@ -381,3 +381,11 @@ workflow. The receipt expressly returns `catalogue_activated=false`. Actual
 trusted validation provenance, artifact identity, coherent activation, live
 kernel policy and ordinary global startup remain independent gates. The API
 cannot turn an arbitrary successful JSON report into trusted Q1 evidence.
+
+
+The retained leaf preparation paths accept the persisted PythonCode default
+`includes: []` and null dependency registry, as well as an omitted include field
+in a minimal immutable document. They reject malformed include types, nonempty
+includes, declared dependencies and non-null registry metadata before execution.
+An empty list declares no nested code; this compatibility change supplies no
+recursive assembler or permission to discard a declared dependency graph.

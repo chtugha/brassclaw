@@ -64,7 +64,7 @@ async fn prepared_binding_retains_exact_usage_and_checks_actual_arguments_withou
     let tool_document = json!({"capability_id":"post_reply", "callable":"host.post_reply", "input_contract":inputs});
     let descriptor_document = json!({"name":"bind-post-reply", "binding":{"format":"tool-skill-binding/1",
         "tool_uuid":tool,"callable":"host.post_reply","capability_id":"post_reply"}});
-    let code_document = json!({"content":"result = host.post_reply(answer=inputs['answer'])", "input_contract":inputs, "result_contract":result});
+    let code_document = json!({"content":"result = host.post_reply(answer=inputs['answer'])", "includes":[], "dependency_registry":null, "input_contract":inputs, "result_contract":result});
     let recipe_document = json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E",
         "intent_examples":["reply %"],"variable_patterns":[{"name":"answer","pattern":null,"description":null}]}],
         "step_descriptions":[{"desc_idx":0,"label":"reply","yaml_source":"","steps":[
@@ -261,6 +261,18 @@ async fn prepared_binding_retains_exact_usage_and_checks_actual_arguments_withou
         vec![],
         "PythonCode contracts differ from its usage association",
     ));
+    for (includes, reason) in [
+        (json!(null), "PythonCode includes must be an array"),
+        (json!({}), "PythonCode includes must be an array"),
+        (
+            json!([Uuid::new_v4()]),
+            "nested PythonCode requires explicit retained assembly",
+        ),
+    ] {
+        let mut document = code_document.clone();
+        document["includes"] = includes;
+        changes.push((code, 22, document, vec![], reason));
+    }
     let mut tool_contract = tool_document.clone();
     tool_contract["input_contract"]["answer"]["type"] = json!("integer");
     let incompatible = store

@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
-    component_revision::REVISION_LIMITS,
+    component_revision::{REVISION_LIMITS, RetainedComponentRevision},
     value_contract::{ContractError, InputContract, ValueContract, validate_data_bounds},
 };
 use serde_json::Value;
@@ -85,6 +85,34 @@ impl RetainedUnboundProgram {
     }
 }
 pub(super) struct RetainedComponentResolver<'a>(pub(super) &'a RetainedRecipeInstruction);
+
+/// The persisted PythonCode schema always carries `includes: []` for a leaf.
+/// Accept that explicit empty list without confusing it with nested assembly.
+/// Nonempty includes/dependencies still require the dedicated assembly path;
+/// malformed metadata cannot silently erase the intended executable graph.
+pub(super) fn require_leaf_python(
+    component: &RetainedComponentRevision,
+) -> Result<(), &'static str> {
+    let draft = component.draft();
+    let includes = match draft.document().get("includes") {
+        None => false,
+        Some(value) => !value
+            .as_array()
+            .ok_or("PythonCode includes must be an array")?
+            .is_empty(),
+    };
+    if !draft.dependencies().is_empty()
+        || includes
+        || draft
+            .document()
+            .get("dependency_registry")
+            .is_some_and(|value| !value.is_null())
+    {
+        return Err("nested PythonCode requires explicit retained assembly");
+    }
+    Ok(())
+}
+
 impl ComponentResolver for RetainedComponentResolver<'_> {
     fn resolve(&self, id: Uuid) -> Option<ResolvedComponent> {
         let component = self.0.snapshot().revisions().get(&id)?;
@@ -129,18 +157,7 @@ pub fn prepare_retained_unbound_program(
     }
     for step in &instruction.ordered().instruction().orchestrator_steps {
         let component = &instruction.snapshot().revisions()[&step.include[0]];
-        if !component.draft().dependencies().is_empty()
-            || component.draft().document().get("includes").is_some()
-            || component
-                .draft()
-                .document()
-                .get("dependency_registry")
-                .is_some_and(|v| !v.is_null())
-        {
-            return Err(invalid(
-                "nested PythonCode requires explicit retained assembly",
-            ));
-        }
+        require_leaf_python(component).map_err(invalid)?;
     }
     let program = compose_typed_program(
         instruction.ordered(),

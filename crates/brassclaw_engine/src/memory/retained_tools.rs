@@ -20,7 +20,7 @@ use super::{
     composition::{ComposedProgram, compose_typed_program},
     retained_inputs::{
         RetainedComponentResolver, RetainedInputError, RetainedRecipeInputs,
-        prepare_retained_inputs,
+        prepare_retained_inputs, require_leaf_python,
     },
     retained_instruction::RetainedRecipeInstruction,
 };
@@ -129,18 +129,7 @@ pub fn prepare_retained_tool_program(
     .map_err(RetainedInputError::from)?;
     for step in &instruction.ordered().instruction().orchestrator_steps {
         let code = &graph[&step.include[0]];
-        if !code.draft().dependencies().is_empty()
-            || code.draft().document().get("includes").is_some()
-            || code
-                .draft()
-                .document()
-                .get("dependency_registry")
-                .is_some_and(|v| !v.is_null())
-        {
-            return Err(invalid(
-                "nested PythonCode requires explicit retained assembly",
-            ));
-        }
+        require_leaf_python(code).map_err(invalid)?;
     }
     let rust_steps: BTreeMap<_, _> = instruction
         .ordered()
