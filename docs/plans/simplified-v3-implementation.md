@@ -3074,3 +3074,24 @@ Manifest: `tests/monty_control/Cargo.toml`; logs:
 `/private/tmp/brassclaw-admission-immutability-native.log`,
 `...-review-final.log` and `...-lints.log`. The original seven ordinary runtime
 failures remain open; their unchanged legacy-driver caller was not rerun.
+
+### Bounded queue cancellation and fatal admission evidence (2026-10-08)
+
+The service now drains admitted transport inputs into a FIFO independently of
+free VM worker slots. Owned credits preserve one configured capacity across
+channel, FIFO and uncertain Admit. Cancellation removes an unissued input even
+behind an uncancelled entry, returning actual task_cancelled with no VM account.
+Started work still waits for its real host results and worker containment. Fatal
+exit fences queued callers before those waits and retains their original inputs
+and ports separately from uncertain admission and actual task evidence. Known
+pre-VM backpressure rejections do not accumulate lifetime evidence.
+
+All ten native service cases and sixteen PostgreSQL/model/factory caller cases
+passed, including new occupied-worker cancellation/capacity and fatal-queue
+evidence cases. Isolated all-target strict lint passed without warnings. Checks
+ran serially in screen, with Rust 1.98, low-debug profiles and mandatory disk
+checks/cleanups; manifest tests/monty_control/Cargo.toml. Logs:
+/private/tmp/brassclaw-queued-admission-{native,model-native,lints}.log. The
+ordinary runtime still needs trusted catalogue/root producers and the coordinated
+global startup cutover; the original seven failures are not resolved by these
+transport checks and were not rerun.

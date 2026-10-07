@@ -99,6 +99,15 @@ reopened, and evidence cannot be deleted/truncated. The migration is repeatable
 and preserves existing rows. These guards complement private-address CAS;
 they neither establish worker quiescence nor grant Tool permission.
 
+The service's admission credits cover the channel, waiting FIFO and uncertain
+Admit exchange together. A cancellation behind another queued input is processed
+without waiting for a free VM worker. Its actual receipt has no task account;
+it never crossed Admit. An admitted task still requires real worker/host
+quiescence. Fatal exit fences queued callers before waiting for unrelated started
+host futures and retains their original inputs/ports separately from uncertain
+Admit and actual task evidence. These records confer no replay permission or
+durable settlement acknowledgement.
+
 The ordinary factory still needs the real approved-catalogue and protected-root
 owners, retained implementation identity, shared live resource wiring and durable
 continuation/recovery supervision. The original seven composition failures

@@ -6,7 +6,7 @@
 //! admitted work and every started future until its actual result is observed.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     panic::AssertUnwindSafe,
     path::Path,
     sync::{
@@ -21,7 +21,7 @@ use futures::{FutureExt, StreamExt, future::BoxFuture, stream::FuturesUnordered}
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
-    sync::{Notify, mpsc, watch},
+    sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc, watch},
     task::JoinHandle,
 };
 
@@ -243,10 +243,14 @@ impl Drop for TaskTicket {
 struct Admission {
     input: Value,
     control: TaskControl,
+    // Covers the channel, the local FIFO and an uncertain Admit exchange.
+    // Draining the channel must not increase the configured queue capacity.
+    _credit: OwnedSemaphorePermit,
 }
 #[derive(Clone)]
 pub struct ServiceClient {
     admissions: mpsc::Sender<Admission>,
+    admission_credits: Arc<Semaphore>,
     changed: Arc<Notify>,
     closed: Arc<AtomicBool>,
     values: crate::VmBounds,
@@ -260,6 +264,7 @@ impl ServiceClient {
     /// performs shutdown/cancellation and observes actual started host futures.
     pub fn close_admission(&self) {
         self.closed.store(true, Ordering::Release);
+        self.admission_credits.close();
         self.changed.notify_one();
     }
 
@@ -354,6 +359,14 @@ impl ServiceClient {
         if self.heap_observation().status.pending_reduction {
             return Err(ServiceFailure::Backpressure);
         }
+        let credit =
+            self.admission_credits
+                .clone()
+                .try_acquire_owned()
+                .map_err(|error| match error {
+                    tokio::sync::TryAcquireError::Closed => ServiceFailure::Closed,
+                    tokio::sync::TryAcquireError::NoPermits => ServiceFailure::Backpressure,
+                })?;
         if [
             &input.conversation_id,
             &input.message_id,
@@ -408,6 +421,7 @@ impl ServiceClient {
             .try_send(Admission {
                 input,
                 control: control.clone(),
+                _credit: credit,
             })
             .map_err(|error| match error {
                 mpsc::error::TrySendError::Full(_) => ServiceFailure::Backpressure,
@@ -435,6 +449,9 @@ pub struct ServiceExit {
     pub transport: Result<ActorExit, ServiceFailure>,
     pub tasks: Vec<TaskEvidence>,
     pub pending_admission: Option<AdmissionEvidence>,
+    /// Original work that never crossed an Admit boundary. Failure is explicit;
+    /// retaining it does not authorize replay or acknowledge durable settlement.
+    pub queued_admissions: Vec<AdmissionEvidence>,
     pub failed_exchanges: Vec<TransportReceipt>,
     pub rejected_commands: Vec<WorkerCommand>,
     pub transport_inbox: crate::transport_actor::CompletionInbox,
@@ -487,6 +504,7 @@ impl ServiceOwner {
         let worker_process_id = owner.worker_process_id();
         // start_ready proves every live worker is parked before returning.
         let (admissions, rx) = mpsc::channel(queue_capacity);
+        let admission_credits = Arc::new(Semaphore::new(queue_capacity));
         let (settings, settings_rx) = mpsc::channel(8);
         let (heap, observed_heap) = watch::channel(HeapObservation::from(&ready));
         let (shutdown, stop) = watch::channel(false);
@@ -494,6 +512,7 @@ impl ServiceOwner {
         let closed = Arc::new(AtomicBool::new(false));
         let client = ServiceClient {
             admissions,
+            admission_credits: admission_credits.clone(),
             changed: changed.clone(),
             closed: closed.clone(),
             values,
@@ -510,6 +529,7 @@ impl ServiceOwner {
             changed,
             closed,
             ShutdownBounds {
+                admission_credits,
                 workers,
                 boundary_timeout: process.response_timeout,
                 settings: SettingsInbox {
@@ -567,6 +587,7 @@ struct PortResult {
 }
 type Calls = FuturesUnordered<BoxFuture<'static, PortResult>>;
 struct ShutdownBounds {
+    admission_credits: Arc<Semaphore>,
     workers: u32,
     boundary_timeout: Duration,
     settings: SettingsInbox,
@@ -680,17 +701,38 @@ async fn run(
     let mut shutting_down = false;
     let mut exchanges = ExchangeEvidence::default();
     let mut pending_admission: Option<Admission> = None;
+    let mut queued = VecDeque::<Admission>::new();
+    let mut queued_evidence = Vec::new();
     let mut heap_inspection: Option<tokio::time::Instant> = None;
     let result = async {
         loop {
+            // These inputs have never entered the VM. Cancellation can therefore
+            // acknowledge no VM account without waiting for a free worker or
+            // an unrelated external host future. FIFO survivors retain order.
+            queued.retain(|admission| {
+                if !admission.control.0.cancelled.load(Ordering::Acquire) { return true; }
+                admission.control.0.ports.fence();
+                admission.control.0.result.send_replace(Some(Ok(Arc::new(TaskReceipt {
+                    outcome: TaskOutcome::Failed { reason_kind: "task_cancelled".into() },
+                    withheld: Vec::new(), accounting: None,
+                }))));
+                false
+            });
             if !shutting_down && transport.stop_kind().map_err(|_| ServiceFailure::Transport)?.is_some() {
                 return Err(ServiceFailure::Transport);
             }
             if *stop.borrow_and_update() && !shutting_down {
                 shutting_down = true;
                 closed.store(true, Ordering::Release);
+                shutdown.admission_credits.close();
                 admissions.close();
                 for task in tasks.values() { task.control.cancel(); }
+            }
+            if shutting_down {
+                while let Ok(admission) = admissions.try_recv() { queued.push_back(admission); }
+                for admission in queued.drain(..) {
+                    queued_evidence.push(reject(admission, ServiceFailure::Closed));
+                }
             }
             if snapshot.heap.pending_reduction && !shutting_down {
                 let now = tokio::time::Instant::now();
@@ -882,9 +924,6 @@ async fn run(
             if shutting_down && tasks.is_empty() && calls.is_empty() {
                 // Pending admissions never ran. Their callers get an explicit
                 // stopped result instead of an invented successful task.
-                while let Ok(admission) = admissions.try_recv() {
-                    reject(admission, ServiceFailure::Closed);
-                }
                 snapshot = exchange(&transport, &mut exchanges, WorkerCommand::BeginShutdown).await?;
                 for _ in 0..shutdown.workers {
                     settle_shutdown_boundary(&transport, &mut exchanges, &mut snapshot,
@@ -900,6 +939,25 @@ async fn run(
 
             let available = snapshot.work_waits.iter().find(|(worker, _)|
                 !tasks.values().any(|task| task.worker == *worker)).copied();
+            if !shutting_down && let Some((worker, key)) = available
+                && let Some(admission) = queued.pop_front() {
+                if snapshot.heap.pending_reduction {
+                    // Known pre-VM rejection is returned to the original caller;
+                    // do not accumulate these safe, unissued inputs indefinitely.
+                    drop(reject(admission, ServiceFailure::Backpressure));
+                    continue;
+                }
+                pending_admission = Some(admission);
+                snapshot = exchange(&transport, &mut exchanges, WorkerCommand::Admit {
+                    key, task: pending_admission.as_ref().expect("retained admission").input.clone(),
+                }).await?;
+                let task = snapshot.admitted_task.ok_or(ServiceFailure::Protocol)?;
+                if tasks.contains_key(&task) { return Err(ServiceFailure::Protocol); }
+                let admission = pending_admission.take().expect("retained admission");
+                tasks.insert(task, TaskRecord { worker, control: admission.control,
+                    cancellation_sent: false, outcome: None, retained: Vec::new(), withheld: Vec::new() });
+                continue;
+            }
             tokio::select! {
                 _ = transport.stopped(), if !shutting_down => {
                     return Err(ServiceFailure::Transport);
@@ -910,36 +968,15 @@ async fn run(
                 // a healthy idle root awaits events without polling for tasks.
                 _ = tokio::time::sleep_until(heap_inspection.unwrap_or_else(tokio::time::Instant::now)),
                     if heap_inspection.is_some() && !shutting_down => {}
-                admission = admissions.recv(), if !shutting_down && available.is_some() => {
+                admission = admissions.recv(), if !shutting_down => {
                     let Some(admission) = admission else {
                         shutting_down = true;
                         closed.store(true, Ordering::Release);
+                        shutdown.admission_credits.close();
                         for task in tasks.values() { task.control.cancel(); }
                         continue;
                     };
-                    if admission.control.0.cancelled.load(Ordering::Acquire) {
-                        admission.control.0.ports.fence();
-                        admission.control.0.result.send_replace(Some(Ok(Arc::new(TaskReceipt {
-                            outcome: TaskOutcome::Failed { reason_kind: "task_cancelled".into() },
-                            withheld: Vec::new(),
-                            accounting: None,
-                        }))));
-                        continue;
-                    }
-                    if snapshot.heap.pending_reduction {
-                        reject(admission, ServiceFailure::Backpressure);
-                        continue;
-                    }
-                    let (worker, key) = available.expect("guarded work wait");
-                    pending_admission = Some(admission);
-                    snapshot = exchange(&transport, &mut exchanges, WorkerCommand::Admit {
-                        key, task: pending_admission.as_ref().expect("retained admission").input.clone(),
-                    }).await?;
-                    let task = snapshot.admitted_task.ok_or(ServiceFailure::Protocol)?;
-                    if tasks.contains_key(&task) { return Err(ServiceFailure::Protocol); }
-                    let admission = pending_admission.take().expect("retained admission");
-                    tasks.insert(task, TaskRecord { worker, control: admission.control,
-                        cancellation_sent: false, outcome: None, retained: Vec::new(), withheld: Vec::new() });
+                    queued.push_back(admission);
                 }
                 Some(result) = calls.next(), if !calls.is_empty() => {
                     let record = tasks.get_mut(&result.task).ok_or(ServiceFailure::Protocol)?;
@@ -969,13 +1006,24 @@ async fn run(
     }.await;
 
     closed.store(true, Ordering::Release);
+    shutdown.admission_credits.close();
     shutdown.settings.requests.close();
     while let Ok(publication) = shutdown.settings.requests.try_recv() {
         publication.reject(ServiceFailure::Closed);
     }
     admissions.close();
     while let Ok(admission) = admissions.try_recv() {
-        reject(admission, ServiceFailure::Closed);
+        queued.push_back(admission);
+    }
+    for admission in queued {
+        queued_evidence.push(reject(
+            admission,
+            result
+                .as_ref()
+                .err()
+                .copied()
+                .unwrap_or(ServiceFailure::Closed),
+        ));
     }
     if result.is_err() {
         for record in tasks.values() {
@@ -1033,6 +1081,7 @@ async fn run(
         transport: transport_exit,
         tasks: evidence,
         pending_admission,
+        queued_admissions: queued_evidence,
         failed_exchanges: exchanges.failed,
         rejected_commands: exchanges.rejected,
         transport_inbox: transport.completions(),
@@ -1040,9 +1089,13 @@ async fn run(
     }
 }
 
-fn reject(admission: Admission, reason: ServiceFailure) {
+fn reject(admission: Admission, reason: ServiceFailure) -> AdmissionEvidence {
     admission.control.0.ports.fence();
     admission.control.0.result.send_replace(Some(Err(reason)));
+    AdmissionEvidence {
+        input: admission.input,
+        ports: admission.control.0.ports.clone(),
+    }
 }
 
 /// CloseWorker can yield real interpreter control before reaching the next

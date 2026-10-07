@@ -181,6 +181,9 @@ impl TaskPorts for FilePorts {
 }
 
 async fn start(source: &str) -> ServiceOwner {
+    start_with_capacity(source, 4).await
+}
+async fn start_with_capacity(source: &str, queue_capacity: usize) -> ServiceOwner {
     let mut boot = boot(source);
     boot.aliases
         .extend(["read_file".into(), "post_reply".into()]);
@@ -194,7 +197,7 @@ async fn start(source: &str) -> ServiceOwner {
             max_control_unclaimed: 8,
             max_control_reserved_frame_bytes: limits().max_frame_bytes * 16,
         },
-        4,
+        queue_capacity,
     )
     .await
     .unwrap()
@@ -218,6 +221,7 @@ async fn graceful(owner: &mut ServiceOwner) {
     );
     assert!(exit.tasks.is_empty());
     assert!(exit.pending_admission.is_none());
+    assert!(exit.queued_admissions.is_empty());
     assert!(exit.failed_exchanges.is_empty());
     assert!(exit.rejected_commands.is_empty());
     assert!(exit.transport_inbox.outstanding().unwrap().is_empty());
@@ -398,6 +402,159 @@ async fn dropped_waiter_retains_actual_read_and_other_task_progress() {
     control.stopped(Duration::from_secs(1)).await.unwrap();
     assert!(!ports.reply.exists());
     graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn queued_cancellation_passes_fifo_front_without_a_free_worker_or_capacity_growth() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start_with_capacity(FILE_ROOT, 2).await;
+    let client = owner.client();
+    let a = FilePorts::new(directory.path(), "busy-a", true);
+    let a_ticket = client.submit(a.input(), a.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), a.started.notified())
+        .await
+        .unwrap();
+    let b = FilePorts::new(directory.path(), "busy-b", true);
+    let b_ticket = client.submit(b.input(), b.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), b.started.notified())
+        .await
+        .unwrap();
+    let front = FilePorts::new(directory.path(), "queued-front", false);
+    let front_ticket = client.submit(front.input(), front.clone()).unwrap();
+    let tail = FilePorts::new(directory.path(), "queued-tail", false);
+    let tail_ticket = client.submit(tail.input(), tail.clone()).unwrap();
+    tail_ticket.control().cancel();
+    let receipt = tokio::time::timeout(Duration::from_secs(2), tail_ticket.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        receipt.outcome,
+        TaskOutcome::Failed {
+            reason_kind: "task_cancelled".into()
+        }
+    );
+    assert!(receipt.accounting.is_none());
+    assert!(receipt.withheld.is_empty());
+    assert!(tail.fenced.load(Ordering::Acquire));
+    assert_eq!(tail.reads.load(Ordering::Acquire), 0);
+    assert!(!tail.reply.exists());
+    assert_eq!(front.reads.load(Ordering::Acquire), 0);
+    assert!(matches!(
+        front_ticket
+            .control()
+            .stopped(Duration::from_millis(20))
+            .await,
+        Err(ServiceFailure::Deadline)
+    ));
+    let replacement = FilePorts::new(directory.path(), "queue-replacement", false);
+    let replacement_ticket = client
+        .submit(replacement.input(), replacement.clone())
+        .unwrap();
+    let excess = FilePorts::new(directory.path(), "queue-excess", false);
+    assert!(matches!(
+        client.submit(excess.input(), excess.clone()),
+        Err(ServiceFailure::Backpressure)
+    ));
+    for ticket in [&front_ticket, &replacement_ticket] {
+        ticket.control().cancel();
+        let receipt = tokio::time::timeout(Duration::from_secs(2), ticket.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(receipt.accounting.is_none());
+        assert_eq!(
+            receipt.outcome,
+            TaskOutcome::Failed {
+                reason_kind: "task_cancelled".into()
+            }
+        );
+    }
+    a.release.notify_one();
+    b.release.notify_one();
+    for ticket in [&a_ticket, &b_ticket] {
+        let receipt = tokio::time::timeout(Duration::from_secs(10), ticket.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+        assert!(receipt.accounting.is_some());
+    }
+    graceful(&mut owner).await;
+}
+
+#[tokio::test]
+async fn fatal_worker_exit_fences_and_retains_queued_inputs_before_held_io_finishes() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut owner = start_with_capacity(FILE_ROOT, 2).await;
+    let client = owner.client();
+    let a = FilePorts::new(directory.path(), "fatal-busy-a", true);
+    let a_ticket = client.submit(a.input(), a.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), a.started.notified())
+        .await
+        .unwrap();
+    let b = FilePorts::new(directory.path(), "fatal-busy-b", true);
+    let b_ticket = client.submit(b.input(), b.clone()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), b.started.notified())
+        .await
+        .unwrap();
+    let c = FilePorts::new(directory.path(), "fatal-queued-c", false);
+    let c_ticket = client.submit(c.input(), c.clone()).unwrap();
+    let d = FilePorts::new(directory.path(), "fatal-queued-d", false);
+    let d_ticket = client.submit(d.input(), d.clone()).unwrap();
+    assert!(
+        tokio::process::Command::new("/bin/kill")
+            .args(["-KILL", &owner.worker_process_id().unwrap().to_string()])
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    for ticket in [&c_ticket, &d_ticket] {
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(2), ticket.wait())
+                .await
+                .unwrap(),
+            Err(ServiceFailure::Transport)
+        ));
+    }
+    for ports in [&c, &d] {
+        assert!(ports.fenced.load(Ordering::Acquire));
+        assert_eq!(ports.reads.load(Ordering::Acquire), 0);
+        assert!(!ports.reply.exists());
+    }
+    assert!(matches!(
+        client.submit(c.input(), c.clone()),
+        Err(ServiceFailure::Closed)
+    ));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), owner.join())
+            .await
+            .is_err()
+    );
+    a.release.notify_one();
+    b.release.notify_one();
+    let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(exit.failure, Some(ServiceFailure::Transport));
+    assert!(exit.pending_admission.is_none());
+    assert_eq!(exit.queued_admissions.len(), 2);
+    assert_eq!(exit.queued_admissions[0].input, c.expected);
+    assert_eq!(exit.queued_admissions[1].input, d.expected);
+    assert_eq!(exit.tasks.len(), 2);
+    for ticket in [&a_ticket, &b_ticket] {
+        assert!(matches!(
+            ticket.wait().await,
+            Err(ServiceFailure::Transport)
+        ));
+    }
+    let transport = exit.transport.unwrap();
+    assert_eq!(transport.kind, StopKind::TransportFailed);
+    assert!(transport.exit_status.is_some());
+    assert!(transport.containment_error.is_none());
+    assert!(transport.reap_error.is_none());
 }
 
 #[tokio::test]
