@@ -206,6 +206,7 @@ struct AdmittedPorts {
 
 struct NativeTaskPortsFactory {
     last_host: Mutex<Option<Arc<MontyTaskHost>>>,
+    settlement_hold: Mutex<Option<Arc<ProviderHold>>>,
     inner: global_task_factory::OwnedGlobalTaskFactory,
 }
 struct DraftCatalogueProvider {
@@ -239,6 +240,7 @@ impl NativeTaskPortsFactory {
     ) -> Self {
         Self {
             last_host: Mutex::new(None),
+            settlement_hold: Mutex::new(None),
             inner: global_task_factory::OwnedGlobalTaskFactory::new(
                 pool.clone(),
                 ownership,
@@ -265,6 +267,12 @@ impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
         host: Arc<MontyTaskHost>,
         receipt: Arc<brassclaw_monty_host::service::TaskReceipt>,
     ) -> Result<(), brassclaw_turns::run_profile::AgentLoopDriverError> {
+        let hold = self.settlement_hold.lock().unwrap().take();
+        if let Some(hold) = hold {
+            assert!(matches!(receipt.outcome, TaskOutcome::Completed { .. }));
+            hold.entered.notify_one();
+            hold.released.notified().await;
+        }
         global_monty_driver::GlobalTaskPortsFactory::settle(&self.inner, host, receipt).await
     }
 }
@@ -2167,6 +2175,169 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
         brassclaw_turns::LoopExit::Completed(_)
     ));
     assert_eq!(next_provider.requests.lock().unwrap().len(), 1);
+    owner.request_shutdown();
+    let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(exit.service.unwrap().tasks.is_empty());
+    match exit.ownership {
+        global_monty_owner::OwnershipSettlement::ReleaseAttempt(release) => release.unwrap(),
+        global_monty_owner::OwnershipSettlement::Quarantined(_) => {
+            panic!("actual clean settlement required")
+        }
+    }
+}
+
+#[tokio::test]
+async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
+    brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
+        include_str!(
+            "../../../crates/brassclaw_loop_support/prompts/compaction_summarizer_fresh.md"
+        )
+        .to_owned(),
+    );
+    let database = native_pg::NativePostgres::start().await;
+    let provider = Arc::new(RecordingProvider::default());
+    let boot = support::boot(SOURCE);
+    let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
+    let mut owner = global_monty_owner::GlobalMontyOwner::start(
+        &database.pool,
+        support::worker(),
+        global_monty_owner::GlobalServiceConfig {
+            boot,
+            process: support::limits(),
+            live,
+            actor: ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * support::limits().max_frame_bytes,
+                max_control_unclaimed: 4,
+                max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
+            },
+            queue_capacity: 8,
+        },
+    )
+    .await
+    .unwrap();
+    let factory = Arc::new(NativeTaskPortsFactory::new(
+        database.pool.clone(),
+        owner.ownership_check(),
+        None,
+    ));
+    let hold = Arc::new(ProviderHold::default());
+    *factory.settlement_hold.lock().unwrap() = Some(hold.clone());
+    let prefix = Arc::new(SelectedPrefix("completed settlement prefix".into()));
+    let (_, handoff, threads, scope, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "completed-before-fence",
+        prefix.clone(),
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let (request, attempt, task_host) = handoff.into_parts();
+    let handoff = MontyTaskHandoff::new(request, attempt, task_host).unwrap();
+    let driver = global_monty_driver::GlobalMontyDriver::new(
+        owner.client(),
+        threads.clone(),
+        factory.clone(),
+        1,
+    )
+    .unwrap();
+    let mut drive = Box::pin(driver.drive_turn(handoff));
+    tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::select! {
+            _ = hold.entered.notified() => {},
+            result = &mut drive => panic!("actual settlement must be held: {result:?}"),
+        }
+    })
+    .await
+    .unwrap();
+    let host = factory.last_host.lock().unwrap().clone().unwrap();
+    let reference = host.finalized_reply_ref().unwrap();
+    assert_eq!(
+        host.published_reply_content(&reference).unwrap(),
+        "actual scoped reply"
+    );
+    let client = database.pool.get().await.unwrap();
+    let phase: String = client
+        .query_one(
+            "SELECT phase FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(phase, "started");
+    drop(drive);
+    // Active calls are fenced, but the supervisor retains the actual published
+    // reference. A late stop records Completed, never fabricates cancellation.
+    assert!(host.published_reply_content(&reference).is_err());
+    assert_eq!(host.finalized_reply_ref(), Some(reference.clone()));
+    assert!(driver.take_settlement(attempt).is_err());
+    hold.released.notify_one();
+    driver.stop_attempt(attempt).await.unwrap();
+    let (settled_host, receipt, control) = driver.take_settlement(attempt).unwrap().unwrap();
+    assert!(Arc::ptr_eq(&host, &settled_host));
+    assert!(Arc::ptr_eq(&receipt, &control.receipt().unwrap().unwrap()));
+    assert_eq!(
+        receipt.outcome,
+        TaskOutcome::Completed {
+            reply_ref: reference.as_str().to_owned()
+        }
+    );
+    assert!(receipt.withheld.is_empty());
+    assert!(!host.has_withheld_results());
+    assert!(driver.take_settlement(attempt).unwrap().is_none());
+    assert!(
+        factory
+            .inner
+            .take_failed_settlement(attempt)
+            .unwrap()
+            .is_none()
+    );
+    let outcome: Value = client
+        .query_one(
+            "SELECT outcome FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        outcome,
+        json!({"status":"completed", "reply_ref":reference.as_str()})
+    );
+    let history = threads
+        .list_thread_history(ThreadHistoryRequest {
+            scope,
+            thread_id: host.run_context().thread_id.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(history.messages.len(), 2);
+    assert_eq!(provider.requests.lock().unwrap().len(), 1);
+    drop(client);
+
+    let next_provider = Arc::new(RecordingProvider::default());
+    let (_, handoff, _, _, _) = admitted(
+        database.pool.clone(),
+        next_provider.clone(),
+        "after-completed-fence",
+        prefix,
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    assert!(matches!(
+        driver.drive_turn(handoff).await.unwrap(),
+        brassclaw_turns::LoopExit::Completed(_)
+    ));
+    assert_eq!(next_provider.requests.lock().unwrap().len(), 1);
+    assert_eq!(provider.requests.lock().unwrap().len(), 1);
     owner.request_shutdown();
     let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
         .await

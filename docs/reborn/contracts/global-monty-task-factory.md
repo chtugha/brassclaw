@@ -50,6 +50,13 @@ and exact-outcome comparison fence the write. Admission/start/selection/Tool
 intent checks still require the current running claim. Audit persistence does
 not reopen dispatch or publish a late reply.
 
+For Completed audit settlement, the factory compares the service's reply
+reference with the host's recorded finalized reference. This supervisor evidence
+remains readable after waiter fencing; it authorizes no active call. The active
+driver/Recipe completion lookup remains fenced, and withheld results still
+require reconciliation. A stop after actual root completion records that original
+Completed outcome rather than inventing cancellation or replaying the reply.
+
 The ordinary factory still needs the real approved-catalogue and protected-root
 owners, retained implementation identity, shared live resource wiring and durable
 continuation/recovery supervision. The original seven composition failures

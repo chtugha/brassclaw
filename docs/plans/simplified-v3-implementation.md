@@ -2945,3 +2945,22 @@ exercise the compiled global worker and existing V106 review/journal fixtures.
 These establish candidate kernel-mediated execution ownership, not
 Tool-revision/artifact/ABI approval, catalogue activation, ordinary startup,
 CI or resolution of the original seven composition failures.
+
+### Published completion survives waiter fencing (2026-10-08)
+
+Completed admission settlement now compares the actual service reply reference
+with trusted finalized-reply evidence, rather than an active task lookup. A
+waiter abandoned between real root completion and database acknowledgement
+therefore cannot erase the published result. Active host calls stay fenced;
+withheld results still require reconciliation. The actual native regression
+holds settlement after publication, drops the waiter, records the original
+Completed outcome, verifies one provider request and one transcript reply, then
+completes another task on the same global root.
+
+All 13 actual model-host/worker/PostgreSQL cases and isolated all-target strict
+lint passed on this diff with Rust 1.98, serially in screen. Evidence:
+`/private/tmp/brassclaw-completed-settlement-{native,lints}.log`, manifest
+`tests/monty_control/Cargo.toml`. An initial test compile error using Display on
+an opaque reply reference was corrected to its actual string accessor before
+the passing run. This candidate settlement repair does not change ordinary
+runtime wiring or resolve the original seven composition failures.

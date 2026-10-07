@@ -216,8 +216,13 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             TaskOutcome::Completed { reply_ref } => {
                 let reference = LoopMessageRef::new(reply_ref.clone())
                     .map_err(|_| failed("monty_reply_reference_invalid"))?;
-                host.published_reply_content(&reference)
-                    .map_err(|_| failed("monty_reply_not_published"))?;
+                // Settlement records an already-issued service outcome. A
+                // dropped waiter may have fenced active host calls after the
+                // real reply and root completion; that fence must not erase
+                // their evidence or prevent the original audit write.
+                if host.finalized_reply_ref().as_ref() != Some(&reference) {
+                    return Err(failed("monty_reply_not_published"));
+                }
                 if !receipt.withheld.is_empty() || host.has_withheld_results() {
                     return Err(failed("monty_service_reconciliation_required"));
                 }
