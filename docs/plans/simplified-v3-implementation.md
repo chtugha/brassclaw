@@ -2689,3 +2689,43 @@ the ordinary global factory/resource/continuation cutover remain implementation
 work. The legacy builtin audit also still treats failures as nonfatal; its recovery
 and trusted-seed writer require coordinated repair rather than relabeling existing
 validated rows as approved v3 components.
+
+### 2026-10-07 — Exact human association review through the operator WebUI
+
+The existing RecipeStore/RebornServices port now supplies an exact immutable
+usage review and explicit human decision through the normal WebUI composition.
+The view retains the complete actual Q1/behavior record set and all selected
+revision/association bytes. A domain-separated checksum binds the decision to
+that view; replacement draft heads do not alter the reviewed combination.
+Authenticated actor identity never comes from the request body. Stable decision
+IDs, exact collision checks and one PostgreSQL transaction preserve atomicity
+and idempotent recovery, including an actual deferred commit failure.
+
+The panel displays actual source/evidence and keeps the original decision for
+retry while mounted. No arbitrary evidence-write API, automatic semantic verdict
+or catalogue activation was added; receipts explicitly state activation=false.
+The existing composite-auth path also needed repair: ordinary signed sessions
+could inherit operator route access from the mounted instance bearer branch.
+Operator routes now authenticate each request against eligible branches, including
+implicit HEAD reads. This adds no tenant/project/feature role checks. UUID fallback
+creation uses actual cryptographic entropy and canonical v4 formatting.
+
+Serial focused evidence: **15** actual Monty/kernel/PostgreSQL cases, **1** actual
+HTTP/PostgreSQL review case, **47** gateway cases, **2** descriptor cases and **1**
+real signed-session/instance-bearer case passed. Logs are
+`/private/tmp/brassclaw-monty-human-q2-{native,caller,gateway,descriptors,real-auth}.log`.
+Strict isolated and affected-consumer all-target checks passed in
+`...-control-lints.log` and `...-consumer-lints.log` on Rust 1.98 after correcting
+shared-fixture visibility. Changed JavaScript syntax and actual crypto UUID
+fallback checks passed. The actual Reborn dependency-boundary case passed in
+`...-architecture.log`; its binary ran after the Cargo build exited so metadata
+lookup did not overlap another Cargo process. Browser interaction was not exercised.
+
+This covers human Q2 for one Tool usage only. Trusted ordinary validation
+provenance, whole-Recipe/pure-logic/protected-root review, controlled seed evidence,
+coherent activation, actual implementation identity and full global startup,
+resource and continuation wiring remain required. Nested PythonCode assembly
+remains unsupported; a stored includes column alone does not implement it.
+The original seven composition failures remain unresolved; ordinary runtime
+still constructs PersistentMontyDriver. These prerequisite cases do not certify
+the production global cutover or full v3 plan.

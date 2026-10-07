@@ -123,11 +123,45 @@ Der globale Orchestrator verarbeitet explizite, getrennte Vorgangskontexte: Conv
 ### 1.1 Verbindlicher Recipe-Vertrag
 
 ```text
-Eingabe → globaler Monty → bestehendes Intent-Matching
-  Match    → Recipe-Variante → IBS → ToolSkill binden → PythonCode ausführen
-             → vorgesehene LLM-Schritte bei Tier 1 → Antwort → History
-  No Match → Instruction/Recipe für Tier 2 → Kohai-Prefix → LLM → Antwort → History
-             → Sempai-Vorschlag → Q1 → menschliches Q2 → künftig nutzbare Komponenten
+Eingabe
+  → bereits laufender globaler Monty-Orchestrator
+  → bestehendes Intent-Matching
+      │
+      ├─ Match
+      │   → ausgewählte Recipe-Variante
+      │   → IBS erstellt BuildInstruction
+      │       mit fixierten Komponentenreferenzen und Eingabezuordnung
+      │   → Composition löst die Referenzen auf:
+      │       Skills → Prosa + zugeordneter ausführbarer PythonCode
+      │       ToolSkills → Metadaten für die Rust-seitigen Tool-Bindings
+      │       weitere PythonCode-Komponenten → ausführbare Logik
+      │   → Tool-Bindings werden anhand der ToolSkills vorbereitet
+      │       und über die Rust-seitige Host-Integration bereitgestellt
+      │   → Monty führt die komponierten Schritte in Recipe-Reihenfolge aus:
+      │       • PythonCode verarbeitet separat übergebene typisierte Eingaben
+      │       • host.<tool>(...) ruft das jeweilige Rust-Tool auf
+      │         → Kernel prüft aktuelle globale Toolregel und technische Grenzen
+      │         → Ergebnis zurück an Monty
+      │       • vorgesehene LLM-Schritte bei Tier 1
+      │       • Ergebnisse werden innerhalb des Vorgangs weitergegeben
+      │   → Antwort → History → Vorgang abgeschlossen
+      │
+      └─ No Match
+          → Monty stellt den Tier-2-Prompt zusammen:
+              Nutzereingabe + Vorgangs-History
+              (aus der Komponentenbibliothek vorkompiliert)
+          → Prompt wird an Kohai geschickt
+          → Falls ein Sempai mit dem Kohai verbunden ist wird der Prompt analysiert und optimiert und an Kohai zurückgegeben.
+          → Kohai fügt den Prefix hinzu und schickt den gesamten Promt zum LLM
+          → LLM bearbeitet die Aufgabe
+          → LLM sendet die Antwort zurück an Kohai
+          → Wenn ein Sempai an Kohai angeschlossen ist sendet Kohai die Antwort an Monty und an Sempai voneinander unabhängig weiter, sonst nur an Monty.
+          → Wenn ein Sempai verbunden ist dann wertet Sempai den Vorgang aus und sendet ggf. einen erstellten Component Kandidaten oder einen neuen Intent zur Q1 validation Queue.
+          → Antwort → History → Vorgang abgeschlossen
+          → Q1 + Verhaltensvalidierung → menschliches Q2
+          → kohärente Aktivierung
+          → für künftige Vorgänge nutzbar
+Der globale Monty-Orchestrator bleibt aktiv und wartet auf weitere Arbeit.
 ```
 
 Die tatsächliche Reihenfolge folgt den `step_descriptions` der ausgewählten Variante. Ein `channel:"rust"`-Schritt bindet einen ToolSkill und führt nichts aus. Der folgende passende `channel:"orchestrator"`-Schritt führt PythonCode mit `host.<tool>(...)` aus. Tier 0 enthält keine LLM-Schritte; Tier 1 enthält die im Recipe vorgesehenen LLM-Schritte. Das bereits vorhandene Rust-Intent-Matching und IBS werden weiterverwendet. Eine zusätzliche Matching-VM ist keine Voraussetzung dieses Plans.

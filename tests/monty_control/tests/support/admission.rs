@@ -18,15 +18,15 @@ use brassclaw_turns::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::pg_monty_admission::PgMontyAdmission;
+use super::pg_monty_admission::PgMontyAdmission;
 
-pub struct Admitted {
+pub(super) struct Admitted {
     pub input: Value,
     pub admission: Arc<PgMontyAdmission>,
     pub context: LoopRunContext,
     pub state: Arc<PgTurnStateStore>,
 }
-pub async fn reserve(pool: Arc<PgPool>, user_input: &str) -> Admitted {
+pub(super) async fn reserve(pool: Arc<PgPool>, user_input: &str) -> Admitted {
     let tenant = TenantId::new("retained-invocation").unwrap();
     let agent = AgentId::new("draft-agent").unwrap();
     let project = ProjectId::new("draft-project").unwrap();

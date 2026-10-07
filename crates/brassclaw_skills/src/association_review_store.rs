@@ -1,12 +1,13 @@
-//! Exact immutable association/review record resolution. This read-only store
-//! supplies no authoring/approval write API, activation or Tool authority.
-//! Trusted Q1, behavioral and authenticated human-Q2 producers must still issue
-//! these records; legacy labels/receipts cannot substitute for those producers.
+//! Exact immutable association/review resolution and human-Q2 recording.
+//! Trusted Q1/behavior producers supply actual evidence; the authenticated
+//! human ingress owns decisions. No arbitrary evidence-write API, catalogue
+//! activation or Tool authority is supplied. Legacy labels/receipts do not
+//! substitute for exact reviewed combinations or actual validation evidence.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use brassclaw_pg::PgError;
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio_postgres::Transaction;
 use uuid::Uuid;
@@ -294,5 +295,286 @@ fn validate_evidence(
     {
         return Err(fail());
     }
+    Ok(())
+}
+
+/// Exact pre-Q2 view. Reading it neither approves nor activates anything.
+/// Only trusted Q1/behavior producers may write the referenced evidence table.
+/// These privately retained fields bind the decision to actual stored bytes.
+pub struct PreparedHumanAssociationReview {
+    association: SkillAssociation,
+    snapshot: RetainedComponentSnapshot,
+    q1: Uuid,
+    behavioral: BTreeSet<Uuid>,
+    evidence: BTreeMap<Uuid, String>,
+    view: Value,
+    checksum: String,
+}
+impl PreparedHumanAssociationReview {
+    pub fn view(&self) -> &Value {
+        &self.view
+    }
+    pub fn checksum(&self) -> &str {
+        &self.checksum
+    }
+}
+
+/// Use the same coherent snapshot as the subsequent Q2 write. The caller names
+/// evidence, never supplies source, versions, reports or a successful-Q1 flag.
+/// Draft heads/newer replacements do not change the exact combination reviewed.
+pub async fn prepare_human_association_review(
+    tx: &Transaction<'_>,
+    skill: Uuid,
+    q1: Uuid,
+    behavioral: &[Uuid],
+) -> Result<PreparedHumanAssociationReview, AssociationReviewStoreError> {
+    if skill.is_nil() || q1.is_nil() || behavioral.is_empty() {
+        return Err(AssociationReviewStoreError::Evidence);
+    }
+    let behaviors: BTreeSet<_> = behavioral.iter().copied().collect();
+    if behaviors.len() != behavioral.len()
+        || behaviors.contains(&q1)
+        || behaviors.iter().any(Uuid::is_nil)
+    {
+        return Err(AssociationReviewStoreError::Evidence);
+    }
+    if behaviors.len() + 2 > MAX_REVIEW_RECORDS {
+        return Err(AssociationReviewStoreError::Capacity);
+    }
+    let ids: Vec<_> = std::iter::once(q1)
+        .chain(behaviors.iter().copied())
+        .collect();
+    let totals = tx
+        .query_one(
+            "SELECT count(*), COALESCE(sum(octet_length(evidence_bytes)),0)::bigint
+         FROM reborn_component_review_evidence WHERE evidence_id=ANY($1::uuid[])",
+            &[&ids],
+        )
+        .await
+        .map_err(database)?;
+    if totals.get::<_, i64>(0) != ids.len() as i64 {
+        return Err(AssociationReviewStoreError::Evidence);
+    }
+    if totals.get::<_, i64>(1) > MAX_REVIEW_BYTES {
+        return Err(AssociationReviewStoreError::Capacity);
+    }
+    let rows = tx
+        .query(
+            "SELECT evidence_id,evidence_bytes,checksum FROM reborn_component_review_evidence
+         WHERE evidence_id=ANY($1::uuid[]) ORDER BY evidence_id",
+            &[&ids],
+        )
+        .await
+        .map_err(database)?;
+    let mut evidence = BTreeMap::new();
+    let mut parsed = BTreeMap::new();
+    for row in rows {
+        let id: Uuid = row.get(0);
+        let bytes: String = row.get(1);
+        if digest(&bytes) != row.get::<_, String>(2) {
+            return Err(AssociationReviewStoreError::Integrity);
+        }
+        let value = strict_json(&bytes, REVISION_LIMITS)
+            .map_err(|_| AssociationReviewStoreError::Integrity)?;
+        evidence.insert(id, bytes);
+        parsed.insert(id, value);
+    }
+    // Parse the selected references with the existing exact declaration parser.
+    // This temporary declaration is not persisted and does not create approval.
+    let temporary = json!({
+        "format":"skill-association-approval/1", "approval_id":q1,
+        "association_checksum":parsed[&q1]["association_checksum"],
+        "components":parsed[&q1]["components"], "validation_mode":"authored",
+        "q1_ref":q1, "q2_ref":q1, "behavioral_refs":behavioral,
+    });
+    let declaration =
+        AssociationApprovalDeclaration::from_json(&temporary.to_string(), REVISION_LIMITS)
+            .map_err(|_| AssociationReviewStoreError::Integrity)?;
+    let selected: Vec<_> = declaration.components().values().copied().collect();
+    let snapshot = PgComponentRevisionStore::read_exact_in_transaction(tx, &[skill], &selected)
+        .await
+        .map_err(AssociationReviewStoreError::Revisions)?;
+    let association = snapshot
+        .revisions()
+        .get(&skill)
+        .and_then(|r| r.draft().association())
+        .cloned()
+        .ok_or(AssociationReviewStoreError::Combination)?;
+    declaration
+        .require_selected_combination(&association, &selected)
+        .map_err(|_| AssociationReviewStoreError::Combination)?;
+    let expected: BTreeMap<_, _> = selected
+        .iter()
+        .map(|r| {
+            (
+                r.uuid,
+                (
+                    i64::from(r.class_code),
+                    r.version,
+                    checksum_text(r.checksum),
+                ),
+            )
+        })
+        .collect();
+    for (id, value) in &parsed {
+        validate_evidence(
+            value,
+            *id,
+            if *id == q1 { "q1" } else { "behavior" },
+            &digest(association.exact_bytes()),
+            &expected,
+            None,
+        )?;
+    }
+    let components: Vec<_> = snapshot
+        .revisions()
+        .values()
+        .map(|r| {
+            let reference = r.reference();
+            json!({"uuid":reference.uuid,"class_code":reference.class_code,
+            "version":reference.version,"checksum":checksum_text(reference.checksum),
+            "revision_bytes":r.draft().exact_bytes()})
+        })
+        .collect();
+    let records: Vec<_> = evidence
+        .iter()
+        .map(
+            |(id, bytes)| json!({"evidence_id":id,"checksum":digest(bytes),"evidence_bytes":bytes}),
+        )
+        .collect();
+    let view = json!({"format":"human-association-review/1", "skill_uuid":skill,
+        "association_bytes":association.exact_bytes(),"components":components,
+        "evidence":records,"q1_ref":q1,"behavioral_refs":behaviors,
+        "scope":"one-tool-usage","activates_catalogue":false,"grants_tool_permission":false});
+    let bytes = view.to_string();
+    if bytes.len() > MAX_REVIEW_BYTES as usize {
+        return Err(AssociationReviewStoreError::Capacity);
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(b"human-association-review/1\0");
+    hasher.update(bytes.as_bytes());
+    let checksum = format!("{:x}", hasher.finalize());
+    Ok(PreparedHumanAssociationReview {
+        association,
+        snapshot,
+        q1,
+        behavioral: behaviors,
+        evidence,
+        view,
+        checksum,
+    })
+}
+
+/// Decision supplied only by an authenticated human-review ingress owner.
+/// Identity comes from authentication; no model, Recipe or authoring JSON may
+/// supply it. The checksum is the precise displayed view, including evidence.
+pub struct HumanAssociationDecision<'a> {
+    pub approval_id: Uuid,
+    pub q2_id: Uuid,
+    pub actor: &'a str,
+    pub semantic_review: &'a str,
+    pub reviewed_checksum: &'a str,
+}
+
+/// Atomically records human Q2 plus exact combination approval. Caller commits
+/// and retries identical decision IDs/bytes on an ambiguous commit. No mutable
+/// label, activation, Tool permission, or successful workflow is manufactured.
+pub async fn record_human_association_approval(
+    tx: &Transaction<'_>,
+    review: &PreparedHumanAssociationReview,
+    decision: HumanAssociationDecision<'_>,
+) -> Result<(), AssociationReviewStoreError> {
+    let note = decision.semantic_review;
+    if decision.approval_id.is_nil()
+        || decision.q2_id.is_nil()
+        || decision.approval_id == decision.q2_id
+        || review.evidence.contains_key(&decision.approval_id)
+        || review.evidence.contains_key(&decision.q2_id)
+        || decision.actor.trim().is_empty()
+        || decision.actor.len() > 2048
+        || note.trim().is_empty()
+        || note.len() > 16_384
+        || decision.reviewed_checksum != review.checksum
+    {
+        return Err(AssociationReviewStoreError::Evidence);
+    }
+    let components: Vec<_> = review
+        .snapshot
+        .revisions()
+        .values()
+        .map(|r| {
+            let reference = r.reference();
+            json!({"uuid":reference.uuid,"class_code":reference.class_code,
+            "version":reference.version,"checksum":checksum_text(reference.checksum)})
+        })
+        .collect();
+    let q2 = json!({"format":"component-review-evidence/1", "evidence_id":decision.q2_id,
+        "kind":"human_q2","validation_mode":"authored",
+        "association_checksum":digest(review.association.exact_bytes()),
+        "components":components,"succeeded":true,
+        "reviewed_evidence":review.evidence.keys().collect::<Vec<_>>(),
+        "report":{"format":"human-association-decision/1", "actor":decision.actor,
+            "semantic_review":note,"review_checksum":review.checksum,
+            "scope":"one-tool-usage","workflow_completion":false}});
+    let approval = json!({"format":"skill-association-approval/1",
+        "approval_id":decision.approval_id,
+        "association_checksum":digest(review.association.exact_bytes()),
+        "components":components,"validation_mode":"authored",
+        "q1_ref":review.q1,"q2_ref":decision.q2_id,"behavioral_refs":review.behavioral});
+    let q2_bytes = q2.to_string();
+    let approval_bytes = approval.to_string();
+    strict_json(&q2_bytes, REVISION_LIMITS).map_err(|_| AssociationReviewStoreError::Capacity)?;
+    AssociationApprovalDeclaration::from_json(&approval_bytes, REVISION_LIMITS)
+        .map_err(|_| AssociationReviewStoreError::Integrity)?;
+    tx.execute(
+        "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum)
+        VALUES($1,$2,$3) ON CONFLICT(evidence_id) DO NOTHING",
+        &[&decision.q2_id, &q2_bytes, &digest(&q2_bytes)],
+    )
+    .await
+    .map_err(database)?;
+    let actual = tx
+        .query_one(
+            "SELECT evidence_bytes,checksum FROM reborn_component_review_evidence
+        WHERE evidence_id=$1",
+            &[&decision.q2_id],
+        )
+        .await
+        .map_err(database)?;
+    if actual.get::<_, String>(0) != q2_bytes || actual.get::<_, String>(1) != digest(&q2_bytes) {
+        return Err(AssociationReviewStoreError::Integrity);
+    }
+    tx.execute(
+        "INSERT INTO reborn_skill_association_approvals(approval_id,approval_bytes,checksum)
+        VALUES($1,$2,$3) ON CONFLICT(approval_id) DO NOTHING",
+        &[
+            &decision.approval_id,
+            &approval_bytes,
+            &digest(&approval_bytes),
+        ],
+    )
+    .await
+    .map_err(database)?;
+    let actual = tx
+        .query_one(
+            "SELECT approval_bytes,checksum FROM reborn_skill_association_approvals
+        WHERE approval_id=$1",
+            &[&decision.approval_id],
+        )
+        .await
+        .map_err(database)?;
+    if actual.get::<_, String>(0) != approval_bytes
+        || actual.get::<_, String>(1) != digest(&approval_bytes)
+    {
+        return Err(AssociationReviewStoreError::Integrity);
+    }
+    let selected: Vec<_> = review
+        .snapshot
+        .revisions()
+        .values()
+        .map(|r| r.reference())
+        .collect();
+    retain_authored_association_reviews(tx, decision.approval_id, &review.association, &selected)
+        .await?;
     Ok(())
 }

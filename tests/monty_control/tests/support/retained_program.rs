@@ -23,13 +23,13 @@ fn draft(
     )
     .unwrap()
 }
-pub async fn program(
+pub(super) async fn program(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
 ) -> Arc<RetainedToolProgram> {
     program_with_source(store, invalid_output, None).await
 }
-pub async fn program_with_source(
+pub(super) async fn program_with_source(
     store: &PgComponentRevisionStore,
     invalid_output: bool,
     source: Option<&str>,

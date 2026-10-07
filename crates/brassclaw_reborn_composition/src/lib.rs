@@ -38,8 +38,6 @@ pub mod component_import;
 pub mod db_config;
 mod default_system_prompt;
 // Ownership candidate remains isolated until the global-hosting lifecycle gate.
-#[cfg(all(test, feature = "postgres"))]
-mod monty_instance_owner;
 #[cfg(feature = "postgres")]
 pub(crate) mod docplan_dissector;
 mod error;
@@ -71,6 +69,8 @@ mod local_runtime_profile;
 mod manual_token_flow;
 mod mcp;
 mod mcp_discovery;
+#[cfg(all(test, feature = "postgres"))]
+mod monty_instance_owner;
 #[cfg(feature = "root-llm-provider")]
 mod nearai_login_serve;
 mod nearai_mcp;
@@ -111,6 +111,8 @@ pub(crate) mod orchestrator_lookup_impl;
 /// Phase V: Orchestrator MCP Server — exposes orchestrator Skills as MCP tools.
 pub mod orchestrator_mcp_server;
 pub(crate) mod persistent_monty_driver;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_association_review;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]

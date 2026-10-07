@@ -299,9 +299,11 @@ rows are inventoried here, not implemented in the current PR.
 - **Operator WebUI config** — the `/api/webchat/v2/llm/*` routes and
   Slack channel-route admin mutate operator-wide provider settings,
   secrets, or channel ownership. `webui_v2_app` only mounts them when
-  the host authenticator opts into `allows_operator_webui_config`;
-  multi-user authenticators must leave them unmounted until a real admin
-  authorization boundary exists.
+  the host authenticator opts into `allows_operator_webui_config`. Exact
+  association-review/Q2 routes use the same operator surface. Every request,
+  including HEAD served by a GET handler, calls `authenticate_operator` on its
+  presented bearer. Composite authenticators delegate only to operator-capable
+  branches; an ordinary SSO session never inherits the env-token authority.
 - **`?token=` exception** — only `GET /api/webchat/v2/threads/{id}/events`;
   any other v2 route receiving a `?token=` query parameter ignores it
   and falls through to bearer-header check (so a stale referer link

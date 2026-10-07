@@ -95,9 +95,10 @@ constructing the `WebUiAuthenticatedCaller` and injecting it as an
 axum `Extension` before the handler runs.
 
 The LLM configuration routes are operator-wide. Host composition must only
-mount them for authenticators that represent a single trusted operator; multi-
-user session/OIDC authenticators should leave those routes unmounted until an
-admin role boundary exists in `WebUiAuthenticatedCaller`.
+mount them only when an instance-operator bearer is supported and authenticate
+that authority on each request. Exact Skill association-review and Q2 routes use
+this same operator boundary. Ordinary session/OIDC credentials do not inherit
+operator authority from a composite authenticator's other branch.
 
 ### List-threads
 

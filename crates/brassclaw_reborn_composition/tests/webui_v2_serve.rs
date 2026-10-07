@@ -92,6 +92,23 @@ impl WebuiAuthenticator for MultiUserToken {
     }
 }
 
+// Gateway contract harness: a mixed credential source must use the separate
+// operator check for each request. The real signed-session/env composition is
+// covered in the ingress crate against actual issued tokens.
+struct MixedCredentialAuthenticator;
+#[async_trait]
+impl WebuiAuthenticator for MixedCredentialAuthenticator {
+    async fn authenticate(&self, token: &str) -> Option<UserId> {
+        matches!(token, "session-user-token" | VALID_TOKEN).then(|| UserId::new(USER).unwrap())
+    }
+    fn allows_operator_webui_config(&self) -> bool {
+        true
+    }
+    async fn authenticate_operator(&self, token: &str) -> Option<UserId> {
+        OnlyValidToken.authenticate(token).await
+    }
+}
+
 #[derive(Default)]
 struct StubServices {
     create_thread_calls: Mutex<Vec<WebUiAuthenticatedCaller>>,
@@ -1280,6 +1297,61 @@ async fn every_webui_v2_descriptor_is_mounted_on_composed_app() {
 }
 
 #[tokio::test]
+async fn operator_routes_check_the_presented_bearer_in_a_mixed_authenticator() {
+    let (app, _) = build_app_with_authenticator(Arc::new(MixedCredentialAuthenticator));
+    for uri in [
+        "/api/webchat/v2/llm/active",
+        "/api/webchat/v2/skills/exact-skill/association-review",
+        "/api/webchat/v2/skills/exact-skill/association-approval",
+    ] {
+        for (token, must_reject) in [("session-user-token", true), (VALID_TOKEN, false)] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::HEAD)
+                        .uri("/api/webchat/v2/llm/providers")
+                        .header(header::AUTHORIZATION, "Bearer session-user-token")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(uri)
+                        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from("{}"))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            if must_reject {
+                assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            } else {
+                assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
+            }
+        }
+    }
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/webchat/v2/threads")
+                .header(header::AUTHORIZATION, "Bearer session-user-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn llm_config_routes_are_not_mounted_for_multi_user_authenticator() {
     let (app, _services) = build_app_with_authenticator(Arc::new(MultiUserToken));
 
@@ -1293,6 +1365,14 @@ async fn llm_config_routes_are_not_mounted_for_multi_user_authenticator() {
         (Method::POST, "/api/webchat/v2/llm/nearai/login"),
         (Method::POST, "/api/webchat/v2/llm/nearai/wallet"),
         (Method::POST, "/api/webchat/v2/llm/codex/login"),
+        (
+            Method::POST,
+            "/api/webchat/v2/skills/exact-skill/association-review",
+        ),
+        (
+            Method::POST,
+            "/api/webchat/v2/skills/exact-skill/association-approval",
+        ),
     ] {
         let mut builder = Request::builder()
             .method(method.clone())

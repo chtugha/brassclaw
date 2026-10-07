@@ -1127,7 +1127,25 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
-    /// Promote a Recipe to `validated`.
+    /// Exact immutable usage and evidence view for authenticated human review.
+    async fn prepare_association_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _skill_id: &str,
+        _selection: crate::recipes::AssociationReviewSelection,
+    ) -> Result<crate::recipes::AssociationReviewView, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
+    async fn approve_association(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _skill_id: &str,
+        _request: crate::recipes::ApproveAssociationRequest,
+    ) -> Result<crate::recipes::AssociationApprovalResponse, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
     async fn validate_recipe(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -3919,6 +3937,34 @@ impl RebornServicesApi for RebornServices {
             count,
             status: status.to_string(),
         })
+    }
+
+    async fn prepare_association_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        skill_id: &str,
+        selection: crate::recipes::AssociationReviewSelection,
+    ) -> Result<crate::recipes::AssociationReviewView, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .prepare_association_review(skill_id, selection)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn approve_association(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        skill_id: &str,
+        request: crate::recipes::ApproveAssociationRequest,
+    ) -> Result<crate::recipes::AssociationApprovalResponse, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .approve_association(&caller.user_id.to_string(), skill_id, request)
+            .await
+            .map_err(map_recipe_store_error)
     }
 
     async fn validate_recipe(

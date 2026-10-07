@@ -138,11 +138,13 @@ pub use reborn_services::{
     interceptor_config_unavailable, map_interceptor_config_error,
 };
 pub use recipes::{
-    ComponentAuditStatus, OutcomeKind, RecipeDetail, RecipeKind, RecipeListRequest,
-    RecipeListResponse, RecipeStore, RecipeStoreError, RecipeSummary, RecordOutcomeRequest,
-    RecordOutcomeResponse, ToolSkillDetail, ToolSkillListResponse, ToolSkillSummary,
-    UpdateValidationStatusRequest, UpdateValidationStatusResponse, ValidationQueueCountResponse,
-    ValidationQueueFilter, ValidationQueueItem, ValidationQueueListResponse, ValidationStatusValue,
+    ApproveAssociationRequest, AssociationApprovalResponse, AssociationReviewSelection,
+    AssociationReviewView, ComponentAuditStatus, OutcomeKind, RecipeDetail, RecipeKind,
+    RecipeListRequest, RecipeListResponse, RecipeStore, RecipeStoreError, RecipeSummary,
+    RecordOutcomeRequest, RecordOutcomeResponse, ToolSkillDetail, ToolSkillListResponse,
+    ToolSkillSummary, UpdateValidationStatusRequest, UpdateValidationStatusResponse,
+    ValidationQueueCountResponse, ValidationQueueFilter, ValidationQueueItem,
+    ValidationQueueListResponse, ValidationStatusValue,
 };
 pub use reduction_rules::{
     AuthorReductionRuleRequest, AuthorReductionRuleResponse, REDUCTION_RULES_MAX_PER_USER,

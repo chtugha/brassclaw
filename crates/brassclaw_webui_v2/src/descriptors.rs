@@ -73,6 +73,12 @@ pub const WEBUI_V2_ROUTE_SEND_COMPONENT_TO_REVISION: &str = "webui.v2.send_compo
 pub const WEBUI_V2_ROUTE_RE_REVIEW_COMPONENT: &str = "webui.v2.re_review_component";
 pub const WEBUI_V2_ROUTE_DELETE_COMPONENT: &str = "webui.v2.delete_component";
 pub const WEBUI_V2_ROUTE_GET_COMPONENT_AUDIT_STATUS: &str = "webui.v2.get_component_audit_status";
+pub const WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW: &str = "webui.v2.prepare_association_review";
+pub const WEBUI_V2_ROUTE_APPROVE_ASSOCIATION: &str = "webui.v2.approve_association";
+pub const WEBUI_V2_PATTERN_PREPARE_ASSOCIATION_REVIEW: &str =
+    "/api/webchat/v2/skills/{skill_id}/association-review";
+pub const WEBUI_V2_PATTERN_APPROVE_ASSOCIATION: &str =
+    "/api/webchat/v2/skills/{skill_id}/association-approval";
 
 // Phase 5.5 — Interceptor configuration routes.
 pub const WEBUI_V2_ROUTE_GET_INTERCEPTOR_CONFIG: &str = "webui.v2.get_interceptor_config";
@@ -287,6 +293,8 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         record_recipe_outcome_descriptor(),
         // Phase 3 (Step 3.5) — generalized component validation routes.
         validate_component_descriptor(),
+        association_review_descriptor(),
+        association_approval_descriptor(),
         reject_component_descriptor(),
         send_component_to_revision_descriptor(),
         re_review_component_descriptor(),
@@ -361,6 +369,44 @@ pub fn is_webui_v2_llm_config_route_id(route_id: &str) -> bool {
             | WEBUI_V2_ROUTE_START_NEARAI_LOGIN
             | WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN
             | WEBUI_V2_ROUTE_START_CODEX_LOGIN
+    )
+}
+
+/// Exact human Q2 is reachable only from the trusted instance-operator ingress.
+/// Keep descriptor filtering and router mounting governed by the same set.
+pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
+    is_webui_v2_llm_config_route_id(route_id)
+        || matches!(
+            route_id,
+            WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW | WEBUI_V2_ROUTE_APPROVE_ASSOCIATION
+        )
+}
+
+fn association_review_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_PREPARE_ASSOCIATION_REVIEW,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_PREPARE_ASSOCIATION_REVIEW,
+        mutation_policy(
+            body_limit_kib(32),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+        ),
+    )
+}
+
+fn association_approval_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_APPROVE_ASSOCIATION,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_APPROVE_ASSOCIATION,
+        mutation_policy(
+            body_limit_kib(64),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
     )
 }
 

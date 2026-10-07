@@ -1153,6 +1153,31 @@ fn queue_filter_statuses(
 #[cfg(feature = "postgres")]
 #[async_trait]
 impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
+    #[cfg(feature = "skills-db")]
+    async fn prepare_association_review(
+        &self,
+        skill_id: &str,
+        selection: brassclaw_product_workflow::AssociationReviewSelection,
+    ) -> Result<
+        brassclaw_product_workflow::AssociationReviewView,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        crate::pg_association_review::prepare(&self.inner.pool, skill_id, selection).await
+    }
+
+    #[cfg(feature = "skills-db")]
+    async fn approve_association(
+        &self,
+        actor: &str,
+        skill_id: &str,
+        request: brassclaw_product_workflow::ApproveAssociationRequest,
+    ) -> Result<
+        brassclaw_product_workflow::AssociationApprovalResponse,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        crate::pg_association_review::approve(&self.inner.pool, actor, skill_id, request).await
+    }
+
     async fn list_recipes(
         &self,
         user_id: &str,

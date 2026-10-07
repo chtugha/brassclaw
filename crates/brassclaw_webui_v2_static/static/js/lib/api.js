@@ -42,18 +42,20 @@ export function storeToken(token) {
   }
 }
 
-// Generate a client action id (idempotency key) for mutating requests.
-// Must be a non-empty token with no control characters; `crypto.randomUUID`
-// satisfies the validator in `webui_inbound::parse_client_action_id`.
+// Generate a canonical UUID for mutation identities, including exact Q2.
+// getRandomValues also works on LAN HTTP where randomUUID may be unavailable.
 export function clientActionId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  const bytes = new Uint8Array(16);
-  if (crypto?.getRandomValues) {
-    crypto.getRandomValues(bytes);
+  if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
+    throw new Error("Secure randomness is unavailable; cannot create a mutation identity.");
   }
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
 }
 
 async function parseErrorBody(response) {

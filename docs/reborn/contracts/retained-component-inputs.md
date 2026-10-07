@@ -137,10 +137,11 @@ or approval conversion for legacy validated rows.
 ## Immutable authored review record retention
 
 `V102` adds append-only `reborn_skill_association_approvals` and
-`reborn_component_review_evidence`. These stores have no public authoring or
-approval writer, and do not import legacy `validated`, `source=system` or
-`q2_actor` markers as v3 evidence. Required trusted Q1, behavioral-validation,
-authenticated human-Q2 and controlled system-bootstrap producers remain work.
+`reborn_component_review_evidence`. These stores have no arbitrary evidence
+authoring API and do not import legacy `validated`, `source=system` or
+`q2_actor` markers as v3 evidence. Exact human association decisions now have the
+operator-only ingress described below. Ordinary trusted validation, whole-workflow
+review and controlled system-bootstrap integration remain work.
 A database/storage fixture is not observed behavioral acceptance or human review.
 
 `association_review_store::retain_authored_association_reviews` reads the exact
@@ -345,3 +346,38 @@ Review provenance still requires a trusted validation owner selecting the actual
 kernel/implementation adapter; executor observations alone cannot prove that an
 arbitrary supplied port was such an adapter. Human Q2, Recipe/pure-logic review,
 trusted system-seed provenance and coherent catalogue activation remain separate.
+
+## Exact human association decisions
+
+The existing RecipeStore/RebornServices facade exposes two operator-only POSTs:
+`/api/webchat/v2/skills/{skill_id}/association-review` and
+`/api/webchat/v2/skills/{skill_id}/association-approval`. The former selects actual
+Q1 and behavioral evidence IDs, reads their exact immutable usage closure in a
+repeatable-read transaction and returns `human-association-review/1`. It includes
+complete revision, association and evidence bytes; capacity overflow is an error,
+never a shortened view. Its SHA-256 covers the domain prefix
+`human-association-review/1\0` and the complete serialized view. No latest-row
+lookup substitutes a newer draft.
+
+The decision includes the same selection, view checksum, stable approval UUID and
+explicit semantic-review note. Actor identity comes exclusively from operator
+authentication. Unknown body fields, failed evidence, a changed view or reuse of
+the ID for a different decision are rejected. An exact retry retains identical
+IDs and bytes. The Q2 ID is deterministically derived from the approval ID.
+Q2 evidence and `skill-association-approval/1` are inserted in one transaction;
+a failed commit creates neither record. After an ambiguous commit the client must
+retry the original request, never infer failure and create a replacement ID.
+The panel retains that request while mounted; a browser reload is not a durable
+decision-recovery mechanism.
+
+Composition restricts these and existing provider/model operator routes for each
+request, including implicit HEAD reads. A CompositeAuthenticator delegates
+operator authentication only to operator-capable branches. An ordinary signed
+user session cannot inherit instance-token authority because both authenticators
+are mounted. No additional tenant/project/feature role is introduced.
+
+This approval covers one exact Tool usage, not a Recipe, protected root or entire
+workflow. The receipt expressly returns `catalogue_activated=false`. Actual
+trusted validation provenance, artifact identity, coherent activation, live
+kernel policy and ordinary global startup remain independent gates. The API
+cannot turn an arbitrary successful JSON report into trusted Q1 evidence.

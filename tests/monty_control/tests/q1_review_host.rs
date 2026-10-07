@@ -1,5 +1,6 @@
 //! Actual immutable-draft -> contained inspection -> structural Q1 persistence.
-//! No semantic approval, behavioral evidence, human Q2 or activation is invented.
+//! Actual observed behavior and explicit human decisions are retained separately.
+//! No catalogue activation or whole-workflow completion is invented.
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -49,7 +50,7 @@ use pg_retained_q1::{
 };
 
 fn worker() -> &'static std::path::Path {
-    std::path::Path::new(env!("CARGO_BIN_EXE_global_worker"))
+    support::worker()
 }
 
 #[test]
@@ -351,9 +352,37 @@ async fn progress(transport: &TransportClient, mut snapshot: ProcessSnapshot) ->
 #[tokio::test]
 async fn behavioral_records_require_actual_execution_and_keep_failed_expectations_and_commit_evidence()
  {
+    exercise_actual_behavior(None).await;
+}
+
+#[async_trait]
+pub(crate) trait ReviewObserver: Send + Sync {
+    async fn review(
+        &self,
+        pool: Arc<brassclaw_pg::PgPool>,
+        skill: uuid::Uuid,
+        q1: uuid::Uuid,
+        behavior: uuid::Uuid,
+        failed: bool,
+    );
+}
+
+pub(crate) async fn exercise_actual_behavior(observer: Option<&dyn ReviewObserver>) {
     let rig = native_pg::NativePostgres::start().await;
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     for invalid_output in [false, true] {
+        let before_approvals: i64 = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM reborn_skill_association_approvals",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get(0);
         let prepared = retained_program::program(&store, invalid_output).await;
         let skill = prepared.bindings()["0:2"].skill().uuid;
         let data = json!({"text":"'quotes'\\slashes\n Ü {{vars.data}} host.forbidden()"});
@@ -573,7 +602,30 @@ async fn behavioral_records_require_actual_execution_and_keep_failed_expectation
             .await
             .unwrap()
             .get(0);
-        assert_eq!(approvals, 0);
+        assert_eq!(approvals, before_approvals);
+        let q1 = Arc::new(StructuralReviewSet::prepare(execution.inspected_program()).unwrap());
+        persist_structural_reviews(&rig.pool, q1.clone())
+            .await
+            .unwrap();
+        if let Some(observer) = observer {
+            observer
+                .review(
+                    rig.pool.clone(),
+                    skill,
+                    q1.references()[&skill],
+                    id,
+                    invalid_output,
+                )
+                .await;
+        }
+        human_review_regression(
+            &rig.pool,
+            skill,
+            q1.references()[&skill],
+            id,
+            invalid_output,
+        )
+        .await;
         let state = admitted
             .state
             .get_run_state(GetRunStateRequest {
@@ -597,4 +649,222 @@ async fn behavioral_records_require_actual_execution_and_keep_failed_expectation
             .await
             .unwrap();
     }
+}
+
+async fn human_review_regression(
+    pool: &brassclaw_pg::PgPool,
+    skill: uuid::Uuid,
+    q1: uuid::Uuid,
+    behavior: uuid::Uuid,
+    failed: bool,
+) {
+    use brassclaw_skills::association_review_store::{
+        AssociationReviewStoreError, HumanAssociationDecision, prepare_human_association_review,
+        record_human_association_approval,
+    };
+    use tokio_postgres::IsolationLevel;
+    let mut client = pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let result = prepare_human_association_review(&tx, skill, q1, &[behavior]).await;
+    if failed {
+        assert!(matches!(result, Err(AssociationReviewStoreError::Evidence)));
+        tx.rollback().await.unwrap();
+        return;
+    }
+    let review = result.unwrap();
+    let checksum = review.checksum().to_owned();
+    assert_eq!(review.view()["scope"], "one-tool-usage");
+    assert_eq!(review.view()["activates_catalogue"], false);
+    assert_eq!(review.view()["components"].as_array().unwrap().len(), 4);
+    assert_eq!(review.view()["evidence"].as_array().unwrap().len(), 2);
+    let selected_skill = review.view()["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["uuid"] == skill.to_string())
+        .unwrap();
+    let mut changed: Value =
+        serde_json::from_str(selected_skill["revision_bytes"].as_str().unwrap()).unwrap();
+    changed["document"]["review_note"] =
+        json!("new unapproved draft must not alter the displayed combination");
+    let draft = ComponentRevisionDraft::from_json(&changed.to_string()).unwrap();
+    PgComponentRevisionStore::stage_in_transaction(
+        &tx,
+        &draft,
+        selected_skill["version"].as_u64().unwrap(),
+    )
+    .await
+    .unwrap();
+    let approval = uuid::Uuid::new_v4();
+    let q2 = uuid::Uuid::new_v4();
+    let note = "Reviewed prose, exact executable JSON binding, typed input/result contracts and actual success cases.";
+    let wrong = record_human_association_approval(
+        &tx,
+        &review,
+        HumanAssociationDecision {
+            approval_id: approval,
+            q2_id: q2,
+            actor: "authenticated-test-operator",
+            semantic_review: note,
+            reviewed_checksum: "changed-view",
+        },
+    )
+    .await;
+    assert!(matches!(wrong, Err(AssociationReviewStoreError::Evidence)));
+    record_human_association_approval(
+        &tx,
+        &review,
+        HumanAssociationDecision {
+            approval_id: approval,
+            q2_id: q2,
+            actor: "authenticated-test-operator",
+            semantic_review: note,
+            reviewed_checksum: &checksum,
+        },
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    // Exact recovery retains both identities/bytes. Newer draft heads never
+    // substitute revisions after the human viewed this retained combination.
+    let tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let again = prepare_human_association_review(&tx, skill, q1, &[behavior])
+        .await
+        .unwrap();
+    assert_eq!(again.checksum(), checksum);
+    record_human_association_approval(
+        &tx,
+        &again,
+        HumanAssociationDecision {
+            approval_id: approval,
+            q2_id: q2,
+            actor: "authenticated-test-operator",
+            semantic_review: note,
+            reviewed_checksum: &checksum,
+        },
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let counts = client
+        .query_one(
+            "SELECT
+        (SELECT count(*) FROM reborn_skill_association_approvals WHERE approval_id=$1),
+        (SELECT count(*) FROM reborn_component_review_evidence WHERE evidence_id=$2)",
+            &[&approval, &q2],
+        )
+        .await
+        .unwrap();
+    assert_eq!(counts.get::<_, i64>(0), 1);
+    assert_eq!(counts.get::<_, i64>(1), 1);
+    let actual: String = client
+        .query_one(
+            "SELECT evidence_bytes FROM reborn_component_review_evidence WHERE evidence_id=$1",
+            &[&q2],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let actual: Value = serde_json::from_str(&actual).unwrap();
+    assert_eq!(actual["report"]["actor"], "authenticated-test-operator");
+    assert_eq!(actual["report"]["review_checksum"], checksum);
+    assert_eq!(actual["report"]["semantic_review"], note);
+    // A conflicting retry cannot overwrite an approved decision.
+    let tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let review = prepare_human_association_review(&tx, skill, q1, &[behavior])
+        .await
+        .unwrap();
+    let result = record_human_association_approval(
+        &tx,
+        &review,
+        HumanAssociationDecision {
+            approval_id: approval,
+            q2_id: q2,
+            actor: "another-operator",
+            semantic_review: note,
+            reviewed_checksum: &checksum,
+        },
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Err(AssociationReviewStoreError::Integrity)
+    ));
+    tx.rollback().await.unwrap();
+    // Real deferred commit failure leaves neither half of a decision published.
+    client.batch_execute("CREATE FUNCTION fail_q2_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'actual Q2 commit failure' USING ERRCODE='23514'; END; $$; CREATE CONSTRAINT TRIGGER q2_commit_fault AFTER INSERT ON reborn_skill_association_approvals DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_q2_commit()").await.unwrap();
+    let recovery_approval = uuid::Uuid::new_v4();
+    let recovery_q2 = uuid::Uuid::new_v4();
+    let tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let review = prepare_human_association_review(&tx, skill, q1, &[behavior])
+        .await
+        .unwrap();
+    record_human_association_approval(
+        &tx,
+        &review,
+        HumanAssociationDecision {
+            approval_id: recovery_approval,
+            q2_id: recovery_q2,
+            actor: "authenticated-test-operator",
+            semantic_review: note,
+            reviewed_checksum: &checksum,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(tx.commit().await.is_err());
+    let row = client
+        .query_one(
+            "SELECT
+        NOT EXISTS(SELECT 1 FROM reborn_skill_association_approvals WHERE approval_id=$1),
+        NOT EXISTS(SELECT 1 FROM reborn_component_review_evidence WHERE evidence_id=$2)",
+            &[&recovery_approval, &recovery_q2],
+        )
+        .await
+        .unwrap();
+    assert!(row.get::<_, bool>(0) && row.get::<_, bool>(1));
+    client.batch_execute("DROP TRIGGER q2_commit_fault ON reborn_skill_association_approvals; DROP FUNCTION fail_q2_commit()").await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let review = prepare_human_association_review(&tx, skill, q1, &[behavior])
+        .await
+        .unwrap();
+    record_human_association_approval(
+        &tx,
+        &review,
+        HumanAssociationDecision {
+            approval_id: recovery_approval,
+            q2_id: recovery_q2,
+            actor: "authenticated-test-operator",
+            semantic_review: note,
+            reviewed_checksum: &checksum,
+        },
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
 }

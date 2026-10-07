@@ -8,7 +8,7 @@ use brassclaw_monty_host::{
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, path::Path, time::Duration};
 
-pub fn boot(source: &str) -> RootBoot {
+pub(crate) fn boot(source: &str) -> RootBoot {
     RootBoot {
         heap_settings: Some(HeapSettings {
             revision: 1,
@@ -58,13 +58,20 @@ pub fn boot(source: &str) -> RootBoot {
         max_recipe_contexts: 8,
     }
 }
-pub fn limits() -> ProcessLimits {
+pub(crate) fn limits() -> ProcessLimits {
     ProcessLimits {
         hard_memory_bytes: 64 * 1024 * 1024,
         max_frame_bytes: 256 * 1024,
         response_timeout: Duration::from_secs(5),
     }
 }
-pub fn worker() -> &'static Path {
-    Path::new(env!("CARGO_BIN_EXE_global_worker"))
+pub(crate) fn worker() -> &'static Path {
+    static PACKAGED: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    if let Some(path) = option_env!("CARGO_BIN_EXE_global_worker") {
+        Path::new(path)
+    } else {
+        PACKAGED.get_or_init(|| {
+            brassclaw_monty_host::process::installed_worker().expect("packaged actual Monty worker")
+        })
+    }
 }

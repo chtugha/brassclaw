@@ -344,10 +344,14 @@ impl WebuiAuthenticator for CompositeAuthenticator {
     }
 
     fn allows_operator_webui_config(&self) -> bool {
-        // CompositeAuthenticator delegates to either session or env token.
-        // Both should allow operator config for LLM provider management.
-        // Return true if EITHER authenticator allows it.
         self.session.allows_operator_webui_config() || self.env_token.allows_operator_webui_config()
+    }
+
+    async fn authenticate_operator(&self, token: &str) -> Option<UserId> {
+        if let Some(user) = self.session.authenticate_operator(token).await {
+            return Some(user);
+        }
+        self.env_token.authenticate_operator(token).await
     }
 }
 
@@ -363,6 +367,44 @@ mod tests {
 
     fn tenant() -> TenantId {
         TenantId::new("tenant-a").expect("tenant")
+    }
+
+    #[tokio::test]
+    async fn composite_authentication_keeps_user_sessions_out_of_operator_routes() {
+        let store = Arc::new(signed_store("operator-secret"));
+        let session = store
+            .create_session(
+                tenant(),
+                UserId::new("session-user").unwrap(),
+                ChronoDuration::seconds(TEST_SESSION_TTL_SECS),
+            )
+            .await
+            .unwrap();
+        let session_token = session.expose_secret();
+        let auth = CompositeAuthenticator::new(
+            Arc::new(SessionAuthenticator::new(store)),
+            Arc::new(
+                crate::EnvBearerAuthenticator::new(
+                    SecretString::from("instance-bearer"),
+                    UserId::new("instance-operator").unwrap(),
+                )
+                .unwrap(),
+            ),
+        );
+        assert!(auth.allows_operator_webui_config());
+        assert_eq!(
+            auth.authenticate(session_token).await.unwrap().as_str(),
+            "session-user"
+        );
+        assert!(auth.authenticate_operator(session_token).await.is_none());
+        assert_eq!(
+            auth.authenticate_operator("instance-bearer")
+                .await
+                .unwrap()
+                .as_str(),
+            "instance-operator"
+        );
+        assert!(auth.authenticate_operator("invalid").await.is_none());
     }
 
     fn signed_store(secret: &str) -> SignedTokenSessionStore {

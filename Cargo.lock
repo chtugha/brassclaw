@@ -2348,6 +2348,7 @@ dependencies = [
  "brassclaw_loop_support",
  "brassclaw_mcp",
  "brassclaw_memory",
+ "brassclaw_monty_host",
  "brassclaw_network",
  "brassclaw_outbound",
  "brassclaw_pg",

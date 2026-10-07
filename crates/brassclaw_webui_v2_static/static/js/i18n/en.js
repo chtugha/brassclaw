@@ -1,6 +1,19 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("en", {
+  "associationReview.noteTooLarge": "Review notes must fit within 16 KiB of UTF-8 text.",
+  "associationReview.another": "Review another usage",
+  "associationReview.title": "Review an exact Skill usage",
+  "associationReview.scope": "Review the retained instructions, executable code, Tool binding and validation evidence together. Q2 records approval of this usage; catalogue activation is a separate step.",
+  "associationReview.skill": "Skill UUID",
+  "associationReview.q1": "Q1 evidence UUID",
+  "associationReview.behavior": "Behavioral evidence UUIDs (separated by whitespace)",
+  "associationReview.load": "Load exact review",
+  "associationReview.meaning": "Explain how the instructions, code and observed behavior agree",
+  "associationReview.approve": "Record human Q2 approval",
+  "associationReview.retry": "Retry the same decision",
+  "associationReview.recorded": "Approval {id} recorded. Catalogue activation remains separate.",
+
   // Language metadata
   "language.name": "English",
   "language.switch": "Language changed",

@@ -45,8 +45,8 @@ pub mod component_revision;
 #[cfg(feature = "db-store")]
 pub mod revision_store;
 
-/// Exact immutable authored association/review records, read in the caller's
-/// selection snapshot. Trusted review producers and activation remain separate.
+/// Exact immutable authored association/review records and transactional human
+/// decisions. Trusted Q1/behavior producers and catalogue activation are separate.
 #[cfg(feature = "db-store")]
 pub mod association_review_store;
 

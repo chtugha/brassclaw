@@ -197,6 +197,40 @@ pub struct UpdateValidationStatusRequest {
     pub feedback: Option<String>,
 }
 
+/// Exact evidence selection for one authored Skill usage. No client reports,
+/// source documents or success flags are accepted by the human-review API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssociationReviewSelection {
+    pub q1_ref: String,
+    pub behavioral_refs: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AssociationReviewView {
+    pub review_checksum: String,
+    pub review: serde_json::Value,
+}
+
+/// Explicit human decision on the displayed exact view. Reuse approval_id and
+/// identical fields after a transport failure; a retry cannot replace bytes.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApproveAssociationRequest {
+    pub approval_id: String,
+    pub selection: AssociationReviewSelection,
+    pub review_checksum: String,
+    pub semantic_review: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssociationApprovalResponse {
+    pub approval_id: String,
+    pub q2_ref: String,
+    pub review_checksum: String,
+    pub catalogue_activated: bool,
+}
+
 /// Response for `PUT/validate`, `PUT/reject`, `PUT/review-request`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateValidationStatusResponse {
@@ -243,6 +277,28 @@ pub struct RecordOutcomeResponse {
 /// `RecipeSummary` / `ToolSkillSummary` for the WebUI list tab.
 #[async_trait]
 pub trait RecipeStore: Send + Sync {
+    async fn prepare_association_review(
+        &self,
+        _skill_id: &str,
+        _selection: AssociationReviewSelection,
+    ) -> Result<AssociationReviewView, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "exact association review is unavailable".into(),
+        ))
+    }
+
+    /// Actor is supplied by the authenticated human ingress, never the body.
+    async fn approve_association(
+        &self,
+        _actor: &str,
+        _skill_id: &str,
+        _request: ApproveAssociationRequest,
+    ) -> Result<AssociationApprovalResponse, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "exact association review is unavailable".into(),
+        ))
+    }
+
     /// List recipes owned by `(user_id, project_id)`, sorted by `updated_at`
     /// descending so freshly-promoted rows surface first.
     async fn list_recipes(

@@ -39,7 +39,7 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    extract::{Request, State},
+    extract::{MatchedPath, Request, State},
     http::{HeaderName, HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -48,8 +48,7 @@ use brassclaw_auth::GoogleOAuthRouteConfig;
 use brassclaw_host_api::ingress::IngressRouteDescriptor;
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
 use brassclaw_webui_v2::{
-    WebUiV2RouteOptions, WebUiV2State, is_webui_v2_llm_config_route_id,
-    webui_v2_router_with_options,
+    WebUiV2RouteOptions, WebUiV2State, is_webui_v2_operator_route_id, webui_v2_router_with_options,
 };
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::cors::{AllowHeaders, CorsLayer};
@@ -60,6 +59,7 @@ use crate::product_auth_serve::{ProductAuthRouteState, product_auth_route_mount}
 use crate::webui::RebornWebuiBundle;
 use crate::webui_body_limit::{build_body_limit_state, enforce_body_limit};
 use crate::webui_rate_limit::{build_rate_limit_state, enforce_rate_limit};
+use crate::webui_route_match::{network_method_to_axum, parse_pattern, segments_match};
 use crate::webui_ws_origin::{build_websocket_origin_state, enforce_websocket_origin};
 use brassclaw_product_workflow::WebUiAuthenticatedCaller;
 
@@ -97,13 +97,17 @@ pub trait WebuiAuthenticator: Send + Sync + 'static {
     /// models, or Slack channel routes, so host composition only mounts them
     /// for authenticators that explicitly opt in.
     fn allows_operator_webui_config(&self) -> bool {
-        #[allow(deprecated)]
-        self.allows_operator_llm_config()
+        false
     }
 
-    #[deprecated(since = "0.1.0", note = "Renamed to allows_operator_webui_config")]
-    fn allows_operator_llm_config(&self) -> bool {
-        false
+    /// Check this particular bearer. Composite authenticators must delegate
+    /// to operator-capable branches only; mounting is not token authority.
+    async fn authenticate_operator(&self, token: &str) -> Option<UserId> {
+        if self.allows_operator_webui_config() {
+            self.authenticate(token).await
+        } else {
+            None
+        }
     }
 }
 
@@ -451,11 +455,12 @@ pub fn webui_v2_app_with_lifecycle(
         ]))
         .allow_credentials(true);
 
-    let auth_state = AuthLayerState {
+    let mut auth_state = AuthLayerState {
         tenant_id: config.tenant_id.clone(),
         default_agent_id: config.default_agent_id.clone(),
         default_project_id: config.default_project_id.clone(),
         authenticator: config.authenticator.clone(),
+        operator_routes: Arc::new(Vec::new()),
     };
 
     let product_auth_mount = bundle.product_auth.clone().map(|product_auth| {
@@ -481,7 +486,7 @@ pub fn webui_v2_app_with_lifecycle(
     let mut descriptors = brassclaw_webui_v2::webui_v2_routes();
     if !mount_operator_routes {
         descriptors
-            .retain(|descriptor| !is_webui_v2_llm_config_route_id(descriptor.route_id().as_str()));
+            .retain(|descriptor| !is_webui_v2_operator_route_id(descriptor.route_id().as_str()));
     }
     if let Some(mount) = &product_auth_mount {
         descriptors.extend(mount.descriptors.iter().cloned());
@@ -490,6 +495,17 @@ pub fn webui_v2_app_with_lifecycle(
         descriptors.extend(mount.descriptors.iter().cloned());
     }
     let rate_limit_state = build_rate_limit_state(&descriptors)?;
+    auth_state.operator_routes = Arc::new(
+        descriptors
+            .iter()
+            .filter(|descriptor| is_webui_v2_operator_route_id(descriptor.route_id().as_str()))
+            .map(|descriptor| OperatorRoute {
+                method: network_method_to_axum(descriptor.method()),
+                pattern: descriptor.route_pattern().as_str().to_string(),
+                segments: parse_pattern(descriptor.route_pattern().as_str()),
+            })
+            .collect(),
+    );
     let body_limit_state = build_body_limit_state(&descriptors);
     let ws_origin_state = build_websocket_origin_state(
         &descriptors,
@@ -631,6 +647,13 @@ struct AuthLayerState {
     default_agent_id: Option<AgentId>,
     default_project_id: Option<ProjectId>,
     authenticator: Arc<dyn WebuiAuthenticator>,
+    operator_routes: Arc<Vec<OperatorRoute>>,
+}
+
+struct OperatorRoute {
+    method: Method,
+    pattern: String,
+    segments: Vec<Option<String>>,
 }
 
 /// Resolve `Authorization: Bearer <token>` for any v2 route, OR the
@@ -650,7 +673,21 @@ async fn authenticate_request(
         None => return unauthorized(),
     };
 
-    let user_id = match state.authenticator.authenticate(&token).await {
+    let operator_route = state.operator_routes.iter().any(|route| {
+        (route.method == *request.method()
+            || (route.method == Method::GET && request.method() == Method::HEAD))
+            && (request
+                .extensions()
+                .get::<MatchedPath>()
+                .is_some_and(|matched| matched.as_str() == route.pattern)
+                || segments_match(&route.segments, request.uri().path()))
+    });
+    let authenticated = if operator_route {
+        state.authenticator.authenticate_operator(&token).await
+    } else {
+        state.authenticator.authenticate(&token).await
+    };
+    let user_id = match authenticated {
         Some(uid) => uid,
         None => return unauthorized(),
     };

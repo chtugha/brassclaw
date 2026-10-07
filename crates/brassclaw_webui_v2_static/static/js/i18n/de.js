@@ -1,6 +1,19 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("de", {
+  "associationReview.noteTooLarge": "Review-Notizen dürfen höchstens 16 KiB UTF-8-Text enthalten.",
+  "associationReview.another": "Weitere Verwendung prüfen",
+  "associationReview.title": "Exakte Skill-Verwendung prüfen",
+  "associationReview.scope": "Gespeicherte Anweisungen, ausführbaren Code, Tool-Bindung und Validierungsnachweise gemeinsam prüfen. Q2 bestätigt diese Verwendung; die Aktivierung im Katalog erfolgt separat.",
+  "associationReview.skill": "Skill-UUID",
+  "associationReview.q1": "UUID des Q1-Nachweises",
+  "associationReview.behavior": "UUIDs der Verhaltensnachweise (durch Leerraum getrennt)",
+  "associationReview.load": "Exakten Review laden",
+  "associationReview.meaning": "Beschreiben, wie Anweisungen, Code und beobachtetes Verhalten übereinstimmen",
+  "associationReview.approve": "Menschliche Q2-Freigabe speichern",
+  "associationReview.retry": "Dieselbe Entscheidung erneut senden",
+  "associationReview.recorded": "Freigabe {id} gespeichert. Die Katalogaktivierung erfolgt separat.",
+
   "montyVm.allocationCountRetired": "Monty 1.0 hat Allokationszähler-Limits entfernt. Frühere Werte bleiben zur Nachvollziehbarkeit erhalten und begrenzen die Ausführung nicht.",
   "montyVm.retiredAllocationValue": "Früherer Allokationszähler (schreibgeschützt)",
   "montyVm.maxDurationDesc": "Maximale aktive VM-Rechenzeit pro Aufgabe in Sekunden; ohne Leerlauf und externe Wartezeiten.",

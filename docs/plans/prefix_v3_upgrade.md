@@ -8,8 +8,8 @@ content manifest because version numbers alone do not identify the working tree.
 
 ## 1. Recipe-first workflow and intended result
 
-Enhance the existing Prefix settings page to manage five named profiles:
-`base-prompt`, `defensive`, `homeassistant`, `tomedo` and `sempai`. Each has a Generate /
+Enhance the existing Prefix settings page to manage six seeded profiles and operator-created profiles:
+`base-prompt`, `defensive`, `homeassistant`, `tomedo`, `sempai` and `prefix-maker`. Each has a Generate /
 Regenerate action, independent build status, immutable generations, source quality
 details and an explicit deployment/cache status. Replace the current base-prompt
 row concatenation with the exact-source compiler approach already used by the
@@ -32,6 +32,15 @@ Activate generation (separate operation)
   -> atomically select generation for new model requests
   -> optionally warm the selected provider
   -> verify exact injected tokens and measured cache reuse
+
+Redesign / Create prefix (separate Tier-1 Recipes)
+  -> obtain explicit confirmation of the provider-assisted design request
+  -> pin Prefix-Maker, existing design/source evidence and provider/target metadata
+  -> provider proposes a new versioned design or new profile draft
+  -> retain proposal; validate contracts and compile a quarantined trial generation
+  -> show design/content diff and quality/capacity evidence
+  -> operator reviews and accepts a validated design revision
+  -> Generate uses that revision; Activate remains a separate operation
 ```
 
 ### 1.1 What one click must deliver
@@ -133,7 +142,7 @@ acceptance during this planning task.
 | Browser API | `settings-api.js` calls the v2 prefix routes. | Retain the same facade-backed API family. |
 | HTTP | `handlers.rs`, `descriptors.rs`, `router.rs`: `GET /api/webchat/v2/prefixes`, `POST /api/webchat/v2/prefixes/{name}/regenerate`. | Preserve ingress policies and route contracts; add durable job/detail/activation operations. |
 | Facade | `RebornServicesApi` delegates to `InterceptorConfigService` in `reborn_services/interceptor_config.rs`. | Extend the existing service seam and DTOs; no direct DB/compiler access from HTTP handlers. |
-| Service | `RebornInterceptorConfigService::list_prefix_entries` returns one base-prompt entry; `regenerate_prefix` rejects other names. | Register all five profiles and dispatch by validated profile identity. |
+| Service | `RebornInterceptorConfigService::list_prefix_entries` returns one base-prompt entry; `regenerate_prefix` rejects other names. | Register all six seeded profiles and supported custom profiles and dispatch by validated profile identity. |
 | Generation | `regenerate_prefix` creates an internal conversation, scope ticket, lease and request UUID, submits `host-assemble-prefix-bundle`, checks terminal reply and exact stored `generation_id`. | Preserve durable operation fencing and failure semantics; replace the long synchronous HTTP wait with job admission/status. |
 | Sweep | `PgSweepValidatedComponentsBackend` selects validated rows from fixed tables without the old consumer-tag exclusion; sorts by class/prompt UID. | Reuse the read boundary, add one consistent snapshot and complete semantic records. |
 | Lost information | Sweep expressions prefer `prior_knowledge_content`; Recipes contribute only prior knowledge or an empty string. Tool schemas, Recipe variants/bindings and associations are absent from the rendered body. | Export complete original content and structured execution metadata; summaries cannot replace them. |
@@ -155,7 +164,7 @@ Relevant inspected files:
 - [`pg_kohai_port.rs`](../../crates/brassclaw_reborn_composition/src/pg_kohai_port.rs), [`loop_driver_host.rs`](../../crates/brassclaw_reborn/src/loop_driver_host.rs), [`serve.rs`](../../crates/brassclaw_reborn_cli/src/commands/serve.rs).
 - [`interceptor_config.rs`](../../crates/brassclaw_product_workflow/src/reborn_services/interceptor_config.rs), [`prefix-tab.js`](../../crates/brassclaw_webui_v2_static/static/js/pages/settings/components/prefix-tab.js), [`usePrefixes.js`](../../crates/brassclaw_webui_v2_static/static/js/pages/settings/hooks/usePrefixes.js).
 
-## 4. Five profiles and one reusable compiler engine
+## 4. Six seeded profiles, custom profiles and one reusable compiler engine
 
 | Profile ID | UI label | Compiler entry point | Source content |
 | --- | --- | --- | --- |
@@ -164,6 +173,7 @@ Relevant inspected files:
 | `homeassistant` | Home Assistant / MQTT / Modbus / YAML | `Homeassistant-compiler.py` | Existing official domain sources and coverage gates. |
 | `tomedo` | tomedo / API / macOS / PostgreSQL / Billing and Coding | `tomedo-compiler.py` | Existing official docs, qualified forum observations and curated local findings; no clinical knowledge. |
 | `sempai` | Sempai / Prompt Review and Component Authoring | `sempai-compiler.py` | Complete BrassClaw authoring/validation references and explicit prompt-diagnosis, Recipe and component-proposal procedures. |
+| `prefix-maker` | Prefix-Maker / Prefix Design | `prefix-maker-compiler.py` (planned) | Versioned prefix engineering, evidence/formatting, model/tokenizer/template and cache architecture references, measured design lessons and the supported profile-design contract. |
 
 Keep `base-promt-compiler.py` as the requested filename; the canonical profile name
 is correctly spelled `base-prompt`. Paths are registry-owned, not browser-supplied.
@@ -455,6 +465,92 @@ units only under a reviewed deterministic policy after mandatory units fit. If
 mandatory knowledge cannot fit, fail with exact coverage/capacity evidence rather
 than choosing lossy slices. A fully seeded base library may require a larger model.
 
+### 5.2 Prefix-Maker reference and versioned design workflow
+
+Introduce `prefix-maker` as the sixth seeded knowledge profile, independently
+generated through the same model-free compiler and evidence gates. Register its
+source package, procedure and planned `prefix-maker-compiler.py` entry point;
+reuse the shared engine rather than another rendering implementation. Bootstrap
+uses a reviewed shipped design and pinned local artifacts. Generating Prefix-Maker
+must not require Prefix-Maker, a provider call or a pre-existing fresh prefix.
+
+Its knowledge package includes authoritative, versioned model/provider/tokenizer/
+chat-template and cache specifications; the four BrassClaw component guides and
+supported profile/compiler interfaces; evidence-preserving source selection,
+canonical formatting, navigation, code/YAML/JSON integrity, authority boundaries,
+context/output capacity and stable leading-token construction. Include measured
+lessons from Ornith and section 9.1: INT4 weights versus attention/recurrent dtypes,
+full/linear attention groups, physical/logical pages, recurrent checkpoints, native/
+external cache restoration, compatible namespaces, injection ownership and cache
+qualification. Distinguish measured configurations from general principles; do
+not apply Ornith geometry to an unknown model or claim a cache trains the model.
+
+Teach complete general design examples and their validation receipts, including
+coverage/capacity failures, contradictory sources and source-versus-instruction
+boundaries. Apply the same freshness, licensing, complete-unit and held-out quality
+rules as other profiles. Benchmark answers, secrets and conversations are not
+reusable reference sources. Public/provider documentation refresh is a separately
+recorded source job, never uncontrolled browsing during compilation.
+
+Define two Tier-1 Recipes using reusable discovery/export/provider/proposal-store/
+validation usages: Redesign an existing profile and Create a new profile. Record
+their real component UUIDs, typed contracts, ten-plus intent examples and positive/
+negative routing cases during implementation; explanatory steps here are not
+persisted Recipe JSON. Each independent Tool/provider call is a separate usage.
+Use the accepted DB-only provider gateway and actual sink contracts; introduce no
+special Rust workflow executor or guessed API. The design provider may differ from
+the target model: pin both identities and capabilities explicitly.
+
+A design task pins an approved fresh Prefix-Maker generation/composite, current
+profile/design/generation, source/evidence manifests, requested goals, hard coverage
+requirements and target metadata. For new profiles the existing-profile reference
+is absent explicitly. Compose one trusted envelope with Prefix-Maker exactly once;
+the prefix being reviewed is delimited untrusted input, not a second system persona.
+Check the full request capacity first. If it cannot fit, use only an explicitly
+reviewed multi-stage inspection contract retaining complete evidence and coverage,
+or return Capacity blocked; never silently slice the reviewed prefix. Unknown
+architecture or unsupported adapter behavior requires evidence/setup, not invention.
+Use the existing host secret/data handling before export to the design provider;
+credentials and unrelated conversations never enter the review packet. User goals
+and imported content remain typed task data, not Python source or trusted authority.
+
+Provider output is a structured draft design: purpose/consumer, proposed source
+registrations, coverage requirements, whole-unit selection and canonical ordering,
+section/rendering rules, teaching/validation requirements, target compatibility,
+expected tradeoffs and supported shared-engine options. Preserve the raw output,
+rationale, exact request/response identities and diff against the existing design.
+Provider suggestions about cache/service flags are advisory; this workflow never
+patches packages, changes services or deploys inference infrastructure.
+
+The model cannot install its output as arbitrary compiler Python, browser-supplied
+paths or shell commands. Validate a versioned declarative design schema against
+registered adapters and supported options. Missing engine/schema support is explicit
+implementation work, not executable text or a silently ignored setting. If a design
+requires new executable components, route them through separate supported authoring,
+Q1/behavioral review/human Q2 and registration; do not treat the popup as approval.
+
+Compile a quarantined trial with pinned sources and the proposed design; require
+evidence preservation, coverage, formatting, capacity and reproducibility checks.
+Optional provider evaluations are explicit child jobs with first-pass/repair/transfer
+results and cache correctness separated. Show Unsupported, Capacity blocked or
+Validation failed rather than claiming an upgrade merely because a model approved it.
+Present old/new design and content diffs, omitted-unit reasons and receipts for human
+review. Persist the accepted design as a new immutable revision with review evidence;
+authored component changes still require Q1 and human Q2. Selecting it for future
+Generate is explicit and revision-checked, never automatic production activation.
+
+Generate snapshots the applicable approved knowledge using the selected immutable
+design. Identical design/target/source inputs reproduce identical output; new approved
+components change information, not design. Only explicit accepted Redesign or a
+reviewed design upgrade changes formatting/selection rules. Concurrent edits make
+a proposal stale for acceptance; retain it for rebase/review, never overwrite a newer
+design. Existing jobs/tasks retain their pinned revisions.
+
+Prefix-Maker may itself have a Redesign button: use its previously approved fresh
+generation to propose its successor. It cannot approve itself or use its unvalidated
+successor as the review authority. If no usable predecessor exists, restore/build the
+reviewed bootstrap reference first; do not fall back to an ungrounded model call.
+
 ## 6. Installation-time DB seeding: preferred combined approach
 
 Use the database as the installed source catalogue, with a shipped reproducible
@@ -481,7 +577,7 @@ to reconstruct the base prefix.
    prefix dependencies; they do not activate new compiled prefixes or overwrite a
    body used by a running task. Never seed generated
    summaries back as authoritative originals.
-5. Register the five profile definitions and compiler artifacts at installation.
+5. Register the six seeded profile definitions and compiler artifacts at installation.
    Optionally import an existing verified domain generation. External domain source
    fetches and expensive generation are operator jobs, not boot-time network/GPU
    prerequisites. A missing domain bundle is visible as Not generated.
@@ -506,6 +602,7 @@ not existing tables/API fields:
 | Record | Required content |
 | --- | --- |
 | Prefix profile | Stable profile ID, display metadata, registered compiler/version/checksum, source/coverage policy, model targets and supported validation adapters. |
+| Design revision/proposal | Stable profile identity, immutable declarative design/schema revision and checksum, predecessor, pinned Prefix-Maker/provider/source/target references, raw proposal, diff, validation/trial receipts and acceptance evidence. Draft proposals never become active designs by a status label alone. |
 | Prefix generation | Content-addressed ID, profile ID, compiler/input snapshot identities, full bundle text, evidence cards, immutable source/dependency manifest, model/tokenizer/template hashes, exact token counts and quality results. |
 | Generation job | Durable request/run ID, profile, pinned input references, state/stage, timestamps, logical step-invocation references, execution attempts, cancellation/fencing, checkpoints/artifacts and classified errors. |
 | Active selection | Provider/model/consumer binding to one immutable generation or explicitly compiled composite; desired/effective state and revision for compare-and-swap. |
@@ -515,7 +612,7 @@ Migrate existing `reborn_basic_prompt_store` bundles as legacy base-prompt gener
 Keep compatibility reads until both Kohai and Sempai use the new resolver. A legacy
 bundle without evidence/tokenizer provenance is labelled Legacy / Unverified;
 import does not synthesize missing verification. The old scope-only uniqueness
-constraint cannot distinguish five profile names: add the actual name/selection
+constraint cannot distinguish named profile identities: add the actual name/selection
 dimension or introduce generation storage with a clearly defined compatibility
 pointer. Do not assert additive rows already solve this.
 
@@ -575,7 +672,7 @@ freshness requirement in simplified-v3's acceptance matrix.
 
 ## 8. WebUI and API changes
 
-Extend the existing Prefix tab rather than its frontend-only list. All five profiles
+Extend the existing Prefix tab rather than its frontend-only list. All six seeded profiles and registered custom profiles
 appear even before their first build. Display a useful domain description, generated
 and active generation, source freshness, build status, last build duration,
 rendered tokens, coverage gaps, validation status and per-provider cache status.
@@ -587,6 +684,38 @@ View sources and validation; Activate a chosen compatible generation; Warm /
 Verify cache when the provider supports it; Roll back to a retained generation.
 Generating a prefix must not automatically replace an unrelated provider's active
 domain. Do not mark “fresh” optimistically from a job admission response.
+
+Place a button labelled **Redesign** immediately beside Generate / Regenerate on
+every seeded/custom profile row. Before admission, open an accessible confirmation
+popup naming the profile/current design, design provider/model and target, permitted
+source data sent to that provider, requested goal and the expected outcome: a draft
+design for review, with no active prefix changed. Offer Cancel and Confirm redesign;
+Escape/cancel makes no job or provider call. Revalidate prerequisites and exact
+revisions server-side on confirmation. If they changed, require confirmation of the
+updated request. Persist confirmed request identity/idempotency before dispatch so
+double clicks, reconnects or recovery do not create duplicate confirmed effects.
+This is the requested UX confirmation, not a per-Tool authorization lease; current
+global policy, external authentication and technical limits still apply independently.
+
+Redesign shows durable progress, raw proposal/diff, trial validation and a separate
+Accept design action. Failed/cancelled/rejected proposals preserve the selected design,
+generated artifacts and active selection. Accept design updates only the saved design
+for subsequent Generate; a trial may be reused only when its exact accepted inputs
+match. Source refresh is not Redesign, and Regenerate never asks a model to rewrite
+the design. Missing provider/fresh Prefix-Maker/target evidence disables Redesign with
+an actionable explanation while offline Generate remains available.
+
+Add a **Create Prefix** tab within this same settings section, alongside the existing
+profile listing. Collect display name, purpose, consumer, target and registered source
+references/authorized import requests, mandatory coverage and optional design goals;
+allow selection of the design provider. Allocate stable profile identity server-side;
+names are not paths or compiler entry points. Show a confirmation summary before the
+provider-assisted Create design job. Validate duplicate/conflicting names, unsupported
+consumers/adapters and source access before dispatch. Draft profiles are visibly Draft,
+not eligible serving selections. On validated human acceptance, register the custom
+profile/design, then expose it in the same list with Generate and Redesign. Registration,
+generation and activation remain distinct. Seed upgrades cannot overwrite custom
+profiles/designs; removed drafts cannot break retained job/artifact references.
 
 The primary Generate action uses a registered saved build specification: profile,
 consumer, optional target revision, accepted source-refresh policy and reviewed
@@ -613,8 +742,11 @@ Retain the current API family. Proposed extensions, subject to final DTO review:
 
 | Operation | Proposed route/behavior |
 | --- | --- |
-| List | Existing `GET /api/webchat/v2/prefixes`, now returning five profiles plus current job/build/selection state. |
+| List | Existing `GET /api/webchat/v2/prefixes`, now returning seeded/custom profiles plus current job/build/selection state. |
 | Generate/regenerate | Existing `POST /api/webchat/v2/prefixes/{name}/regenerate`, admit work and return a durable job reference (`202`); one operation handles first and later builds. |
+| Redesign | Proposed `POST /api/webchat/v2/prefixes/{name}/redesign-jobs`: confirmed typed request with exact existing design/generation, registered design-provider/target references and goals; returns durable job reference (`202`). |
+| Create profile draft/design | Proposed `POST /api/webchat/v2/prefix-profile-drafts`: validated form and confirmed provider-assisted design request; allocates draft identity and returns its durable job reference. |
+| Review/accept design | Proposed design-proposal detail and explicit acceptance mutations under the profile/draft family; require exact proposal/checksum, predecessor revision and validation/review evidence. No acceptance by arbitrary JSON overwrite. |
 | Observe/cancel | `GET /api/webchat/v2/prefix-jobs/{id}` and `POST /api/webchat/v2/prefix-jobs/{id}/cancel`; reuse runtime events where available. |
 | Generation details | `GET /api/webchat/v2/prefixes/{name}/generations/{id}` with manifest, source and quality projection. |
 | Activation/warm | Explicit mutation operations under the same profile family with registered target identity and exact generation, not arbitrary host paths or shell commands. |
@@ -689,7 +821,7 @@ still needs no model call merely because a prefix exists.
 
 For BrassClaw Kohai/Sempai consumers, domain/reviewer selection selects an explicitly compiled
 base-plus-domain composite; it does not replace the required BrassClaw base knowledge.
-The five UI profiles remain independently buildable source generations. Composite
+The seeded and registered custom UI profiles remain independently buildable source generations. Composite
 records pin the exact base/domain generations, rendering policy and token manifest;
 the active selection points to the composite. Standalone domain generations remain
 usable by separately registered domain-only consumers. If a required composite
@@ -721,7 +853,7 @@ Propose `POST /api/webchat/v2/prefixes/{name}/composite-jobs` for a domain or Se
 returning `202` and the existing durable job reference. The server validates exact
 parent IDs, target/policy IDs and profile relationships; it accepts no paths/code.
 Use the existing job status/cancel routes and generation-detail projections, extended
-to show composite parents. Keep five top-level profile rows; show target-specific
+to show composite parents. Keep top-level rows for seeded and registered custom profiles; show target-specific
 composites beneath their domain/reviewer row with Build composite / Rebuild, job progress,
 Capacity blocked and Activate state. Parent generation alone is labelled Generated,
 not Ready for BrassClaw activation. Normal target-aware Generate orchestrates this
@@ -738,7 +870,7 @@ target/tokenizer/template revision and policy/compiler identity. Preserve existi
 task references and independently usable domain-only generations.
 
 Keep a stable base spine before a selected domain branch where possible. Do not
-concatenate five complete 100k bundles: the verified example Ornith endpoint has a
+concatenate complete 100k bundles for every profile: the verified example Ornith endpoint has a
 131072-token technical context limit. Register compiled composite profiles or
 model-compatible selections with explicit manifests and measured capacity. Store
 the entire source library regardless; if required complete units cannot fit,
@@ -935,7 +1067,7 @@ least ten positive intent examples per authored Recipe plus negative routing cas
 
 Acceptance: reviewed end-to-end workflow and exact missing primitives; no invented
 UUIDs, unsupported store fields or false Tier-0/Q2/runtime claims.
-Include the saved build specification, five profile coverage matrices, artifact/
+Include the saved build specification, six seeded profile coverage matrices and custom-profile coverage contracts, artifact/
 identity schemas, worker dependency/resource contract and a target capability matrix
 for injection, token inspection, grammar, native/external cache and validation support.
 
@@ -983,7 +1115,8 @@ Gate A1. Label intermediate artifacts and surfaces as development/unavailable.
 | Phase C | Phase 0a durable execution/selection contracts and Phase 6 versioned storage, reference preservation and recovery. |
 | Phase C1 | Sempai reviewer reference/packet/proposal contracts, Phase 0a authoring validation and human Q2, with consumer wiring accepted in C2. |
 | Phase C2 | §10 DB-only provider lifecycle, live global policy and applicable Phase 7 production-caller acceptance. |
-| Phase D | Phase 5 instance operator UI/API; reachable actions depend on accepted Gate A1/C/C2 paths. Prefix knowledge profiles do not introduce security RuntimeProfiles or product editions. |
+| Phase C3 | Accepted Gate A1/C/C2 paths plus immutable design/proposal contracts and Prefix-Maker bootstrap; authored executable changes follow Phase 0a Q1/human Q2 and registration. |
+| Phase D | Phase 5 instance operator UI/API; reachable actions depend on accepted Gate A1/C/C2 paths, with C3 additionally required for design operations. Prefix knowledge profiles do not introduce security RuntimeProfiles or product editions. |
 | Phase E | Phase 7 answer/cache acceptance and §5.1 performance evidence; quality and cache reuse remain separate measurements. |
 | Production cutover | Phase 8 coordinated migration and component-cutover gate after the applicable prerequisite matrices pass. |
 
@@ -1028,7 +1161,7 @@ above, including parent exports, evidence identity preservation and recomputed t
 geometry. Inventory existing build primitives before adding the missing worker adapter.
 Production dispatch requires Gate A1; offline store checks alone do not pass it.
 
-Acceptance: real PostgreSQL tests for five distinct profiles, coherent snapshots
+Acceptance: real PostgreSQL tests for six seeded profiles and registered custom profiles, coherent snapshots
 during concurrent activation, full catalogue export above 1000 rows, invalid-source
 rejection, job restart/resume/cancel, double-click deduplication, exact request
 completion, no replay after successful publish, last-good preservation and rollback.
@@ -1062,7 +1195,7 @@ parallel agent loop. Use the existing class-specific draft/Q1/Q2 paths; implemen
 missing association/constructor/provenance support under Gate A1 rather than hiding
 it in a prompt. Production reviewer activation also requires Phase C2 acceptance.
 
-Acceptance: five seeded profile definitions; complete source/procedure provenance;
+Acceptance: six seeded profile definitions; complete source/procedure provenance;
 deterministic Sempai rendering with no HA leakage; capacity failure without dropped
 guides; and dedicated Sempai consumer selection independent of Kohai. Through the
 production caller, test unchanged prompt echo, safe targeted prompt adjustment,
@@ -1122,19 +1255,45 @@ native state; known failures block the target. Qualify the actual configured pat
 without new random salts concealing it. Package upgrades invalidate backport-bound
 receipts. No service/package/deployment mutation occurs from a WebUI build/warm job.
 
+### Phase C3 — Prefix-Maker, Redesign and custom profile creation
+
+Seed the reviewed Prefix-Maker package/design and register its model-free compiler.
+Implement immutable declarative design/proposal storage, compatible shared-engine
+options and exact acceptance contracts. Author the Tier-1 Redesign/Create Recipes,
+reusing existing provider, export, validation and proposal primitives. Production
+calls require Gate A1, Phase C/C2, usable Prefix-Maker and the lossless proposal path;
+do not activate unsupported workflows or route failures through Tier 2.
+
+Acceptance: bootstrap without provider/self-reference; exact Prefix-Maker injection
+once; distinct design-provider/target identities; pinned input and schema references;
+confirmation bound to the actual request; raw proposals and full diffs preserved;
+real trial builds; invalid/unknown options rejected; mandatory coverage preserved;
+capacity/missing architecture surfaced; no operational deployment changes or arbitrary
+compiler execution. Check malformed/provider-failed/cancelled/duplicate requests,
+recovery after a possible provider effect, stale proposal acceptance, custom-profile
+identity conflicts, human rejection and Prefix-Maker self-redesign with the old
+approved generation. New design selection never activates a generation or bypasses
+authored Q1/human Q2. Identical approved design and source inputs reproduce output;
+new approved components change content while keeping the selected design contract.
+
 ### Phase D — WebUI vertical
 
-Wire facade/HTTP/descriptor/runtime/frontend changes together. Show five profiles,
+Wire facade/HTTP/descriptor/runtime/frontend changes together. Show seeded and registered custom profiles,
 durable progress, generation details and independent Activate/Warm states. Update
 translations and keyboard/accessibility behavior. No browser-triggered arbitrary
 script, source path or environment execution.
 Include composite job admission/detail controls and parent/target dependency status
 within the domain/reviewer rows; activation selects a published eligible composite explicitly.
-Show the fifth Sempai row's source quality, reviewer target/readiness and proposal
+Show the Sempai row's source quality, reviewer target/readiness and proposal
 validation guidance. Keep review enablement separate from reference generation.
+Show Prefix-Maker readiness, Redesign beside each Generate button, the confirmation
+popup, proposal/diff review and Accept design controls. Add the Create Prefix tab and
+custom-profile draft/registration lifecycle through the same facade/API/runtime path.
 Generate requires Gate A1 and Phase C acceptance. Activate/Rollback/Warm requires
 Phase C2 acceptance for the specific registered provider target. Until then, show
 disabled actions with their missing prerequisite; enforce the same gate server-side.
+Redesign/Create/Accept design require the accepted Phase C3 path; their absence must
+not disable the model-free Generate workflow.
 
 Acceptance: real composed-route tests and browser checks for first Generate,
 Regenerate, refresh/reconnect, cancellation, per-profile failures, unavailable
@@ -1146,6 +1305,11 @@ Cover the section 1.1 completion states through the browser and composed API: on
 click builds eligible parents/composite, repeated clicks deduplicate, prerequisite
 and quality/cache failures stay distinct, advanced details expose omitted-unit
 reasons and receipts, and Generate never changes the effective provider selection.
+Exercise popup cancel/Escape (zero admission/provider calls), explicit confirmation,
+changed prerequisites, double-submit/reconnect, provider unavailable, stale/rejected
+proposals, new-profile creation and custom profiles surviving reseed. Verify keyboard
+focus and accessible dialog/tab labels. No button or popup implicitly accepts a model
+proposal, approves a component or activates a prefix.
 
 ### Phase E — Extended cache and answer quality
 
@@ -1232,11 +1396,14 @@ restart, reference/approval preservation and restore; switching a prefix pointer
 does not undo a schema or Monty upgrade. This runbook governs BrassClaw upgrades,
 not replacement of the operator's external vLLM/Compose deployment.
 
-Completion means all five profiles can be generated/regenerated through the UI,
+Completion means all six seeded profiles and approved custom profiles can be generated/regenerated through the UI,
 base-prefix inputs contain the complete approved current docs/components, source and
 generation history survive failure, model calls use the intended immutable context
 exactly once, and quality/cache status is supported by real receipts. Nothing in
 this plan authorizes claiming simplified-v3 runtime gaps are solved by prompt text.
+Each profile also exposes confirmed provider-assisted Redesign, and Create Prefix
+can produce a reviewed custom profile/design. These paths preserve existing designs
+and active selections until their separate acceptance/activation operations.
 
 ### Final one-click acceptance matrix
 
@@ -1250,6 +1417,10 @@ this plan authorizes claiming simplified-v3 runtime gaps are solved by prompt te
 | Validate knowledge and teaching | Required coverage, complete evidence units, independently specified behavior checks and transitive validator receipts; first-pass/repair/transfer results remain separate. |
 | Activate with enabled external caching | Accepted exact injection plus qualified real restore correctness; known-corrupt or incompatible paths block activation without changing the deployment. |
 | Inspect an active generation | Desired/effective selection, freshness, capacity, model quality and cache observations are distinct and traceable; retained tasks keep their pinned revisions. |
+| Cancel or confirm Redesign | Cancel makes no job/provider call; confirmation admits one pinned Tier-1 task and returns a retained proposal/trial, without replacing the existing design or active prefix. |
+| Accept a redesign, then Generate | Exact reviewed design revision is selected explicitly; deterministic compilation uses it with current approved content, and production activation remains separate. |
+| Create a new prefix | Same-section Create Prefix tab yields a validated draft and human-accepted registered custom profile; it appears with Generate/Redesign and survives reseeding. |
+| Redesign Prefix-Maker itself | Previous approved fresh generation reviews a quarantined successor; bootstrap and approval never depend on that unvalidated successor. |
 
 Run this matrix through the production facade, composed ingress, Recipe worker and
 browser path. Script-only success or a screenshot of buttons does not close the plan.

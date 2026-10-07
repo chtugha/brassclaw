@@ -1201,6 +1201,36 @@ pub struct ComponentPath {
     pub component_id: String,
 }
 
+/// Exact immutable usage view; host composition mounts this only for the
+/// instance operator. No client-provided source or success flag is accepted.
+pub async fn prepare_association_review(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(skill_id): Path<String>,
+    Json(selection): Json<brassclaw_product_workflow::AssociationReviewSelection>,
+) -> Result<Json<brassclaw_product_workflow::AssociationReviewView>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .prepare_association_review(caller, &skill_id, selection)
+            .await?,
+    ))
+}
+
+pub async fn approve_association(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(skill_id): Path<String>,
+    Json(request): Json<brassclaw_product_workflow::ApproveAssociationRequest>,
+) -> Result<Json<brassclaw_product_workflow::AssociationApprovalResponse>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .approve_association(caller, &skill_id, request)
+            .await?,
+    ))
+}
+
 /// `PUT /api/webchat/v2/components/{class_code}/{component_id}/validate`
 ///
 /// Generalized validate — moves any component class from `auto_passed` to

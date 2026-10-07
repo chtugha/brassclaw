@@ -50,11 +50,15 @@ use crate::descriptors::{
     WEBUI_V2_PATTERN_VALIDATE_COMPONENT, WEBUI_V2_PATTERN_VALIDATION_QUEUE,
     WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT,
 };
+use crate::descriptors::{
+    WEBUI_V2_PATTERN_APPROVE_ASSOCIATION, WEBUI_V2_PATTERN_PREPARE_ASSOCIATION_REVIEW,
+};
 use crate::handlers;
 use crate::sse_capacity::{DEFAULT_SSE_MAX_CONCURRENT_PER_CALLER, SseCapacity};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WebUiV2RouteOptions {
+    /// Historical name: also controls instance-operator human Q2 routes.
     pub mount_llm_config_routes: bool,
 }
 
@@ -427,6 +431,14 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         );
     if options.mount_llm_config_routes {
         router = router
+            .route(
+                WEBUI_V2_PATTERN_PREPARE_ASSOCIATION_REVIEW,
+                post(handlers::prepare_association_review),
+            )
+            .route(
+                WEBUI_V2_PATTERN_APPROVE_ASSOCIATION,
+                post(handlers::approve_association),
+            )
             // `WEBUI_V2_PATTERN_GET_LLM_CONFIG == WEBUI_V2_PATTERN_UPSERT_LLM_PROVIDER`
             // (`/llm/providers`); mount GET + POST in one `.route()`.
             .route(

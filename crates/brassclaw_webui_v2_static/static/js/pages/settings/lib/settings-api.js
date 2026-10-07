@@ -271,6 +271,14 @@ export function fetchValidationQueue() {
 export function fetchValidationQueueCount() {
   return apiFetch("/api/webchat/v2/validation-queue/count?project_id=default&status=pending");
 }
+export function prepareAssociationReview(skillId, selection) {
+  return apiFetch(`/api/webchat/v2/skills/${encodeURIComponent(skillId)}/association-review`,
+    { method: "POST", body: JSON.stringify(selection) });
+}
+export function approveAssociation(skillId, request) {
+  return apiFetch(`/api/webchat/v2/skills/${encodeURIComponent(skillId)}/association-approval`,
+    { method: "POST", body: JSON.stringify(request) });
+}
 // Move a component from auto_passed → validated (Q2 manual approve).
 // For class_code 10 (Orchestrator) and 50 (Scaffold) the backend enforces
 // an LLM audit-clean guard; the frontend mirrors that with a disabled state.

@@ -1,7 +1,7 @@
 //! Actual worker fixtures with separately reusable lifecycle helpers.
 use serde_json::{Value, json};
 mod runtime;
-pub use runtime::{boot, limits, worker};
+pub(crate) use runtime::{boot, limits, worker};
 
 pub const SOURCE: &str =
     include_str!("../../../../crates/brassclaw_engine/orchestrator/global_mode.py");

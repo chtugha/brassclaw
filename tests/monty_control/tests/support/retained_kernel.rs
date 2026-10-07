@@ -17,7 +17,7 @@ use brassclaw_trust::{
 };
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
-pub fn snapshot(revision: u64, enabled: bool, tool: Uuid) -> StableToolPolicySnapshot {
+pub(super) fn snapshot(revision: u64, enabled: bool, tool: Uuid) -> StableToolPolicySnapshot {
     StableToolPolicySnapshot {
         revision,
         tools: HashMap::from([(
@@ -37,7 +37,7 @@ pub fn snapshot(revision: u64, enabled: bool, tool: Uuid) -> StableToolPolicySna
         capabilities: HashMap::from([(CapabilityId::new("builtin.json").unwrap(), tool)]),
     }
 }
-pub fn trust() -> TrustDecision {
+pub(super) fn trust() -> TrustDecision {
     TrustDecision {
         effective_trust: EffectiveTrustClass::user_trusted(),
         authority_ceiling: AuthorityCeiling {
@@ -49,7 +49,7 @@ pub fn trust() -> TrustDecision {
     }
 }
 
-pub fn runtime(tool: Uuid) -> (Arc<dyn HostRuntime>, Arc<LiveStableToolPolicy>) {
+pub(super) fn runtime(tool: Uuid) -> (Arc<dyn HostRuntime>, Arc<LiveStableToolPolicy>) {
     let package = builtin_first_party_package().unwrap();
     let mut registry = ExtensionRegistry::new();
     registry.insert(package).unwrap();
