@@ -1,28 +1,100 @@
 //! Actual immutable-draft -> contained inspection -> structural Q1 persistence.
 //! No semantic approval, behavioral evidence, human Q2 or activation is invented.
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
+
+use async_trait::async_trait;
 
 use brassclaw_engine::executor::{
-    retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram,
+    retained_recipe::{
+        RetainedProgram, RetainedRecipeExecution, RetainedStepFailure, RetainedToolInvocation,
+        RetainedToolPort,
+    },
+    retained_source::InspectedRetainedProgram,
+};
+use brassclaw_host_api::{
+    CapabilityId, CapabilitySet, ExecutionContext, ExtensionId, MountView, ResourceEstimate,
+    RuntimeKind, TrustClass, UserId,
+};
+use brassclaw_host_runtime::{HostRuntime, RuntimeCapabilityOutcome, RuntimeCapabilityRequest};
+use brassclaw_monty_host::{
+    process::{PortAnswer, ProcessBoundary, ProcessSnapshot, TaskHandle, WorkerCommand},
+    transport_actor::{ActorLimits, TransportClient, TransportOwner},
 };
 use brassclaw_skills::{
     component_revision::ComponentRevisionDraft, revision_store::PgComponentRevisionStore,
 };
+use brassclaw_turns::{GetRunStateRequest, TurnStateStore};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+#[path = "support/admission.rs"]
+mod admission;
 #[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 mod native_pg;
+#[path = "../../../crates/brassclaw_reborn_composition/src/pg_monty_admission.rs"]
+mod pg_monty_admission;
 #[path = "../../../crates/brassclaw_reborn_composition/src/pg_retained_q1.rs"]
 mod pg_retained_q1;
+#[path = "support/retained_kernel.rs"]
+mod retained_kernel;
 #[path = "support/retained_program.rs"]
 mod retained_program;
+#[path = "support/runtime.rs"]
+mod support;
 
-use pg_retained_q1::{StructuralReviewFailure, StructuralReviewSet, persist_structural_reviews};
+use pg_retained_q1::{
+    BehavioralExpectation, BehavioralReviewSet, ExpectedStepResult, StructuralReviewFailure,
+    StructuralReviewSet, persist_behavioral_reviews, persist_structural_reviews,
+};
 
 fn worker() -> &'static std::path::Path {
     std::path::Path::new(env!("CARGO_BIN_EXE_global_worker"))
+}
+
+#[test]
+fn observed_value_fingerprints_preserve_types_presence_and_answer_classification() {
+    use brassclaw_engine::executor::retained_recipe::{port_answer_checksum, typed_value_checksum};
+    assert_ne!(
+        typed_value_checksum(&Value::Null).unwrap(),
+        typed_value_checksum(&json!({})).unwrap()
+    );
+    assert_ne!(
+        typed_value_checksum(&json!(1)).unwrap(),
+        typed_value_checksum(&json!(1.0)).unwrap()
+    );
+    assert_ne!(
+        typed_value_checksum(&json!("1")).unwrap(),
+        typed_value_checksum(&json!(1)).unwrap()
+    );
+    let first: Value = serde_json::from_str("{\"a\":1,\"b\":null}").unwrap();
+    let second: Value = serde_json::from_str("{\"b\":null,\"a\":1}").unwrap();
+    assert_eq!(
+        typed_value_checksum(&first).unwrap(),
+        typed_value_checksum(&second).unwrap()
+    );
+    assert_ne!(
+        typed_value_checksum(&first).unwrap(),
+        typed_value_checksum(&json!({"a":1})).unwrap()
+    );
+    assert_ne!(
+        port_answer_checksum(&PortAnswer::DomainError {
+            reason_kind: "tool_policy_denied".into()
+        })
+        .unwrap(),
+        port_answer_checksum(&PortAnswer::TerminalError {
+            reason_kind: "tool_policy_denied".into()
+        })
+        .unwrap()
+    );
+    let mut deep = Value::Null;
+    for _ in 0..66 {
+        deep = json!([deep]);
+    }
+    assert!(
+        typed_value_checksum(&deep).is_err(),
+        "oversized depth fails before recursive fingerprinting"
+    );
 }
 
 #[tokio::test]
@@ -202,4 +274,327 @@ async fn actual_commit_failure_retains_the_original_review_for_idempotent_recove
         .unwrap()
         .get(0);
     assert_eq!(actual, error.retained.evidence(skill).unwrap());
+}
+
+struct ObservedJsonPort {
+    runtime: Arc<dyn HostRuntime>,
+    prepared: Arc<brassclaw_engine::memory::retained_tools::RetainedToolProgram>,
+    admitted: Arc<admission::Admitted>,
+    task: TaskHandle,
+}
+#[async_trait]
+impl RetainedToolPort for ObservedJsonPort {
+    async fn dispatch(
+        &self,
+        invocation: RetainedToolInvocation<'_>,
+        binding: &brassclaw_engine::memory::retained_tools::RetainedToolBinding,
+        arguments: Value,
+    ) -> PortAnswer {
+        assert_eq!(invocation.task(), self.task);
+        assert_eq!(
+            self.prepared.bindings()[invocation.step_id()].tool(),
+            binding.tool()
+        );
+        let record = self
+            .admitted
+            .admission
+            .begin_tool_invocation(&self.prepared, invocation.step_id(), &arguments)
+            .await
+            .unwrap();
+        let context = ExecutionContext::local_default(
+            UserId::new("draft-operator").unwrap(),
+            ExtensionId::new("draft-caller").unwrap(),
+            RuntimeKind::FirstParty,
+            TrustClass::FirstParty,
+            CapabilitySet::default(),
+            MountView::default(),
+        )
+        .unwrap();
+        let actual = self
+            .runtime
+            .invoke_capability(RuntimeCapabilityRequest::new(
+                context,
+                CapabilityId::new(binding.capability_id()).unwrap(),
+                ResourceEstimate::default(),
+                arguments,
+                retained_kernel::trust(),
+            ))
+            .await
+            .unwrap();
+        let RuntimeCapabilityOutcome::Completed(actual) = actual else {
+            panic!("actual JSON kernel completion required");
+        };
+        let answer = PortAnswer::Return {
+            value: actual.output,
+        };
+        record.record_answer(&answer).await.unwrap();
+        answer
+    }
+}
+async fn exchange(transport: &TransportClient, command: WorkerCommand) -> ProcessSnapshot {
+    transport
+        .try_submit(command)
+        .unwrap()
+        .wait()
+        .await
+        .unwrap()
+        .outcome
+        .unwrap()
+}
+async fn progress(transport: &TransportClient, mut snapshot: ProcessSnapshot) -> ProcessSnapshot {
+    while let Some(ProcessBoundary::ControlYield { key }) = snapshot.boundary {
+        snapshot = exchange(transport, WorkerCommand::ResumeControl { key }).await;
+    }
+    snapshot
+}
+
+#[tokio::test]
+async fn behavioral_records_require_actual_execution_and_keep_failed_expectations_and_commit_evidence()
+ {
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    for invalid_output in [false, true] {
+        let prepared = retained_program::program(&store, invalid_output).await;
+        let skill = prepared.bindings()["0:2"].skill().uuid;
+        let data = json!({"text":"'quotes'\\slashes\n Ü {{vars.data}} host.forbidden()"});
+        let inputs = json!({"data":data.to_string()});
+        let admitted =
+            Arc::new(admission::reserve(rig.pool.clone(), inputs["data"].as_str().unwrap()).await);
+        admitted.admission.check_and_start().await.unwrap();
+        let definitions =
+            include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py")
+                .strip_suffix("asyncio.run(_global_main())\n")
+                .unwrap();
+        let source = format!(
+            "{definitions}\nasync def validate_draft():\n    task = await host.await_next_task(0)\n    host.enter_task(task['task_token'])\n    value = await _execute_recipe(task['task_token'], 'retained-draft', '0:1-0:E', {{'user_input': task['user_input']}})\n    await host.validation_result(task['task_token'], value)\nasyncio.run(validate_draft())\n"
+        );
+        let mut boot = support::boot(&source);
+        boot.bounds.workers = 1;
+        boot.aliases.insert("validation_result".into());
+        let (mut owner, ready) = TransportOwner::start(
+            support::worker(),
+            boot,
+            support::limits(),
+            ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * 1024 * 1024,
+                max_control_unclaimed: 8,
+                max_control_reserved_frame_bytes: 4 * 1024 * 1024,
+            },
+        )
+        .await
+        .unwrap();
+        let transport = owner.client();
+        let snapshot = exchange(
+            &transport,
+            WorkerCommand::Admit {
+                key: ready.work_waits[0].1,
+                task: admitted.input.clone(),
+            },
+        )
+        .await;
+        let task = snapshot.admitted_task.unwrap();
+        let root = progress(&transport, snapshot).await;
+        let Some(ProcessBoundary::HostCall {
+            key,
+            name,
+            args,
+            kwargs,
+        }) = root.boundary
+        else {
+            panic!("actual composition request required");
+        };
+        assert_eq!(name, "compose_orchestrator");
+        assert!(kwargs.is_empty());
+        assert_eq!(args[1], "retained-draft");
+        admitted
+            .admission
+            .retain_recipe_selection(prepared.inputs().instruction())
+            .await
+            .unwrap();
+        exchange(&transport, WorkerCommand::Defer { key }).await;
+        let reference = uuid::Uuid::new_v4().to_string();
+        let snapshot = exchange(&transport, WorkerCommand::Resolve { key, answer:PortAnswer::Return { value:json!({
+            "ok":true,"program_ref":reference,
+            "steps":prepared.program().steplist.iter().map(|s| json!({"step_id":s.step_id})).collect::<Vec<_>>(),
+            "inputs":inputs,"flow":prepared.inputs().monty_flow().unwrap(),
+        }) } }).await;
+        let mut root = progress(&transport, snapshot).await;
+        let inspected = Arc::new(
+            InspectedRetainedProgram::inspect(RetainedProgram::Tools(prepared.clone()), worker())
+                .await
+                .unwrap(),
+        );
+        let mut execution =
+            RetainedRecipeExecution::new_for_behavioral_validation(task, inspected).unwrap();
+        let (runtime, _) = retained_kernel::runtime(prepared.bindings()["0:2"].tool().uuid);
+        let port = ObservedJsonPort {
+            runtime,
+            prepared: prepared.clone(),
+            admitted: admitted.clone(),
+            task,
+        };
+        let mut expected = BTreeMap::from([(
+            "0:2".into(),
+            BehavioralExpectation {
+                inputs: inputs.clone(),
+                arguments: json!({"data":inputs["data"],"operation":"parse"}),
+                answer: PortAnswer::Return {
+                    value: data.clone(),
+                },
+                result: ExpectedStepResult::Return(data.clone()),
+            },
+        )]);
+        assert!(
+            matches!(
+                BehavioralReviewSet::prepare(&execution, &expected),
+                Err(StructuralReviewFailure::Observation)
+            ),
+            "no actual step, no behavior evidence"
+        );
+        for step in &prepared.program().steplist {
+            let Some(ProcessBoundary::HostCall {
+                key,
+                name,
+                args,
+                kwargs,
+            }) = root.boundary.take()
+            else {
+                panic!("actual Monty step request required");
+            };
+            assert_eq!(name, "run_program");
+            assert_eq!(args[2], step.step_id);
+            assert!(kwargs.is_empty());
+            exchange(&transport, WorkerCommand::Defer { key }).await;
+            let result = execution
+                .run_step(&transport, &step.step_id, &args[3]["inputs"], Some(&port))
+                .await;
+            if invalid_output {
+                assert!(result.is_err());
+                assert!(
+                    execution.observations()[&step.step_id].failure()
+                        == Some(RetainedStepFailure::ResultContract)
+                );
+                break;
+            }
+            let value = result.unwrap();
+            assert_eq!(value, data);
+            let snapshot = exchange(
+                &transport,
+                WorkerCommand::Resolve {
+                    key,
+                    answer: PortAnswer::Return {
+                        value: json!({"ok":true,"return_value":value}),
+                    },
+                },
+            )
+            .await;
+            root = progress(&transport, snapshot).await;
+        }
+        if !invalid_output {
+            let Some(ProcessBoundary::HostCall { name, args, .. }) = root.boundary else {
+                panic!("actual validation result required");
+            };
+            assert_eq!(name, "validation_result");
+            assert_eq!(args[1], data);
+            expected.insert(
+                "0:4".into(),
+                BehavioralExpectation {
+                    inputs: inputs.clone(),
+                    arguments: json!({"data":inputs["data"],"operation":"parse"}),
+                    answer: PortAnswer::Return {
+                        value: data.clone(),
+                    },
+                    result: ExpectedStepResult::Return(data.clone()),
+                },
+            );
+        }
+        let reviews = Arc::new(BehavioralReviewSet::prepare(&execution, &expected).unwrap());
+        assert_eq!(reviews.references().len(), 1);
+        let actual: Value = serde_json::from_str(reviews.evidence(skill).unwrap()).unwrap();
+        assert_eq!(actual["kind"], "behavior");
+        assert_eq!(actual["succeeded"], !invalid_output);
+        assert_eq!(actual["report"]["semantic_approval"], false);
+        assert_eq!(actual["report"]["workflow_completion"], false);
+        assert_eq!(
+            actual["report"]["observations"].as_array().unwrap().len(),
+            if invalid_output { 1 } else { 2 }
+        );
+        assert!(!reviews.evidence(skill).unwrap().contains("host.forbidden"));
+        if invalid_output {
+            expected.get_mut("0:2").unwrap().result =
+                ExpectedStepResult::Failure(RetainedStepFailure::ResultContract);
+            let failure_case =
+                Arc::new(BehavioralReviewSet::prepare(&execution, &expected).unwrap());
+            let observed: Value =
+                serde_json::from_str(failure_case.evidence(skill).unwrap()).unwrap();
+            assert_eq!(
+                observed["succeeded"], true,
+                "actual classified failure matches the explicit failure-case expectation"
+            );
+            persist_behavioral_reviews(&rig.pool, failure_case)
+                .await
+                .unwrap();
+        }
+        let client = rig.pool.get().await.unwrap();
+        client.batch_execute("CREATE FUNCTION fail_behavior_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'actual behavior commit failure' USING ERRCODE='23514'; END; $$; CREATE CONSTRAINT TRIGGER behavior_commit_fault AFTER INSERT ON reborn_component_review_evidence DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_behavior_commit()").await.unwrap();
+        let error = persist_behavioral_reviews(&rig.pool, reviews.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error.failure,
+            StructuralReviewFailure::Database(_)
+        ));
+        assert!(Arc::ptr_eq(&error.retained, &reviews));
+        let id = reviews.references()[&skill];
+        let absent:bool = client.query_one("SELECT NOT EXISTS(SELECT 1 FROM reborn_component_review_evidence WHERE evidence_id=$1)", &[&id]).await.unwrap().get(0);
+        assert!(absent);
+        client.batch_execute("DROP TRIGGER behavior_commit_fault ON reborn_component_review_evidence; DROP FUNCTION fail_behavior_commit()").await.unwrap();
+        persist_behavioral_reviews(&rig.pool, error.retained.clone())
+            .await
+            .unwrap();
+        persist_behavioral_reviews(&rig.pool, error.retained)
+            .await
+            .unwrap();
+        let actual: String = client
+            .query_one(
+                "SELECT evidence_bytes FROM reborn_component_review_evidence WHERE evidence_id=$1",
+                &[&id],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(actual, reviews.evidence(skill).unwrap());
+        let approvals: i64 = client
+            .query_one(
+                "SELECT count(*) FROM reborn_skill_association_approvals",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(approvals, 0);
+        let state = admitted
+            .state
+            .get_run_state(GetRunStateRequest {
+                scope: admitted.context.scope.clone(),
+                run_id: admitted.context.run_id,
+            })
+            .await
+            .unwrap();
+        assert!(
+            !state.status.is_terminal(),
+            "validation evidence does not manufacture product completion"
+        );
+        owner.request_termination();
+        let exit = owner.join().await.unwrap();
+        assert!(exit.exit_status.is_some());
+        assert!(exit.reap_error.is_none());
+        assert!(exit.containment_error.is_none());
+        admitted
+            .admission
+            .settle(json!({"status":"failed","reason_kind":"recipe_execution_failed"}))
+            .await
+            .unwrap();
+    }
 }

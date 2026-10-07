@@ -296,6 +296,14 @@ Existing scoped stores and operation-approval code are legacy implementation
 until the coordinated dispatch/data cutover. Do not extend those paths as v3
 requirements or disable technical enforcement to bypass them.
 
+Routing uses only the coherent active, approved catalogue. Drafts and
+unapproved revisions are excluded before matching. Match and No-Match describe
+routing; "unapproved match" and "unsupported match" are not additional routing
+outcomes. Complete runner support is required before a workflow is activated.
+Missing support is implementation work, and corruption or technical failure in
+an active catalogue is an error to repair, never permission to remove that
+workflow silently or route it through Tier 2.
+
 Only an actual No-Match enters Tier 2. Matching/DB errors, ambiguity and begun
 recipe failures must remain distinct; never replay a failed recipe as Tier 2.
 Running tasks retain their selected component revisions. Live tool policy is
@@ -427,6 +435,10 @@ Intent-Matching System  (resolve_intent / fetch_for_turn)
 **What this means for authoring:**
 - **Match path = Recipe.** Every capability on the Match path lives in a Recipe. To add behaviour, add a Recipe — not Rust.
 - **IBS is the compiler.** It reads the Recipe's `step_descriptions` JSONB at match time and produces the `BuildInstruction`. Ephemeral — never stored. You never call IBS directly; you author correct `step_descriptions`.
+- **Composition prepares execution.** The BuildInstruction is intermediate;
+  composition resolves its selected component references into executable Python
+  steps and prepares Tool bindings. Typed inputs are supplied separately from
+  source. Monty executes those composed steps and owns their result handoff.
 - **Two-step tool invocation — always in this order:** `channel:"rust"` binds the ToolSkill (makes `host.<tool>` available), then `channel:"orchestrator"` PythonCode calls it (`result = host.<tool>(...)`). One does nothing without the other.
 - **No-Match path = base-prompt.** The base-prompt is compiled from the component library by Kohai. It is not hardcoded. Adding components grows what the LLM knows in Non-Matching-Mode.
 - **Sempai closes the loop.** Successful Tier-2 patterns may become approved Recipes after Q1+Q2. Only deterministic Recipes qualify for Tier 0; explicit LLM work remains Tier 1. The library grows with use.

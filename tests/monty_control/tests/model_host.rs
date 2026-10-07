@@ -55,12 +55,16 @@ mod capabilities;
 mod global_monty_driver;
 #[path = "../../../crates/brassclaw_reborn_composition/src/global_monty_owner.rs"]
 mod global_monty_owner;
+#[path = "../../../crates/brassclaw_reborn_composition/src/global_recipe_ports.rs"]
+mod global_recipe_ports;
 #[path = "../../../crates/brassclaw_reborn_composition/src/monty_instance_owner.rs"]
 mod monty_instance_owner;
 #[path = "../../../crates/brassclaw_reborn_composition/src/monty_task_input.rs"]
 mod monty_task_input;
 #[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 pub(crate) mod native_pg;
+#[path = "support/task_catalogue.rs"]
+mod task_catalogue;
 // Existing owner cases continue to use the actual native PostgreSQL fixture.
 mod runtime {
     pub(crate) mod test_pg {
@@ -192,6 +196,7 @@ struct NativeTaskPortsFactory {
     last_host: Mutex<Option<Arc<MontyTaskHost>>>,
     admissions: Mutex<HashMap<MontyTaskAttempt, Arc<pg_monty_admission::PgMontyAdmission>>>,
     ownership: global_monty_owner::GlobalOwnerCheck,
+    draft: Option<Arc<brassclaw_engine::memory::retained_tools::RetainedToolProgram>>,
 }
 
 #[async_trait]
@@ -199,6 +204,7 @@ impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
+        input: &TaskInput,
     ) -> Result<Arc<dyn TaskPorts>, brassclaw_turns::run_profile::AgentLoopDriverError> {
         *self.last_host.lock().unwrap() = Some(host.clone());
         self.ownership.check().await.map_err(|_| {
@@ -218,12 +224,18 @@ impl global_monty_driver::GlobalTaskPortsFactory for NativeTaskPortsFactory {
             .lock()
             .unwrap()
             .insert(host.attempt(), admission.clone());
-        Ok(Arc::new(AdmittedPorts {
-            host,
-            pool: self.pool.clone(),
-            admission: Some(admission),
-            ownership: Some(self.ownership.clone()),
-        }))
+        Ok(Arc::new(global_recipe_ports::GlobalRecipePorts::new(
+            host.clone(),
+            admission.clone(),
+            Arc::new(task_catalogue::ValidationCatalogue::new(
+                self.pool.clone(),
+                host,
+                self.draft.clone(),
+                admission,
+            )),
+            input.user_input.clone(),
+            self.ownership.clone(),
+        )))
     }
 
     async fn settle(
@@ -347,6 +359,43 @@ async fn admitted(
     ThreadScope,
     Arc<PgInterceptorStore>,
 ) {
+    admitted_with_text(
+        pool,
+        provider,
+        AdmissionInput {
+            name,
+            text: "'quoted' Ü {{vars.literal}}",
+        },
+        prefix,
+        history_count,
+        settings,
+        tool_root,
+    )
+    .await
+}
+
+struct AdmissionInput<'a> {
+    name: &'a str,
+    text: &'a str,
+}
+
+async fn admitted_with_text(
+    pool: Arc<PgPool>,
+    provider: Arc<RecordingProvider>,
+    input: AdmissionInput<'_>,
+    prefix: Arc<SelectedPrefix>,
+    history_count: usize,
+    settings: LiveMontyTaskSettings,
+    tool_root: Option<&std::path::Path>,
+) -> (
+    TaskInput,
+    MontyTaskHandoff,
+    Arc<PgSessionThreadService>,
+    ThreadScope,
+    Arc<PgInterceptorStore>,
+) {
+    let name = input.name;
+    let user_input = input.text;
     let tenant = TenantId::new("native-global-host").unwrap();
     let agent = AgentId::new("global-agent").unwrap();
     let project = ProjectId::new("global-project").unwrap();
@@ -395,7 +444,7 @@ async fn admitted(
             source_binding_id: Some("source-web".into()),
             reply_target_binding_id: Some("reply-web".into()),
             external_event_id: Some(format!("native-event-{name}")),
-            content: MessageContent::text("'quoted' Ü {{vars.literal}}"),
+            content: MessageContent::text(user_input),
         })
         .await
         .unwrap();
@@ -940,6 +989,7 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         last_host: Mutex::new(None),
         admissions: Mutex::new(HashMap::new()),
         ownership: owner.ownership_check(),
+        draft: None,
     });
     owner.ownership_check().check().await.unwrap();
     assert!(matches!(
@@ -1114,6 +1164,7 @@ async fn global_owner_loses_real_database_session_and_fences_new_task_dispatch()
         last_host: Mutex::new(None),
         admissions: Mutex::new(HashMap::new()),
         ownership: owner.ownership_check(),
+        draft: None,
     });
     let driver =
         global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory, 1).unwrap();
@@ -1490,4 +1541,178 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay() {
+    use brassclaw_engine::memory::intent_system::{
+        InputClass, IntentScope, IntentSource, seed_intent_input,
+    };
+    let database = native_pg::NativePostgres::start().await;
+    let store =
+        brassclaw_skills::revision_store::PgComponentRevisionStore::new(database.pool.clone());
+    let program = retained_program::program(&store, false).await;
+    let recipe = program.inputs().instruction().recipe().uuid;
+    seed_intent_input(
+        &database.pool,
+        &IntentScope {
+            tenant_id: "native-global-host".into(),
+            user_id: "global-operator".into(),
+            agent_id: "global-agent".into(),
+            project_id: "global-project".into(),
+        },
+        "parse %",
+        InputClass::Partial,
+        recipe,
+        21,
+        IntentSource::Seeded,
+        Some("0:1-0:E"),
+    )
+    .await
+    .unwrap();
+    // A higher-scored draft outside this validator's selected catalogue must
+    // be excluded before ranking, rather than hide the actual matched Recipe.
+    let excluded = retained_program::program(&store, false).await;
+    let excluded_id = excluded.inputs().instruction().recipe().uuid;
+    seed_intent_input(
+        &database.pool,
+        &IntentScope {
+            tenant_id: "native-global-host".into(),
+            user_id: "global-operator".into(),
+            agent_id: "global-agent".into(),
+            project_id: "global-project".into(),
+        },
+        "parse %",
+        InputClass::Partial,
+        excluded_id,
+        21,
+        IntentSource::Seeded,
+        Some("0:1-0:E"),
+    )
+    .await
+    .unwrap();
+    database
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .execute(
+            "UPDATE reborn_intent_inputs SET score=100 WHERE component_id=$1",
+            &[&excluded_id],
+        )
+        .await
+        .unwrap();
+    let provider = Arc::new(RecordingProvider::default());
+    let prefix = Arc::new(SelectedPrefix("actual selected validation prefix".into()));
+    let boot = support::boot(SOURCE);
+    let live = LiveMontyTaskSettings::new(boot.task_settings.into()).unwrap();
+    let mut owner = global_monty_owner::GlobalMontyOwner::start(
+        &database.pool,
+        support::worker(),
+        global_monty_owner::GlobalServiceConfig {
+            boot,
+            process: support::limits(),
+            live,
+            actor: ActorLimits {
+                max_unclaimed: 8,
+                max_reserved_frame_bytes: 4 * support::limits().max_frame_bytes,
+                max_control_unclaimed: 4,
+                max_control_reserved_frame_bytes: 2 * support::limits().max_frame_bytes,
+            },
+            queue_capacity: 8,
+        },
+    )
+    .await
+    .unwrap();
+    let factory = Arc::new(NativeTaskPortsFactory {
+        pool: database.pool.clone(),
+        last_host: Mutex::new(None),
+        admissions: Mutex::new(HashMap::new()),
+        ownership: owner.ownership_check(),
+        draft: Some(program.clone()),
+    });
+    let threads = Arc::new(PgSessionThreadService::new(
+        database.pool.clone(),
+        "native-global-host",
+    ));
+    let driver =
+        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone(), 1)
+            .unwrap();
+    let data = json!({"text":"'quotes'\n Ü {{vars.data}} host.forbidden()"});
+    let query = format!("parse {data}");
+    let (_, handoff, _, _, _) = admitted_with_text(
+        database.pool.clone(),
+        provider.clone(),
+        AdmissionInput {
+            name: "recipe-failure",
+            text: &query,
+        },
+        prefix.clone(),
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    let (request, attempt, host) = handoff.into_parts();
+    let handoff = MontyTaskHandoff::new(request, attempt, host).unwrap();
+    let failed = tokio::time::timeout(Duration::from_secs(20), driver.drive_turn(handoff))
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(
+        matches!(failed, brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }
+        if reason_kind == "recipe_reply_invalid")
+    );
+    // Both JSON effects really completed. This draft deliberately returns a
+    // JSON object, not a published reply; the root must fail without Tier 2.
+    let client = database.pool.get().await.unwrap();
+    let rows = client.query("SELECT phase, answer_bytes FROM brassclaw_monty_tool_invocations WHERE run_id=$1 ORDER BY step_id",
+        &[&attempt.run_id.as_uuid()]).await.unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        assert_eq!(row.get::<_, &str>(0), "answered");
+        let answer: Value = serde_json::from_str(row.get(1)).unwrap();
+        assert_eq!(answer, json!({"kind":"return","value":data}));
+    }
+    let selected: String = client.query_one("SELECT selection_bytes FROM brassclaw_monty_recipe_selections WHERE run_id=$1 AND recipe_id=$2",
+        &[&attempt.run_id.as_uuid(), &recipe]).await.unwrap().get(0);
+    assert_eq!(
+        serde_json::from_str::<Value>(&selected).unwrap()["variant"]["variant_key"],
+        "selected"
+    );
+    drop(client);
+    assert!(provider.requests.lock().unwrap().is_empty());
+    let (_, receipt, retained_control) = driver.take_settlement(attempt).unwrap().unwrap();
+    assert!(
+        matches!(receipt.outcome, TaskOutcome::Failed { ref reason_kind } if reason_kind == "recipe_reply_invalid")
+    );
+    assert!(retained_control.receipt().unwrap().is_ok());
+    // The same global root handles an actual No-Match after the failed Recipe.
+    let (_, handoff, _, _, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "after-recipe-failure",
+        prefix,
+        0,
+        owner.client().live_task_settings(),
+        None,
+    )
+    .await;
+    assert!(matches!(
+        driver.drive_turn(handoff).await.unwrap(),
+        brassclaw_turns::LoopExit::Completed(_)
+    ));
+    assert_eq!(provider.requests.lock().unwrap().len(), 1);
+    owner.request_shutdown();
+    let exit = tokio::time::timeout(Duration::from_secs(10), owner.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(exit.service.unwrap().tasks.is_empty());
+    match exit.ownership {
+        global_monty_owner::OwnershipSettlement::ReleaseAttempt(release) => release.unwrap(),
+        global_monty_owner::OwnershipSettlement::Quarantined(_) => {
+            panic!("actual clean exit required")
+        }
+    }
 }

@@ -30,6 +30,7 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
+        input: &TaskInput,
     ) -> Result<Arc<dyn TaskPorts>, AgentLoopDriverError>;
 
     /// Persist the actual service settlement under this exact admitted attempt.
@@ -69,7 +70,9 @@ pub(crate) struct GlobalMontyDriver {
 }
 
 /// Private host ownership plus its actual service receipt for reconciliation.
-pub(crate) type MontySettlement = (Arc<MontyTaskHost>, Arc<TaskReceipt>);
+// Control retains the actual TaskPorts, including child failures and Tool answers.
+// Transferring only the host/receipt would discard that reconciliation evidence.
+pub(crate) type MontySettlement = (Arc<MontyTaskHost>, Arc<TaskReceipt>, TaskControl);
 
 impl GlobalMontyDriver {
     pub(crate) fn new(
@@ -165,7 +168,7 @@ impl GlobalMontyDriver {
             })?
             .map_err(|_| failed("monty_service_reconciliation_required"))?;
         self.remove(attempt)?;
-        Ok(Some((entry.host.clone(), receipt)))
+        Ok(Some((entry.host.clone(), receipt, control)))
     }
 }
 
@@ -213,13 +216,10 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                 return Err(error);
             }
         };
-        let ports = match self.ports.build(host.clone()).await {
-            Ok(ports) => ports,
-            Err(error) => {
-                drop(guard);
-                self.remove(host.attempt())?;
-                return Err(error);
-            }
+        let Some(user_input) = input.message.content else {
+            drop(guard);
+            self.remove(host.attempt())?;
+            return Err(failed("monty_admitted_input_invalid"));
         };
         // Identity, user content and complete eligible history are typed values,
         // never Python source. Technical transport limits reject oversized work;
@@ -229,10 +229,7 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
             message_id: input.message.message_id.to_string(),
             turn_id: context.turn_id.to_string(),
             run_id: context.run_id.to_string(),
-            user_input: input
-                .message
-                .content
-                .ok_or_else(|| failed("monty_admitted_input_invalid"))?,
+            user_input,
             history: input
                 .prior_context
                 .messages
@@ -244,6 +241,14 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
                     })
                 })
                 .collect(),
+        };
+        let ports = match self.ports.build(host.clone(), &input).await {
+            Ok(ports) => ports,
+            Err(error) => {
+                drop(guard);
+                self.remove(host.attempt())?;
+                return Err(error);
+            }
         };
         let ticket = {
             let mut state = entry

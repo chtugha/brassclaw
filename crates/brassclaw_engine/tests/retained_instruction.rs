@@ -409,3 +409,200 @@ async fn actual_matching_and_ibs_share_one_view_and_reject_variant_identity_loss
         "later conflicting revisions cannot invalidate old exact selection"
     );
 }
+
+#[tokio::test]
+async fn retained_eligibility_filters_non_catalogue_and_pending_rows_before_ranking() {
+    use brassclaw_engine::memory::intent_system::{
+        InputClass, IntentResolution, IntentScope, IntentSource, IntentSystemError,
+        RetainedIntentEligibility, resolve_catalogue_intent_in_transaction, seed_intent_input,
+    };
+    let rig = native_pg::NativePostgres::start().await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let scope = IntentScope {
+        tenant_id: "eligible-catalogue".into(),
+        user_id: "operator".into(),
+        agent_id: "agent".into(),
+        project_id: "project".into(),
+    };
+    let (first, second, recipe, excluded) = (
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+    );
+    let first_ref = store
+        .stage(&draft(first, 22, json!({"content":"result = 1"}), &[]), 0)
+        .await
+        .unwrap();
+    let second_ref = store
+        .stage(&draft(second, 22, json!({"content":"result = 2"}), &[]), 0)
+        .await
+        .unwrap();
+    let link = "2:1-2:E+0:1-0:E";
+    let chosen = store
+        .stage(
+            &draft(
+                recipe,
+                21,
+                recipe_document(first, second, link),
+                &[first, second],
+            ),
+            0,
+        )
+        .await
+        .unwrap();
+    let other = store
+        .stage(
+            &draft(
+                excluded,
+                21,
+                recipe_document(first, second, link),
+                &[first, second],
+            ),
+            0,
+        )
+        .await
+        .unwrap();
+    for id in [recipe, excluded] {
+        seed_intent_input(
+            &rig.pool,
+            &scope,
+            "ordered input",
+            InputClass::Partial,
+            id,
+            21,
+            IntentSource::Seeded,
+            Some(link),
+        )
+        .await
+        .unwrap();
+    }
+    // This is routing-fixture membership, not fabricated component approval.
+    let graph = Arc::new(
+        store
+            .read_exact(&[recipe], &[chosen, first_ref, second_ref])
+            .await
+            .unwrap(),
+    );
+    let instruction =
+        compile_retained_recipe(graph, recipe, "selected", WorkflowClass::Deterministic).unwrap();
+    let eligible = RetainedIntentEligibility::from_instructions(&[&instruction]).unwrap();
+    let empty = RetainedIntentEligibility::from_instructions(&[]).unwrap();
+    let mut client = rig.pool.get().await.unwrap();
+    client
+        .execute(
+            "UPDATE reborn_intent_inputs SET score=100 WHERE component_id=$1",
+            &[&excluded],
+        )
+        .await
+        .unwrap();
+    async fn lookup(
+        pool: &brassclaw_pg::PgPool,
+        scope: &IntentScope,
+        eligible: &RetainedIntentEligibility,
+    ) -> IntentResolution {
+        let mut client = pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        let matched =
+            resolve_catalogue_intent_in_transaction(&tx, scope, "ordered input", eligible)
+                .await
+                .unwrap();
+        tx.commit().await.unwrap();
+        matched
+    }
+    assert!(
+        matches!(lookup(&rig.pool,&scope,&eligible).await,IntentResolution::Match { component_id,.. } if component_id==recipe)
+    );
+    assert!(matches!(
+        lookup(&rig.pool, &scope, &empty).await,
+        IntentResolution::NoMatch
+    ));
+    // A stale link under the same UUID is outside this exact selected variant.
+    client
+        .execute(
+            "UPDATE reborn_intent_inputs SET step_link='0:1-0:E+2:1-2:E' WHERE component_id=$1",
+            &[&recipe],
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        lookup(&rig.pool, &scope, &eligible).await,
+        IntentResolution::NoMatch
+    ));
+    client
+        .execute(
+            "UPDATE reborn_intent_inputs SET step_link=$2,needs_review=true WHERE component_id=$1",
+            &[&recipe, &link],
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        lookup(&rig.pool, &scope, &eligible).await,
+        IntentResolution::NoMatch
+    ));
+    client
+        .execute(
+            "UPDATE reborn_intent_inputs SET needs_review=false WHERE component_id=$1",
+            &[&recipe],
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(lookup(&rig.pool,&scope,&eligible).await,IntentResolution::Match { component_id,.. } if component_id==recipe)
+    );
+    // Two revisions of one stable identity cannot form a coherent generation.
+    let replacement = store
+        .stage(
+            &draft(
+                recipe,
+                21,
+                recipe_document(first, second, "0:1-0:E+2:1-2:E"),
+                &[first, second],
+            ),
+            1,
+        )
+        .await
+        .unwrap();
+    let graph = Arc::new(
+        store
+            .read_exact(&[recipe], &[replacement, first_ref, second_ref])
+            .await
+            .unwrap(),
+    );
+    let newer =
+        compile_retained_recipe(graph, recipe, "selected", WorkflowClass::Deterministic).unwrap();
+    assert!(matches!(
+        RetainedIntentEligibility::from_instructions(&[&instruction, &newer]),
+        Err(IntentSystemError::InvalidEligibility)
+    ));
+    // Matching/SQL failure remains a real error, even for an empty eligible set.
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    tx.batch_execute("ALTER TABLE reborn_intent_inputs RENAME TO temporarily_unavailable_intents")
+        .await
+        .unwrap();
+    assert!(matches!(
+        resolve_catalogue_intent_in_transaction(&tx, &scope, "ordered input", &empty).await,
+        Err(IntentSystemError::Db(_))
+    ));
+    tx.rollback().await.unwrap();
+    // Keep this truly staged second graph available without certifying approval.
+    assert!(
+        store
+            .read_exact(&[excluded], &[other, first_ref, second_ref])
+            .await
+            .unwrap()
+            .roots()
+            .contains(&excluded)
+    );
+}

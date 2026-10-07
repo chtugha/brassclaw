@@ -280,3 +280,68 @@ The immutable inspection can be shared across task hosts. Parser observations
 do not prove reachability, global result assignment, behavior or prose/code
 agreement. Q1 semantic review, real behavior, human Q2, catalogue activation,
 actual Tool implementation provenance and live kernel policy remain separate.
+
+## Task-owned composition ports and routing membership
+
+`GlobalRecipePorts` retains the catalogue owner's exact inspected selection and
+returns an opaque program reference, ordered step IDs, typed inputs and the
+compiler's `recipe-flow/1`. Only Monty chooses and invokes the next step. The
+adapter verifies that reference and step, retains the actual child executor and
+checks durable admission and instance ownership. It currently supports flat,
+stop-only execution; retry/repeated occurrences require their durable addressing
+contract before activation. Selection retention precedes the first executable
+feed. State lookup locks do not span provider or Tool waits.
+
+The global driver supplies the actual admitted input to its ports factory. Its
+failed-attempt settlement transfers the actual `TaskControl` alongside host and
+receipt, keeping child/Tool reconciliation evidence alive. This is still a
+private cutover candidate, not ordinary runtime startup wiring.
+
+`RetainedIntentEligibility` and `resolve_catalogue_intent_in_transaction` filter
+exact Recipe/step-link/example membership before ranking and disambiguation.
+They require a consistent selected revision set and reject capacity overflow
+without truncation. Eligibility is a routing filter, not approval or activation;
+the production owner must derive it from a verified coherent active catalogue.
+Drafts are excluded before matching. Active catalogue corruption remains an
+explicit technical error, never permission to silently drop a workflow.
+
+The native task-port regression uses an explicitly unapproved JSON draft. Both
+real Tool operations return results valid under its component schema. That draft
+has no reply-posting step, so its pairing with the chat entry fails completion
+validation and makes zero model calls. This checks containment of an incomplete
+draft, not a failure of an approved Recipe or IBS. The same global service then
+processes another actual No-Match task successfully.
+
+## Observed behavioral review records
+
+`RetainedRecipeExecution::new_for_behavioral_validation` enables observations on
+the same actual child/Tool execution path. Normal execution avoids the additional
+fingerprinting. Only the executor constructs observations: bound typed inputs,
+actual dispatch arguments, actual answer variant/content and a schema-validated
+result or classified step failure. A dropped future remains unsettled. Missing,
+pending or technically unrecordable observations cannot produce a behavior case.
+Actual host answers and transport evidence remain retained independently.
+
+The private `BehavioralReviewSet` producer compares authored expectations with
+those observations and derives each case's pass/fail. Mismatched expectations
+produce failed evidence, never a caller-selected successful flag. A deliberate
+failure-case expectation can pass when the actual classified failure agrees;
+that is a passed test case, not successful Tool/task execution. Repeated uses
+share one exact Skill-association combination record. The report expressly
+claims neither semantic approval nor complete Recipe/chat completion.
+
+Records retain fingerprints instead of raw runtime data. Full Tool values remain
+in the actual durable journal. `typed-value-sha256/1` hashes a domain prefix,
+type tags and length-framed values, sorting object keys without coercing numbers
+or conflating missing/null. `port-answer-sha256/1` additionally distinguishes
+Return, DomainError and TerminalError. Value bounds are checked before recursive
+fingerprinting; capacity failure remains explicit. These are review fingerprints,
+not component revision checksums or Tool permission.
+
+The producer's common persistence path verifies the entire actual immutable
+revision graph and atomically stores exact evidence bytes. Failed/uncertain
+commit retains the original record IDs and bytes for idempotent recovery.
+Review provenance still requires a trusted validation owner selecting the actual
+kernel/implementation adapter; executor observations alone cannot prove that an
+arbitrary supplied port was such an adapter. Human Q2, Recipe/pure-logic review,
+trusted system-seed provenance and coherent catalogue activation remain separate.

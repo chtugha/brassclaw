@@ -1,13 +1,18 @@
-//! Exact structural Q1 producer for the supported retained single-Tool adapter.
-//! No client JSON/pass flag enters this producer. Semantic agreement, actual
-//! behavioral validation, authenticated human Q2 and activation are separate.
+//! Exact structural Q1 and observed behavior producers for the supported
+//! retained single-Tool adapter. No client JSON/pass flag establishes success.
+//! Semantic agreement, authenticated human Q2 and activation remain separate.
 //! This is not the controlled system-seed provenance adapter.
 
 use std::{collections::BTreeMap, sync::Arc};
 
 use brassclaw_engine::executor::{
-    retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram,
+    retained_recipe::{
+        RetainedProgram, RetainedRecipeExecution, RetainedStepFailure, port_answer_checksum,
+        typed_value_checksum,
+    },
+    retained_source::InspectedRetainedProgram,
 };
+use brassclaw_monty_host::process::PortAnswer;
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{component_revision::REVISION_LIMITS, value_contract::validate_data_bounds};
 use serde_json::json;
@@ -27,6 +32,8 @@ pub(crate) enum StructuralReviewFailure {
     Connection(#[source] deadpool_postgres::PoolError),
     #[error("retained structural review revision or record integrity failed")]
     Integrity,
+    #[error("retained behavior observation is missing, pending or incomplete")]
+    Observation,
 }
 impl std::fmt::Debug for StructuralReviewFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -144,31 +151,33 @@ fn hex(checksum: [u8; 32]) -> String {
 
 /// Actual record identities/bytes survive any storage or ambiguous commit error.
 /// Retry this same set; never manufacture a new successful Q1 record on recovery.
-pub(crate) struct StructuralReviewPersistenceError {
+pub(crate) struct RetainedReviewPersistenceError<T> {
     pub(crate) failure: StructuralReviewFailure,
-    pub(crate) retained: Arc<StructuralReviewSet>,
+    pub(crate) retained: Arc<T>,
 }
-impl std::fmt::Debug for StructuralReviewPersistenceError {
+impl<T> std::fmt::Debug for RetainedReviewPersistenceError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.to_string())
     }
 }
-impl std::fmt::Display for StructuralReviewPersistenceError {
+impl<T> std::fmt::Display for RetainedReviewPersistenceError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.failure)
     }
 }
-impl std::error::Error for StructuralReviewPersistenceError {
+impl<T> std::error::Error for RetainedReviewPersistenceError<T> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.failure)
     }
 }
+pub(crate) type StructuralReviewPersistenceError =
+    RetainedReviewPersistenceError<StructuralReviewSet>;
 
 pub(crate) async fn persist_structural_reviews(
     pool: &PgPool,
     reviews: Arc<StructuralReviewSet>,
 ) -> Result<(), StructuralReviewPersistenceError> {
-    persist(pool, &reviews)
+    persist(pool, &reviews.inspected, &reviews.records)
         .await
         .map_err(|failure| StructuralReviewPersistenceError {
             failure,
@@ -178,7 +187,8 @@ pub(crate) async fn persist_structural_reviews(
 
 async fn persist(
     pool: &PgPool,
-    reviews: &StructuralReviewSet,
+    inspected: &InspectedRetainedProgram,
+    records: &BTreeMap<Uuid, Record>,
 ) -> Result<(), StructuralReviewFailure> {
     let mut client = pool
         .get()
@@ -190,12 +200,7 @@ async fn persist(
         .start()
         .await
         .map_err(database)?;
-    let graph = reviews
-        .inspected
-        .program()
-        .inputs()
-        .instruction()
-        .snapshot();
+    let graph = inspected.program().inputs().instruction().snapshot();
     let mut ids = Vec::new();
     let mut versions = Vec::new();
     let mut classes = Vec::new();
@@ -225,7 +230,7 @@ async fn persist(
     if !complete || ids.is_empty() {
         return Err(StructuralReviewFailure::Integrity);
     }
-    for record in reviews.records.values() {
+    for record in records.values() {
         tx.execute(
             "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum)
              VALUES ($1,$2,$3) ON CONFLICT (evidence_id) DO NOTHING",
@@ -247,4 +252,180 @@ async fn persist(
         }
     }
     tx.commit().await.map_err(database)
+}
+
+/// Authored expected values/classification, not observations or approval flags.
+/// The producer compares them to the actual executor-owned completed step.
+pub(crate) enum ExpectedStepResult {
+    Return(serde_json::Value),
+    Failure(RetainedStepFailure),
+}
+pub(crate) struct BehavioralExpectation {
+    pub(crate) inputs: serde_json::Value,
+    pub(crate) arguments: serde_json::Value,
+    pub(crate) answer: PortAnswer,
+    pub(crate) result: ExpectedStepResult,
+}
+
+/// One actual verification case per selected usage, including repeated uses.
+/// This does not establish whole-Recipe completion, semantic consistency,
+/// authenticated human Q2, controlled system-seed provenance or activation.
+pub(crate) struct BehavioralReviewSet {
+    inspected: Arc<InspectedRetainedProgram>,
+    records: BTreeMap<Uuid, Record>,
+}
+impl BehavioralReviewSet {
+    pub(crate) fn prepare(
+        execution: &RetainedRecipeExecution,
+        expectations: &BTreeMap<String, BehavioralExpectation>,
+    ) -> Result<Self, StructuralReviewFailure> {
+        let inspected = execution.inspected_program();
+        let RetainedProgram::Tools(program) = inspected.program() else {
+            return Err(StructuralReviewFailure::Preparation(
+                "behavior evidence requires an explicitly prepared Tool usage",
+            ));
+        };
+        if expectations.is_empty() || expectations.len() > 4096 {
+            return Err(StructuralReviewFailure::Preparation(
+                "nonempty bounded behavioral cases required",
+            ));
+        }
+        let mut cases: BTreeMap<Uuid, Vec<serde_json::Value>> = BTreeMap::new();
+        for (step, expected) in expectations {
+            let binding = program
+                .bindings()
+                .get(step)
+                .ok_or(StructuralReviewFailure::Observation)?;
+            let observed = execution
+                .observations()
+                .get(step)
+                .filter(|observed| observed.settled() && observed.observation_error().is_none())
+                .ok_or(StructuralReviewFailure::Observation)?;
+            let actual_arguments = observed
+                .arguments_checksum()
+                .ok_or(StructuralReviewFailure::Observation)?;
+            let actual_answer = observed
+                .answer_checksum()
+                .ok_or(StructuralReviewFailure::Observation)?;
+            let expected_inputs = typed_value_checksum(&expected.inputs).map_err(|_| {
+                StructuralReviewFailure::Preparation("expected inputs exceed technical capacity")
+            })?;
+            let expected_arguments = typed_value_checksum(&expected.arguments).map_err(|_| {
+                StructuralReviewFailure::Preparation("expected arguments exceed technical capacity")
+            })?;
+            let expected_answer = port_answer_checksum(&expected.answer).map_err(|_| {
+                StructuralReviewFailure::Preparation("expected answer exceeds technical capacity")
+            })?;
+            let (expected_result, expected_failure) = match &expected.result {
+                ExpectedStepResult::Return(value) => (
+                    Some(typed_value_checksum(value).map_err(|_| {
+                        StructuralReviewFailure::Preparation(
+                            "expected result exceeds technical capacity",
+                        )
+                    })?),
+                    None,
+                ),
+                ExpectedStepResult::Failure(kind) => (None, Some(*kind)),
+            };
+            let succeeded = observed.input_checksum() == expected_inputs
+                && actual_arguments == expected_arguments
+                && actual_answer == expected_answer
+                && observed.result_checksum() == expected_result
+                && observed.failure() == expected_failure;
+            cases.entry(binding.skill().uuid).or_default().push(json!({
+                "step_id":step,
+                "inputs_checksum":hex(observed.input_checksum()),
+                "arguments_checksum":hex(actual_arguments),
+                "answer_checksum":hex(actual_answer),
+                "result_checksum":observed.result_checksum().map(hex),
+                "failure":observed.failure().map(RetainedStepFailure::reason_kind),
+                "expected":{
+                    "inputs_checksum":hex(expected_inputs), "arguments_checksum":hex(expected_arguments),
+                    "answer_checksum":hex(expected_answer), "result_checksum":expected_result.map(hex),
+                    "failure":expected_failure.map(RetainedStepFailure::reason_kind),
+                },
+                "succeeded":succeeded,
+            }));
+        }
+        let bindings: BTreeMap<_, _> = program
+            .bindings()
+            .values()
+            .map(|binding| (binding.skill().uuid, binding))
+            .collect();
+        let mut records = BTreeMap::new();
+        let mut total = 0usize;
+        for (skill, observations) in cases {
+            let binding = bindings[&skill];
+            let id = Uuid::new_v4();
+            let components: Vec<_> = binding
+                .combination()
+                .iter()
+                .map(|component| {
+                    json!({
+                        "uuid":component.uuid,"class_code":component.class_code,
+                        "version":component.version,"checksum":hex(component.checksum),
+                    })
+                })
+                .collect();
+            let record = json!({
+                "format":"component-review-evidence/1", "evidence_id":id,
+                "kind":"behavior", "validation_mode":"authored",
+                "association_checksum":digest(binding.association().exact_bytes()),
+                "components":components,
+                "succeeded":observations.iter().all(|case| case["succeeded"] == true),
+                "reviewed_evidence":[],
+                "report":{
+                    "format":"retained-usage-behavior/1", "scope":"selected-tool-usages",
+                    "semantic_approval":false, "workflow_completion":false,
+                    "value_fingerprint":"typed-value-sha256/1",
+                    "answer_fingerprint":"port-answer-sha256/1", "observations":observations,
+                },
+            });
+            validate_data_bounds(&record, REVISION_LIMITS).map_err(|_| {
+                StructuralReviewFailure::Preparation("behavior record exceeds technical capacity")
+            })?;
+            let bytes = record.to_string();
+            if bytes.len() > REVISION_LIMITS.max_bytes {
+                return Err(StructuralReviewFailure::Preparation(
+                    "serialized behavior record exceeds technical capacity",
+                ));
+            }
+            total = total
+                .checked_add(bytes.len())
+                .filter(|total| *total <= MAX_REVIEW_BYTES)
+                .ok_or(StructuralReviewFailure::Preparation(
+                    "behavior records exceed aggregate capacity",
+                ))?;
+            records.insert(
+                skill,
+                Record {
+                    id,
+                    checksum: digest(&bytes),
+                    bytes,
+                },
+            );
+        }
+        Ok(Self { inspected, records })
+    }
+    pub(crate) fn references(&self) -> BTreeMap<Uuid, Uuid> {
+        self.records
+            .iter()
+            .map(|(skill, record)| (*skill, record.id))
+            .collect()
+    }
+    pub(crate) fn evidence(&self, skill: Uuid) -> Option<&str> {
+        self.records.get(&skill).map(|record| record.bytes.as_str())
+    }
+}
+
+pub(crate) async fn persist_behavioral_reviews(
+    pool: &PgPool,
+    reviews: Arc<BehavioralReviewSet>,
+) -> Result<(), RetainedReviewPersistenceError<BehavioralReviewSet>> {
+    persist(pool, &reviews.inspected, &reviews.records)
+        .await
+        .map_err(|failure| RetainedReviewPersistenceError {
+            failure,
+            retained: reviews,
+        })
 }

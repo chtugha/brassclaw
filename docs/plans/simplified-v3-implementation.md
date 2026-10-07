@@ -2619,3 +2619,73 @@ actual deferred commit failure followed by idempotent recovery. No component
 activation, combination approval, behavioral approval or human Q2 is produced.
 This is a private producer prerequisite; ordinary runtime integration and the
 original seven composition failures remain unresolved.
+
+### 2026-10-07 — Exact task-owned composition ports and routing eligibility
+
+The private `GlobalRecipePorts` candidate now carries catalogue-owned inspected
+programs through composition into opaque program references, typed task inputs
+and actual compiler flow. Monty selects each next step; the adapter executes only
+that requested retained PythonCode, keeps its child/Tool evidence, and persists
+selection before any feed. Flat stop-only execution is supported; repetition,
+retry and durable continuation require their separate addressing contract.
+Provider waits do not hold Recipe lookup locks. The driver builds ports from
+the exact admitted input and transfers the actual TaskControl during failed
+settlement so reconciliation does not lose the retained execution.
+
+The Engine catalogue matcher filters exact selected Recipe/link/example
+membership before ranking. Mixed revisions, review-pending rows and excluded
+drafts cannot hide an eligible workflow; SQL errors remain technical failures.
+The filter itself establishes no approval or activation. Root guides clarify
+Recipe -> IBS intermediate BuildInstruction -> composition -> executable Python
+steps, with runtime inputs separate from source.
+
+Actual native PostgreSQL/global/child/kernel task-port cases: **9 passed**, strict
+isolated all-target lint passed in
+`/private/tmp/brassclaw-monty-task-recipe-ports-{native,lints}-final.log`.
+Actual Engine retained-instruction cases: **4 passed**, affected all-target strict
+lint passed in `/private/tmp/brassclaw-monty-catalogue-eligibility-{native,lints}-final.log`.
+These use Rust 1.98 and the real packaged worker, with serial Cargo execution.
+The new negative completion case is an unapproved JSON draft without a reply
+step; both Tool outputs satisfy its schema. It must not be described as an
+approved Recipe or IBS producing an invalid reply.
+
+Normal runtime still uses PersistentMontyDriver; the original seven are not
+resolved by these cases. Trusted semantic/behavior/Q2 provenance, coherent
+activation, actual implementation identity and full ordinary factory/startup,
+resource and continuation wiring remain required before cutover.
+
+### 2026-10-07 — Retain actual usage behavior for immutable review
+
+The actual retained executor now provides opt-in bounded review observations on
+its existing child/Tool path: bound typed inputs, dispatch arguments, actual
+answer variant and validated result/classified failure. Fields are executor-owned;
+unsettled/dropped execution cannot claim completion. Normal execution incurs no
+additional value fingerprinting. Full answers and transport errors remain retained
+separately, including a successful Tool followed by failed Python result validation.
+
+`BehavioralReviewSet` compares declared expected values/outcomes with those actual
+observations. Repeated calls of a usage retain one exact association closure;
+mismatches are persisted as failed cases. A passing negative test explicitly
+means the observed failure matched its expectation, not that the Tool/task
+completed successfully. Reports state semantic_approval=false and
+workflow_completion=false. Their producer owns no approval, activation or Tool
+grant. The common actual PostgreSQL persistence path verifies the exact graph,
+retains original IDs/bytes on failed commit and supports exact idempotent recovery.
+
+Focused serial native execution: **15 passed** (9 model/task-port, 4 Q1/behavior,
+2 retained execution) in `/private/tmp/brassclaw-monty-behavior-producer-native.log`.
+Strict isolated all-target and Engine skills-db all-target lint passed in
+`/private/tmp/brassclaw-monty-behavior-producer-{control,engine}-lints.log`.
+This includes real JSON kernel effects, actual failed output validation, live
+policy denial, cancellation, actual deferred PostgreSQL commit failures and
+no replay. Typed fingerprint checks preserve presence/types and reject excessive
+depth before traversal. The tested code uses Rust 1.98 and the packaged worker.
+
+The original seven remain unresolved; ordinary runtime still constructs the
+legacy driver. Human review must bind the complete actual record set; mutable
+human/builtin markers do not supply v3 provenance. Recipe and pure-logic review,
+system-seed evidence, consistent active generations, implementation identity and
+the ordinary global factory/resource/continuation cutover remain implementation
+work. The legacy builtin audit also still treats failures as nonfatal; its recovery
+and trusted-seed writer require coordinated repair rather than relabeling existing
+validated rows as approved v3 components.

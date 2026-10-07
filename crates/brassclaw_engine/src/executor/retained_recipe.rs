@@ -4,7 +4,10 @@
 //! The catalogue owner must establish approval and retain actual Tool adapters
 //! before exposing this primitive to production. Preparation alone is no grant.
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use brassclaw_monty_host::{
@@ -14,7 +17,11 @@ use brassclaw_monty_host::{
     },
     transport_actor::{ActorFailure, RequestId, SubmitError, TransportClient},
 };
-use brassclaw_skills::association_contract::FailureAction;
+use brassclaw_skills::{
+    association_contract::FailureAction,
+    component_revision::REVISION_LIMITS,
+    value_contract::{ContractError, validate_data_bounds},
+};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -120,6 +127,133 @@ enum Phase {
     Failed,
 }
 
+/// Classified execution outcome, without private transport/authoring details.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RetainedStepFailure {
+    ResultContract,
+    ToolContract,
+    Submission,
+    Receipt,
+    Process,
+    Execution,
+}
+impl RetainedStepFailure {
+    pub fn reason_kind(self) -> &'static str {
+        match self {
+            Self::ResultContract => "result_contract_failed",
+            Self::ToolContract => "tool_contract_failed",
+            Self::Submission => "worker_submission_failed",
+            Self::Receipt => "worker_receipt_unavailable",
+            Self::Process => "worker_execution_failed",
+            Self::Execution => "recipe_execution_failed",
+        }
+    }
+}
+
+/// Actual execution observations. Private fields prevent a caller-supplied
+/// success flag from becoming evidence. Fingerprints use typed-value-sha256/1;
+/// full Tool arguments/answers remain in the durable invocation journal.
+pub struct RetainedStepObservation {
+    input_checksum: [u8; 32],
+    arguments_checksum: Option<[u8; 32]>,
+    answer_checksum: Option<[u8; 32]>,
+    result_checksum: Option<[u8; 32]>,
+    failure: Option<RetainedStepFailure>,
+    settled: bool,
+    observation_error: Option<ContractError>,
+}
+impl RetainedStepObservation {
+    pub fn input_checksum(&self) -> [u8; 32] {
+        self.input_checksum
+    }
+    pub fn arguments_checksum(&self) -> Option<[u8; 32]> {
+        self.arguments_checksum
+    }
+    pub fn answer_checksum(&self) -> Option<[u8; 32]> {
+        self.answer_checksum
+    }
+    pub fn result_checksum(&self) -> Option<[u8; 32]> {
+        self.result_checksum
+    }
+    pub fn failure(&self) -> Option<RetainedStepFailure> {
+        self.failure
+    }
+    pub fn settled(&self) -> bool {
+        self.settled
+    }
+    pub fn observation_error(&self) -> Option<&ContractError> {
+        self.observation_error.as_ref()
+    }
+}
+
+/// Domain-separated fingerprint of the exact typed value, independent of JSON
+/// object insertion order. Numbers retain their transport representation; no
+/// numeric coercion, source interpretation or raw-value diagnostic is involved.
+pub fn typed_value_checksum(value: &Value) -> Result<[u8; 32], ContractError> {
+    validate_data_bounds(value, REVISION_LIMITS)?;
+    fn bytes(hash: &mut Sha256, value: &[u8]) {
+        hash.update((value.len() as u64).to_be_bytes());
+        hash.update(value);
+    }
+    fn walk(hash: &mut Sha256, value: &Value) {
+        match value {
+            Value::Null => hash.update([0]),
+            Value::Bool(value) => hash.update([1, u8::from(*value)]),
+            Value::Number(value) => {
+                hash.update([2]);
+                bytes(hash, value.to_string().as_bytes());
+            }
+            Value::String(value) => {
+                hash.update([3]);
+                bytes(hash, value.as_bytes());
+            }
+            Value::Array(values) => {
+                hash.update([4]);
+                hash.update((values.len() as u64).to_be_bytes());
+                for value in values {
+                    walk(hash, value);
+                }
+            }
+            Value::Object(values) => {
+                hash.update([5]);
+                hash.update((values.len() as u64).to_be_bytes());
+                let mut keys: Vec<_> = values.keys().collect();
+                keys.sort_unstable();
+                for key in keys {
+                    bytes(hash, key.as_bytes());
+                    walk(hash, &values[key]);
+                }
+            }
+        }
+    }
+    let mut hash = Sha256::new();
+    hash.update(b"typed-value-sha256/1\0");
+    walk(&mut hash, value);
+    Ok(hash.finalize().into())
+}
+
+/// Fingerprint the actual answer variant as well as its contents. A returned
+/// error-looking object is distinct from a classified Domain/Terminal error.
+pub fn port_answer_checksum(answer: &PortAnswer) -> Result<[u8; 32], ContractError> {
+    let mut hash = Sha256::new();
+    hash.update(b"port-answer-sha256/1\0");
+    match answer {
+        PortAnswer::Return { value } => {
+            hash.update([0]);
+            hash.update(typed_value_checksum(value)?);
+        }
+        PortAnswer::DomainError { reason_kind } => {
+            hash.update([1]);
+            hash.update(reason_kind.as_bytes());
+        }
+        PortAnswer::TerminalError { reason_kind } => {
+            hash.update([2]);
+            hash.update(reason_kind.as_bytes());
+        }
+    }
+    Ok(hash.finalize().into())
+}
+
 /// Private task state; never serialize its routing handles or Tool evidence
 /// into model context. Results handed back to Monty are typed data. A dropped
 /// step future leaves this execution fenced in Running; an error leaves Failed.
@@ -134,12 +268,32 @@ pub struct RetainedRecipeExecution {
     started: BTreeSet<String>,
     latest_snapshot: Option<ProcessSnapshot>,
     host_answers: Vec<(String, PortAnswer)>,
+    observations: BTreeMap<String, RetainedStepObservation>,
+    observe_behavior: bool,
     transport_failure: Option<RetainedTransportEvidence>,
 }
 impl RetainedRecipeExecution {
     pub fn new(
         task: TaskHandle,
         inspected: Arc<super::retained_source::InspectedRetainedProgram>,
+    ) -> Result<Self, RetainedExecutionError> {
+        Self::prepare(task, inspected, false)
+    }
+
+    /// The same actual runner/child/Tool path, with bounded observations enabled
+    /// for behavioral review. Ordinary execution avoids extra data fingerprinting.
+    /// Enabling observation supplies neither successful results nor approval.
+    pub fn new_for_behavioral_validation(
+        task: TaskHandle,
+        inspected: Arc<super::retained_source::InspectedRetainedProgram>,
+    ) -> Result<Self, RetainedExecutionError> {
+        Self::prepare(task, inspected, true)
+    }
+
+    fn prepare(
+        task: TaskHandle,
+        inspected: Arc<super::retained_source::InspectedRetainedProgram>,
+        observe_behavior: bool,
     ) -> Result<Self, RetainedExecutionError> {
         let program = inspected.program().clone();
         // Check the supported complete layout before any VM or effect begins.
@@ -163,6 +317,8 @@ impl RetainedRecipeExecution {
             started: BTreeSet::new(),
             latest_snapshot: None,
             host_answers: Vec::new(),
+            observations: BTreeMap::new(),
+            observe_behavior,
             transport_failure: None,
         })
     }
@@ -174,6 +330,13 @@ impl RetainedRecipeExecution {
     /// These do not establish semantic review, activation or Tool authority.
     pub fn source_checks(&self) -> &super::retained_source::InspectedSources {
         self.source_checks.source_checks()
+    }
+    /// Actual selection retained by this executor, not a supplied review target.
+    pub fn inspected_program(&self) -> Arc<super::retained_source::InspectedRetainedProgram> {
+        self.source_checks.clone()
+    }
+    pub fn observations(&self) -> &BTreeMap<String, RetainedStepObservation> {
+        &self.observations
     }
     /// Actual completed host answers survive a subsequent validation/IPC error.
     /// They are evidence, never permission to repeat a completed invocation.
@@ -274,11 +437,49 @@ impl RetainedRecipeExecution {
             checksum: Sha256::digest(step.executable_code.as_bytes()).into(),
             aliases,
         };
+        let input_checksum = self
+            .observe_behavior
+            .then(|| typed_value_checksum(&inputs))
+            .transpose()
+            .map_err(RetainedInputError::from)?;
         self.phase = Phase::Running;
         self.started.insert(step_id.to_owned());
+        if let Some(input_checksum) = input_checksum {
+            self.observations.insert(
+                step_id.to_owned(),
+                RetainedStepObservation {
+                    input_checksum,
+                    arguments_checksum: None,
+                    answer_checksum: None,
+                    result_checksum: None,
+                    failure: None,
+                    settled: false,
+                    observation_error: None,
+                },
+            );
+        }
         let result = self
             .feed(transport, step_id, inputs, python, binding, tools)
             .await;
+        if let Some(observation) = self.observations.get_mut(step_id) {
+            observation.settled = true;
+            match &result {
+                Ok(value) => match typed_value_checksum(value) {
+                    Ok(checksum) => observation.result_checksum = Some(checksum),
+                    Err(error) => observation.observation_error = Some(error),
+                },
+                Err(error) => {
+                    observation.failure = Some(match error {
+                        RetainedExecutionError::Inputs(_) => RetainedStepFailure::ResultContract,
+                        RetainedExecutionError::Tool(_) => RetainedStepFailure::ToolContract,
+                        RetainedExecutionError::Submission(_) => RetainedStepFailure::Submission,
+                        RetainedExecutionError::Receipt { .. } => RetainedStepFailure::Receipt,
+                        RetainedExecutionError::Process(_) => RetainedStepFailure::Process,
+                        RetainedExecutionError::Invalid(_) => RetainedStepFailure::Execution,
+                    })
+                }
+            }
+        }
         self.phase = if result.is_ok() {
             Phase::Idle
         } else {
@@ -413,6 +614,12 @@ impl RetainedRecipeExecution {
                             let port = tools.ok_or(RetainedExecutionError::Invalid(
                                 "missing retained Tool port",
                             ))?;
+                            if let Some(observation) = self.observations.get_mut(step_id) {
+                                match typed_value_checksum(&arguments) {
+                                    Ok(checksum) => observation.arguments_checksum = Some(checksum),
+                                    Err(error) => observation.observation_error = Some(error),
+                                }
+                            }
                             let answer = port
                                 .dispatch(
                                     RetainedToolInvocation {
@@ -423,6 +630,12 @@ impl RetainedRecipeExecution {
                                     arguments,
                                 )
                                 .await;
+                            if let Some(observation) = self.observations.get_mut(step_id) {
+                                match port_answer_checksum(&answer) {
+                                    Ok(checksum) => observation.answer_checksum = Some(checksum),
+                                    Err(error) => observation.observation_error = Some(error),
+                                }
+                            }
                             dispatched = true;
                             // Retain the actual answer before attempting a resume. Failure
                             // of the resume or result contract can never replay this effect.

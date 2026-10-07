@@ -412,6 +412,14 @@ Existing scoped stores and operation-approval code are legacy implementation
 until the coordinated dispatch/data cutover. Do not extend those paths as v3
 requirements or disable technical enforcement to bypass them.
 
+Routing uses only the coherent active, approved catalogue. Drafts and
+unapproved revisions are excluded before matching. Match and No-Match describe
+routing; "unapproved match" and "unsupported match" are not additional routing
+outcomes. Complete runner support is required before a workflow is activated.
+Missing support is implementation work, and corruption or technical failure in
+an active catalogue is an error to repair, never permission to remove that
+workflow silently or route it through Tier 2.
+
 Only an actual No-Match enters Tier 2. Matching/DB errors, ambiguity and begun
 recipe failures must remain distinct; never replay a failed recipe as Tier 2.
 Running tasks retain their selected component revisions. Live tool policy is
@@ -459,8 +467,10 @@ the host boundary, subject to the kernel's current authority checks.
   **as one global orchestrator started at system startup and kept alive in the
   background for the instance lifetime**. Each input is a task delivered to
   that existing orchestrator. It reads the
-  `BuildInstruction` assembled by IBS, and executes steps in sequence: binding
-  tools into its namespace, running PythonCode snippets, assembling LLM prompts,
+  workflow selected by IBS in a `BuildInstruction`. Composition resolves its
+  component references into executable Python steps and prepares Tool bindings
+  and typed inputs separately from source. Monty executes those steps in
+  sequence: running PythonCode snippets, assembling LLM prompts,
   and posting replies. It never executes Rust directly — it calls registered
   Tools by name via `host.<tool>(...)`.
 - **Rust Tools** are registered primitives with selected retained implementations.
@@ -620,6 +630,9 @@ and switches into Matching-Mode:
 2. IBS reads the Recipe's `step_link` + `StepDescriptions` JSONB and assembles
    a `BuildInstruction { rust_steps, orchestrator_steps }` by collecting the
    referenced ToolSkill and PythonCode snippet UUIDs from the component library.
+   This is an intermediate structure. Composition resolves the exact selected
+   component bodies into concrete Python execution steps; runtime values remain
+   separate typed input data, never substituted Python source.
 3. The composition system uses `rust_steps` to **bind** the declared ToolSkills
    into the Monty namespace (making `host.<tool>` callable for this turn).
 4. The Orchestrator runs `orchestrator_steps` in sequence: each step is either

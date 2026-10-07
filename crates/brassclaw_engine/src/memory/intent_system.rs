@@ -311,6 +311,8 @@ pub enum IntentSystemError {
     InvalidChoice,
     #[error("intent selection requires repeatable-read or serializable isolation")]
     SnapshotIsolation,
+    #[error("intent catalogue eligibility is inconsistent or exceeds technical capacity")]
+    InvalidEligibility,
 }
 
 // ---------------------------------------------------------------------------
@@ -343,7 +345,7 @@ pub async fn resolve_intent(
         .get()
         .await
         .map_err(|e| IntentSystemError::Db(e.to_string()))?;
-    let (resolution, selected) = lookup_intent(&**client, scope, query).await?;
+    let (resolution, selected) = lookup_intent(&**client, scope, query, None).await?;
     if let Some(row_id) = selected {
         increment_score(&**client, scope, row_id).await?;
     }
@@ -372,7 +374,104 @@ pub async fn resolve_intent_in_transaction(
     if !coherent {
         return Err(IntentSystemError::SnapshotIsolation);
     }
-    Ok(lookup_intent(tx, scope, query).await?.0)
+    Ok(lookup_intent(tx, scope, query, None).await?.0)
+}
+
+/// Exact retained workflow membership supplied by the catalogue owner. This
+/// is a routing filter, not approval evidence or an activation API. Production
+/// builds it only from the already approved, active consistent generation.
+/// Filtering happens before ranking, so a draft or stale intent cannot hide an
+/// eligible match or turn it into disambiguation. No source is executed here.
+#[cfg(feature = "skills-db")]
+pub struct RetainedIntentEligibility {
+    ids: Vec<Uuid>,
+    links: Vec<String>,
+    texts: Vec<String>,
+}
+#[cfg(feature = "skills-db")]
+impl RetainedIntentEligibility {
+    pub fn from_instructions(
+        instructions: &[&super::retained_instruction::RetainedRecipeInstruction],
+    ) -> Result<Self, IntentSystemError> {
+        use std::collections::{BTreeMap, BTreeSet};
+        let mut references = BTreeMap::new();
+        let mut rows = BTreeSet::new();
+        let mut bytes = 0usize;
+        let mut visited = 0usize;
+        if instructions.len() > 4096 {
+            return Err(IntentSystemError::InvalidEligibility);
+        }
+        for instruction in instructions {
+            for revision in instruction.snapshot().revisions().values() {
+                visited += 1;
+                if visited > 65536 {
+                    return Err(IntentSystemError::InvalidEligibility);
+                }
+                let reference = revision.reference();
+                if references
+                    .insert(reference.uuid, reference)
+                    .is_some_and(|old| old != reference)
+                    || references.len() > 4096
+                {
+                    return Err(IntentSystemError::InvalidEligibility);
+                }
+            }
+            let link = instruction
+                .variant()
+                .step_link
+                .as_deref()
+                .filter(|link| !link.is_empty())
+                .ok_or(IntentSystemError::InvalidEligibility)?;
+            for example in &instruction.variant().intent_examples {
+                if example.is_empty() || example.chars().count() > 2048 || rows.len() >= 8192 {
+                    return Err(IntentSystemError::InvalidEligibility);
+                }
+                bytes = bytes
+                    .checked_add(link.len())
+                    .and_then(|n| n.checked_add(example.len()))
+                    .filter(|n| *n <= 64 * 1024 * 1024)
+                    .ok_or(IntentSystemError::InvalidEligibility)?;
+                rows.insert((instruction.recipe().uuid, link.to_owned(), example.clone()));
+            }
+        }
+        let mut selected = Self {
+            ids: Vec::new(),
+            links: Vec::new(),
+            texts: Vec::new(),
+        };
+        for (id, link, text) in rows {
+            selected.ids.push(id);
+            selected.links.push(link);
+            selected.texts.push(text);
+        }
+        Ok(selected)
+    }
+}
+
+/// The catalogue owner's eligible workflows restrict the existing actual
+/// matcher in the same repeatable-read/serializable view used by IBS. An empty
+/// eligible set is a real NoMatch, even if legacy draft rows exist. A read or
+/// integrity failure remains an error, never NoMatch. This neutral consumer
+/// does not determine eligibility from mutable status/source labels.
+#[cfg(feature = "skills-db")]
+pub async fn resolve_catalogue_intent_in_transaction(
+    tx: &tokio_postgres::Transaction<'_>,
+    scope: &IntentScope,
+    query: &str,
+    eligible: &RetainedIntentEligibility,
+) -> Result<IntentResolution, IntentSystemError> {
+    let coherent: bool = tx
+        .query_one(
+            "SELECT current_setting('transaction_isolation') IN ('repeatable read','serializable')",
+            &[],
+        )
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?
+        .get(0);
+    if !coherent {
+        return Err(IntentSystemError::SnapshotIsolation);
+    }
+    Ok(lookup_intent(tx, scope, query, Some(eligible)).await?.0)
 }
 
 #[cfg(feature = "skills-db")]
@@ -380,6 +479,7 @@ async fn lookup_intent<C: tokio_postgres::GenericClient>(
     client: &C,
     scope: &IntentScope,
     query: &str,
+    eligible: Option<&RetainedIntentEligibility>,
 ) -> Result<(IntentResolution, Option<Uuid>), IntentSystemError> {
     use tokio_postgres::types::ToSql;
     use tracing::debug;
@@ -387,6 +487,9 @@ async fn lookup_intent<C: tokio_postgres::GenericClient>(
     let order = match_order(query_class);
     let order_vec: Vec<i16> = order.to_vec();
 
+    let eligible_ids = eligible.map(|e| &e.ids);
+    let eligible_links = eligible.map(|e| &e.links);
+    let eligible_texts = eligible.map(|e| &e.texts);
     let rows = client
         .query(
             // Limit distinct workflows only after ranking and spread filtering.
@@ -400,6 +503,14 @@ async fn lookup_intent<C: tokio_postgres::GenericClient>(
                WHERE ii.tenant_id = $1 AND ii.user_id = $2
                  AND ii.agent_id = $3 AND ii.project_id = $4
                  AND ii.input_class = ANY($6)
+                 AND ($12::uuid[] IS NULL OR (
+                   ii.component_class_code=21 AND ii.needs_review=false
+                   AND EXISTS (SELECT 1 FROM unnest($12::uuid[],$13::text[],$14::text[])
+                     eligible(component_id,step_link,input_text)
+                     WHERE eligible.component_id=ii.component_id
+                       AND eligible.step_link=ii.step_link
+                       AND eligible.input_text=ii.input_text)
+                 ))
                  AND (
                    ii.input_text = $5
                    OR (ii.is_template = true AND ii.template_prefix != ''
@@ -438,6 +549,9 @@ async fn lookup_intent<C: tokio_postgres::GenericClient>(
                 &order[2],
                 &DISAMBIGUATION_SPREAD,
                 &(MAX_DISAMBIGUATION_CANDIDATES as i64),
+                &eligible_ids,
+                &eligible_links,
+                &eligible_texts,
             ],
         )
         .await

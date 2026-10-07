@@ -7,8 +7,9 @@ use async_trait::async_trait;
 use brassclaw_authorization::LiveStableToolPolicy;
 use brassclaw_engine::{
     executor::retained_recipe::{
-        RetainedExecutionError, RetainedProgram, RetainedRecipeExecution, RetainedToolInvocation,
-        RetainedToolPort, RetainedTransportEvidence,
+        RetainedExecutionError, RetainedProgram, RetainedRecipeExecution, RetainedStepFailure,
+        RetainedToolInvocation, RetainedToolPort, RetainedTransportEvidence, port_answer_checksum,
+        typed_value_checksum,
     },
     executor::retained_source::{InspectedRetainedProgram, RetainedSourceError},
     memory::retained_tools::{RetainedToolBinding, RetainedToolProgram},
@@ -292,7 +293,9 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             .unwrap(),
         );
         assert_eq!(inspected.source_checks().len(), 1);
-        let mut execution = RetainedRecipeExecution::new(task, inspected).unwrap();
+        let mut execution =
+            RetainedRecipeExecution::new_for_behavioral_validation(task, inspected).unwrap();
+        assert!(execution.observations().is_empty());
         for step in &prepared.program().steplist {
             let Some(ProcessBoundary::HostCall {
                 key,
@@ -313,7 +316,34 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
             let result = execution
                 .run_step(&transport, &step.step_id, &args[3]["inputs"], Some(&port))
                 .await;
+            let observation = &execution.observations()[&step.step_id];
+            assert!(observation.settled());
+            assert!(observation.observation_error().is_none());
+            assert_eq!(
+                observation.input_checksum(),
+                typed_value_checksum(&args[3]["inputs"]).unwrap()
+            );
+            assert_eq!(
+                observation.arguments_checksum(),
+                Some(
+                    typed_value_checksum(&json!({"data":inputs["data"],"operation":"parse"}))
+                        .unwrap()
+                )
+            );
+            assert_eq!(
+                observation.answer_checksum(),
+                Some(port_answer_checksum(&execution.host_answers().last().unwrap().1).unwrap())
+            );
             if invalid_output || step.step_id == "0:4" {
+                assert!(observation.result_checksum().is_none());
+                assert!(
+                    observation.failure()
+                        == Some(if invalid_output {
+                            RetainedStepFailure::ResultContract
+                        } else {
+                            RetainedStepFailure::Process
+                        })
+                );
                 if invalid_output {
                     assert!(matches!(result, Err(RetainedExecutionError::Inputs(_))));
                     let Some(RecipeEvent::Progress {
@@ -385,6 +415,11 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
                 break;
             }
             let value = result.unwrap();
+            assert!(observation.failure().is_none());
+            assert_eq!(
+                observation.result_checksum(),
+                Some(typed_value_checksum(&value).unwrap())
+            );
             assert_eq!(value, data);
             let resolved = exchange(
                 &transport,
